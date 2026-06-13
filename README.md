@@ -1,8 +1,10 @@
 # YouTube Zero
 
 ![YouTube Zero Today view](docs/assets/youtube-zero-today.png)
-![YouTube Zero Settings channels view](docs/assets/youtube-zero-settings-channels.png)
-![YouTube Zero Settings display view](docs/assets/youtube-zero-settings-display.png)
+
+| Settings: Channels | Settings: Display |
+| --- | --- |
+| <img src="docs/assets/youtube-zero-settings-channels.png" alt="YouTube Zero Settings channels view" width="360"> | <img src="docs/assets/youtube-zero-settings-display.png" alt="YouTube Zero Settings display view" width="360"> |
 
 > A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
 
