@@ -141,6 +141,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   grid_size: "sm",
   child_lock_enabled: "0",
   child_lock_pin_hash: "",
+  sponsorblock_enabled: "0",
+  sponsorblock_categories: '["sponsor"]',
 };
 for (const [key, value] of Object.entries(SETTING_DEFAULTS)) {
   db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)").run(key, value);

@@ -14,7 +14,7 @@ import {
   ThumbsUp,
   Undo2,
 } from "lucide-react";
-import { api, type AppSettings, type Bucket, type UserPlaylist, type Video } from "../api";
+import { api, type AppSettings, type Bucket, type SponsorSegment, type UserPlaylist, type Video, SB_CATEGORIES } from "../api";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -40,6 +40,14 @@ function loadYouTubeApi(): Promise<void> {
 }
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
+
+function fmtTime(s: number): string {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = Math.floor(s % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
 
 /** Render plain text with URLs turned into clickable links. */
 function Linkify({ text }: { text: string }) {
@@ -81,16 +89,39 @@ export default function WatchPage() {
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [newPlaylistIcon, setNewPlaylistIcon] = useState("ListMusic");
   const [cinemaMode, setCinemaMode] = useState(() => localStorage.getItem(CINEMA_MODE_KEY) === "1");
+  const [sbSegments, setSbSegments] = useState<SponsorSegment[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const playlistMenuRef = useRef<HTMLDivElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const archivedRef = useRef(false);
   const progressRef = useRef<{ position: number; duration: number } | null>(null);
+  const sbSegmentsRef = useRef<SponsorSegment[]>([]);
 
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
   }, []);
+
+  useEffect(() => {
+    sbSegmentsRef.current = sbSegments;
+  }, [sbSegments]);
+
+  useEffect(() => {
+    if (!video || settings?.sponsorblock_enabled !== "1") {
+      setSbSegments([]);
+      return;
+    }
+    let cancelled = false;
+    const cats = (() => {
+      try { return JSON.parse(settings.sponsorblock_categories || '["sponsor"]') as string[]; }
+      catch { return ["sponsor"]; }
+    })();
+    if (cats.length === 0) { setSbSegments([]); return; }
+    api.sponsorblock(video.video_id, cats)
+      .then((segs) => { if (!cancelled) setSbSegments(segs.filter((s) => s.actionType === "skip")); })
+      .catch(() => { if (!cancelled) setSbSegments([]); });
+    return () => { cancelled = true; };
+  }, [video?.video_id, settings?.sponsorblock_enabled, settings?.sponsorblock_categories]);
 
   useEffect(() => {
     if (!id) return;
@@ -165,6 +196,12 @@ export default function WatchPage() {
           if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
             api.archiveVideo(id).catch(() => {});
+          }
+          for (const seg of sbSegmentsRef.current) {
+            if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
+              p.seekTo(seg.segment[1], true);
+              break;
+            }
           }
         } catch {}
       }, 1_000);
@@ -459,6 +496,28 @@ export default function WatchPage() {
           <button className="watch-desc-toggle" onClick={() => setDescOpen((o) => !o)}>
             {descOpen ? t("showLess") : t("showMore")}
           </button>
+        )}
+        {sbSegments.length > 0 && (
+          <div className="sb-segments">
+            <span className="sb-segments-label">{t("sbSegmentsTitle")}</span>
+            <div className="sb-segments-list">
+              {[...sbSegments].sort((a, b) => a.segment[0] - b.segment[0]).map((seg) => {
+                const cat = SB_CATEGORIES.find((c) => c.id === seg.category);
+                return (
+                  <div
+                    key={seg.UUID}
+                    className="sb-segment-row"
+                    style={{ "--sb-color": cat?.color ?? "#888" } as React.CSSProperties}
+                    onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}
+                  >
+                    <span className="sb-dot" />
+                    <span className="sb-segment-name">{cat?.label[language] ?? seg.category}</span>
+                    <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
       </div>
 

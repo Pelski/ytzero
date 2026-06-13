@@ -171,6 +171,10 @@ const labels = {
     changePin: "Change PIN",
     changePinHint: "Set a new 6-digit PIN. The current unlocked session is enough to change it.",
     childLockPinChanged: "PIN changed",
+    sponsorblockHint: "Automatically skip sponsored segments, intros, outros, and more.",
+    sponsorblockCategories: "Segment categories to skip:",
+    sbSegmentsTitle: "Segments to be skipped:",
+    sponsorblockSaved: "SponsorBlock settings saved",
   },
   pl: {
     navToday: "Dziś",
@@ -336,6 +340,10 @@ const labels = {
     changePin: "Zmień PIN",
     changePinHint: "Ustaw nowy 6-cyfrowy PIN. Aktualnie odblokowana sesja wystarczy do zmiany.",
     childLockPinChanged: "PIN zmieniony",
+    sponsorblockHint: "Automatycznie pomijaj sponsorowane segmenty, intro, outro i inne.",
+    sponsorblockCategories: "Kategorie segmentów do pominięcia:",
+    sbSegmentsTitle: "Segmenty które zostaną pominięte:",
+    sponsorblockSaved: "Zapisano ustawienia SponsorBlock",
   },
 } as const;
 

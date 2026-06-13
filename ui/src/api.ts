@@ -112,7 +112,27 @@ export interface AppSettings {
   player_quality: string;
   grid_size: string;
   child_lock_enabled: string;
+  sponsorblock_enabled: string;
+  sponsorblock_categories: string;
 }
+
+export interface SponsorSegment {
+  category: string;
+  actionType: string;
+  segment: [number, number];
+  UUID: string;
+}
+
+export const SB_CATEGORIES: { id: string; label: { en: string; pl: string }; color: string }[] = [
+  { id: "sponsor",       label: { en: "Sponsor",           pl: "Sponsor"          }, color: "#00d400" },
+  { id: "selfpromo",     label: { en: "Self-promotion",    pl: "Autopromocja"     }, color: "#ffff00" },
+  { id: "interaction",   label: { en: "Interaction",       pl: "Prośba o reakcję" }, color: "#cc00ff" },
+  { id: "intro",         label: { en: "Intro",             pl: "Intro"            }, color: "#00ffff" },
+  { id: "outro",         label: { en: "Outro",             pl: "Outro"            }, color: "#0202ed" },
+  { id: "preview",       label: { en: "Preview",           pl: "Podgląd treści"   }, color: "#008fd6" },
+  { id: "music_offtopic",label: { en: "Non-music section", pl: "Nie-muzyczny"     }, color: "#ff9900" },
+  { id: "filler",        label: { en: "Filler",            pl: "Wypełniacz"       }, color: "#7300ab" },
+];
 
 export interface ChildLockStatus {
   enabled: boolean;
@@ -265,4 +285,12 @@ export const api = {
     http(`/playlists/${id}/rules/${ruleId}`, { method: "DELETE" }),
   applyUserPlaylistRules: (id: number) =>
     http<{ matched: number }>(`/playlists/${id}/rules/apply`, { method: "POST" }),
+
+  sponsorblock: async (videoId: string, categories: string[]): Promise<SponsorSegment[]> => {
+    const qs = new URLSearchParams({ videoID: videoId, categories: JSON.stringify(categories) });
+    const res = await fetch(`https://sponsor.ajay.app/api/skipSegments?${qs}`);
+    if (res.status === 404) return [];
+    if (!res.ok) return [];
+    return res.json();
+  },
 };

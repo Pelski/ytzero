@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Check, FolderUp, LoaderCircle, ListMusic, MonitorPlay, Pencil, Plus, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
-import { api, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule } from "../api";
+import { api, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, SB_CATEGORIES } from "../api";
 import TagChip from "../components/TagChip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
@@ -374,6 +374,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playerHl, setPlayerHl] = useState("pl");
   const [playerCc, setPlayerCc] = useState(false);
   const [playerQuality, setPlayerQuality] = useState("auto");
+  const [sbEnabled, setSbEnabled] = useState(false);
+  const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
   const [childLock, setChildLock] = useState<ChildLockStatus>({ enabled: false, locked: false });
   const [unlockPin, setUnlockPin] = useState("");
   const [enablePin, setEnablePin] = useState("");
@@ -410,6 +412,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setPlayerHl(r.settings.player_hl);
         setPlayerCc(r.settings.player_cc === "1");
         setPlayerQuality(r.settings.player_quality);
+        setSbEnabled(r.settings.sponsorblock_enabled === "1");
+        try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
         setChildLock(cl.child_lock);
       })
       .catch(console.error);
@@ -434,6 +438,22 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const savePlayer = async (patch: Record<string, string>) => {
     await api.updateSettings(patch);
     showToast(t("playerSettingsSaved"));
+  };
+
+  const toggleSb = async () => {
+    const next = !sbEnabled;
+    setSbEnabled(next);
+    await api.updateSettings({ sponsorblock_enabled: next ? "1" : "0" });
+    showToast(t("sponsorblockSaved"));
+  };
+
+  const toggleSbCategory = async (id: string) => {
+    const next = sbCategories.includes(id)
+      ? sbCategories.filter((c) => c !== id)
+      : [...sbCategories, id];
+    setSbCategories(next);
+    await api.updateSettings({ sponsorblock_categories: JSON.stringify(next) });
+    showToast(t("sponsorblockSaved"));
   };
 
   const showPinError = () => showToast(t("pinMustBeSixDigits"));
@@ -1088,6 +1108,42 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           <p className="hint" style={{ marginTop: 4 }}>
             {t("qualityHint")}
           </p>
+
+          <hr className="section-divider" />
+
+          <div className="switch-row">
+            <div>
+              <div className="switch-label">SponsorBlock</div>
+              <div className="switch-sub">{t("sponsorblockHint")}</div>
+            </div>
+            <button
+              className={`switch${sbEnabled ? " on" : ""}`}
+              role="switch"
+              aria-checked={sbEnabled}
+              onClick={toggleSb}
+            />
+          </div>
+
+          {sbEnabled && (
+            <div className="sb-category-grid">
+              <div className="switch-sub" style={{ gridColumn: "1 / -1", marginBottom: 2 }}>{t("sponsorblockCategories")}</div>
+              {SB_CATEGORIES.map((cat) => {
+                const active = sbCategories.includes(cat.id);
+                return (
+                  <div key={cat.id} className="sb-category-row">
+                    <span className="sb-category-dot" style={{ background: cat.color }} />
+                    <span className="sb-category-name">{cat.label[language]}</span>
+                    <button
+                      className={`switch${active ? " on" : ""}`}
+                      role="switch"
+                      aria-checked={active}
+                      onClick={() => toggleSbCategory(cat.id)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
       )}
 

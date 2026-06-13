@@ -2012,6 +2012,83 @@ body.cinema .watch-layout.theater aside {
   .channel-header-actions { width: 100%; justify-content: flex-start; }
 }
 
+/* ---------- SponsorBlock segments (watch page) ---------- */
+.sb-segments {
+  margin-top: 14px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.sb-segments-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-3);
+  padding: 12px 16px 8px;
+}
+.sb-segments-list {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+}
+.sb-segment-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.sb-segment-row:hover { background: var(--surface-2); }
+.sb-segment-row + .sb-segment-row { border-top: 1px solid var(--surface-2); }
+.sb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sb-color);
+  flex-shrink: 0;
+}
+.sb-segment-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.sb-time {
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* SponsorBlock category toggles in Settings — 2 columns */
+.sb-category-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 24px;
+  margin-top: 10px;
+  padding: 4px 0;
+}
+.sb-category-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+}
+.sb-category-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.sb-category-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+
 @media (max-width: 760px) {
   .sidebar { width: 68px; }
   .sidebar .nav-label, .sidebar .badge { display: none; }
