@@ -68,6 +68,7 @@ And leaves out:
 - **Theather view** - distraction-light player layout for watching.
 - **Internationalization** - English and Polish UI, with saved user preference.
 - **Player preferences** - captions, player language, caption language, preferred quality, and Shorts visibility.
+- **SponsorBlock** - optional integration with [SponsorBlock](https://sponsor.ajay.app) to automatically skip sponsored segments, intros, outros, interaction reminders, and more. Configurable per category.
 - **Image cache** - local thumbnail and image cache for faster repeat loads.
 
 ## Screens
@@ -320,6 +321,10 @@ YouTube is a trademark of Google LLC. This project is not affiliated with, endor
 - YouTube page structure can change, which may affect metadata, live detection, Shorts detection, or playlist parsing.
 - Embedded playback is still YouTube playback and follows YouTube embed behavior.
 - This is a personal/self-hosted tool, not a multi-user service.
+
+## Acknowledgements
+
+- **[SponsorBlock](https://sponsor.ajay.app)** — community-driven database of skippable segments in YouTube videos (sponsors, intros, outros, and more). YouTube Zero optionally queries the SponsorBlock API to automatically skip segments while watching. SponsorBlock is an open-source project by [Ajay Ramachandran](https://github.com/ajayyy) — thank you to everyone who contributes segments to the database. Ajay is doing an amazing job and the project is well worth supporting — you can do so at [sponsor.ajay.app/donate](https://sponsor.ajay.app/donate).
 
 ## License
 
