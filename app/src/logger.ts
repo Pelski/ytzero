@@ -46,9 +46,9 @@ export function readRecentLogs(limit = 300) {
     const lines = content
       .trimEnd()
       .split("\n");
-    return { path: LOG_PATH, size, lines: lines.slice(-limit) };
+    return { size, lines: lines.slice(-limit) };
   } catch {
-    return { path: LOG_PATH, size: 0, lines: [] };
+    return { size: 0, lines: [] };
   } finally {
     if (fd != null) closeSync(fd);
   }

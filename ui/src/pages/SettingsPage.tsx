@@ -1423,7 +1423,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             <div>
               <h1 className="page-title" style={{ margin: 0 }}>{t("logs")}</h1>
               <p className="page-hint" style={{ margin: "6px 0 0" }}>
-                {t("logsHint").replace("{path}", logs?.path ?? "")}
+                {t("logsHint")}
               </p>
             </div>
             <button className="btn" onClick={loadLogs} disabled={loadingLogs}>

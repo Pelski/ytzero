@@ -168,7 +168,6 @@ export interface ChildLockStatus {
 }
 
 export interface AppLogs {
-  path: string;
   size: number;
   lines: string[];
 }
