@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import confetti from "canvas-confetti";
 import { emit } from "../events";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -94,6 +95,7 @@ export default function WatchPage() {
   const [sbSegments, setSbSegments] = useState<SponsorSegment[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const playlistMenuRef = useRef<HTMLDivElement>(null);
+  const likeButtonRef = useRef<HTMLButtonElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const archivedRef = useRef(false);
@@ -373,6 +375,33 @@ export default function WatchPage() {
     emit("playlists-changed");
   };
 
+  const toggleLiked = async () => {
+    if (!video) return;
+    const next = video.liked !== 1;
+    if (next && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const rect = likeButtonRef.current?.getBoundingClientRect();
+      confetti({
+        particleCount: 90,
+        spread: 65,
+        startVelocity: 36,
+        scalar: 0.85,
+        origin: rect
+          ? {
+              x: (rect.left + rect.width / 2) / window.innerWidth,
+              y: (rect.top + rect.height / 2) / window.innerHeight,
+            }
+          : { x: 0.5, y: 0.65 },
+      });
+    }
+    setVideo((prev) => prev ? { ...prev, liked: next ? 1 : null } : prev);
+    try {
+      await api.likeVideo(video.video_id, next);
+    } catch (e) {
+      setVideo((prev) => prev ? { ...prev, liked: next ? null : 1 } : prev);
+      console.error(e);
+    }
+  };
+
   return (
     <div className={`watch-layout${cinemaMode ? " theater" : ""}`}>
       <div>
@@ -456,92 +485,104 @@ export default function WatchPage() {
               </div>
             </div>
           </div>
-          <button
-            className={`btn${cinemaMode ? " active" : ""}`}
-            onClick={() => setCinemaMode((m) => !m)}
-            title={t("cinemaMode")}
-          >
-            <Clapperboard size={15} /> {t("cinema")}
-          </button>
-          <div className="dropdown" ref={menuRef}>
-            <button className="btn" onClick={() => setMenuOpen((o) => !o)}>
-              <Clock /> {t("watchLater")}
-            </button>
-            {menuOpen && (
-              <div className="dropdown-menu">
-                {(["today", "tonight", "tomorrow", "weekend"] as Bucket[]).map((b) => {
-                  const Icon = BUCKET_ICONS[b];
-                  return (
-                    <button key={b} onClick={() => queue(b)}>
-                      <Icon /> {bucketLabel(b)}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          <div className="dropdown" ref={playlistMenuRef}>
-            <button className="btn icon-only" title={t("addToPlaylist")} onClick={openPlaylistMenu}>
-              <BookmarkPlus />
-            </button>
-            {playlistOpen && (
-              <div className="dropdown-menu playlist-picker-menu">
-                {playlists.length === 0 && <div className="dropdown-empty">{t("noPlaylists")}</div>}
-                {playlists.map((p) => (
-                  <button key={p.id} className={p.has_video === 1 ? "is-selected" : undefined} onClick={() => togglePlaylist(p)}>
-                    <span className="playlist-dot"><PlaylistIcon icon={p.icon} /></span>
-                    {p.name}
-                    {p.has_video === 1 && (
-                      <span className="dropdown-menu-status"><Check size={14} /></span>
-                    )}
-                  </button>
-                ))}
-                <div className="dropdown-form">
-                  <div className="dropdown-form-title">{t("newPlaylistDots")}</div>
-                  <div className="dropdown-form-row">
-                    <PlaylistIconPicker value={newPlaylistIcon} onChange={setNewPlaylistIcon} compact />
-                    <input
-                      value={newPlaylistName}
-                      placeholder={t("name")}
-                      onChange={(e) => setNewPlaylistName(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && createPlaylist()}
-                    />
-                  </div>
-                  <button className="btn primary" disabled={!newPlaylistName.trim()} onClick={createPlaylist}>{t("createAndAdd")}</button>
-                </div>
-              </div>
-            )}
-          </div>
-          {video.status !== "archived" ? (
-            <button className="btn icon-only" title={t("reject")} onClick={() => api.archiveVideo(video.video_id).then(reload)}>
-              <Archive />
-            </button>
-          ) : (
-            <button className="btn icon-only" title={t("restore")} onClick={() => api.restore(video.video_id).then(reload)}>
-              <Undo2 />
-            </button>
-          )}
-          <div className="share-btn-wrap">
+          <div className="watch-actions">
             <button
-              className="btn icon-only"
-              title={t("copyYoutubeLink")}
-              onClick={copyLink}
+              ref={likeButtonRef}
+              className={`btn like-btn${video.liked === 1 ? " active like-active" : ""}`}
+              title={video.liked === 1 ? t("unlike") : t("like")}
+              aria-pressed={video.liked === 1}
+              onClick={toggleLiked}
             >
-              <Share2 />
+              <ThumbsUp fill={video.liked === 1 ? "currentColor" : "none"} />
+              {t("like")}
             </button>
-            {copyKey > 0 && (
-              <span key={copyKey} className="copy-toast">{t("copied")}</span>
+            <button
+              className={`btn${cinemaMode ? " active" : ""}`}
+              onClick={() => setCinemaMode((m) => !m)}
+              title={t("cinemaMode")}
+            >
+              <Clapperboard size={15} /> {t("cinema")}
+            </button>
+            <div className="dropdown" ref={menuRef}>
+              <button className="btn" onClick={() => setMenuOpen((o) => !o)}>
+                <Clock /> {t("watchLater")}
+              </button>
+              {menuOpen && (
+                <div className="dropdown-menu">
+                  {(["today", "tonight", "tomorrow", "weekend"] as Bucket[]).map((b) => {
+                    const Icon = BUCKET_ICONS[b];
+                    return (
+                      <button key={b} onClick={() => queue(b)}>
+                        <Icon /> {bucketLabel(b)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="dropdown" ref={playlistMenuRef}>
+              <button className="btn icon-only" title={t("addToPlaylist")} onClick={openPlaylistMenu}>
+                <BookmarkPlus />
+              </button>
+              {playlistOpen && (
+                <div className="dropdown-menu playlist-picker-menu">
+                  {playlists.length === 0 && <div className="dropdown-empty">{t("noPlaylists")}</div>}
+                  {playlists.map((p) => (
+                    <button key={p.id} className={p.has_video === 1 ? "is-selected" : undefined} onClick={() => togglePlaylist(p)}>
+                      <span className="playlist-dot"><PlaylistIcon icon={p.icon} /></span>
+                      {p.name}
+                      {p.has_video === 1 && (
+                        <span className="dropdown-menu-status"><Check size={14} /></span>
+                      )}
+                    </button>
+                  ))}
+                  <div className="dropdown-form">
+                    <div className="dropdown-form-title">{t("newPlaylistDots")}</div>
+                    <div className="dropdown-form-row">
+                      <PlaylistIconPicker value={newPlaylistIcon} onChange={setNewPlaylistIcon} compact />
+                      <input
+                        value={newPlaylistName}
+                        placeholder={t("name")}
+                        onChange={(e) => setNewPlaylistName(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && createPlaylist()}
+                      />
+                    </div>
+                    <button className="btn primary" disabled={!newPlaylistName.trim()} onClick={createPlaylist}>{t("createAndAdd")}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {video.status !== "archived" ? (
+              <button className="btn icon-only" title={t("reject")} onClick={() => api.archiveVideo(video.video_id).then(reload)}>
+                <Archive />
+              </button>
+            ) : (
+              <button className="btn icon-only" title={t("restore")} onClick={() => api.restore(video.video_id).then(reload)}>
+                <Undo2 />
+              </button>
             )}
+            <div className="share-btn-wrap">
+              <button
+                className="btn icon-only"
+                title={t("copyYoutubeLink")}
+                onClick={copyLink}
+              >
+                <Share2 />
+              </button>
+              {copyKey > 0 && (
+                <span key={copyKey} className="copy-toast">{t("copied")}</span>
+              )}
+            </div>
+            <a
+              className="btn"
+              href={`https://www.youtube.com/watch?v=${video.video_id}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink size={15} />
+              YouTube
+            </a>
           </div>
-          <a
-            className="btn"
-            href={`https://www.youtube.com/watch?v=${video.video_id}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <ExternalLink size={15} />
-            YouTube
-          </a>
         </div>}
         {video && (video.live_status === "live" || video.tags.length > 0) && (
           <div className="watch-tags">

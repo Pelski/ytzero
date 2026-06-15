@@ -228,6 +228,7 @@ api.get("/feed", (c) => {
   const channel = c.req.query("channel");
   const tagsParam = c.req.query("tags"); // comma-separated tag ids
   const status = c.req.query("status") ?? "inbox"; // inbox | all
+  const allSources = c.req.query("all_sources") === "1";
 
   const where: string[] = [];
   const params: any[] = [];
@@ -238,7 +239,7 @@ api.get("/feed", (c) => {
   if (channel) {
     where.push("v.channel_id = ?");
     params.push(channel);
-  } else {
+  } else if (!allSources) {
     where.push("c.followed = 1");
     where.push("v.external = 0");
   }
@@ -246,9 +247,10 @@ api.get("/feed", (c) => {
     where.push("(v.title LIKE ? OR v.description LIKE ?)");
     params.push(`%${q}%`, `%${q}%`);
   }
-  // shorts=1 forces shorts in (used by the channel page); otherwise the
-  // global setting decides.
-  if (c.req.query("shorts") !== "1" && getSetting("show_shorts") !== "1") {
+  // shorts=1 forces shorts in, shorts=0 forces them out; otherwise the global
+  // setting decides.
+  const shortsParam = c.req.query("shorts");
+  if (shortsParam === "0" || (shortsParam !== "1" && getSetting("show_shorts") !== "1")) {
     where.push("COALESCE(v.is_short, 0) = 0");
   }
   if (c.req.query("only_shorts") === "1") {
@@ -264,7 +266,7 @@ api.get("/feed", (c) => {
     params.push(...f.params);
   }
   // Exclude filter_only-tagged videos unless the relevant tag is actively selected
-  if (!channel) {
+  if (!channel && !allSources) {
     const fo = filterOnlySql(tagIds);
     where.push(fo.sql);
     params.push(...fo.params);

@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { subscribe, emit } from "./events";
 import { Link, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
-import { Archive, Clock, History, Home, Menu, Play, Plus, Radio, Search, Settings, Clapperboard } from "lucide-react";
+import { Archive, ChevronRight, Clock, History, Home, Menu, Play, Plus, Radio, Search, Settings, Clapperboard, ThumbsUp, Users } from "lucide-react";
 import { api, type UserPlaylist, type Video } from "./api";
 import { img } from "./img";
 import FeedPage from "./pages/FeedPage";
@@ -15,6 +15,8 @@ import ChannelPage from "./pages/ChannelPage";
 import PlaylistPage from "./pages/PlaylistPage";
 import UserPlaylistPage from "./pages/UserPlaylistPage";
 import ShortsPage from "./pages/ShortsPage";
+import SubscriptionsPage from "./pages/SubscriptionsPage";
+import LikedPage from "./pages/LikedPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import { useI18n } from "./i18n";
 
@@ -22,6 +24,7 @@ const NAV_STATIC = [
   { to: "/", labelKey: "navToday", icon: Home, end: true },
   { to: "/live", labelKey: "navLive", icon: Radio },
   { to: "/watchlist", labelKey: "navWatchlist", icon: Clock },
+  { to: "/liked", labelKey: "navLiked", icon: ThumbsUp },
   { to: "/history", labelKey: "navHistory", icon: History },
   { to: "/archive", labelKey: "navArchive", icon: Archive },
   { to: "/settings", labelKey: "navSettings", icon: Settings },
@@ -34,9 +37,7 @@ function SidebarSubscriptions() {
   const navigate = useNavigate();
   const [channels, setChannels] = useState<RecentChannel[]>([]);
   const [loading, setLoading] = useState(true);
-  const listRef = useRef<HTMLDivElement>(null);
-  const [shadowTop, setShadowTop] = useState(false);
-  const [shadowBot, setShadowBot] = useState(false);
+  const visibleChannels = channels.slice(0, 5);
 
   const loadChannels = useCallback(() => {
     api.recentChannels().then((r) => { setChannels(r.channels); setLoading(false); }).catch(() => setLoading(false));
@@ -45,55 +46,48 @@ function SidebarSubscriptions() {
   useEffect(loadChannels, [loadChannels]);
   useEffect(() => subscribe("channels-changed", loadChannels), [loadChannels]);
 
-  const onScroll = () => {
-    const el = listRef.current;
-    if (!el) return;
-    setShadowTop(el.scrollTop > 4);
-    setShadowBot(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
-  };
-
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    onScroll();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [channels]);
-
   return (
     <div className="sidebar-subs">
       <div className="sidebar-subs-header">{t("subscriptions")}</div>
-      <div className={`sidebar-subs-scroll-wrap${shadowTop ? " shadow-top" : ""}${shadowBot ? " shadow-bot" : ""}`}>
-        <div className="sidebar-subs-list" ref={listRef}>
-          {loading && channels.length === 0 && (
-            <div className="sidebar-skeleton-list" aria-label={t("loading")}>
-              {Array.from({ length: 5 }, (_, i) => (
-                <div className="sidebar-skeleton-item" aria-hidden="true" key={i}>
-                  <div className="skeleton sidebar-skeleton-avatar" />
-                  <div className="skeleton skeleton-line" />
-                </div>
-              ))}
-            </div>
-          )}
-          {channels.map((ch) => (
-            <Link key={ch.channel_id} to={`/channel/${ch.channel_id}`} className="sidebar-sub-item">
-              {ch.thumbnail ? (
-                <img className="sidebar-sub-avatar" src={img(ch.thumbnail)} alt="" />
-              ) : (
-                <div className="sidebar-sub-avatar" />
-              )}
-              <span className="sidebar-sub-name">{ch.title}</span>
-              {ch.latest_thumbnail && ch.latest_video_id && (
-                <img
-                  className="sidebar-sub-thumb"
-                  src={img(ch.latest_thumbnail)}
-                  alt=""
-                  onClick={(e) => { e.preventDefault(); navigate(`/watch/${ch.latest_video_id}`); }}
-                />
-              )}
-            </Link>
-          ))}
-        </div>
+      <NavLink to="/subscriptions" className={({ isActive }) => `sidebar-subs-compact${isActive ? " active" : ""}`}>
+        <Users size={18} />
+        <span>{t("subscriptions")}</span>
+      </NavLink>
+      <div className="sidebar-subs-list">
+        {loading && channels.length === 0 && (
+          <div className="sidebar-skeleton-list" aria-label={t("loading")}>
+            {Array.from({ length: 5 }, (_, i) => (
+              <div className="sidebar-skeleton-item" aria-hidden="true" key={i}>
+                <div className="skeleton sidebar-skeleton-avatar" />
+                <div className="skeleton skeleton-line" />
+              </div>
+            ))}
+          </div>
+        )}
+        {visibleChannels.map((ch) => (
+          <Link key={ch.channel_id} to={`/channel/${ch.channel_id}`} className="sidebar-sub-item">
+            {ch.thumbnail ? (
+              <img className="sidebar-sub-avatar" src={img(ch.thumbnail)} alt="" />
+            ) : (
+              <div className="sidebar-sub-avatar" />
+            )}
+            <span className="sidebar-sub-name">{ch.title}</span>
+            {ch.latest_thumbnail && ch.latest_video_id && (
+              <img
+                className="sidebar-sub-thumb"
+                src={img(ch.latest_thumbnail)}
+                alt=""
+                onClick={(e) => { e.preventDefault(); navigate(`/watch/${ch.latest_video_id}`); }}
+              />
+            )}
+          </Link>
+        ))}
+        {!loading && channels.length > 0 && (
+          <NavLink to="/subscriptions" className={({ isActive }) => `sidebar-show-more${isActive ? " active" : ""}`}>
+            <span>{t("showMore")}</span>
+            <ChevronRight size={15} />
+          </NavLink>
+        )}
       </div>
     </div>
   );
@@ -106,6 +100,9 @@ function SidebarPlaylists() {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [icon, setIcon] = useState("ListMusic");
+  const listRef = useRef<HTMLDivElement>(null);
+  const [shadowTop, setShadowTop] = useState(false);
+  const [shadowBot, setShadowBot] = useState(false);
 
   const load = useCallback(() => {
     api
@@ -117,6 +114,26 @@ function SidebarPlaylists() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => subscribe("playlists-changed", load), [load]);
+
+  const updateShadows = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    setShadowTop(el.scrollTop > 4);
+    setShadowBot(el.scrollTop + el.clientHeight < el.scrollHeight - 4);
+  }, []);
+
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    updateShadows();
+    el.addEventListener("scroll", updateShadows, { passive: true });
+    const ro = new ResizeObserver(updateShadows);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateShadows);
+      ro.disconnect();
+    };
+  }, [playlists, loading, updateShadows]);
 
   const create = async () => {
     if (!name.trim()) return;
@@ -136,23 +153,27 @@ function SidebarPlaylists() {
           <Plus size={15} />
         </button>
       </div>
-      {loading && playlists.length === 0 && (
-        <div className="sidebar-skeleton-list" aria-label={t("loading")}>
-          {Array.from({ length: 3 }, (_, i) => (
-            <div className="sidebar-skeleton-item" aria-hidden="true" key={i}>
-              <div className="skeleton sidebar-skeleton-square" />
-              <div className="skeleton skeleton-line" />
+      <div className={`sidebar-playlists-scroll-wrap${shadowTop ? " shadow-top" : ""}${shadowBot ? " shadow-bot" : ""}`}>
+        <div className="sidebar-playlists-scroll" ref={listRef}>
+          {loading && playlists.length === 0 && (
+            <div className="sidebar-skeleton-list" aria-label={t("loading")}>
+              {Array.from({ length: 3 }, (_, i) => (
+                <div className="sidebar-skeleton-item" aria-hidden="true" key={i}>
+                  <div className="skeleton sidebar-skeleton-square" />
+                  <div className="skeleton skeleton-line" />
+                </div>
+              ))}
             </div>
+          )}
+          {playlists.map((p) => (
+            <NavLink key={p.id} to={`/playlists/${p.id}`} className={({ isActive }) => `sidebar-playlist-item${isActive ? " active" : ""}`}>
+              <span className="sidebar-playlist-icon"><PlaylistIcon icon={p.icon} /></span>
+              <span className="sidebar-sub-name">{p.name}</span>
+              <span className="sidebar-playlist-count">{p.video_count}</span>
+            </NavLink>
           ))}
         </div>
-      )}
-      {playlists.map((p) => (
-        <NavLink key={p.id} to={`/playlists/${p.id}`} className={({ isActive }) => `sidebar-playlist-item${isActive ? " active" : ""}`}>
-          <span className="sidebar-playlist-icon"><PlaylistIcon icon={p.icon} /></span>
-          <span className="sidebar-sub-name">{p.name}</span>
-          <span className="sidebar-playlist-count">{p.video_count}</span>
-        </NavLink>
-      ))}
+      </div>
       {creating && (
         <div className="sidebar-playlist-form">
           <div className="sidebar-playlist-fields">
@@ -290,9 +311,11 @@ export default function App() {
               <Route path="/live" element={<LivePage onPlay={play} />} />
               <Route path="/watch/:id" element={<WatchPage />} />
               <Route path="/channel/:id" element={<ChannelPage onPlay={play} />} />
+              <Route path="/subscriptions" element={<SubscriptionsPage />} />
               <Route path="/playlist/:id" element={<PlaylistPage />} />
               <Route path="/playlists/:id" element={<UserPlaylistPage onPlay={play} />} />
               <Route path="/watchlist" element={<WatchlistPage onPlay={play} />} />
+              <Route path="/liked" element={<LikedPage onPlay={play} />} />
               <Route path="/history" element={<HistoryPage onPlay={play} />} />
               <Route path="/archive" element={<ArchivePage onPlay={play} />} />
               <Route path="/settings" element={<SettingsPage showToast={showToast} />} />

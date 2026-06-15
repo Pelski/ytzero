@@ -162,3 +162,9 @@ function applyPlaylistRulesToVideo(videoId: string) {
 | 6 | Ustawienia + auto-reguły | ~1h |
 
 Minimalne MVP (kroki 1–4) daje pełną funkcjonalność bez strony szczegółowej.
+
+---
+
+## Drobne UI
+
+- Zmienić polską nazwę trybu kina z `Kino` na `Tryb kinowy`; angielskiej nazwy nie zmieniać.

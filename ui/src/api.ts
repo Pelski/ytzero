@@ -41,6 +41,7 @@ export interface Channel {
   title: string;
   url: string;
   thumbnail: string;
+  subscriber_count?: string | null;
   followed?: number;
   tags: Tag[];
 }
@@ -197,6 +198,7 @@ export const api = {
     shorts?: boolean;
     only_shorts?: boolean;
     liked?: boolean;
+    all_sources?: boolean;
     limit?: number;
   }) => {
     const qs = new URLSearchParams();
@@ -205,9 +207,10 @@ export const api = {
     if (p.q) qs.set("q", p.q);
     if (p.channel) qs.set("channel", p.channel);
     if (p.status) qs.set("status", p.status);
-    if (p.shorts) qs.set("shorts", "1");
+    if (p.shorts !== undefined) qs.set("shorts", p.shorts ? "1" : "0");
     if (p.only_shorts) qs.set("only_shorts", "1");
     if (p.liked) qs.set("liked", "1");
+    if (p.all_sources) qs.set("all_sources", "1");
     if (p.limit) qs.set("limit", String(p.limit));
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },
