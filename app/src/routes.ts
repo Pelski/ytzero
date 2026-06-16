@@ -699,8 +699,8 @@ function ageMs(ts: string | null): number {
   return Number.isFinite(t) ? Date.now() - t : Infinity;
 }
 
-const ABOUT_DB_TTL = 24 * 60 * 60_000; // refresh the cached about at most daily
-const PLAYLISTS_DB_TTL = 24 * 60 * 60_000;
+const ABOUT_DB_TTL = 3 * 24 * 60 * 60_000;
+const PLAYLISTS_DB_TTL = 3 * 24 * 60 * 60_000;
 const CHAPTERS_DB_TTL = 7 * 24 * 60 * 60_000;
 
 function persistChannelAbout(channelId: string, about: ChannelAbout) {

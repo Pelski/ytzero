@@ -77,7 +77,25 @@ export async function importPlaylistVideos(playlistId: string): Promise<{ added:
 
 export async function refreshChannel(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
-  const feed = await fetchChannelFeed(channelId);
+  let feed: Awaited<ReturnType<typeof fetchChannelFeed>>;
+  try {
+    feed = await fetchChannelFeed(channelId);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("(404)")) {
+      const row = db.prepare("SELECT rss_fail_count FROM channels WHERE channel_id = ?").get(channelId) as { rss_fail_count: number } | null;
+      const count = (row?.rss_fail_count ?? 0) + 1;
+      if (count >= 3) {
+        db.prepare("UPDATE channels SET followed = 0, rss_fail_count = ? WHERE channel_id = ?").run(count, channelId);
+        log.warn("channel.auto_unfollowed", { channelId, reason: "rss_404_x3" });
+      } else {
+        db.prepare("UPDATE channels SET rss_fail_count = ? WHERE channel_id = ?").run(count, channelId);
+        log.warn("channel.rss_404", { channelId, failCount: count });
+      }
+    }
+    throw e;
+  }
+  db.prepare("UPDATE channels SET rss_fail_count = 0 WHERE channel_id = ?").run(channelId);
   const inheritChannelTags = db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );
@@ -354,7 +372,9 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
   refreshing = true;
   const startedAt = Date.now();
   try {
-    const channels = db.prepare("SELECT channel_id FROM channels").all() as { channel_id: string }[];
+    const channels = db.prepare(
+      "SELECT channel_id FROM channels WHERE followed = 1 ORDER BY COALESCE(last_refreshed_at, '1970-01-01') ASC LIMIT 10"
+    ).all() as { channel_id: string }[];
     log.info("refresh.start", { channels: channels.length });
     let added = 0;
     const errors: string[] = [];
@@ -368,8 +388,7 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
         errors.push(`${channel_id}: ${error}`);
         log.error("channel.refresh_failed", { channelId: channel_id, error });
       }
-      // Be polite to YouTube.
-      await Bun.sleep(300);
+      await Bun.sleep(1500);
     }
     // Resolve any remaining unchecked videos (e.g. rows from before the
     // shorts column existed).
@@ -382,10 +401,9 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
 }
 
 export function startScheduler() {
-  const intervalMin = Number(process.env.REFRESH_INTERVAL_MINUTES ?? 5);
   setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
-  setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), intervalMin * 60_000);
-  log.info("scheduler.feed_refresh", { intervalMin });
+  setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 10 * 60_000);
+  log.info("scheduler.feed_refresh", { intervalMin: 10, batchSize: 10 });
 
   // Avatar cron: fetch 5 channels every 5 minutes, 5 s gap between each
   setTimeout(() => refreshAvatarsBatch().catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);
