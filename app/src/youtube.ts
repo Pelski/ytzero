@@ -7,6 +7,11 @@ const FETCH_HEADERS = {
   Cookie: "CONSENT=YES+cb.20240101-00-p0.en+FX+100; SOCS=CAI",
 };
 
+const RSS_HEADERS = {
+  "User-Agent": FETCH_HEADERS["User-Agent"],
+  "Accept-Language": FETCH_HEADERS["Accept-Language"],
+};
+
 const xml = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_" });
 
 export interface FeedVideo {
@@ -32,7 +37,7 @@ function asArray<T>(v: T | T[] | undefined): T[] {
 
 export async function fetchChannelFeed(channelId: string): Promise<ChannelFeed> {
   const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
-  const res = await fetch(url, { headers: FETCH_HEADERS });
+  const res = await fetch(url, { headers: RSS_HEADERS });
   if (!res.ok) throw new Error(`RSS fetch failed (${res.status}) for ${channelId}`);
   const doc = xml.parse(await res.text());
   const feed = doc.feed ?? {};
@@ -388,7 +393,7 @@ export async function fetchPlaylistFeed(playlistId: string): Promise<PlaylistFee
   if (cached && Date.now() - cached.at < ABOUT_TTL) return cached.data;
 
   const url = `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
-  const res = await fetch(url, { headers: FETCH_HEADERS });
+  const res = await fetch(url, { headers: RSS_HEADERS });
   if (!res.ok) throw new Error(`playlist feed fetch failed (${res.status})`);
   const doc = xml.parse(await res.text());
   const feed = doc.feed ?? {};

@@ -77,25 +77,7 @@ export async function importPlaylistVideos(playlistId: string): Promise<{ added:
 
 export async function refreshChannel(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
-  let feed: Awaited<ReturnType<typeof fetchChannelFeed>>;
-  try {
-    feed = await fetchChannelFeed(channelId);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg.includes("(404)")) {
-      const row = db.prepare("SELECT rss_fail_count FROM channels WHERE channel_id = ?").get(channelId) as { rss_fail_count: number } | null;
-      const count = (row?.rss_fail_count ?? 0) + 1;
-      if (count >= 3) {
-        db.prepare("UPDATE channels SET followed = 0, rss_fail_count = ? WHERE channel_id = ?").run(count, channelId);
-        log.warn("channel.auto_unfollowed", { channelId, reason: "rss_404_x3" });
-      } else {
-        db.prepare("UPDATE channels SET rss_fail_count = ? WHERE channel_id = ?").run(count, channelId);
-        log.warn("channel.rss_404", { channelId, failCount: count });
-      }
-    }
-    throw e;
-  }
-  db.prepare("UPDATE channels SET rss_fail_count = 0 WHERE channel_id = ?").run(channelId);
+  const feed = await fetchChannelFeed(channelId);
   const inheritChannelTags = db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );

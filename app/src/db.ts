@@ -122,7 +122,6 @@ for (const col of ["is_short INTEGER", "views INTEGER", "likes INTEGER"]) {
 }
 // followed: 1 = subscribed (default), 0 = unfollowed (hidden from feed)
 try { db.exec("ALTER TABLE channels ADD COLUMN followed INTEGER NOT NULL DEFAULT 1"); } catch {}
-try { db.exec("ALTER TABLE channels ADD COLUMN rss_fail_count INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN duration TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_position REAL"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
