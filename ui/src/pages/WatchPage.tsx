@@ -55,26 +55,50 @@ function fmtTime(s: number): string {
 }
 
 /** Render plain text with URLs turned into clickable links. */
-function Linkify({ text }: { text: string }) {
+function rewriteYouTubeUrl(url: string, base: string): string | null {
+  try {
+    const u = new URL(url);
+    const h = u.hostname.replace(/^www\./, "");
+    if (h === "youtu.be") {
+      const id = u.pathname.slice(1).split("/")[0];
+      if (id) return `${base}/watch/${id}`;
+    }
+    if (h === "youtube.com") {
+      if (u.pathname.startsWith("/shorts/")) {
+        const id = u.pathname.split("/")[2];
+        if (id) return `${base}/watch/${id}`;
+      }
+      if (u.pathname === "/watch") {
+        const id = u.searchParams.get("v");
+        if (id) return `${base}/watch/${id}`;
+      }
+      if (u.pathname.startsWith("/channel/")) {
+        const id = u.pathname.split("/")[2];
+        if (id) return `${base}/channel/${id}`;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+function Linkify({ text, baseUrl }: { text: string; baseUrl: string }) {
+  const base = baseUrl || window.location.origin;
   const parts = text.split(/(https?:\/\/[^\s<>"]+)/g);
   return (
     <>
-      {parts.map((p, i) =>
-        /^https?:\/\//.test(p) ? (
-          <a
-            key={i}
-            href={p}
-            target="_blank"
-            rel="noreferrer"
-            className="desc-link"
-            onClick={(e) => e.stopPropagation()}
-          >
+      {parts.map((p, i) => {
+        if (!/^https?:\/\//.test(p)) return p;
+        const local = rewriteYouTubeUrl(p, base);
+        return local ? (
+          <a key={i} href={local} className="desc-link" onClick={(e) => e.stopPropagation()}>
             {p}
           </a>
         ) : (
-          p
-        )
-      )}
+          <a key={i} href={p} target="_blank" rel="noreferrer" className="desc-link" onClick={(e) => e.stopPropagation()}>
+            {p}
+          </a>
+        );
+      })}
     </>
   );
 }
@@ -98,6 +122,7 @@ export default function WatchPage() {
   const [cinemaMode, setCinemaMode] = useState(() => localStorage.getItem(CINEMA_MODE_KEY) === "1");
   const [cinemaVisible, setCinemaVisible] = useState(() => localStorage.getItem(CINEMA_MODE_KEY) === "1");
   const [sbSegments, setSbSegments] = useState<SponsorSegment[]>([]);
+  const [appUrl, setAppUrl] = useState("");
   const [sbPaused, setSbPaused] = useState(false);
   const [disabledSegs, setDisabledSegs] = useState<Set<string>>(new Set());
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
@@ -118,6 +143,7 @@ export default function WatchPage() {
 
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
+    api.config().then((r) => setAppUrl(r.app_url)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -530,7 +556,7 @@ export default function WatchPage() {
             {videoInfo.description && (
               <>
                 <div className="watch-desc-sep" />
-                <Linkify text={videoInfo.description} />
+                <Linkify text={videoInfo.description} baseUrl={appUrl} />
               </>
             )}
           </div>
@@ -686,7 +712,7 @@ export default function WatchPage() {
             {video.description && (
               <>
                 <div className="watch-desc-sep" />
-                <Linkify text={video.description} />
+                <Linkify text={video.description} baseUrl={appUrl} />
               </>
             )}
           </div>

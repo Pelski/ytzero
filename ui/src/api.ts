@@ -353,6 +353,8 @@ export const api = {
 
   chapters: (videoId: string) => http<{ chapters: VideoChapter[] }>(`/videos/${videoId}/chapters`),
 
+  config: () => http<{ app_url: string }>("/config"),
+
   sponsorblock: async (videoId: string, categories: string[]): Promise<SponsorSegment[]> => {
     const qs = new URLSearchParams({ videoID: videoId, categories: JSON.stringify(categories) });
     const res = await fetch(`https://sponsor.ajay.app/api/skipSegments?${qs}`);

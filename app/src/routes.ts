@@ -1202,6 +1202,12 @@ api.put("/settings", async (c) => {
   return c.json({ ok: true });
 });
 
+// ---------- config ----------
+
+api.get("/config", (c) => {
+  return c.json({ app_url: process.env.APP_URL ?? "" });
+});
+
 // ---------- refresh ----------
 
 api.post("/refresh", async (c) => {
