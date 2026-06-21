@@ -267,6 +267,7 @@ export const api = {
   channels: () => http<{ channels: Channel[] }>("/channels"),
   channel: (id: string) => http<{ channel: Channel }>(`/channels/${id}`),
   recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null })[] }>("/channels/recent"),
+  topChannels: () => http<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("/channels/top"),
   syncChannel: (id: string) => http<{ added: number }>(`/channels/${id}/sync`, { method: "POST" }),
   addChannel: (url: string) =>
     http<{ channel_id: string; title: string }>("/channels", { method: "POST", body: JSON.stringify({ url }) }),

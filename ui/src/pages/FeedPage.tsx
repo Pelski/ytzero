@@ -1,12 +1,53 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Clock, Grid2X2, Grid3X3, Inbox, RefreshCw, Square } from "lucide-react";
-import { api, type Bucket, type SearchResult, type Tag, type Video } from "../api";
+import { api, type Bucket, type Channel, type SearchResult, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
+import { img } from "../img";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
+
+type TopChannel = Channel & { watch_count: number; is_live: number };
+
+function ChannelAvatarRow() {
+  const [channels, setChannels] = useState<TopChannel[]>([]);
+  const scroll = useHScroll();
+
+  useEffect(() => {
+    api.topChannels().then((r) => setChannels(r.channels)).catch(() => {});
+  }, []);
+
+  useEffect(() => subscribe("channels-changed", () => {
+    api.topChannels().then((r) => setChannels(r.channels)).catch(() => {});
+  }), []);
+
+  if (channels.length === 0) return null;
+
+  return (
+    <div className={`h-scroll-wrap channel-avatar-section${scroll.shadowLeft ? " shadow-left" : ""}${scroll.shadowRight ? " shadow-right" : ""}`}>
+      <div className="channel-avatar-row" ref={scroll.ref}>
+        {channels.map((ch) => (
+          <Link key={ch.channel_id} to={`/channel/${ch.channel_id}`} className="channel-avatar-item">
+            <div className="channel-avatar-wrap">
+              {ch.thumbnail ? (
+                <img className="channel-avatar-img" src={img(ch.thumbnail)} alt="" />
+              ) : (
+                <div className="channel-avatar-img channel-avatar-placeholder" />
+              )}
+              {ch.is_live === 1 && <span className="channel-avatar-live">LIVE</span>}
+            </div>
+            <span className="channel-avatar-name">{ch.title}</span>
+            {ch.subscriber_count && (
+              <span className="channel-avatar-subs">{ch.subscriber_count}</span>
+            )}
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 type GridSize = "sm" | "md" | "lg";
 
@@ -244,6 +285,8 @@ export default function FeedPage({
           {t("searchResultsFor")} <b>{q}</b>
         </p>
       )}
+
+      {!q && <ChannelAvatarRow />}
 
       {inProgress.length > 0 && !q && (
         <div className="continue-watching-section">

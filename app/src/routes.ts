@@ -821,6 +821,24 @@ api.get("/channels/unfollowed", (c) => {
   return c.json({ channels });
 });
 
+api.get("/channels/top", (c) => {
+  const rows = db.prepare(`
+    SELECT c.channel_id, c.title, c.thumbnail, c.subscriber_count,
+           COUNT(h.id) AS watch_count,
+           CAST(EXISTS(
+             SELECT 1 FROM videos v WHERE v.channel_id = c.channel_id AND v.live_status = 'live'
+           ) AS INTEGER) AS is_live
+    FROM channels c
+    JOIN videos vv ON vv.channel_id = c.channel_id
+    JOIN history h ON h.video_id = vv.video_id
+    WHERE c.followed = 1 AND c.external = 0
+    GROUP BY c.channel_id
+    ORDER BY is_live DESC, watch_count DESC
+    LIMIT 30
+  `).all() as any[];
+  return c.json({ channels: rows });
+});
+
 api.get("/channels/recent", (c) => {
   const shortsFilter = getSetting("show_shorts") === "1"
     ? ""

@@ -382,10 +382,55 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
   }
 }
 
+let liveRefreshing = false;
+
+/**
+ * Check live status for all followed channels. Runs on a short interval
+ * independent of the full feed refresh. Channels currently live or upcoming
+ * are checked first so a stream that just started surfaces quickly.
+ */
+export async function refreshAllLiveStatuses(): Promise<void> {
+  if (liveRefreshing) return;
+  liveRefreshing = true;
+  try {
+    // Prioritise channels that are already live/upcoming so we keep them
+    // up-to-date, then channels that have ever gone live (was_live), then rest.
+    const channels = db.prepare(`
+      SELECT DISTINCT c.channel_id,
+        CASE
+          WHEN EXISTS (SELECT 1 FROM videos v WHERE v.channel_id = c.channel_id AND v.live_status IN ('live','upcoming')) THEN 0
+          WHEN EXISTS (SELECT 1 FROM videos v WHERE v.channel_id = c.channel_id AND v.live_status = 'was_live') THEN 1
+          ELSE 2
+        END AS priority
+      FROM channels c
+      WHERE c.followed = 1 AND c.external = 0
+      ORDER BY priority ASC, c.channel_id ASC
+    `).all() as { channel_id: string; priority: number }[];
+
+    log.info("live.refresh_start", { channels: channels.length });
+    for (const { channel_id } of channels) {
+      try {
+        await refreshLiveStatus(channel_id);
+      } catch (e) {
+        log.error("live.refresh_failed", { channelId: channel_id, error: e instanceof Error ? e.message : String(e) });
+      }
+      await Bun.sleep(800);
+    }
+    log.info("live.refresh_complete", { channels: channels.length });
+  } finally {
+    liveRefreshing = false;
+  }
+}
+
 export function startScheduler() {
   setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
   setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 10 * 60_000);
   log.info("scheduler.feed_refresh", { intervalMin: 10, batchSize: 10 });
+
+  const liveIntervalMin = Number(process.env.LIVE_INTERVAL_MINUTES ?? 3);
+  setTimeout(() => refreshAllLiveStatuses().catch((e) => log.error("live.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);
+  setInterval(() => refreshAllLiveStatuses().catch((e) => log.error("live.cron_failed", { error: e instanceof Error ? e.message : String(e) })), liveIntervalMin * 60_000);
+  log.info("scheduler.live_refresh", { intervalMin: liveIntervalMin });
 
 
   // Duration backfill cron: fill `duration` for videos still missing it,
