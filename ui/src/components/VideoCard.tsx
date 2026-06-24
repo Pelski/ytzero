@@ -1,11 +1,11 @@
 import {
-  AlarmClock,
   Archive,
   CalendarDays,
   Coffee,
   Eye,
   Heart,
   Moon,
+  Sun,
   Trash2,
   Undo2,
 } from "lucide-react";
@@ -43,13 +43,18 @@ export function timeAgo(iso: string | null): string {
 }
 
 export const BUCKET_ICONS: Record<Bucket, typeof CalendarDays> = {
-  today: CalendarDays,
+  today: Sun,
   tonight: Moon,
-  tomorrow: AlarmClock,
+  tomorrow: Sun,
+  tomorrow_evening: Moon,
   weekend: Coffee,
 };
 
-const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
+const BUCKET_GROUPS: { label: { en: string; pl: string }; buckets: Bucket[] }[] = [
+  { label: { en: "Today", pl: "Dziś" }, buckets: ["today", "tonight"] },
+  { label: { en: "Tomorrow", pl: "Jutro" }, buckets: ["tomorrow", "tomorrow_evening"] },
+  { label: { en: "Weekend", pl: "Weekend" }, buckets: ["weekend"] },
+];
 const SWIPE_THRESHOLD = 90;
 const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
@@ -61,6 +66,42 @@ type ViewTransitionDocument = Document & {
 
 function viewTransitionIdent(value: string) {
   return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+export function formatVideoDuration(duration: string | null): string {
+  if (!duration) return "";
+  const raw = duration.trim();
+  if (!raw) return "";
+
+  const colonParts = raw.split(":").map((part) => part.trim());
+  if (colonParts.length >= 2 && colonParts.every((part) => /^\d+$/.test(part))) {
+    let seconds = 0;
+    for (const part of colonParts) seconds = seconds * 60 + Number(part);
+    return formatDurationSeconds(seconds);
+  }
+
+  const hourMatch = raw.match(/(\d+)\s*(?:h|hr|hrs|hour|hours|godz\.?|godzin|godziny)/i);
+  const minuteMatch = raw.match(/(\d+)\s*(?:m|min|mins|minute|minutes|minut|minuty)/i);
+  const secondMatch = raw.match(/(\d+)\s*(?:s|sec|secs|second|seconds|sek|sekund|sekundy)/i);
+  if (hourMatch || minuteMatch || secondMatch) {
+    const seconds =
+      Number(hourMatch?.[1] ?? 0) * 3600 +
+      Number(minuteMatch?.[1] ?? 0) * 60 +
+      Number(secondMatch?.[1] ?? 0);
+    return formatDurationSeconds(seconds);
+  }
+
+  return raw;
+}
+
+function formatDurationSeconds(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export default function VideoCard({
@@ -300,7 +341,7 @@ export default function VideoCard({
           {video.live_status === "upcoming" && <span className="live-badge upcoming">{t("upcomingBadge")}</span>}
           {video.is_short === 1 && video.live_status === "none" && <span className="short-badge">{t("shortBadge")}</span>}
           {video.duration && video.is_short !== 1 && (
-            <span className="duration-badge">{video.duration}</span>
+            <span className="duration-badge">{formatVideoDuration(video.duration)}</span>
           )}
           {video.watch_position != null && video.watch_duration != null && video.watch_duration > 0 && (video.status !== "archived" || showWatchProgress) && (
             <div className="progress-bar">
@@ -316,21 +357,33 @@ export default function VideoCard({
               <span /><span /><span /><span />
             </div>
             <div className="thumb-actions">
-              <div className="thumb-actions-row schedule">
-                {BUCKET_ORDER.map((b) => {
-                  const Icon = BUCKET_ICONS[b];
-                  const active = video.bucket === b;
-                  return (
-                    <Tooltip key={b} text={active ? t("remove") : bucketLabel(b)}>
-                      <button
-                        className={`action-btn${active ? " active" : ""}`}
-                        onClick={(e) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, b)))}
-                      >
-                        <Icon />
-                      </button>
-                    </Tooltip>
-                  );
-                })}
+              <div className="thumb-actions-row thumb-actions-row--schedule">
+                {BUCKET_GROUPS.map((group) => (
+                  <div
+                    key={group.label.en}
+                    className={`schedule-action-group${group.buckets.length === 1 ? " schedule-action-group--single" : ""}`}
+                  >
+                    <div className="schedule-action-label">{group.label[language]}</div>
+                    <div className="schedule-action-segment">
+                      {group.buckets.map((b) => {
+                        const Icon = BUCKET_ICONS[b];
+                        const active = video.bucket === b;
+                        return (
+                          <Tooltip key={b} text={active ? t("remove") : bucketLabel(b)}>
+                            <button
+                              className={`action-btn${active ? " active" : ""}`}
+                              onClick={(e) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, b)))}
+                            >
+                              <Icon />
+                            </button>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="thumb-actions-row secondary">
                 {video.status !== "archived" && (
                   <Tooltip text={t("reject")}>
                     <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>
@@ -338,8 +391,6 @@ export default function VideoCard({
                     </button>
                   </Tooltip>
                 )}
-              </div>
-              <div className="thumb-actions-row secondary">
                 {video.status !== "archived" && (
                   <Tooltip text={t("watched")}>
                     <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id))}>

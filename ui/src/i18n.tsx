@@ -446,12 +446,14 @@ export const bucketLabels: Record<Language, Record<Bucket, string>> = {
     today: "Today",
     tonight: "Tonight",
     tomorrow: "Tomorrow",
+    tomorrow_evening: "Tomorrow evening",
     weekend: "Weekend",
   },
   pl: {
     today: "Dzisiaj",
     tonight: "Dziś wieczorem",
     tomorrow: "Jutro",
+    tomorrow_evening: "Jutro wieczorem",
     weekend: "Weekend",
   },
 };

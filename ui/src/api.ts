@@ -190,12 +190,13 @@ export interface AppLogs {
   lines: string[];
 }
 
-export type Bucket = "today" | "tonight" | "tomorrow" | "weekend";
+export type Bucket = "today" | "tonight" | "tomorrow" | "tomorrow_evening" | "weekend";
 
 export const BUCKET_LABELS: Record<Bucket, string> = {
   today: "Dzisiaj",
   tonight: "Dziś wieczorem",
   tomorrow: "Jutro",
+  tomorrow_evening: "Jutro wieczorem",
   weekend: "Weekend",
 };
 

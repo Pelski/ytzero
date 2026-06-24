@@ -56,7 +56,7 @@ And leaves out:
 - **Subscription inbox** - all new videos from followed channels in one feed.
 - **Channel import** - add channels manually, import OPML, or import `subscriptions.csv` from Google Takeout.
 - **Live and upcoming streams** - dedicated live view with automatic status refresh.
-- **Watch later buckets** - schedule videos for Morning, Evening, Tomorrow, or Weekend.
+- **Watch later buckets** - schedule videos for Today, Tonight, Tomorrow, Tomorrow evening, or Weekend.
 - **Archive flow** - reject videos, restore them later, and keep the main feed clean.
 - **Watch history and progress** - record watched videos and resume partially watched videos.
 - **Tags** - tag videos and channels; channel tags are inherited by their videos.

@@ -1168,6 +1168,40 @@ button.video-card:disabled { cursor: default; }
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(4px);
 }
+.thumb-actions-row--schedule {
+  gap: 7px;
+  align-items: flex-end;
+  padding: 6px;
+}
+.schedule-action-group {
+  display: grid;
+  gap: 3px;
+}
+.schedule-action-label {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+.schedule-action-segment {
+  display: flex;
+  overflow: hidden;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.10);
+}
+.schedule-action-segment .tooltip-wrap:not(:last-child) .action-btn {
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+.schedule-action-segment .action-btn {
+  border-radius: 0;
+  background: transparent;
+}
+.schedule-action-group--single .action-btn {
+  width: 61px;
+}
+.schedule-action-segment .action-btn:hover { background: rgba(255, 255, 255, 0.20); }
+.schedule-action-segment .action-btn.active { background: var(--accent); color: #0f0f0f; }
 .thumb-actions-row.secondary {
   justify-content: flex-end;
 }
@@ -1318,6 +1352,54 @@ button.video-card:disabled { cursor: default; }
 .dropdown-menu button:hover { background: var(--surface-3); }
 .dropdown-menu button.is-selected:hover {
   background: color-mix(in srgb, var(--accent) 18%, var(--surface-3));
+}
+.schedule-menu {
+  min-width: 162px;
+  padding: 7px;
+}
+.dropdown-menu-group + .dropdown-menu-group {
+  margin-top: 6px;
+}
+.dropdown-menu-group {
+  display: block;
+}
+.dropdown-menu-label {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  margin: 0 2px 4px;
+  text-align: center;
+}
+.dropdown-menu-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--surface);
+}
+.dropdown-menu-row button {
+  justify-content: center;
+  gap: 8px;
+  border-radius: 7px;
+  padding: 8px 9px;
+  min-width: 0;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.dropdown-menu-row button:only-child {
+  grid-column: 1 / -1;
+}
+.dropdown-menu-row .schedule-icon-choice {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  padding: 0;
+}
+.dropdown-menu-row .schedule-icon-choice svg {
+  width: 18px;
+  height: 18px;
 }
 .dropdown-menu-status {
   margin-left: auto;
@@ -2101,10 +2183,82 @@ a.playlist-item { text-decoration: none; }
 .bucket-title svg { width: 18px; height: 18px; stroke-width: 1.8; color: var(--text-2); }
 .bucket-title .count { color: var(--text-3); font-weight: 500; font-size: 13px; }
 
+.scheduled-list {
+  border-top: 1px solid var(--surface-2);
+}
+.scheduled-item {
+  display: grid;
+  grid-template-columns: 88px minmax(180px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--surface-2);
+}
 .scheduled-thumb { width: 88px; border-radius: 4px; display: block; cursor: pointer; }
+.scheduled-info { min-width: 0; }
 .scheduled-title { font-weight: 500; margin-bottom: 2px; }
+.scheduled-channel { font-size: 12px; }
 .scheduled-when { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
 .scheduled-date { font-size: 12px; margin-top: 2px; white-space: nowrap; }
+.scheduled-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 72px) 34px;
+  gap: 7px;
+  align-items: flex-end;
+}
+.scheduled-action-block {
+  display: grid;
+  gap: 3px;
+  width: 72px;
+}
+.scheduled-action-label {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+.scheduled-action-group {
+  display: flex;
+  gap: 0;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.scheduled-action-group .icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+}
+.scheduled-action-block--single .scheduled-action-group .icon-btn {
+  width: 68px;
+}
+.scheduled-action-group .icon-btn svg,
+.scheduled-actions > .icon-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.8;
+}
+.scheduled-action-group .icon-btn:not(:last-child) {
+  border-right: 1px solid var(--surface-3);
+}
+
+@media (max-width: 980px) {
+  .scheduled-item {
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: start;
+  }
+  .scheduled-date {
+    grid-column: 2;
+    margin-top: -2px;
+  }
+  .scheduled-actions {
+    grid-column: 1 / -1;
+    justify-content: start;
+    margin-top: 2px;
+  }
+}
 
 /* ---------- settings ---------- */
 .settings-tabs {

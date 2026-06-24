@@ -221,6 +221,10 @@ function computeShowFrom(bucket: string): string {
     // Always tomorrow 06:00
     d.setDate(d.getDate() + 1);
     d.setHours(6, 0, 0, 0);
+  } else if (bucket === "tomorrow_evening") {
+    // Always tomorrow 19:00
+    d.setDate(d.getDate() + 1);
+    d.setHours(19, 0, 0, 0);
   } else if (bucket === "weekend") {
     const day = d.getDay(); // 0=Sun, 6=Sat
     if (day === 0 || day === 6) {
@@ -548,7 +552,7 @@ api.get("/videos/:id", (c) => {
 
 // ---------- video actions ----------
 
-const BUCKETS = ["today", "tonight", "tomorrow", "weekend"];
+const BUCKETS = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 
 api.post("/videos/:id/queue", async (c) => {
   const { bucket } = await c.req.json();

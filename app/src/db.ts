@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS videos (
   live_status  TEXT NOT NULL DEFAULT 'none',
   -- inbox | queued | archived
   status       TEXT NOT NULL DEFAULT 'inbox',
-  -- today | tonight | tomorrow | weekend (only when status = 'queued')
+  -- today | tonight | tomorrow | tomorrow_evening | weekend (only when status = 'queued')
   bucket       TEXT,
   queued_at    TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))

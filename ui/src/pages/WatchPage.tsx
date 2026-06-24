@@ -45,6 +45,23 @@ function loadYouTubeApi(): Promise<void> {
 }
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
+const WATCH_LATER_GROUPS: {
+  label: { en: string; pl: string };
+  buckets: Bucket[];
+}[] = [
+  {
+    label: { en: "Today", pl: "Dziś" },
+    buckets: ["today", "tonight"],
+  },
+  {
+    label: { en: "Tomorrow", pl: "Jutro" },
+    buckets: ["tomorrow", "tomorrow_evening"],
+  },
+  {
+    label: { en: "Weekend", pl: "Weekend" },
+    buckets: ["weekend"],
+  },
+];
 
 function fmtTime(s: number): string {
   const h = Math.floor(s / 3600);
@@ -607,15 +624,22 @@ export default function WatchPage() {
                 <Clock /> {t("watchLater")}
               </button>
               {menuOpen && (
-                <div className="dropdown-menu">
-                  {(["today", "tonight", "tomorrow", "weekend"] as Bucket[]).map((b) => {
-                    const Icon = BUCKET_ICONS[b];
-                    return (
-                      <button key={b} onClick={() => queue(b)}>
-                        <Icon /> {bucketLabel(b)}
-                      </button>
-                    );
-                  })}
+                <div className="dropdown-menu schedule-menu">
+                  {WATCH_LATER_GROUPS.map((group) => (
+                    <div key={group.label.en} className="dropdown-menu-group">
+                      <div className="dropdown-menu-label">{group.label[language]}</div>
+                      <div className="dropdown-menu-row">
+                        {group.buckets.map((b) => {
+                          const Icon = BUCKET_ICONS[b];
+                          return (
+                            <button key={b} className="schedule-icon-choice" title={bucketLabel(b)} onClick={() => queue(b)}>
+                              <Icon />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

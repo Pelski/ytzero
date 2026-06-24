@@ -57,7 +57,7 @@ const GRID_SIZES: { id: GridSize; icon: React.ReactNode; labelKey: "gridSmall" |
   { id: "lg", icon: <Square size={15} />, labelKey: "gridLarge" },
 ];
 
-const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "weekend"];
+const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 
 function useHScroll() {
   const [shadowLeft, setShadowLeft] = useState(false);
