@@ -121,7 +121,7 @@ export interface UserPlaylistRule {
 }
 
 export interface AppSettings {
-  language: "en" | "pl";
+  language: "en" | "pl" | "de";
   show_shorts: string;
   player_hl: string;
   player_cc: string;
@@ -170,15 +170,15 @@ export interface VideoChapter {
   start: number;
 }
 
-export const SB_CATEGORIES: { id: string; label: { en: string; pl: string }; color: string }[] = [
-  { id: "sponsor",       label: { en: "Sponsor",           pl: "Sponsor"          }, color: "#00d400" },
-  { id: "selfpromo",     label: { en: "Self-promotion",    pl: "Autopromocja"     }, color: "#ffff00" },
-  { id: "interaction",   label: { en: "Interaction",       pl: "Prośba o reakcję" }, color: "#cc00ff" },
-  { id: "intro",         label: { en: "Intro",             pl: "Intro"            }, color: "#00ffff" },
-  { id: "outro",         label: { en: "Outro",             pl: "Outro"            }, color: "#0202ed" },
-  { id: "preview",       label: { en: "Preview",           pl: "Podgląd treści"   }, color: "#008fd6" },
-  { id: "music_offtopic",label: { en: "Non-music section", pl: "Nie-muzyczny"     }, color: "#ff9900" },
-  { id: "filler",        label: { en: "Filler",            pl: "Wypełniacz"       }, color: "#7300ab" },
+export const SB_CATEGORIES: { id: string; label: { en: string; pl: string; de: string }; color: string }[] = [
+  { id: "sponsor",       label: { en: "Sponsor",           pl: "Sponsor",          de: "Sponsor"             }, color: "#00d400" },
+  { id: "selfpromo",     label: { en: "Self-promotion",    pl: "Autopromocja",     de: "Eigenwerbung"        }, color: "#ffff00" },
+  { id: "interaction",   label: { en: "Interaction",       pl: "Prośba o reakcję", de: "Interaktionsaufruf"  }, color: "#cc00ff" },
+  { id: "intro",         label: { en: "Intro",             pl: "Intro",            de: "Intro"               }, color: "#00ffff" },
+  { id: "outro",         label: { en: "Outro",             pl: "Outro",            de: "Outro"               }, color: "#0202ed" },
+  { id: "preview",       label: { en: "Preview",           pl: "Podgląd treści",   de: "Vorschau"            }, color: "#008fd6" },
+  { id: "music_offtopic",label: { en: "Non-music section", pl: "Nie-muzyczny",     de: "Nicht-musikalisch"   }, color: "#ff9900" },
+  { id: "filler",        label: { en: "Filler",            pl: "Wypełniacz",       de: "Füllmaterial"        }, color: "#7300ab" },
 ];
 
 export interface ChildLockStatus {
