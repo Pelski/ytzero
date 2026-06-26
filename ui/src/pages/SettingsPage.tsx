@@ -1404,6 +1404,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 setLanguage(next).then(() => showToast(t("displaySettingsSaved"))).catch(console.error);
               }}
             >
+              <option value="de">Deutsch</option>
               <option value="en">English</option>
               <option value="pl">polski</option>
             </select>
