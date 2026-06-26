@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type React from "react";
 import { api, type AppSettings, type Bucket } from "./api";
 
-export type Language = "en" | "pl";
+export type Language = "en" | "pl" | "de";
 
 const LANGUAGE_KEY = "language";
 
@@ -441,6 +441,223 @@ const labels = {
     youtubeResults: "Wyniki z YouTube",
     searchOnYoutube: "Szukaj na YouTube",
   },
+  de: {
+    navToday: "Start",
+    navShorts: "Shorts",
+    navLive: "Live",
+    navWatchlist: "Geplant",
+    navLiked: "Favoriten",
+    navHistory: "Verlauf",
+    navArchive: "Abgelehnt",
+    navExternal: "Temporär",
+    navSettings: "Einstellungen",
+    subscriptions: "Abonnements",
+    subscriptionsEmpty: "Keine abonnierten Kanäle.",
+    loading: "Lädt...",
+    myPlaylists: "Meine Playlists",
+    newPlaylist: "Neue Playlist",
+    playlistName: "Playlist-Name",
+    create: "Erstellen",
+    search: "Suche",
+    searchPlaceholder: "Suchen...",
+    clear: "Löschen",
+    clearFilters: "Filter zurücksetzen",
+    showAll: "Alle anzeigen",
+    yes: "Ja",
+    cancel: "Abbrechen",
+    save: "Speichern",
+    delete: "Löschen",
+    edit: "Bearbeiten",
+    restore: "Wiederherstellen",
+    reject: "Ablehnen",
+    watched: "Angesehen",
+    remove: "Entfernen",
+    removeFromPlaylist: "Aus Playlist entfernen",
+    liveBadge: "LIVE",
+    upcomingBadge: "DEMNÄCHST",
+    shortBadge: "SHORT",
+    removeFrom: "Entfernen von:",
+    noSearchResults: "Keine Ergebnisse unter deinen lokalen Videos",
+    noVideos: "Keine Videos. Füge Kanäle in den Einstellungen per OPML/CSV-Import oder Kanal-Link hinzu.",
+    refresh: "Aktualisieren",
+    refreshError: "Fehler beim Aktualisieren:",
+    loadMore: "Mehr laden",
+    searchResultsFor: "Ergebnisse für:",
+    gridSmall: "Klein",
+    gridMedium: "Mittel",
+    gridLarge: "Groß",
+    liveNow: "Jetzt live",
+    liveEmpty: "Keiner deiner Kanäle ist gerade live.",
+    upcoming: "Demnächst",
+    watchlistEmpty: "Die Liste ist leer. Nutze das Uhr-Symbol im Feed, um ein Video einzuplanen.",
+    likedEmpty: "Noch keine favorisierten Videos",
+    archiveEmpty: "Die Liste der abgelehnten Videos ist leer.",
+    externalTitle: "Temporäre Videos",
+    externalHint: "Videos, die über die YouTube-Suche geöffnet wurden und nicht von einem abonnierten Kanal stammen. Sie werden hier nur zur Wiedergabe zwischengespeichert.",
+    externalEmpty: "Keine temporären Videos. Über die Suche geöffnete Videos erscheinen hier.",
+    externalClear: "Alle löschen",
+    externalClearChannel: "Verknüpfte löschen",
+    externalCleared: "{n} temporäre Videos entfernt",
+    historyTitle: "Wiedergabeverlauf",
+    historyEmpty: "Der Verlauf ist leer. Angesehene Videos erscheinen hier.",
+    settingsTitle: "Einstellungen",
+    channels: "Kanäle",
+    tagsRules: "Tags & Regeln",
+    playlists: "Playlists",
+    display: "Anzeige",
+    child: "Kindersicherung",
+    logs: "Protokolle",
+    logsHint: "Aktuelle Anwendungsprotokolle",
+    logsEmpty: "Noch keine Protokolleinträge",
+    logsShowing: "Zeige {count} Zeilen, Dateigröße {size} Bytes",
+    filters: "Filter",
+    tags: "Tags",
+    rules: "Regeln",
+    addChannel: "Kanal hinzufügen",
+    addingChannel: "Wird hinzugefügt...",
+    addChannelNotFoundError: "Ein Fehler ist aufgetreten, der Kanal mit diesem Namen existiert wahrscheinlich nicht.",
+    channelLinkPlaceholder: "Kanal-Link oder @handle",
+    importOpmlCsv: "OPML / CSV importieren",
+    searchChannelPlaceholder: "Kanal nach Name oder ID suchen",
+    noMatchingChannels: "Keine Kanäle entsprechen der Suche.",
+    manageChannelTags: "Kanal-Tags verwalten",
+    addTag: "Tag hinzufügen",
+    newTag: "Neuer Tag",
+    tagNamePlaceholder: "Tag-Name...",
+    follow: "Folgen",
+    unfollow: "Entfolgen",
+    followAgain: "Wieder folgen",
+    deleteChannel: "Kanal löschen",
+    allChannels: "alle Kanäle",
+    filterHint: "Filter lehnen passende Videos automatisch direkt nach dem Import ab. Ablehnen archiviert Treffer. Nur Treffer archiviert alles andere und benötigt einen Kanal.",
+    patternPlaceholder: "Muster, z. B. Minecraft",
+    contains: "enthält",
+    regex: "Regex",
+    inTitle: "im Titel",
+    inDescription: "in der Beschreibung",
+    titleOrDescription: "Titel oder Beschreibung",
+    rejectMatching: "Treffer ablehnen",
+    onlyMatching: "nur Treffer",
+    addFilter: "Filter hinzufügen",
+    noFilterRules: "Keine Filterregeln.",
+    tagHint: "Tags können Kanälen zugewiesen werden, wobei alle Videos des Kanals sie übernehmen, oder einzelnen Videos.",
+    tagNameExample: "Tag-Name, z. B. Minecraft",
+    noTags: "Keine Tags.",
+    ruleHint: "Eine Regel weist jedem Video, dessen Titel oder Beschreibung dem Muster entspricht, einen Tag zu. Sie gilt für neue und bestehende Videos.",
+    chooseTag: "Tag auswählen",
+    addRule: "Regel hinzufügen",
+    noTagRules: "Keine Tag-Regeln.",
+    playlistHint: "Playlists können manuell über den Wiedergabebildschirm oder automatisch über Titel- und Beschreibungsregeln befüllt werden.",
+    newPlaylistName: "Name der neuen Playlist",
+    showShorts: "Shorts im Hauptfeed anzeigen",
+    showShortsHint: "Shorts von abonnierten Kanälen erscheinen überall vermischt mit normalen Videos.",
+    showShortsTab: "Shorts-Tab",
+    showShortsTabHint: "Fügt einen eigenen Shorts-Tab in der Seitenleiste hinzu. Shorts bleiben aus dem Hauptfeed und anderen Ansichten heraus.",
+    showTopChannels: "Top-Kanäle im Feed",
+    showTopChannelsHint: "Zeigt oben im Feed eine Reihe der Avatare deiner meistgesehenen Kanäle.",
+    sidebarOrderTitle: "Reihenfolge der Seitenleiste",
+    sidebarOrderHint: "Per Drag & Drop die Seitenleiste neu anordnen oder nicht genutzte Einträge ausblenden. Änderungen wirken sofort.",
+    moveUp: "Nach oben",
+    moveDown: "Nach unten",
+    hideItem: "Ausblenden",
+    showItem: "Anzeigen",
+    resetOrder: "Zurücksetzen",
+    hiddenItems: "Ausgeblendet",
+    forceCaptions: "Untertitel erzwingen",
+    forceCaptionsHint: "Der Player aktiviert Untertitel automatisch, wenn verfügbar.",
+    uiLanguage: "Oberflächensprache:",
+    playerLanguage: "Player- und Untertitelsprache:",
+    quality: "Bevorzugte Qualität:",
+    autoQuality: "automatisch",
+    qualityHint: "Die Qualität ist ein Vorschlag für den YouTube-Player. YouTube kann sie je nach Verbindung und verfügbaren Formaten überschreiben.",
+    playerSettingsSaved: "Player-Einstellungen gespeichert",
+    displaySettingsSaved: "Anzeigeeinstellungen gespeichert",
+    shortsVisible: "Shorts werden im Feed angezeigt",
+    shortsHidden: "Shorts im Feed ausgeblendet",
+    cinemaMode: "Theater",
+    cinema: "Theater",
+    watchLater: "Später ansehen",
+    addToPlaylist: "Zur Playlist hinzufügen",
+    noPlaylists: "Keine Playlists",
+    newPlaylistDots: "Neue Playlist...",
+    name: "Name",
+    createAndAdd: "Erstellen und hinzufügen",
+    copyYoutubeLink: "YouTube-Link kopieren",
+    copied: "Kopiert",
+    liveStream: "Livestream",
+    showLess: "Weniger anzeigen",
+    showMore: "Mehr anzeigen",
+    subscribers: "Abonnenten",
+    moreLikeThis: "Mehr davon",
+    autoplay: "Automatische Wiedergabe",
+    playlist: "Playlist",
+    playlistEmpty: "Keine Videos in dieser Playlist.",
+    publicPlaylistsEmpty: "Keine öffentlichen Playlists gefunden.",
+    channelVideosEmpty: "Keine Videos dieses Kanals in der Datenbank.",
+    syncChannel: "Synchronisieren",
+    syncing: "Synchronisiere...",
+    syncTitle: "Neue Videos von diesem Kanal abrufen",
+    noNewVideos: "Keine neuen Videos",
+    syncError: "Fehler bei der Synchronisierung",
+    expand: "Ausklappen",
+    collapse: "Einklappen",
+    videos: "Videos",
+    deletePlaylist: "Playlist löschen",
+    playlistIsEmpty: "Diese Playlist ist leer.",
+    selectedTag: "Tag hinzugefügt",
+    tagToChannel: "Tag zum Kanal hinzufügen",
+    removeTagFromChannel: "Tag vom Kanal entfernen",
+    moveTo: "Verschieben nach:",
+    removeFromQueue: "Aus Warteliste entfernen",
+    todayAt: "heute um",
+    tomorrowAt: "morgen um",
+    childLock: "Kindersicherung",
+    childLockHint: "Einstellungen mit einer 6-stelligen PIN sperren, damit Kanal- und Filterkonfiguration nicht versehentlich geändert werden können.",
+    childLockEnableHint: "Nach der Aktivierung müssen Einstellungsänderungen mit der PIN entsperrt werden.",
+    settingsLockedTitle: "Einstellungen sind gesperrt",
+    settingsLockedHint: "Gib die 6-stellige PIN ein, um Kanäle, Filter, Tags, Playlists und Anzeigeeinstellungen zu ändern.",
+    pinPlaceholder: "6-stellige PIN",
+    newPinPlaceholder: "Neue 6-stellige PIN",
+    confirmPinPlaceholder: "PIN bestätigen",
+    unlockSettings: "Einstellungen entsperren",
+    settingsUnlocked: "Einstellungen entsperrt",
+    settingsLocked: "Einstellungen gesperrt",
+    pinInvalid: "Ungültige PIN",
+    pinMustBeSixDigits: "Die PIN muss genau 6 Ziffern haben",
+    pinsDoNotMatch: "PINs stimmen nicht überein",
+    enableChildLock: "Kindersicherung aktivieren",
+    childLockEnabled: "Kindersicherung aktiviert",
+    childLockDisabled: "Kindersicherung deaktiviert",
+    childLockEnabledStatus: "Kindersicherung ist aktiviert",
+    disableChildLock: "Kindersicherung deaktivieren",
+    lockNow: "Jetzt sperren",
+    changePin: "PIN ändern",
+    changePinHint: "Lege eine neue 6-stellige PIN fest. Die aktuell entsperrte Sitzung reicht zum Ändern aus.",
+    childLockPinChanged: "PIN geändert",
+    sponsorblockHint: "Gesponserte Segmente, Intros, Outros und mehr automatisch überspringen.",
+    sponsorblockCategories: "Zu überspringende Segmentkategorien:",
+    sbSegmentsTitle: "Zu überspringende Segmente:",
+    sbPause: "Überspringen pausieren",
+    sbResume: "Überspringen fortsetzen",
+    sbSegDisable: "Dieses Segment nicht überspringen",
+    sbSegEnable: "Dieses Segment überspringen",
+    chaptersTitle: "Kapitel",
+    sponsorblockSaved: "SponsorBlock-Einstellungen gespeichert",
+    appNameLabel: "App-Name",
+    appNamePlaceholder: "YT Zero",
+    appNameSaved: "App-Name gespeichert",
+    appIconColorLabel: "Symbolfarbe",
+    appIconColorSaved: "Symbolfarbe gespeichert",
+    shortWatched: "Angesehen",
+    like: "Gefällt mir",
+    unlike: "Gefällt mir entfernen",
+    likedOnly: "Nur Favoriten",
+    filterOnly: "Nur mit Filter",
+    filterOnlyHint: "Videos mit diesem Tag erscheinen nur, wenn dieser Tag als Filter ausgewählt ist",
+    continueWatching: "Weiterschauen",
+    youtubeResults: "YouTube-Ergebnisse",
+    searchOnYoutube: "Auf YouTube suchen",
+  },
 } as const;
 
 export type I18nKey = keyof typeof labels.en;
@@ -460,6 +677,13 @@ export const bucketLabels: Record<Language, Record<Bucket, string>> = {
     tomorrow_evening: "Jutro wieczorem",
     weekend: "Weekend",
   },
+  de: {
+    today: "Heute",
+    tonight: "Heute Abend",
+    tomorrow: "Morgen",
+    tomorrow_evening: "Morgen Abend",
+    weekend: "Wochenende",
+  },
 };
 
 type I18nValue = {
@@ -473,7 +697,7 @@ type I18nValue = {
 const I18nContext = createContext<I18nValue | null>(null);
 
 export function normalizeLanguage(value: unknown): Language {
-  return value === "pl" ? "pl" : "en";
+  return value === "pl" ? "pl" : value === "de" ? "de" : "en";
 }
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
@@ -508,7 +732,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     setLanguage,
     t: (key) => labels[language][key],
     bucketLabel: (bucket) => bucketLabels[language][bucket],
-    locale: language === "pl" ? "pl-PL" : "en-US",
+    locale: language === "pl" ? "pl-PL" : language === "de" ? "de-DE" : "en-US",
   }), [language, setLanguage]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
@@ -526,19 +750,25 @@ export function formatVideoCount(n: number, language: Language): string {
     const suffix = rule === "one" ? "film" : rule === "few" ? "filmy" : "filmów";
     return `${n} ${suffix}`;
   }
+  if (language === "de") {
+    return `${n} ${n === 1 ? "Video" : "Videos"}`;
+  }
   return `${n} ${n === 1 ? "video" : "videos"}`;
 }
 
 export function formatAddedVideos(n: number, language: Language): string {
-  return language === "pl"
-    ? `Dodano ${n} nowych filmów`
-    : `Added ${n} new ${n === 1 ? "video" : "videos"}`;
+  if (language === "pl") return `Dodano ${n} nowych filmów`;
+  if (language === "de") return `${n} neue${n === 1 ? "s" : ""} Video${n === 1 ? "" : "s"} hinzugefügt`;
+  return `Added ${n} new ${n === 1 ? "video" : "videos"}`;
 }
 
 export function formatViewsCount(views: number | null, language: Language): string {
   if (views == null) return "";
-  const compact = new Intl.NumberFormat(language === "pl" ? "pl-PL" : "en-US", { notation: "compact", maximumFractionDigits: 1 });
-  return language === "pl" ? `${compact.format(views)} wyświetleń` : `${compact.format(views)} views`;
+  const locale = language === "pl" ? "pl-PL" : language === "de" ? "de-DE" : "en-US";
+  const compact = new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 });
+  if (language === "pl") return `${compact.format(views)} wyświetleń`;
+  if (language === "de") return `${compact.format(views)} Aufrufe`;
+  return `${compact.format(views)} views`;
 }
 
 export function formatTimeAgo(iso: string | null, language: Language): string {
@@ -560,6 +790,13 @@ export function formatTimeAgo(iso: string | null, language: Language): string {
     if (mo < 12) return `${mo} ${plPlural(mo, "miesiąc", "miesiące", "miesięcy")} temu`;
     return `${y} ${plPlural(y, "rok", "lata", "lat")} temu`;
   }
+  if (language === "de") {
+    if (min < 60) return `vor ${min} Min.`;
+    if (h < 24) return `vor ${h} Std.`;
+    if (d < 30) return `vor ${d} Tag${d === 1 ? "" : "en"}`;
+    if (mo < 12) return `vor ${mo} Monat${mo === 1 ? "" : "en"}`;
+    return `vor ${y} Jahr${y === 1 ? "" : "en"}`;
+  }
   if (min < 60) return `${min}m ago`;
   if (h < 24) return `${h}h ago`;
   if (d < 30) return `${d}d ago`;
@@ -569,7 +806,8 @@ export function formatTimeAgo(iso: string | null, language: Language): string {
 
 export function compactNumber(value: number | null, language: Language): string {
   if (value == null) return "";
-  return new Intl.NumberFormat(language === "pl" ? "pl-PL" : "en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+  const locale = language === "pl" ? "pl-PL" : language === "de" ? "de-DE" : "en-US";
+  return new Intl.NumberFormat(locale, { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
 export type SettingsWithLanguage = AppSettings & { language: Language };
