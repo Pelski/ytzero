@@ -1,0 +1,37 @@
+name: CI
+
+# Ręczny build dla branchy roboczych — sprawdza, czy typy się zgadzają
+# i czy UI się buduje. Na main tego nie odpalamy (tam działa docker-ghcr).
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Typecheck and build
+    runs-on: ubuntu-latest
+    if: github.ref != 'refs/heads/main'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install app dependencies
+        working-directory: app
+        run: bun install --frozen-lockfile
+
+      - name: Install ui dependencies
+        working-directory: ui
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck app
+        working-directory: app
+        run: bun x tsc --noEmit
+
+      - name: Typecheck ui
+        working-directory: ui
+        run: bun x tsc --noEmit
+
+      - name: Build ui
+        run: bun run build
