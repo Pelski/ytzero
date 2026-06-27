@@ -34,7 +34,7 @@ jobs:
           platform: ${{ matrix.platform }}
 
       - name: Check out source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Generate image labels
         id: meta
