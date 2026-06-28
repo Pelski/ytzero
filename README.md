@@ -165,7 +165,7 @@ docker compose up -d
 Or build locally from this repository:
 
 ```bash
-docker compose up --build -d
+docker compose -f docker-compose.dev.yml up --build -d
 ```
 
 Open:
@@ -303,7 +303,7 @@ docker compose up -d
 To update a Docker install that builds locally after pulling new code:
 
 ```bash
-docker compose up --build -d
+docker compose -f docker-compose.dev.yml up --build -d
 ```
 
 For local installs, the default database and image cache are under:
@@ -358,7 +358,8 @@ Everything user-specific lives locally in SQLite:
 ├── scripts/             # setup/dev/build/start helpers
 ├── data/                # Local runtime data, usually gitignored
 ├── Dockerfile
-└── docker-compose.yml
+├── docker-compose.yml      # Run with the published GHCR image
+└── docker-compose.dev.yml  # Build locally from source
 ```
 
 ## Development Notes
