@@ -18,6 +18,7 @@ import ShortsPage from "./pages/ShortsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import LikedPage from "./pages/LikedPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
+import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null };
@@ -225,6 +226,7 @@ function TopBar({ appName, appIconColor }: { appName: string; appIconColor: stri
           <Search />
         </button>
       </form>
+      <ProfileMenu />
     </div>
   );
 }

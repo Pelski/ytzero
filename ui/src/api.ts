@@ -132,6 +132,7 @@ export interface AppSettings {
   grid_size: string;
   child_lock_enabled: string;
   app_name: string;
+  app_icon_color: string;
   shorts_tab: string;
   show_top_channels: string;
   sidebar_nav: string;
@@ -188,6 +189,16 @@ export const SB_CATEGORIES: { id: string; labelKey: I18nKey; color: string }[] =
 export interface ChildLockStatus {
   enabled: boolean;
   locked: boolean;
+}
+
+export interface Profile {
+  id: number;
+  name: string;
+  avatar: string;
+  avatar_color: string;
+  has_pin: boolean;
+  active: boolean;
+  is_primary: boolean;
 }
 
 export interface AppLogs {
@@ -363,6 +374,23 @@ export const api = {
     http<{ matched: number }>(`/playlists/${id}/rules/apply`, { method: "POST" }),
 
   chapters: (videoId: string) => http<{ chapters: VideoChapter[] }>(`/videos/${videoId}/chapters`),
+
+  profiles: () => http<{ profiles: Profile[]; active_id: number }>("/profiles"),
+  createProfile: (p: { name: string; avatar_color?: string; pin?: string }) =>
+    http<{ profile: Profile }>("/profiles", { method: "POST", body: JSON.stringify(p) }),
+  updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null }) =>
+    http<{ profile: Profile }>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify(p) }),
+  deleteProfile: (id: number, pin?: string) =>
+    http<{ active_id?: number }>(`/profiles/${id}`, { method: "DELETE", body: JSON.stringify({ pin }) }),
+  switchProfile: (id: number, pin?: string) =>
+    http<{ active_id: number }>("/profiles/switch", { method: "POST", body: JSON.stringify({ id, pin }) }),
+  uploadProfileAvatar: (id: number, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return http<{ profile: Profile }>(`/profiles/${id}/avatar`, { method: "POST", body: fd });
+  },
+  removeProfileAvatar: (id: number) => http<{ profile: Profile }>(`/profiles/${id}/avatar`, { method: "DELETE" }),
+  resetProfilePin: (id: number) => http<{ profile: Profile }>(`/profiles/${id}/reset-pin`, { method: "POST" }),
 
   config: () => http<{ app_url: string }>("/config"),
 

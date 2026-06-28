@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, X, Zap } from "lucide-react";
-import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
+import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, Users, X, Zap } from "lucide-react";
+import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
+import { ProfileAvatar } from "../components/ProfileMenu";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
 import TagChip from "../components/TagChip";
@@ -12,9 +13,10 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
 
-type Tab = "channels" | "tags" | "playlists" | "display" | "external" | "logs" | "child";
+type Tab = "channels" | "tags" | "playlists" | "display" | "external" | "logs" | "child" | "profiles";
 
 const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode }[] = [
+  { id: "profiles", labelKey: "profiles", icon: <Users size={15} /> },
   { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
   { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
@@ -501,6 +503,277 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
   );
 }
 
+const PROFILE_COLORS = ["#f2293a", "#7c5cff", "#3ea6ff", "#00b894", "#e17055", "#fdcb6e", "#e84393", "#636e72"];
+
+function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allowPin, allowPinReset }: {
+  profile: Profile;
+  onSaved: () => void;
+  onDeleted: () => void;
+  showToast: (m: string) => void;
+  canDelete: boolean;
+  allowPin: boolean;
+  allowPinReset: boolean;
+}) {
+  const { t } = useI18n();
+  const [name, setName] = useState(profile.name);
+  const [color, setColor] = useState(profile.avatar_color);
+  const [pin, setPin] = useState("");
+  const [editingPin, setEditingPin] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deletePin, setDeletePin] = useState("");
+  const [deleteError, setDeleteError] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const deleteWithPin = async () => {
+    try {
+      await api.deleteProfile(profile.id, deletePin);
+      onDeleted();
+    } catch {
+      setDeleteError(true);
+    }
+  };
+
+  const save = async () => {
+    await api.updateProfile(profile.id, { name: name.trim() || profile.name, avatar_color: color });
+    showToast(t("profileSaved"));
+    onSaved();
+  };
+
+  const savePin = async () => {
+    if (pin && !/^\d{6}$/.test(pin)) return;
+    await api.updateProfile(profile.id, { pin: pin || null });
+    setPin("");
+    setEditingPin(false);
+    showToast(t("profileSaved"));
+    onSaved();
+  };
+
+  const onAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await api.uploadProfileAvatar(profile.id, file);
+    showToast(t("profileSaved"));
+    onSaved();
+  };
+
+  return (
+    <div className="profile-edit-grid">
+      <div className="profile-edit-top">
+        {/* Avatar: hover to change (opens file picker), corner button to remove. */}
+        <div className="profile-avatar-editable" onClick={() => fileRef.current?.click()} title={t("changeAvatar")}>
+          <ProfileAvatar profile={{ name, avatar: profile.avatar, avatar_color: color }} size={76} />
+          <div className="profile-avatar-overlay"><Camera size={22} /></div>
+          {profile.avatar && (
+            <div className="profile-avatar-remove" onClick={(e) => e.stopPropagation()}>
+              <Popconfirm message={t("removeAvatarConfirm")} onConfirm={async () => { await api.removeProfileAvatar(profile.id); onSaved(); }}>
+                <button className="profile-avatar-remove-btn" aria-label={t("removeAvatar")}><X size={13} /></button>
+              </Popconfirm>
+            </div>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={onAvatarFile} />
+        </div>
+
+        <div className="profile-name-field">
+          <label className="switch-label">{t("profileName")}</label>
+          <input className="form-input" value={name} placeholder={t("profileName")} onChange={(e) => setName(e.target.value)} onBlur={save} onKeyDown={(e) => e.key === "Enter" && save()} />
+        </div>
+      </div>
+
+      {/* Color is only the fallback background for the initials — hide it once a
+          photo is set. */}
+      {!profile.avatar && (
+        <div className="profile-color-section">
+          <label className="switch-label">{t("avatarColorLabel")}</label>
+          <div className="profile-color-swatches">
+            {PROFILE_COLORS.map((c) => (
+              <button
+                key={c}
+                className={`profile-color-swatch${c === color ? " selected" : ""}`}
+                style={{ background: c }}
+                aria-label={c}
+                onClick={() => { setColor(c); api.updateProfile(profile.id, { avatar_color: c }).then(onSaved); }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {allowPin && (
+        <div className="profile-edit-row">
+          {editingPin ? (
+            <>
+              <input
+                className="form-input"
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder={t("pinPlaceholder")}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+              <button className="btn primary" onClick={savePin} disabled={pin.length > 0 && pin.length !== 6}>{t("save")}</button>
+              <button className="btn" onClick={() => { setEditingPin(false); setPin(""); }}>{t("cancel")}</button>
+            </>
+          ) : profile.has_pin ? (
+            <>
+              <span className="profile-card-meta">{t("profilePin")}: ••••••</span>
+              <button className="btn" onClick={() => setEditingPin(true)}>{t("changePin")}</button>
+              <button className="btn" onClick={async () => { await api.updateProfile(profile.id, { pin: null }); onSaved(); }}>{t("removePin")}</button>
+            </>
+          ) : (
+            <button className="btn" onClick={() => setEditingPin(true)}>{t("setPin")}</button>
+          )}
+        </div>
+      )}
+
+      {/* Primary can clear (but not set) another profile's forgotten PIN. */}
+      {allowPinReset && profile.has_pin && (
+        <div className="profile-edit-row">
+          <span className="profile-card-meta">{t("profilePin")}: ••••••</span>
+          <Popconfirm message={t("resetPinConfirm")} onConfirm={async () => { await api.resetProfilePin(profile.id); showToast(t("profileSaved")); onSaved(); }}>
+            <button className="btn">{t("resetPin")}</button>
+          </Popconfirm>
+        </div>
+      )}
+
+      {canDelete && (
+        <div className="profile-edit-row">
+          {!profile.has_pin ? (
+            <Popconfirm message={t("deleteProfileConfirm")} onConfirm={async () => { await api.deleteProfile(profile.id); onDeleted(); }}>
+              <button className="btn danger"><Trash2 size={15} /> {t("deleteProfile")}</button>
+            </Popconfirm>
+          ) : !profile.active ? (
+            // PIN-protected: must be logged into it to delete.
+            <span className="profile-card-meta">{t("switchToDeleteHint")}</span>
+          ) : confirmingDelete ? (
+            <>
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                autoFocus
+                className={`form-input${deleteError ? " input-error" : ""}`}
+                placeholder={t("pinPlaceholder")}
+                value={deletePin}
+                onChange={(e) => { setDeletePin(e.target.value.replace(/\D/g, "").slice(0, 6)); setDeleteError(false); }}
+                onKeyDown={(e) => e.key === "Enter" && deletePin.length === 6 && deleteWithPin()}
+              />
+              <button className="btn danger" onClick={deleteWithPin} disabled={deletePin.length !== 6}>{t("deleteProfile")}</button>
+              <button className="btn" onClick={() => { setConfirmingDelete(false); setDeletePin(""); setDeleteError(false); }}>{t("cancel")}</button>
+            </>
+          ) : (
+            <button className="btn danger" onClick={() => setConfirmingDelete(true)}><Trash2 size={15} /> {t("deleteProfile")}</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
+  const { t } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newColor, setNewColor] = useState(PROFILE_COLORS[1]);
+
+  // Reload the list and tell the topbar picker to refresh too.
+  const refresh = useCallback(() => {
+    api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
+    emit("profiles-changed");
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Opened from the topbar "Add profile" action.
+  useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setCreating(true);
+      searchParams.delete("new");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  const create = async () => {
+    if (!newName.trim()) return;
+    await api.createProfile({ name: newName.trim(), avatar_color: newColor });
+    setNewName("");
+    setNewColor(PROFILE_COLORS[1]);
+    setCreating(false);
+    refresh();
+  };
+
+  // The primary profile may edit others (name/color/avatar); everyone else can
+  // only edit their own. PIN and deletion stay owner-only.
+  const iAmPrimary = profiles.find((p) => p.active)?.is_primary ?? false;
+
+  return (
+    <section className="settings-section">
+      <p className="page-hint">{t("profilesHint")}</p>
+      <div className="profiles-list">
+        {profiles.map((p) => {
+          const canEdit = p.active || iAmPrimary;
+          return (
+          <div key={p.id} className={`profile-card${p.active ? " active" : ""}`}>
+            <ProfileAvatar profile={p} size={44} />
+            <div className="profile-card-main">
+              <div className="profile-card-name">
+                {p.name}
+                {p.active && <Check size={15} style={{ color: "var(--accent)" }} />}
+              </div>
+              <div className="profile-card-meta">
+                {p.is_primary ? t("primaryProfile") : p.has_pin ? t("profilePin") + " ••••••" : "—"}
+              </div>
+            </div>
+            {canEdit && (
+              <div className="profile-card-actions">
+                <button className="btn" onClick={() => setExpanded(expanded === p.id ? null : p.id)}>
+                  <Pencil size={15} /> {t("edit")}
+                </button>
+              </div>
+            )}
+            {canEdit && expanded === p.id && (
+              <div style={{ flexBasis: "100%", marginTop: 12 }}>
+                <ProfileEditor
+                  profile={p}
+                  showToast={showToast}
+                  allowPin={p.active}
+                  allowPinReset={iAmPrimary && !p.active}
+                  canDelete={profiles.length > 1 && p.active && !p.is_primary}
+                  onSaved={refresh}
+                  onDeleted={() => { setExpanded(null); refresh(); }}
+                />
+              </div>
+            )}
+          </div>
+          );
+        })}
+      </div>
+
+      {creating ? (
+        <div className="profile-card">
+          <ProfileAvatar profile={{ name: newName || "?", avatar: "", avatar_color: newColor }} size={44} />
+          <div className="profile-card-main">
+            <input className="form-input" value={newName} placeholder={t("profileName")} autoFocus onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} />
+            <div className="profile-color-swatches" style={{ marginTop: 8 }}>
+              {PROFILE_COLORS.map((c) => (
+                <button key={c} className={`profile-color-swatch${c === newColor ? " selected" : ""}`} style={{ background: c }} aria-label={c} onClick={() => setNewColor(c)} />
+              ))}
+            </div>
+          </div>
+          <div className="profile-card-actions">
+            <button className="btn primary" onClick={create} disabled={!newName.trim()}>{t("create")}</button>
+            <button className="btn" onClick={() => setCreating(false)}>{t("cancel")}</button>
+          </div>
+        </div>
+      ) : (
+        <button className="btn" onClick={() => setCreating(true)}><UserPlus size={15} /> {t("addProfile")}</button>
+      )}
+    </section>
+  );
+}
+
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage, locale } = useI18n();
   const navigate = useNavigate();
@@ -542,6 +815,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [appName, setAppName] = useState("YT Zero");
   const [appNameInput, setAppNameInput] = useState("YT Zero");
   const [appIconColor, setAppIconColor] = useState("#f2293a");
+  // App-wide settings (app name, icon color, child lock) are owned by the
+  // primary profile; other profiles see them read-only.
+  const [isPrimary, setIsPrimary] = useState(true);
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
@@ -647,6 +923,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   };
 
   useEffect(() => {
+    api.profiles().then((r) => setIsPrimary(!!r.profiles.find((p) => p.active)?.is_primary)).catch(() => {});
     load().catch(console.error);
     Promise.all([api.settings(), api.childLock()])
       .then(([r, cl]) => {
@@ -950,6 +1227,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </div>
         </section>
       )}
+
+      {!isSettingsLocked && tab === "profiles" && <ProfilesSettings showToast={showToast} />}
 
       {!isSettingsLocked && tab === "channels" && (
         <section className="settings-section">
@@ -1313,38 +1592,44 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isSettingsLocked && tab === "display" && (
         <section className="settings-section">
-          <div className="settings-select-row">
-            <label className="switch-label" htmlFor="app-name">{t("appNameLabel")}</label>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                id="app-name"
-                type="text"
-                className="form-input"
-                style={{ flex: 1 }}
-                value={appNameInput}
-                placeholder={t("appNamePlaceholder")}
-                onChange={(e) => setAppNameInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && saveAppName()}
-              />
-              <button className="btn" onClick={saveAppName} disabled={appNameInput.trim() === appName}>{t("save")}</button>
-            </div>
-          </div>
+          {isPrimary ? (
+            <>
+              <div className="settings-select-row">
+                <label className="switch-label" htmlFor="app-name">{t("appNameLabel")}</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    id="app-name"
+                    type="text"
+                    className="form-input"
+                    style={{ flex: 1 }}
+                    value={appNameInput}
+                    placeholder={t("appNamePlaceholder")}
+                    onChange={(e) => setAppNameInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && saveAppName()}
+                  />
+                  <button className="btn" onClick={saveAppName} disabled={appNameInput.trim() === appName}>{t("save")}</button>
+                </div>
+              </div>
 
-          <div className="settings-select-row">
-            <label className="switch-label" htmlFor="app-icon-color">{t("appIconColorLabel")}</label>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <span className="logo-mark" style={{ background: appIconColor }}>
-                <Play fill="currentColor" size={16} />
-              </span>
-              <input
-                id="app-icon-color"
-                type="color"
-                value={appIconColor}
-                onChange={(e) => saveAppIconColor(e.target.value)}
-                style={{ width: 40, height: 32, padding: 2, border: "1px solid var(--surface-3)", borderRadius: 6, background: "var(--bg)", cursor: "pointer" }}
-              />
-            </div>
-          </div>
+              <div className="settings-select-row">
+                <label className="switch-label" htmlFor="app-icon-color">{t("appIconColorLabel")}</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span className="logo-mark" style={{ background: appIconColor }}>
+                    <Play fill="currentColor" size={16} />
+                  </span>
+                  <input
+                    id="app-icon-color"
+                    type="color"
+                    value={appIconColor}
+                    onChange={(e) => saveAppIconColor(e.target.value)}
+                    style={{ width: 40, height: 32, padding: 2, border: "1px solid var(--surface-3)", borderRadius: 6, background: "var(--bg)", cursor: "pointer" }}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <p className="page-hint">{t("primaryOnlyHint")}</p>
+          )}
 
           <div className="switch-row">
             <div>
@@ -1636,7 +1921,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </div>
           </div>
 
-          {!childLock.enabled ? (
+          {!isPrimary ? (
+            <p className="page-hint">{t("primaryOnlyHint")}</p>
+          ) : !childLock.enabled ? (
             <>
               <p className="hint">{t("childLockEnableHint")}</p>
               <div className="form-row">

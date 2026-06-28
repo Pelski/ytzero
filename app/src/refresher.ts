@@ -316,7 +316,9 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
 export async function refreshAvatarsBatch() {
   const rows = db
     .prepare(
-      "SELECT channel_id FROM channels WHERE followed = 1 ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT 2"
+      `SELECT channel_id FROM channels
+       WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
+       ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT 2`
     )
     .all() as { channel_id: string }[];
 
@@ -397,8 +399,12 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
   refreshing = true;
   const startedAt = Date.now();
   try {
+    // Any channel at least one profile follows. A channel followed by several
+    // profiles is fetched once here (dedup), then surfaces in each feed.
     const channels = db.prepare(
-      "SELECT channel_id FROM channels WHERE followed = 1 ORDER BY COALESCE(last_refreshed_at, '1970-01-01') ASC LIMIT 10"
+      `SELECT channel_id FROM channels
+       WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
+       ORDER BY COALESCE(last_refreshed_at, '1970-01-01') ASC LIMIT 10`
     ).all() as { channel_id: string }[];
     log.info("refresh.start", { channels: channels.length });
     let added = 0;
@@ -446,7 +452,7 @@ export async function refreshAllLiveStatuses(): Promise<void> {
           ELSE 2
         END AS priority
       FROM channels c
-      WHERE c.followed = 1 AND c.external = 0
+      WHERE c.channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1) AND c.external = 0
       ORDER BY priority ASC, c.channel_id ASC
     `).all() as { channel_id: string; priority: number }[];
 

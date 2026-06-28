@@ -1,0 +1,157 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
+import { Check, Lock, Settings, UserPlus, X } from "lucide-react";
+import { api, type Profile } from "../api";
+import { subscribe } from "../events";
+import { useI18n } from "../i18n";
+
+/** Round avatar: uploaded image, or a colored circle with the name initial. */
+export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
+  const initial = (profile.name.trim()[0] ?? "?").toUpperCase();
+  return (
+    <span
+      className="profile-avatar"
+      style={{ width: size, height: size, background: profile.avatar ? undefined : profile.avatar_color, fontSize: Math.round(size * 0.44) }}
+    >
+      {profile.avatar ? <img src={profile.avatar} alt="" /> : initial}
+    </span>
+  );
+}
+
+export default function ProfileMenu() {
+  const { t } = useI18n();
+  const navigate = useNavigate();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [open, setOpen] = useState(false);
+  const [pinFor, setPinFor] = useState<Profile | null>(null);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const load = useCallback(() => {
+    api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
+  }, []);
+  useEffect(load, [load]);
+  useEffect(() => subscribe("profiles-changed", load), [load]);
+
+  // Close on outside click / Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const active = profiles.find((p) => p.active) ?? profiles[0];
+
+  const doSwitch = async (p: Profile, enteredPin?: string) => {
+    try {
+      await api.switchProfile(p.id, enteredPin);
+      // Full reload so feed, sidebar, settings and language all re-resolve.
+      window.location.reload();
+    } catch {
+      setPinError(true);
+      setPin(""); // clear for a fresh retry (avoids re-firing auto-submit)
+    }
+  };
+
+  const onPick = (p: Profile) => {
+    if (p.active) { setOpen(false); return; }
+    if (p.has_pin) {
+      setPinFor(p);
+      setPin("");
+      setPinError(false);
+    } else {
+      doSwitch(p);
+    }
+  };
+
+  const submitPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pinFor && /^\d{6}$/.test(pin)) doSwitch(pinFor, pin);
+    else setPinError(true);
+  };
+
+  if (!active) return null;
+
+  return (
+    <div className="profile-menu" ref={wrapRef}>
+      <button className="profile-trigger" aria-label={t("profiles")} onClick={() => setOpen((v) => !v)}>
+        <ProfileAvatar profile={active} size={32} />
+      </button>
+
+      {open && (
+        <div className="profile-dropdown" role="menu">
+          <div className="profile-dropdown-list">
+            {profiles.map((p) => (
+              <button key={p.id} className={`profile-row${p.active ? " active" : ""}`} role="menuitem" onClick={() => onPick(p)}>
+                <ProfileAvatar profile={p} size={36} />
+                <span className="profile-row-name">{p.name}</span>
+                {p.has_pin && <Lock size={14} className="profile-row-lock" />}
+                {p.active && <Check size={16} className="profile-row-check" />}
+              </button>
+            ))}
+          </div>
+          <div className="profile-dropdown-sep" />
+          <button
+            className="profile-action"
+            role="menuitem"
+            onClick={() => { setOpen(false); navigate("/settings?tab=profiles&new=1"); }}
+          >
+            <UserPlus size={18} />
+            <span>{t("addProfile")}</span>
+          </button>
+          <button
+            className="profile-action"
+            role="menuitem"
+            onClick={() => { setOpen(false); navigate("/settings?tab=profiles"); }}
+          >
+            <Settings size={18} />
+            <span>{t("manageProfiles")}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Rendered into <body> so the fixed overlay escapes the topbar's
+          backdrop-filter containing block (otherwise it clips to the topbar). */}
+      {pinFor && createPortal(
+        <div className="profile-pin-backdrop" onClick={() => setPinFor(null)}>
+          <form className="profile-pin-modal" onClick={(e) => e.stopPropagation()} onSubmit={submitPin}>
+            <button type="button" className="profile-pin-close" aria-label={t("close")} onClick={() => setPinFor(null)}>
+              <X size={18} />
+            </button>
+            <ProfileAvatar profile={pinFor} size={56} />
+            <div className="profile-pin-title">{pinFor.name}</div>
+            <div className="profile-pin-hint">{t("enterProfilePin")}</div>
+            <input
+              className={`profile-pin-input${pinError ? " error" : ""}`}
+              type="password"
+              inputMode="numeric"
+              autoFocus
+              maxLength={6}
+              value={pin}
+              placeholder="••••••"
+              onChange={(e) => {
+                const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                setPin(v);
+                setPinError(false);
+                // Auto-submit once all 6 digits are in.
+                if (v.length === 6 && pinFor) doSwitch(pinFor, v);
+              }}
+            />
+            <button type="submit" className="btn primary" disabled={pin.length !== 6}>{t("switchProfile")}</button>
+          </form>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
