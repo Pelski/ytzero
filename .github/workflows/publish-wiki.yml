@@ -1,0 +1,53 @@
+name: Publish Wiki
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "wiki/**"
+  workflow_dispatch:
+
+# Allow the default token to push to the repository's wiki.
+permissions:
+  contents: write
+
+# Don't let two runs push to the wiki at the same time.
+concurrency:
+  group: publish-wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Sync wiki/ to the wiki repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          repo="${{ github.repository }}"
+          work="$(mktemp -d)"
+
+          # The wiki is a separate git repo; it must have been initialized once
+          # (create any page from the repo's Wiki tab) before this remote exists.
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${repo}.wiki.git" "$work"
+
+          # Mirror wiki/ into the wiki repo, including deletions, but keep its .git.
+          rsync -a --delete --exclude '.git' wiki/ "$work/"
+
+          cd "$work"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No wiki changes to publish."
+            exit 0
+          fi
+
+          git add -A
+          git commit -m "Sync wiki from ${{ github.sha }}"
+          git push
