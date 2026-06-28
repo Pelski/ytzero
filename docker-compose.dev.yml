@@ -1,6 +1,6 @@
 services:
   ytzero:
-    image: ghcr.io/pelski/ytzero:latest
+    build: .
     container_name: ytzero
     ports:
       - "3001:3001"
