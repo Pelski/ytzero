@@ -1,0 +1,36 @@
+name: Release
+
+# Po wypchnięciu tagu vX.Y.Z tworzy GitHub Release z automatycznie
+# wygenerowanymi notatkami (diff między tym a poprzednim tagiem).
+# Obrazy Dockera buduje osobny workflow (docker-ghcr.yml) na ten sam tag.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create release with generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Pre-release jeśli tag zawiera myślnik (np. v1.2.0-rc.1)
+          prerelease=""
+          case "${GITHUB_REF_NAME}" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            $prerelease

@@ -1,0 +1,22 @@
+# Sterowanie sekcjami w auto-generowanych release notes.
+# Pozycje grupowane są po labelach przypisanych do mergowanych PR-ów.
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - dependencies
+  categories:
+    - title: 🚀 Nowe funkcje
+      labels:
+        - feature
+        - enhancement
+    - title: 🐛 Poprawki
+      labels:
+        - bug
+        - fix
+    - title: 📝 Dokumentacja
+      labels:
+        - documentation
+    - title: 🔧 Pozostałe zmiany
+      labels:
+        - "*"
