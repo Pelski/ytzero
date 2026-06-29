@@ -220,6 +220,8 @@ export const pl: Locale = {
     authActive: "Aktywna",
     authCurrentMethod: "Bieżąca metoda",
     authLockoutWarn: "Dokończ konfigurację przed aktywacją — inaczej możesz się zablokować. Odzyskiwanie: ustaw YTZERO_AUTH_DISABLE=1 i zrestartuj.",
+    authOidcRedirectUriHint: "Dodaj ten dokładny URL do dozwolonych redirect URI u dostawcy (dopasowanie jest ścisłe). Jeśli pokazuje http://, a strona działa po https, ustaw zmienną środowiskową APP_URL na publiczny adres https.",
+    authOidcIssuerHint: "Pełny adres issuera. Authentik używa ścieżki per-aplikacja z ukośnikiem na końcu, np. https://id.example.com/application/o/<slug>/ — Pocket ID i Keycloak zwykle root lub adres realmu. Użyj „Testuj połączenie\", aby zweryfikować.",
     authMappingIncomplete: "Uzupełnij przypisanie dla każdego profilu przed aktywacją:",
     authMappingMissing: "Brak wartości dla: {names}",
     authMappingCredMissing: "Brak hasła dla: {names}",

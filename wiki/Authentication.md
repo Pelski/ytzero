@@ -64,7 +64,7 @@ In the profile menu, choosing a different profile prompts you to sign out first.
 Sign in through an external OpenID Connect provider such as **Pocket ID**, **Authentik**, **Keycloak**, or **Authelia (OIDC)**.
 
 1. Select **OIDC** and fill in:
-   - **Issuer URL** — e.g. `https://id.example.com`
+   - **Issuer URL** — the provider's full issuer. Pocket ID and Keycloak usually use the root or a realm URL (`https://id.example.com`), while **Authentik uses a per-application path with a trailing slash**: `https://id.example.com/application/o/<slug>/`. If discovery returns 404, the issuer is wrong — copy the "OpenID Configuration Issuer" from your provider and use **Test connection** to verify.
    - **Client ID** and **Client secret**
    - **Scopes** — defaults to `openid profile email`
    - **Redirect URI** — shown read-only; copy it into your provider's allowed redirect URIs. It is `<your app URL>/api/auth/oidc/callback`. Set [`APP_URL`](Configuration) if the app is behind a reverse proxy so this URL is correct.
@@ -78,6 +78,13 @@ Sign in through an external OpenID Connect provider such as **Pocket ID**, **Aut
 - **Gateway → profile picker** — OIDC only guards the front door. After signing in, everyone sees the profile picker and can switch freely (similar to **Shared**).
 
 Set an optional **Logout URL** to send users to your provider's logout endpoint when they sign out.
+
+### Troubleshooting
+
+- **`unsupported operation` in the logs after a successful token exchange** — the provider signed the ID token with **HS256** (HMAC), which isn't accepted. In **Authentik** this happens when the provider has **no Signing Key** selected; set it to an RSA/EC certificate (e.g. "authentik Self-signed Certificate") so the ID token uses RS256.
+- **`404` on `/.well-known/openid-configuration`** — wrong **Issuer URL**; for Authentik use `https://<host>/application/o/<slug>/` (trailing slash).
+- **"Invalid redirect URI"** — add the wizard's **Redirect URI** verbatim to the provider, and set `APP_URL` to your public `https://` URL so the callback isn't generated as `http://`.
+- **`no profile mapped to this identity`** (mapped mode) — the identity claim value doesn't match any profile's mapped value; fix the claim or the mapping, or enable auto-create.
 
 ---
 

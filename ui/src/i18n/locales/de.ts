@@ -218,6 +218,8 @@ export const de: Locale = {
     authActive: "Aktiv",
     authCurrentMethod: "Aktuelle Methode",
     authLockoutWarn: "Schließe die Konfiguration vor der Aktivierung ab — sonst sperrst du dich evtl. aus. Wiederherstellung: YTZERO_AUTH_DISABLE=1 setzen und neu starten.",
+    authOidcRedirectUriHint: "Füge genau diese URL zu den erlaubten Redirect-URIs deines Providers hinzu (strikte Übereinstimmung). Wenn http:// angezeigt wird, deine Seite aber über https läuft, setze die Umgebungsvariable APP_URL auf deine öffentliche https-URL.",
+    authOidcIssuerHint: "Die vollständige Issuer-URL. Authentik nutzt einen anwendungsspezifischen Pfad mit Schrägstrich am Ende, z. B. https://id.example.com/application/o/<slug>/ — Pocket ID und Keycloak meist Root oder Realm-URL. Mit \"Verbindung testen\" prüfen.",
     authMappingIncomplete: "Weise jedem Profil einen Wert zu, bevor du aktivierst:",
     authMappingMissing: "Fehlender Wert für: {names}",
     authMappingCredMissing: "Kein Passwort für: {names}",

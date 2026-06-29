@@ -219,6 +219,8 @@ export const en = {
     authActive: "Active",
     authCurrentMethod: "Current method",
     authLockoutWarn: "Finish the configuration before activating — otherwise you may lock yourself out. Recovery: set YTZERO_AUTH_DISABLE=1 and restart.",
+    authOidcRedirectUriHint: "Add this exact URL to your provider's allowed redirect URIs (providers match it strictly). If it shows http:// but your site is served over https, set the APP_URL environment variable to your public https URL.",
+    authOidcIssuerHint: "The full issuer URL. Authentik uses a per-application path with a trailing slash, e.g. https://id.example.com/application/o/<slug>/ — Pocket ID and Keycloak typically use the root or a realm URL. Use \"Test connection\" to verify.",
     authMappingIncomplete: "Finish assigning every profile before activating:",
     authMappingMissing: "Missing value for: {names}",
     authMappingCredMissing: "No password for: {names}",

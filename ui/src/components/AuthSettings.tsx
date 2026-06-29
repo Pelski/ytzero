@@ -243,6 +243,7 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
         <div className="auth-config-block">
           <label className="settings-field"><span>{t("authOidcIssuer")}</span>
             <input value={oidc.issuer} onChange={(e) => setOidc({ ...oidc, issuer: e.target.value })} placeholder="https://id.example.com" /></label>
+          <p className="hint">{t("authOidcIssuerHint")}</p>
           <label className="settings-field"><span>{t("authOidcClientId")}</span>
             <input value={oidc.client_id} onChange={(e) => setOidc({ ...oidc, client_id: e.target.value })} /></label>
           <label className="settings-field"><span>{t("authOidcClientSecret")}</span>
@@ -251,6 +252,7 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
             <input value={oidc.scopes} onChange={(e) => setOidc({ ...oidc, scopes: e.target.value })} /></label>
           <label className="settings-field"><span>{t("authOidcRedirectUri")}</span>
             <input readOnly value={cfg.oidc.redirect_uri} onFocus={(e) => e.target.select()} /></label>
+          <p className="hint">{t("authOidcRedirectUriHint")}</p>
           <label className="settings-field"><span>{t("authOidcMode")}</span>
             <select value={oidc.mode} onChange={(e) => setOidc({ ...oidc, mode: e.target.value as "mapped" | "gateway" })}>
               <option value="mapped">{t("authOidcModeMapped")}</option>

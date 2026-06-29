@@ -1865,6 +1865,20 @@ api.delete("/auth/passkey/:id", (c) => {
   return c.json({ ok: true });
 });
 
+// openid-client wraps low-level failures (e.g. "unsupported operation"); dig into
+// the cause chain so the log names the real problem, like the unsupported id_token
+// signing alg (Authentik signs with HS256 when no asymmetric signing key is set).
+function oidcErrorDetail(e: any): Record<string, unknown> {
+  const detail: Record<string, unknown> = { error: e?.message };
+  if (e?.code) detail.code = e.code;
+  const cause = e?.cause;
+  if (cause) {
+    detail.cause = cause?.message ?? (typeof cause === "object" ? JSON.stringify(cause) : String(cause));
+    if (cause?.cause) detail.detail = typeof cause.cause === "object" ? JSON.stringify(cause.cause) : String(cause.cause);
+  }
+  return detail;
+}
+
 api.get("/auth/oidc/login", async (c) => {
   try {
     const { url, flowId } = await oidcAuthUrl(c);
@@ -1874,7 +1888,7 @@ api.get("/auth/oidc/login", async (c) => {
     );
     return c.redirect(url);
   } catch (e: any) {
-    log.error("auth.oidc.login_failed", { error: e?.message });
+    log.error("auth.oidc.login_failed", oidcErrorDetail(e));
     return c.redirect("/?auth_error=oidc");
   }
 });
@@ -1890,7 +1904,7 @@ api.get("/auth/oidc/callback", async (c) => {
     log.info("auth.login", { method: "oidc", scope, id: user_id, admin: is_admin });
     return c.redirect("/");
   } catch (e: any) {
-    log.error("auth.oidc.callback_failed", { error: e?.message });
+    log.error("auth.oidc.callback_failed", oidcErrorDetail(e));
     return c.redirect("/?auth_error=oidc");
   }
 });
