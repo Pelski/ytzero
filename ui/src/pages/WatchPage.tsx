@@ -89,6 +89,22 @@ function rewriteYouTubeUrl(url: string, base: string): string | null {
   return null;
 }
 
+// YouTube glues a truncation marker straight onto long links in descriptions
+// (e.g. "https://makerworld.com...​" with a trailing ellipsis + zero-width
+// space). Peel that — plus stray trailing punctuation — off the URL so the href
+// isn't broken and the leftover renders as plain text, the way YouTube shows it.
+function splitTrailingJunk(url: string): [string, string] {
+  let u = url;
+  let trailing = "";
+  const junk = /(\.\.\.|[​‌‍﻿…)\].,;:!?'"»」]+)$/;
+  let m: RegExpMatchArray | null;
+  while ((m = u.match(junk)) && m[0].length && u.length - m[0].length > "https://".length) {
+    trailing = m[0] + trailing;
+    u = u.slice(0, u.length - m[0].length);
+  }
+  return [u, trailing];
+}
+
 function Linkify({ text, baseUrl }: { text: string; baseUrl: string }) {
   const base = baseUrl || window.location.origin;
   const parts = text.split(/(https?:\/\/[^\s<>"]+)/g);
@@ -96,15 +112,21 @@ function Linkify({ text, baseUrl }: { text: string; baseUrl: string }) {
     <>
       {parts.map((p, i) => {
         if (!/^https?:\/\//.test(p)) return p;
-        const local = rewriteYouTubeUrl(p, base);
-        return local ? (
-          <a key={i} href={local} className="desc-link" onClick={(e) => e.stopPropagation()}>
-            {p}
-          </a>
-        ) : (
-          <a key={i} href={p} target="_blank" rel="noreferrer" className="desc-link" onClick={(e) => e.stopPropagation()}>
-            {p}
-          </a>
+        const [url, trailing] = splitTrailingJunk(p);
+        const local = rewriteYouTubeUrl(url, base);
+        return (
+          <span key={i}>
+            {local ? (
+              <a href={local} className="desc-link" onClick={(e) => e.stopPropagation()}>
+                {url}
+              </a>
+            ) : (
+              <a href={url} target="_blank" rel="noreferrer" className="desc-link" onClick={(e) => e.stopPropagation()}>
+                {url}
+              </a>
+            )}
+            {trailing}
+          </span>
         );
       })}
     </>

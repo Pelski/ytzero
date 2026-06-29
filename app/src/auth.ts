@@ -73,27 +73,29 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export type SessionScope = "account" | "profile";
 
-export function createSession(userId: number | null, scope: SessionScope): string {
+export function createSession(userId: number | null, scope: SessionScope, isAdmin = false): string {
   const token = crypto.randomUUID();
   const expires = new Date(Date.now() + SESSION_TTL_MS).toISOString();
   db.prepare(
-    "INSERT INTO auth_sessions (token, user_id, scope, expires_at, last_seen) VALUES (?, ?, ?, ?, datetime('now'))"
-  ).run(token, userId, scope, expires);
+    "INSERT INTO auth_sessions (token, user_id, scope, is_admin, expires_at, last_seen) VALUES (?, ?, ?, ?, ?, datetime('now'))"
+  ).run(token, userId, scope, isAdmin ? 1 : 0, expires);
   return token;
 }
 
-export function validateSession(token: string | undefined): { user_id: number | null; scope: SessionScope } | null {
+export function validateSession(
+  token: string | undefined
+): { user_id: number | null; scope: SessionScope; is_admin: boolean } | null {
   if (!token) return null;
   const row = db
-    .prepare("SELECT user_id, scope, expires_at FROM auth_sessions WHERE token = ?")
-    .get(token) as { user_id: number | null; scope: SessionScope; expires_at: string } | null;
+    .prepare("SELECT user_id, scope, is_admin, expires_at FROM auth_sessions WHERE token = ?")
+    .get(token) as { user_id: number | null; scope: SessionScope; is_admin: number; expires_at: string } | null;
   if (!row) return null;
   if (new Date(row.expires_at).getTime() <= Date.now()) {
     db.prepare("DELETE FROM auth_sessions WHERE token = ?").run(token);
     return null;
   }
   db.prepare("UPDATE auth_sessions SET last_seen = datetime('now') WHERE token = ?").run(token);
-  return { user_id: row.user_id, scope: row.scope };
+  return { user_id: row.user_id, scope: row.scope, is_admin: row.is_admin === 1 };
 }
 
 export function destroySession(token: string | undefined) {
@@ -330,12 +332,32 @@ export async function oidcAuthUrl(c: any): Promise<{ url: string; flowId: string
   return { url: url.href, flowId };
 }
 
-// Returns the mapped/auto-created profile id, or null for gateway mode (account session).
+// Admin if the configured groups claim (from the id_token, or userinfo as a
+// fallback) contains the configured admin group. Empty admin_group disables it.
+async function resolveOidcAdmin(config: oidc.Configuration, tokens: any, claims: any): Promise<boolean> {
+  const adminGroup = (getSetting("auth_oidc_admin_group") || "").trim();
+  if (!adminGroup) return false;
+  const groupsClaim = getSetting("auth_oidc_groups_claim") || "groups";
+  let groups = claims?.[groupsClaim];
+  if (groups === undefined && tokens?.access_token && claims?.sub) {
+    try {
+      const info = await oidc.fetchUserInfo(config, tokens.access_token, claims.sub);
+      groups = (info as any)?.[groupsClaim];
+    } catch {
+      // userinfo unavailable — fall through with no groups
+    }
+  }
+  const list = Array.isArray(groups) ? groups.map(String) : typeof groups === "string" ? [groups] : [];
+  return list.includes(adminGroup);
+}
+
+// Returns the mapped/auto-created profile id (null for gateway mode) plus whether
+// the identity's groups grant admin.
 export async function oidcCallback(
   c: any,
   flowId: string | undefined,
   currentUrl: string
-): Promise<{ user_id: number | null; mode: "mapped" | "gateway" }> {
+): Promise<{ user_id: number | null; mode: "mapped" | "gateway"; is_admin: boolean }> {
   const flow = takeFlow(flowId);
   if (!flow) throw new Error("login flow expired");
   const { codeVerifier, state } = JSON.parse(flow.value) as { codeVerifier: string; state: string };
@@ -347,8 +369,9 @@ export async function oidcCallback(
   });
   const claims = tokens.claims() ?? {};
   const mode = (getSetting("auth_oidc_mode") || "mapped") as "mapped" | "gateway";
+  const is_admin = await resolveOidcAdmin(config, tokens, claims);
 
-  if (mode === "gateway") return { user_id: null, mode };
+  if (mode === "gateway") return { user_id: null, mode, is_admin };
 
   // mapped: resolve the configured claim to a profile.
   const claimName = getSetting("auth_oidc_claim") || "preferred_username";
@@ -368,7 +391,7 @@ export async function oidcCallback(
       throw new Error("no profile mapped to this identity");
     }
   }
-  return { user_id: row.id, mode };
+  return { user_id: row.id, mode, is_admin };
 }
 
 // ---------- proxy header ----------

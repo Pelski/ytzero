@@ -208,6 +208,7 @@ export interface AuthStatus {
   method: AuthMethod;
   authenticated: boolean;
   can_switch: boolean;
+  is_admin?: boolean;
   scope?: "account" | "profile" | null;
   oidc_mode?: "mapped" | "gateway";
   proxy_header_seen?: boolean;
@@ -227,6 +228,8 @@ export interface AuthConfig {
     claim: string;
     autocreate: boolean;
     logout_url: string;
+    groups_claim: string;
+    admin_group: string;
     redirect_uri: string;
   };
   proxy: { header: string; logout_url: string; current_header_value: string };
@@ -450,6 +453,8 @@ export const api = {
   saveAuthConfig: (body: AuthConfigUpdate) => http<{ ok: true }>("/auth/config", { method: "PUT", body: JSON.stringify(body) }),
   testOidc: () => http<{ ok: boolean; authorization_endpoint?: string; token_endpoint?: string; error?: string }>("/auth/test-oidc", { method: "POST", body: "{}" }),
   setAuthMethod: (method: AuthMethod) => http<{ ok: true }>("/auth/method", { method: "POST", body: JSON.stringify({ method }) }),
+  assignAllChannels: (user_id: number) =>
+    http<{ ok: true; added: number }>("/channels/assign-all", { method: "POST", body: JSON.stringify({ user_id }) }),
 
   sponsorblock: async (videoId: string, categories: string[]): Promise<SponsorSegment[]> => {
     const qs = new URLSearchParams({ videoID: videoId, categories: JSON.stringify(categories) });

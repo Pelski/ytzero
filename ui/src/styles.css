@@ -3513,3 +3513,5 @@ a.playlist-item { text-decoration: none; }
 .auth-confirm-actions { display: flex; justify-content: center; gap: 10px; margin-top: 4px; width: 100%; }
 .auth-confirm-actions .btn { min-width: 110px; justify-content: center; }
 .auth-confirm-actions .btn[disabled] { opacity: 0.55; cursor: not-allowed; }
+.auth-mapping-issues { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.auth-actions .btn[disabled] { opacity: 0.55; cursor: not-allowed; }

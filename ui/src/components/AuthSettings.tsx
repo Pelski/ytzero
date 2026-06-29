@@ -83,6 +83,8 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
       claim: oidc.claim,
       autocreate: oidc.autocreate,
       logout_url: oidc.logout_url,
+      groups_claim: oidc.groups_claim,
+      admin_group: oidc.admin_group,
       ...(oidcSecret ? { client_secret: oidcSecret } : {}),
     },
     proxy: { header: proxyHeader, logout_url: proxyLogout },
@@ -140,6 +142,32 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
       showToast(e?.message ?? t("loginError"));
     }
   };
+
+  // Methods that map each profile to a per-profile identifier — every profile
+  // must be filled (and unique) before the method can be activated.
+  const requiresMapping =
+    selected === "per_profile" || selected === "proxy_header" || (selected === "oidc" && oidc.mode === "mapped");
+  const mappingIssues = (() => {
+    if (!requiresMapping) return null;
+    const valueOf = (id: number) =>
+      (selected === "per_profile" ? userDraft[id] ?? "" : mapDraft[id] ?? "").trim();
+    const missing = cfg.profiles.filter((p) => !valueOf(p.id)).map((p) => p.name);
+    const seen = new Map<string, true>();
+    const dups = new Set<string>();
+    for (const p of cfg.profiles) {
+      const v = valueOf(p.id);
+      if (!v) continue;
+      if (seen.has(v)) dups.add(v);
+      else seen.set(v, true);
+    }
+    const credMissing =
+      selected === "per_profile"
+        ? cfg.profiles.filter((p) => !(pwDraft[p.id] ?? "").trim() && !p.has_password && !p.has_passkey).map((p) => p.name)
+        : [];
+    const ok = missing.length === 0 && dups.size === 0 && credMissing.length === 0;
+    return { ok, missing, duplicates: [...dups], credMissing };
+  })();
+  const blockActivate = Boolean(mappingIssues && !mappingIssues.ok);
 
   return (
     <section className="settings-section auth-settings">
@@ -239,6 +267,11 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
               <MappingTable profiles={cfg.profiles} label={t("authOidcSubject")} draft={mapDraft} setDraft={setMapDraft} />
             </>
           )}
+          <label className="settings-field"><span>{t("authOidcGroupsClaim")}</span>
+            <input value={oidc.groups_claim} onChange={(e) => setOidc({ ...oidc, groups_claim: e.target.value })} placeholder="groups" /></label>
+          <label className="settings-field"><span>{t("authOidcAdminGroup")}</span>
+            <input value={oidc.admin_group} onChange={(e) => setOidc({ ...oidc, admin_group: e.target.value })} /></label>
+          <p className="hint">{t("authOidcAdminGroupHint")}</p>
           <label className="settings-field"><span>{t("authOidcLogoutUrl")}</span>
             <input value={oidc.logout_url} onChange={(e) => setOidc({ ...oidc, logout_url: e.target.value })} /></label>
           <div className="form-row">
@@ -261,10 +294,20 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
       )}
 
       {/* Step 3 — save + activate */}
+      {blockActivate && mappingIssues && (
+        <div className="auth-lockout-warn">
+          <div>{t("authMappingIncomplete")}</div>
+          <ul className="auth-mapping-issues">
+            {mappingIssues.missing.length > 0 && <li>{t("authMappingMissing", { names: mappingIssues.missing.join(", ") })}</li>}
+            {mappingIssues.credMissing.length > 0 && <li>{t("authMappingCredMissing", { names: mappingIssues.credMissing.join(", ") })}</li>}
+            {mappingIssues.duplicates.length > 0 && <li>{t("authMappingDuplicate", { values: mappingIssues.duplicates.join(", ") })}</li>}
+          </ul>
+        </div>
+      )}
       {selected !== "none" && (
         <div className="form-row auth-actions">
           <button className="btn" onClick={save}>{t("authSave")}</button>
-          <button className="btn primary" onClick={() => setConfirming(true)}>{t("authActivate")}</button>
+          <button className="btn primary" disabled={blockActivate} onClick={() => setConfirming(true)}>{t("authActivate")}</button>
         </div>
       )}
       {selected === "none" && cfg.method !== "none" && (

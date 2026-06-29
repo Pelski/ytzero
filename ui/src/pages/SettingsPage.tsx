@@ -775,6 +775,51 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
   );
 }
 
+// Admin-only: claim every existing channel for one profile (ownership migration
+// for installs that had channels before auth). See POST /channels/assign-all.
+function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
+  const { t } = useI18n();
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [target, setTarget] = useState<number | "">("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
+  }, []);
+
+  const assign = async () => {
+    if (typeof target !== "number") return;
+    setBusy(true);
+    try {
+      const r = await api.assignAllChannels(target);
+      showToast(t("assignChannelsDone", { count: r.added }));
+    } catch (e: any) {
+      showToast(e?.message ?? t("loginError"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="settings-section">
+      <div className="switch-label">{t("assignChannelsTitle")}</div>
+      <p className="hint">{t("assignChannelsHint")}</p>
+      <div className="form-row">
+        <select className="select" value={target} onChange={(e) => setTarget(e.target.value ? Number(e.target.value) : "")}>
+          <option value="">{t("assignChannelsSelect")}</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <button className="btn primary" disabled={typeof target !== "number" || busy} onClick={assign}>
+          {busy ? <LoaderCircle size={15} className="spin" /> : <Tv size={15} />}
+          {t("assignChannelsButton")}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage, locale } = useI18n();
   const navigate = useNavigate();
@@ -925,7 +970,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   };
 
   useEffect(() => {
-    api.profiles().then((r) => setIsPrimary(!!r.profiles.find((p) => p.active)?.is_primary)).catch(() => {});
+    // "Admin" = primary profile OR an OIDC session in the configured admin group.
+    // is_admin drives the admin-only tabs/sections (kept in the isPrimary var).
+    api.authStatus().then((s) => setIsPrimary(!!s.is_admin)).catch(() => {});
     load().catch(console.error);
     Promise.all([api.settings(), api.childLock()])
       .then(([r, cl]) => {
@@ -1308,6 +1355,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               </>
             )}
           </section>
+
+          {isPrimary && <ChannelOwnership showToast={showToast} />}
         </>
       )}
 

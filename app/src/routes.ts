@@ -49,7 +49,7 @@ import {
   proxyHeaderValue,
 } from "./auth";
 
-export const api = new Hono<{ Variables: { userId: number } }>();
+export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean } }>();
 
 api.onError((err, c) => {
   log.error("api.unhandled_error", { path: c.req.path, method: c.req.method, error: err.message });
@@ -153,10 +153,16 @@ function primaryUserId(): number {
 function isPrimaryUser(c: any): boolean {
   return currentUserId(c) === primaryUserId();
 }
+// Admin = the primary profile (always, for local recovery) OR an OIDC session
+// whose groups claim matched the configured admin group. Admins get
+// primary-equivalent powers (auth config, global settings, profile/channel mgmt).
+function isAdmin(c: any): boolean {
+  return isPrimaryUser(c) || Boolean(c.get("sessionAdmin"));
+}
 // Who may edit a profile's general settings (name/color/avatar): the owner, or
-// the primary profile. PIN changes and deletion are owner-only (see handlers).
+// an admin. PIN changes and deletion are owner-only (see handlers).
 function canManageProfile(c: any, id: number): boolean {
-  return currentUserId(c) === id || isPrimaryUser(c);
+  return currentUserId(c) === id || isAdmin(c);
 }
 
 /** Active profile id for the request (validated; falls back to the first profile). */
@@ -202,6 +208,7 @@ api.use("*", async (c, next) => {
   const session = validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
   if (session) {
     c.set("userId", session.scope === "account" ? profileFromCookie(c) : session.user_id ?? 0);
+    c.set("sessionAdmin", session.is_admin);
     return next();
   }
   c.set("userId", 0);
@@ -885,6 +892,24 @@ api.post("/channels", async (c) => {
   return c.json({ ok: true, channel_id: info.channelId, title: info.title });
 });
 
+// Admin: claim every existing channel for a profile. Intended for setups that
+// had channels configured before auth, so ownership can be assigned explicitly
+// instead of relying on "first user wins". Existing subscriptions are preserved.
+api.post("/channels/assign-all", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const { user_id } = await c.req.json().catch(() => ({}));
+  const uid = Number(user_id);
+  if (!Number.isInteger(uid) || !db.prepare("SELECT 1 FROM users WHERE id = ?").get(uid)) {
+    return c.json({ error: "profile not found" }, 404);
+  }
+  const res = db.prepare(
+    `INSERT OR IGNORE INTO user_channels (user_id, channel_id, followed)
+     SELECT ?, channel_id, 1 FROM channels WHERE external = 0`
+  ).run(uid);
+  log.info("channels.assigned_all", { user_id: uid, added: res.changes });
+  return c.json({ ok: true, added: res.changes });
+});
+
 // Unsubscribe the active profile. The channel/videos stay (other profiles may
 // follow it; the refresher stops touching it once nobody does).
 api.delete("/channels/:id", (c) => {
@@ -1464,7 +1489,7 @@ api.get("/child-lock", (c) => {
 });
 
 api.post("/child-lock/enable", async (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "only the primary profile can manage child lock" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "only an admin can manage child lock" }, 403);
   if (isChildLockEnabled()) return c.json({ error: "child lock already enabled" }, 409);
   const body = await c.req.json().catch(() => ({}));
   if (!isSixDigitPin(body.pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
@@ -1490,7 +1515,7 @@ api.post("/child-lock/lock", (c) => {
 });
 
 api.post("/child-lock/change-pin", async (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "only the primary profile can manage child lock" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "only an admin can manage child lock" }, 403);
   if (!isChildLockEnabled()) return c.json({ error: "child lock is disabled" }, 400);
   const body = await c.req.json().catch(() => ({}));
   const canChange = hasChildLockSession(c) || (isSixDigitPin(body.current_pin) && (await verifyChildLockPin(body.current_pin)));
@@ -1502,7 +1527,7 @@ api.post("/child-lock/change-pin", async (c) => {
 });
 
 api.post("/child-lock/disable", async (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "only the primary profile can manage child lock" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "only an admin can manage child lock" }, 403);
   if (!isChildLockEnabled()) return c.json({ child_lock: childLockStatus(c) });
   const body = await c.req.json().catch(() => ({}));
   const canDisable = hasChildLockSession(c) || (isSixDigitPin(body.pin) && (await verifyChildLockPin(body.pin)));
@@ -1528,7 +1553,7 @@ api.get("/settings", (c) => {
 
 api.put("/settings", async (c) => {
   const uid = currentUserId(c);
-  const primary = isPrimaryUser(c);
+  const primary = isAdmin(c);
   const body = await c.req.json();
   for (const key of Object.keys(SETTING_DEFAULTS)) {
     if (key === "child_lock_pin_hash" || key === "child_lock_enabled") continue;
@@ -1672,7 +1697,7 @@ api.post("/profiles/:id/avatar", async (c) => {
 // Primary-only: clear another profile's PIN (e.g. it was forgotten). The owner
 // then sets a new one themselves — the primary never sets or learns the PIN.
 api.post("/profiles/:id/reset-pin", (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "only the primary profile can reset PINs" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "only an admin can reset PINs" }, 403);
   const id = Number(c.req.param("id"));
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!row) return c.json({ error: "not found" }, 404);
@@ -1728,7 +1753,7 @@ const OIDC_FLOW_COOKIE = "ytzero_oidc_flow";
 // What the SPA needs to decide between rendering the app or the login screen.
 api.get("/auth/status", (c) => {
   const method = authMethod();
-  if (method === "none") return c.json({ method, authenticated: true, can_switch: true });
+  if (method === "none") return c.json({ method, authenticated: true, can_switch: true, is_admin: isAdmin(c) });
 
   if (method === "proxy_header") {
     const uid = resolveProxyUser(c);
@@ -1736,6 +1761,7 @@ api.get("/auth/status", (c) => {
       method,
       authenticated: Boolean(uid),
       can_switch: false,
+      is_admin: isAdmin(c),
       proxy_header_seen: Boolean(proxyHeaderValue(c)),
     });
   }
@@ -1748,6 +1774,7 @@ api.get("/auth/status", (c) => {
     authenticated: Boolean(session),
     scope: session?.scope ?? null,
     can_switch: canSwitchProfiles(),
+    is_admin: isAdmin(c),
     oidc_mode: method === "oidc" ? getSetting("auth_oidc_mode") || "mapped" : undefined,
     // per_profile always needs a username; shared only when one was configured.
     username_field: method === "per_profile" || (method === "shared" && Boolean(getSetting("auth_shared_username"))),
@@ -1807,7 +1834,7 @@ api.post("/auth/passkey/login/verify", async (c) => {
 api.post("/auth/passkey/register/options", async (c) => {
   const { target } = await c.req.json().catch(() => ({}));
   if (target === "shared") {
-    if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+    if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
     const { options, flowId } = await passkeyRegisterOptions(c, null, getSetting("auth_shared_username") || "shared");
     return c.json({ options, flowId });
   }
@@ -1830,7 +1857,7 @@ api.delete("/auth/passkey/:id", (c) => {
   const cred = db.prepare("SELECT user_id FROM webauthn_credentials WHERE id = ?").get(id) as { user_id: number | null } | null;
   if (!cred) return c.json({ error: "not found" }, 404);
   if (cred.user_id === null) {
-    if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+    if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
   } else if (cred.user_id !== currentUserId(c)) {
     return c.json({ error: "not allowed" }, 403);
   }
@@ -1855,12 +1882,12 @@ api.get("/auth/oidc/login", async (c) => {
 api.get("/auth/oidc/callback", async (c) => {
   try {
     const flowId = parseCookies(c.req.header("cookie"))[OIDC_FLOW_COOKIE];
-    const { user_id, mode } = await oidcCallback(c, flowId, c.req.url);
+    const { user_id, mode, is_admin } = await oidcCallback(c, flowId, c.req.url);
     const scope = mode === "gateway" ? "account" : "profile";
-    c.header("Set-Cookie", authSessionCookie(createSession(scope === "account" ? null : user_id, scope)));
+    c.header("Set-Cookie", authSessionCookie(createSession(scope === "account" ? null : user_id, scope, is_admin)));
     if (user_id !== null) c.header("Set-Cookie", profileCookie(user_id), { append: true });
     c.header("Set-Cookie", `${OIDC_FLOW_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`, { append: true });
-    log.info("auth.login", { method: "oidc", scope, id: user_id });
+    log.info("auth.login", { method: "oidc", scope, id: user_id, admin: is_admin });
     return c.redirect("/");
   } catch (e: any) {
     log.error("auth.oidc.callback_failed", { error: e?.message });
@@ -1877,7 +1904,7 @@ api.post("/auth/logout", (c) => {
 // ---------- auth configuration (primary profile only) ----------
 
 api.get("/auth/config", (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
   const profiles = (db.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[]).map((u) => ({
     id: u.id,
     name: u.name,
@@ -1903,6 +1930,8 @@ api.get("/auth/config", (c) => {
       claim: getSetting("auth_oidc_claim") || "preferred_username",
       autocreate: getSetting("auth_oidc_autocreate") === "1",
       logout_url: getSetting("auth_oidc_logout_url") || "",
+      groups_claim: getSetting("auth_oidc_groups_claim") || "groups",
+      admin_group: getSetting("auth_oidc_admin_group") || "",
       redirect_uri: `${requestOrigin(c)}/api/auth/oidc/callback`,
     },
     proxy: {
@@ -1915,7 +1944,7 @@ api.get("/auth/config", (c) => {
 });
 
 api.put("/auth/config", async (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
   const body = await c.req.json().catch(() => ({}));
 
   if (body.shared) {
@@ -1934,6 +1963,8 @@ api.put("/auth/config", async (c) => {
     if (o.claim !== undefined) setSetting("auth_oidc_claim", String(o.claim));
     if (o.autocreate !== undefined) setSetting("auth_oidc_autocreate", o.autocreate ? "1" : "0");
     if (o.logout_url !== undefined) setSetting("auth_oidc_logout_url", String(o.logout_url).trim());
+    if (o.groups_claim !== undefined) setSetting("auth_oidc_groups_claim", String(o.groups_claim).trim() || "groups");
+    if (o.admin_group !== undefined) setSetting("auth_oidc_admin_group", String(o.admin_group).trim());
     invalidateOidcConfig();
   }
 
@@ -1958,13 +1989,46 @@ api.put("/auth/config", async (c) => {
 });
 
 api.post("/auth/test-oidc", async (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
   return c.json(await testOidc());
 });
 
+// The per-profile identifier a method maps logins against (null = no mapping).
+function mappingField(method: string): "username" | "oidc_subject" | "proxy_match" | null {
+  if (method === "per_profile") return "username";
+  if (method === "oidc") return (getSetting("auth_oidc_mode") || "mapped") === "mapped" ? "oidc_subject" : null;
+  if (method === "proxy_header") return "proxy_match";
+  return null;
+}
+
+// Every profile must carry the method's identifier (and it must be unique), so an
+// admin can't half-configure the mapping and accidentally lock people out.
+function validateMapping(method: string): { missing: string[]; duplicates: string[]; credMissing: string[] } | null {
+  const field = mappingField(method);
+  if (!field) return null;
+  const rows = db.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
+  const valueOf = (u: UserRow) => String((u as any)[field] ?? "").trim();
+  const missing = rows.filter((u) => !valueOf(u)).map((u) => u.name);
+  const seen = new Map<string, true>();
+  const dups = new Set<string>();
+  for (const u of rows) {
+    const v = valueOf(u);
+    if (!v) continue;
+    if (seen.has(v)) dups.add(v);
+    else seen.set(v, true);
+  }
+  // per_profile additionally needs a way to authenticate each profile.
+  const credMissing =
+    method === "per_profile"
+      ? rows.filter((u) => !u.password_hash && !hasPasskeys(u.id)).map((u) => u.name)
+      : [];
+  if (missing.length === 0 && dups.size === 0 && credMissing.length === 0) return null;
+  return { missing, duplicates: [...dups], credMissing };
+}
+
 // Activate an auth method after validating its prerequisites (anti-lockout).
 api.post("/auth/method", async (c) => {
-  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const { method } = await c.req.json().catch(() => ({}));
   const valid = ["none", "shared", "per_profile", "oidc", "proxy_header"];
   if (!valid.includes(method)) return c.json({ error: "invalid method" }, 400);
@@ -1972,19 +2036,18 @@ api.post("/auth/method", async (c) => {
   if (method === "shared" && !getSetting("auth_shared_password_hash") && !hasPasskeys(null)) {
     return c.json({ error: "set a shared password or passkey first" }, 400);
   }
-  if (method === "per_profile") {
-    const primary = db.prepare("SELECT * FROM users ORDER BY id ASC LIMIT 1").get() as UserRow;
-    if (!primary.password_hash && !hasPasskeys(primary.id)) {
-      return c.json({ error: "give the primary profile a password or passkey first" }, 400);
-    }
-  }
   if (method === "oidc") {
     const probe = await testOidc();
     if (!probe.ok) return c.json({ error: `OIDC not reachable: ${probe.error}` }, 400);
   }
-  if (method === "proxy_header") {
-    const mapped = (db.prepare("SELECT COUNT(*) AS n FROM users WHERE proxy_match IS NOT NULL AND proxy_match != ''").get() as { n: number }).n;
-    if (mapped === 0) return c.json({ error: "map at least one profile to a header value first" }, 400);
+  // per_profile / oidc-mapped / proxy_header: require a complete, unique mapping.
+  const m = validateMapping(method);
+  if (m) {
+    const parts: string[] = [];
+    if (m.missing.length) parts.push(`missing for: ${m.missing.join(", ")}`);
+    if (m.credMissing.length) parts.push(`no password for: ${m.credMissing.join(", ")}`);
+    if (m.duplicates.length) parts.push(`duplicate values: ${m.duplicates.join(", ")}`);
+    return c.json({ error: `incomplete profile mapping — ${parts.join("; ")}`, mapping: m }, 400);
   }
 
   setSetting("auth_method", method);
