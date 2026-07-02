@@ -27,12 +27,26 @@ unless you prefer to stay anonymous.
 
 ## Scope and threat model
 
-YT Zero is designed to be run by a single user on their own machine or private
-network. Some things are intentional and **not** considered vulnerabilities:
+YT Zero can run as a single-user app on a private network (the default, no
+login) or be exposed more broadly using one of the built-in authentication
+methods — see [Authentication](https://github.com/pelski/ytzero/wiki/Authentication).
+Some things are intentional and **not** considered vulnerabilities:
 
-- **No authentication / authorization.** The app has no login and assumes the
-  person who can reach it is the owner. Do not expose it directly to the public
-  internet — put it behind your own auth (reverse proxy, VPN, etc.).
+- **No authentication by default.** With the default **None** method, the app
+  has no login and assumes anyone who can reach it is the owner. If you expose
+  the app beyond your LAN, activate one of the supported authentication
+  methods first (shared login, per-profile login, OIDC, or a trusted
+  reverse-proxy header).
+- **Trusting the reverse-proxy header method.** The **Proxy header** auth
+  method trusts whatever value your reverse proxy sends — it is your
+  responsibility to run it behind a proxy that always sets that header and
+  strips any client-supplied copy. Header spoofing due to a misconfigured or
+  missing proxy is a deployment issue, not an app vulnerability.
+- **The `YTZERO_AUTH_DISABLE` escape hatch.** This environment variable forces
+  the **None** method for recovery purposes and is documented in
+  [Authentication](https://github.com/pelski/ytzero/wiki/Authentication#recovery-anti-lockout).
+  Leaving it set in production disables login by design — this is expected
+  behavior, not a bug.
 - **Outbound connections to YouTube and SponsorBlock.** The app fetches RSS
   feeds, metadata, thumbnails, pages, embedded videos, and (optionally)
   SponsorBlock segments. This is expected behaviour.
@@ -46,5 +60,10 @@ Things that **are** in scope and worth reporting:
 - Leaking local data or making requests to unintended hosts.
 - Vulnerabilities in how external/untrusted content (feeds, page data) is
   parsed or rendered.
+- Authentication or session bypass in any of the supported login methods
+  (Shared, Per-profile, OIDC, Proxy header), including WebAuthn/passkey
+  handling and OIDC token/issuer validation.
+- Privilege escalation between profiles (e.g. a non-admin profile gaining
+  admin powers) or between OIDC-mapped identities.
 
 When in doubt, report it privately and let's discuss.
