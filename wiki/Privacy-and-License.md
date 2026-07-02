@@ -7,7 +7,7 @@ YT Zero does not require a Google account or a YouTube Data API key. It stores a
 - RSS feeds expose only a limited recent set of videos per channel.
 - YouTube page structure can change, which may affect metadata, live detection, Shorts detection, or playlist parsing.
 - Embedded playback is still YouTube playback and follows YouTube embed behavior.
-- This is a personal/self-hosted tool, not a multi-user service.
+- Multi-user support is profile-based on a single self-hosted install, not multi-tenant. Each profile follows channels independently and starts empty; underlying channel/video data is shared and deduplicated across the install for efficiency, but subscriptions and all other state are per-profile.
 
 ## Trademark notice
 
