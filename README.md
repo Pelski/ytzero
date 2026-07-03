@@ -10,11 +10,37 @@
 | --- | --- |
 | <img src="docs/assets/tags.png" alt="YT Zero tags and rules settings" width="360"> | <img src="docs/assets/display.png" alt="YT Zero display settings" width="360"> |
 
-> A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
+> A self-hosted YouTube inbox for people who want subscriptions, not recommendations.
 
-YT Zero is a small web app for watching channels you already care about. It reads public YouTube RSS feeds, stores videos locally in SQLite, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos.
+YT Zero turns YouTube back into a simple reader for channels you chose on purpose. No Google account. No API key. No algorithmic home feed pushing videos you did not ask for.
 
-It keeps the parts that matter — your subscriptions, your own watch queue, your tags and playlists, an embedded player, local history and progress — and leaves out Google sign-in, API keys, recommendations, Shorts-first navigation, and algorithmic home feeds.
+It reads public YouTube RSS feeds, stores everything locally in SQLite, and gives you a calm place to sort, schedule, watch, archive, and revisit videos from creators you already follow.
+
+If the problem is "YouTube is good at surfacing more, not better," YT Zero is the opposite: a quiet inbox, your own rules, and a player built around intentional watching.
+
+## Why it exists
+
+YouTube is excellent at keeping attention and bad at staying out of the way. If all you want is:
+
+- your subscriptions in one place
+- a clean watch queue
+- no forced sign-in
+- no API setup
+- no recommendation loop
+
+then the default YouTube experience keeps adding noise around the thing you actually came for.
+
+YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, tags, and playback controls. It drops the account dependency and the recommendation machinery.
+
+## What makes it useful
+
+- **Focused inbox** — all new videos from followed channels in one chronological feed.
+- **No Google dependency** — works without a Google account or YouTube Data API key.
+- **Local-first state** — subscriptions, progress, history, playlists, tags, and rules are stored in SQLite.
+- **Built for triage** — schedule videos for later, archive the ones you will not watch, and come back on your terms.
+- **Organized watching** — use tags, inherited channel tags, rules, and local playlists to shape your own feed.
+- **Real playback controls** — theater view, captions, quality, display settings, and optional SponsorBlock support.
+- **Works for households** — profiles, authentication modes, and child lock make one install usable by more than one person.
 
 ## Features
 
@@ -24,17 +50,28 @@ It keeps the parts that matter — your subscriptions, your own watch queue, you
 - **Watch later buckets** — schedule videos for Today, Tonight, Tomorrow, Tomorrow evening, or Weekend.
 - **Archive flow** — reject videos, restore them later, and keep the main feed clean.
 - **History and progress** — record watched videos and resume partially watched ones.
-- **Tags & rules** — tag videos and channels (inherited by videos), with automatic tag and filter rules.
+- **Tags & rules** — tag videos and channels, inherit channel tags to videos, and automate sorting with rules.
 - **User playlists** — local playlists with icons, manual additions, and rules.
 - **Profiles** — multiple isolated profiles on one install, each with its own state.
-- **Authentication** — None, shared login, per-profile login, OIDC, or proxy headers — with password and passkey support.
-- **Child lock** — PIN-protect settings; useful for kids.
+- **Authentication** — none, shared login, per-profile login, OIDC, or proxy headers, with password and passkey support.
+- **Child lock** — PIN-protect settings for shared or kid-friendly setups.
 - **Shorts tab & player** — a followed-channels-only Shorts feed and a full-screen vertical player.
 - **SponsorBlock** — optionally skip sponsored segments, intros, outros, and more.
-- **Theater view, captions, quality, and display customization** — make the app yours.
+- **Playback and display controls** — theater view, captions, quality, and display customization.
 - **Internationalization** — English, Polish, and German UI.
 
 See the full list with screens in the **[Features](https://github.com/Pelski/ytzero/wiki/Features)** wiki page.
+
+## How it works
+
+YT Zero does not scrape your account or sync with YouTube through a private API. It watches public channel feeds, fetches the metadata needed to build your local library, and serves that library back as a quieter interface.
+
+That means:
+
+- easy self-hosting
+- no API quota headaches
+- local ownership of your app state
+- a product that stays narrow on purpose
 
 ## Quick start
 
@@ -91,3 +128,7 @@ YT Zero does not require a Google account or a YouTube Data API key, and stores 
 YouTube is a trademark of Google LLC. This project is not affiliated with, endorsed by, or associated with YouTube or Google LLC.
 
 Licensed under the **GNU Affero General Public License v3.0 only** (`AGPL-3.0-only`). See [LICENSE](LICENSE). More in **[Privacy & License](https://github.com/Pelski/ytzero/wiki/Privacy-and-License)**.
+
+## Thanks
+
+Thanks to [Green-Kite](https://github.com/Green-Kite) for help with the German language support and updating the wiki.
