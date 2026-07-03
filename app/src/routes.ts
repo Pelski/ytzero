@@ -1818,7 +1818,7 @@ api.post("/auth/password/login", async (c) => {
     return c.json({ ok: true });
   }
   if (method === "per_profile") {
-    const row = db.prepare("SELECT * FROM users WHERE username = ?").get(String(username ?? "")) as UserRow | null;
+    const row = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(String(username ?? "")) as UserRow | null;
     if (!row?.password_hash || !(await verifyPassword(String(password ?? ""), row.password_hash))) {
       return c.json({ error: "invalid credentials" }, 401);
     }
