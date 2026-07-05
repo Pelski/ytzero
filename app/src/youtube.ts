@@ -604,12 +604,11 @@ export interface VideoInfo {
 const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
 const VIDEO_INFO_TTL = 10 * 60_000;
 
-async function fetchVideoInfoFromInnerTube(videoId: string): Promise<VideoInfo> {
-  const data = await _yt.player({ videoId });
-  const vd = data?.videoDetails;
-  if (!vd?.videoId) throw new Error("innertube videoDetails missing");
+function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
+  const vd = pr?.videoDetails;
+  if (!vd?.videoId) throw new Error("videoDetails missing");
 
-  const mf = data?.microformat?.playerMicroformatRenderer;
+  const mf = pr?.microformat?.playerMicroformatRenderer;
   const lengthSec = parseInt(vd.lengthSeconds ?? "", 10);
   const duration = Number.isFinite(lengthSec) && lengthSec > 0
     ? `${Math.floor(lengthSec / 60)}:${String(lengthSec % 60).padStart(2, "0")}`
@@ -629,6 +628,18 @@ async function fetchVideoInfoFromInnerTube(videoId: string): Promise<VideoInfo> 
   };
 }
 
+async function fetchVideoInfoFromInnerTube(videoId: string): Promise<VideoInfo> {
+  const data = await _yt.player({ videoId });
+  return videoInfoFromPlayerResponse(videoId, data);
+}
+
+async function fetchVideoInfoFromEmbed(videoId: string): Promise<VideoInfo> {
+  const res = await fetch(`https://www.youtube.com/embed/${videoId}`, { headers: FETCH_HEADERS });
+  if (!res.ok) throw new Error(`YouTube embed fetch failed (${res.status})`);
+  const pr = extractVariable(await res.text(), "ytInitialPlayerResponse");
+  return videoInfoFromPlayerResponse(videoId, pr);
+}
+
 export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
   const cached = videoInfoCache.get(videoId);
   if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
@@ -640,34 +651,19 @@ export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
     if (!res.ok) throw new Error(`YouTube fetch failed (${res.status})`);
     const html = await res.text();
     const pr = extractVariable(html, "ytInitialPlayerResponse");
-    const vd = pr?.videoDetails;
-    if (!vd?.videoId) throw new Error("videoDetails missing");
-
-    const mf = pr?.microformat?.playerMicroformatRenderer;
-    const lengthSec = parseInt(vd.lengthSeconds ?? "", 10);
-    const duration = Number.isFinite(lengthSec) && lengthSec > 0
-      ? `${Math.floor(lengthSec / 60)}:${String(lengthSec % 60).padStart(2, "0")}`
-      : null;
-
-    result = {
-      videoId: vd.videoId,
-      title: vd.title ?? "",
-      channelId: vd.channelId ?? "",
-      channelTitle: vd.author ?? mf?.ownerChannelName ?? "",
-      description: vd.shortDescription ?? "",
-      thumbnail: vd.thumbnail?.thumbnails?.at(-1)?.url
-        ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
-      viewCount: parseInt(vd.viewCount ?? "", 10) || null,
-      publishedAt: mf?.publishDate ?? null,
-      duration,
-    };
+    result = videoInfoFromPlayerResponse(videoId, pr);
   } catch (htmlError) {
     try {
       result = await fetchVideoInfoFromInnerTube(videoId);
     } catch (innerTubeError) {
-      const primary = htmlError instanceof Error ? htmlError.message : String(htmlError);
-      const fallback = innerTubeError instanceof Error ? innerTubeError.message : String(innerTubeError);
-      throw new Error(`video info failed: html=${primary}; innertube=${fallback}`);
+      try {
+        result = await fetchVideoInfoFromEmbed(videoId);
+      } catch (embedError) {
+        const primary = htmlError instanceof Error ? htmlError.message : String(htmlError);
+        const fallback = innerTubeError instanceof Error ? innerTubeError.message : String(innerTubeError);
+        const embed = embedError instanceof Error ? embedError.message : String(embedError);
+        throw new Error(`video info failed: html=${primary}; innertube=${fallback}; embed=${embed}`);
+      }
     }
   }
   videoInfoCache.set(videoId, { at: Date.now(), data: result });

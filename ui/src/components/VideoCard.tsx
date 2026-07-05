@@ -38,7 +38,7 @@ const SWIPE_MAX_DRAG = 160;
 const SWIPE_FEEDBACK_MS = 720;
 const FINAL_EXIT_MS = 280;
 
-function formatVideoDuration(duration: string | null): string {
+export function formatVideoDuration(duration: string | null): string {
   if (!duration) return "";
   const raw = duration.trim();
   if (!raw) return "";

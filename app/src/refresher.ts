@@ -134,7 +134,7 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
   await backfillShorts(feed.videos.map((v) => v.videoId));
 
   const missingDuration = db.prepare(
-    "SELECT 1 FROM videos WHERE channel_id = ? AND duration IS NULL AND live_status = 'none' LIMIT 1"
+    "SELECT 1 FROM videos WHERE channel_id = ? AND duration IS NULL AND live_status IN ('none', 'was_live') LIMIT 1"
   ).get(channelId);
   if (missingDuration) {
     fetchChannelVideosDurations(channelId).then((durations) => {
@@ -348,19 +348,21 @@ export async function refreshAvatarsBatch() {
  * via the watch page (reliable `lengthSeconds`). This is the backstop for
  * everything the per-channel /videos scrape misses: older uploads beyond the
  * recent tab, RSS-only rows, and externally imported "related" videos.
- * Videos that already have a duration are never touched. Live videos are
- * skipped (no fixed length); shorts are fine to fill — the UI just hides the
- * badge for them. Most-recent first so the active feed fills before the tail.
+ * Videos that already have a duration are never touched. Active/upcoming live
+ * videos are skipped (no fixed length yet), but completed live videos are
+ * included once YouTube exposes their final length. Shorts are fine to fill —
+ * the UI just hides the badge for them. Most-recent first so the active feed
+ * fills before the tail.
  */
 export async function refreshDurationsBatch(limit = 10) {
   const rows = db
     .prepare(
-      `SELECT video_id FROM videos
-       WHERE duration IS NULL AND live_status = 'none'
+      `SELECT video_id, live_status FROM videos
+       WHERE duration IS NULL AND live_status IN ('none', 'was_live')
        ORDER BY COALESCE(published_at, '1970-01-01') DESC
        LIMIT ?`
     )
-    .all(limit) as { video_id: string }[];
+    .all(limit) as { video_id: string; live_status: string }[];
   if (rows.length === 0) return;
 
   const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
@@ -372,13 +374,13 @@ export async function refreshDurationsBatch(limit = 10) {
 
   let filled = 0;
   for (let i = 0; i < rows.length; i++) {
-    const { video_id } = rows[i];
+    const { video_id, live_status } = rows[i];
     try {
       const info = await fetchVideoInfo(video_id);
       if (info.duration) {
         save.run(info.duration, video_id);
         filled++;
-      } else {
+      } else if (live_status === "none") {
         markNone.run(video_id);
       }
     } catch (e) {

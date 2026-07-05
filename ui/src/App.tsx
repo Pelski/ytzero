@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { subscribe, emit } from "./events";
-import { Link, NavLink, Route, Routes, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
 import { api, type AuthStatus, type UserPlaylist, type Video } from "./api";
 import LoginPage from "./pages/LoginPage";
@@ -248,6 +248,7 @@ export default function App() {
 
 function AppShell() {
   const { t } = useI18n();
+  const location = useLocation();
   const navigate = useNavigate();
   const [liveCount, setLiveCount] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
@@ -287,7 +288,9 @@ function AppShell() {
   useEffect(loadSettings, [loadSettings]);
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
-  useEffect(() => { document.title = appName; }, [appName]);
+  useEffect(() => {
+    if (!location.pathname.startsWith("/watch/")) document.title = appName;
+  }, [appName, location.pathname]);
 
   // Re-skin the tab favicon live (the OS-cached PWA icon only refreshes on reinstall).
   useEffect(() => {

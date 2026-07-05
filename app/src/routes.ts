@@ -575,6 +575,10 @@ api.get("/videos/:id/info", async (c) => {
       info.videoId, info.channelId, info.title, info.description,
       info.thumbnail, info.publishedAt, info.viewCount, info.duration
     );
+    if (info.duration) {
+      db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL")
+        .run(info.duration, info.videoId);
+    }
 
     // Insert the channel's recent uploads as external so the related panel fills.
     if (feed) {

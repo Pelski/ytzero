@@ -24,7 +24,7 @@ import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSeg
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n, type I18nKey } from "../i18n";
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
-import { BUCKET_ICONS } from "../components/VideoCard";
+import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
 import { img } from "../img";
 
 let ytApiReady: Promise<void> | null = null;
@@ -500,6 +500,11 @@ export default function WatchPage() {
     return () => clearInterval(t);
   }, [id]);
 
+  useEffect(() => {
+    const title = (video?.title ?? videoInfo?.title ?? "").trim();
+    document.title = title || (id ? `YouTube video ${id}` : "YouTube video");
+  }, [id, video?.title, videoInfo?.title]);
+
   if (!video && !videoMissing) return null;
 
   const reload = () => video && api.video(video.video_id).then((r) => setVideo(r.video));
@@ -952,6 +957,9 @@ export default function WatchPage() {
                 <span className="live-badge">
                   <span className="pulse" /> {t("liveBadge")}
                 </span>
+              )}
+              {v.duration && v.is_short !== 1 && (
+                <span className="duration-badge">{formatVideoDuration(v.duration)}</span>
               )}
             </div>
             <div>
