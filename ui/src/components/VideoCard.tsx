@@ -106,6 +106,7 @@ export default function VideoCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
+  const blockClickAfterDragRef = useRef(false);
 
   const exitLeft = () => {
     const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
@@ -149,6 +150,7 @@ export default function VideoCard({
 
       if (active) {
         setSwiping(true);
+        if (Math.abs(mx) > 8) blockClickAfterDragRef.current = true;
         const clamped = Math.sign(mx) * Math.min(Math.abs(mx), SWIPE_MAX_DRAG);
         setSwipeX(clamped);
         // trigger early when well past threshold
@@ -227,9 +229,12 @@ export default function VideoCard({
     setActionsOpen(false);
   };
 
+  const videoHref = `/watch/${video.video_id}`;
+
   const playFromLink = (e: MouseEvent<HTMLAnchorElement>) => {
-    if (blockNextThumbClickRef.current) {
+    if (blockNextThumbClickRef.current || blockClickAfterDragRef.current) {
       blockNextThumbClickRef.current = false;
+      blockClickAfterDragRef.current = false;
       e.preventDefault();
       e.stopPropagation();
       return;
@@ -299,9 +304,10 @@ export default function VideoCard({
           onMouseLeave={resetActionProximity}
         >
           <Link
-            to={`/watch/${video.video_id}`}
+            to={videoHref}
             className="thumb-link"
             onClick={playFromLink}
+            onDragStart={(e) => e.preventDefault()}
             aria-label={video.title}
           >
             <img className="thumb" src={img(video.thumbnail)} alt="" loading="lazy" draggable={false} />
@@ -411,7 +417,7 @@ export default function VideoCard({
             </Link>
           )}
           <div className="card-info">
-            <Link to={`/watch/${video.video_id}`} className="v-title" onClick={playFromLink}>
+            <Link to={videoHref} className="v-title" onClick={playFromLink}>
               {video.title}
             </Link>
             <div className="v-channel-meta">
