@@ -155,6 +155,31 @@ export interface SearchResult {
   viewCount: number | null;
 }
 
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  route: string;
+  icon: string;
+  permissions: string[];
+  enabled: boolean;
+}
+
+export interface PluginSettingDef {
+  key: string;
+  label: string;
+  description: string;
+  min: number;
+  max: number;
+  step: number;
+  defaultValue: number;
+}
+
+export type DiscoveryRecommendation =
+  | { kind: "local"; score: number; reasons: string[]; video: Video; query?: string }
+  | { kind: "external"; score: number; reasons: string[]; result: SearchResult; query: string };
+
 export interface VideoInfo {
   videoId: string;
   title: string;
@@ -306,6 +331,16 @@ export const api = {
   },
   inProgress: () => http<{ videos: Video[] }>("/in-progress"),
   youtubeSearch: (q: string) => http<{ results: SearchResult[] }>(`/search/youtube?q=${encodeURIComponent(q)}`),
+  plugins: () => http<{ plugins: PluginManifest[] }>("/plugins"),
+  updatePlugin: (id: string, enabled: boolean) =>
+    http<{ plugins: PluginManifest[] }>(`/plugins/${id}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
+  pluginSettings: (id: string) =>
+    http<{ definitions: PluginSettingDef[]; settings: Record<string, number> }>(`/plugins/${id}/settings`),
+  updatePluginSettings: (id: string, patch: Record<string, number>) =>
+    http<{ definitions: PluginSettingDef[]; settings: Record<string, number> }>(`/plugins/${id}/settings`, { method: "PUT", body: JSON.stringify(patch) }),
+  discoveryRecommendations: (refresh = false) => http<{ enabled: boolean; recommendations: DiscoveryRecommendation[] }>(`/discovery/recommendations${refresh ? "?refresh=1" : ""}`),
+  dismissDiscoveryRecommendation: (id: string) =>
+    http<{ ok: true }>(`/discovery/recommendations/${id}/dismiss`, { method: "POST", body: "{}" }),
   videoInfo: (id: string) => http<{ info: VideoInfo }>(`/videos/${id}/info`),
   externalVideos: () => http<{ videos: Video[] }>("/external"),
   clearExternal: () => http<{ deleted: number }>("/external", { method: "DELETE" }),

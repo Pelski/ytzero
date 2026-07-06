@@ -227,13 +227,15 @@ export default function VideoCard({
     setActionsOpen(false);
   };
 
-  const playFromThumb = (e: MouseEvent<HTMLDivElement>) => {
+  const playFromLink = (e: MouseEvent<HTMLAnchorElement>) => {
     if (blockNextThumbClickRef.current) {
       blockNextThumbClickRef.current = false;
       e.preventDefault();
       e.stopPropagation();
       return;
     }
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
     onPlay(video);
   };
 
@@ -291,13 +293,19 @@ export default function VideoCard({
         <div
           className={`thumb-wrap${actionsOpen ? " controls-near" : ""}`}
           style={{ "--actions-proximity": actionProximity } as CSSProperties}
-          onClick={playFromThumb}
           onPointerMove={updateActionProximity}
           onPointerDown={openTouchActions}
           onPointerLeave={resetActionProximity}
           onMouseLeave={resetActionProximity}
         >
-          <img className="thumb" src={img(video.thumbnail)} alt="" loading="lazy" draggable={false} />
+          <Link
+            to={`/watch/${video.video_id}`}
+            className="thumb-link"
+            onClick={playFromLink}
+            aria-label={video.title}
+          >
+            <img className="thumb" src={img(video.thumbnail)} alt="" loading="lazy" draggable={false} />
+          </Link>
           {isWatched && video.is_short === 1 && (
             <div className="thumb-watched-overlay">
               <span>{t("shortWatched")}</span>
@@ -403,9 +411,9 @@ export default function VideoCard({
             </Link>
           )}
           <div className="card-info">
-            <div className="v-title" onClick={() => onPlay(video)}>
+            <Link to={`/watch/${video.video_id}`} className="v-title" onClick={playFromLink}>
               {video.title}
-            </div>
+            </Link>
             <div className="v-channel-meta">
               <Link to={`/channel/${video.channel_id}`} className="v-channel">
                 {video.channel_title}

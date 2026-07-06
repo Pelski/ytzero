@@ -46,6 +46,12 @@ function loadYouTubeApi(): Promise<void> {
 }
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
+const SIDEBAR_KEY = "sidebar_open";
+
+function restoreSidebarVisibility() {
+  document.body.classList.remove("cinema");
+  document.body.classList.toggle("sidebar-hidden", localStorage.getItem(SIDEBAR_KEY) === "0");
+}
 const WATCH_LATER_GROUPS: {
   labelKey: I18nKey;
   buckets: Bucket[];
@@ -454,11 +460,11 @@ export default function WatchPage() {
     } else {
       setCinemaVisible(false);
       const t = setTimeout(() => {
-        document.body.classList.remove("cinema", "sidebar-hidden");
+        restoreSidebarVisibility();
       }, 400);
       return () => {
         clearTimeout(t);
-        document.body.classList.remove("cinema", "sidebar-hidden");
+        restoreSidebarVisibility();
       };
     }
   }, [cinemaMode]);
@@ -471,8 +477,8 @@ export default function WatchPage() {
     return () => document.removeEventListener("keydown", onKey);
   }, [cinemaMode]);
 
-  // Unmount: ensure body classes are cleaned up
-  useEffect(() => () => { document.body.classList.remove("cinema", "sidebar-hidden"); }, []);
+  // Unmount: clean cinema mode without overriding the user's saved sidebar state.
+  useEffect(() => restoreSidebarVisibility, []);
 
   // Keyboard shortcuts: T = cinema, F = fullscreen
   useEffect(() => {

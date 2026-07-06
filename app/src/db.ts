@@ -74,6 +74,51 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS plugins (
+  id         TEXT PRIMARY KEY,
+  enabled    INTEGER NOT NULL DEFAULT 0,
+  version    TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS plugin_settings (
+  plugin_id TEXT NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+  user_id   INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  key       TEXT NOT NULL,
+  value     TEXT NOT NULL,
+  PRIMARY KEY (plugin_id, user_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS plugin_state (
+  plugin_id  TEXT NOT NULL REFERENCES plugins(id) ON DELETE CASCADE,
+  user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  key        TEXT NOT NULL,
+  value      TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (plugin_id, user_id, key)
+);
+
+CREATE TABLE IF NOT EXISTS recommendation_feedback (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id   TEXT NOT NULL,
+  action     TEXT NOT NULL CHECK (action IN ('dismiss', 'less_like_this')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, video_id)
+);
+
+CREATE TABLE IF NOT EXISTS discovery_recommendations (
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id     TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
+  score        REAL NOT NULL DEFAULT 0,
+  reasons_json TEXT NOT NULL DEFAULT '[]',
+  query        TEXT,
+  rank         INTEGER NOT NULL DEFAULT 0,
+  generated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, video_id)
+);
+CREATE INDEX IF NOT EXISTS idx_discovery_recommendations_user_rank ON discovery_recommendations(user_id, rank);
+CREATE INDEX IF NOT EXISTS idx_discovery_recommendations_generated ON discovery_recommendations(generated_at DESC);
+
 CREATE TABLE IF NOT EXISTS history (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   video_id   TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,

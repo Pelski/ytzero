@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingDef, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -14,7 +15,7 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
 
-type Tab = "channels" | "tags" | "playlists" | "display" | "advanced" | "profiles" | "auth";
+type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
 // `primaryOnly` tabs are hidden entirely from non-primary profiles.
 const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean }[] = [
@@ -22,6 +23,7 @@ const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: b
   { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
   { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
+  { id: "plugins", labelKey: "pluginsTab", icon: <Plug size={15} /> },
   { id: "advanced", labelKey: "advanced", icon: <Wrench size={15} /> },
   { id: "profiles", labelKey: "profiles", icon: <Users size={15} /> },
   { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true },
@@ -835,6 +837,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [playlistRules, setPlaylistRules] = useState<Record<number, UserPlaylistRule[]>>({});
+  const [plugins, setPlugins] = useState<PluginManifest[]>([]);
+  const [pluginSettings, setPluginSettings] = useState<Record<string, { definitions: PluginSettingDef[]; settings: Record<string, number> }>>({});
+  const [pluginSettingsModalId, setPluginSettingsModalId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [addingChannel, setAddingChannel] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
@@ -919,6 +924,16 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       .finally(() => setLoadingLogs(false));
   }, []);
 
+  const loadPlugins = useCallback(() => {
+    api.plugins()
+      .then(async (r) => {
+        setPlugins(r.plugins);
+        const pairs = await Promise.all(r.plugins.map(async (plugin) => [plugin.id, await api.pluginSettings(plugin.id)] as const));
+        setPluginSettings(Object.fromEntries(pairs));
+      })
+      .catch(console.error);
+  }, []);
+
   useEffect(() => {
     if (tab === "advanced" && advancedSubTab === "external") loadExternal();
     if (tab === "advanced" && advancedSubTab === "logs") loadLogs();
@@ -975,6 +990,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     // is_admin drives the admin-only tabs/sections (kept in the isPrimary var).
     api.authStatus().then((s) => setIsPrimary(!!s.is_admin)).catch(() => {});
     load().catch(console.error);
+    loadPlugins();
     Promise.all([api.settings(), api.childLock()])
       .then(([r, cl]) => {
         const name = r.settings.app_name || "YT Zero";
@@ -999,7 +1015,51 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setChildLock(cl.child_lock);
       })
       .catch(console.error);
-  }, [load]);
+  }, [load, loadPlugins]);
+
+  const togglePlugin = async (plugin: PluginManifest) => {
+    const enabled = !plugin.enabled;
+    setPlugins((current) => current.map((p) => p.id === plugin.id ? { ...p, enabled } : p));
+    try {
+      const r = await api.updatePlugin(plugin.id, enabled);
+      setPlugins(r.plugins);
+      emit("plugins-changed");
+      showToast(enabled ? t("pluginEnabled") : t("pluginDisabled"));
+    } catch (e) {
+      loadPlugins();
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const updatePluginSetting = async (pluginId: string, key: string, value: number) => {
+    setPluginSettings((current) => {
+      const currentPlugin = current[pluginId];
+      if (!currentPlugin) return current;
+      return {
+        ...current,
+        [pluginId]: {
+          ...currentPlugin,
+          settings: { ...currentPlugin.settings, [key]: value },
+        },
+      };
+    });
+    try {
+      const next = await api.updatePluginSettings(pluginId, { [key]: value });
+      setPluginSettings((current) => ({ ...current, [pluginId]: next }));
+    } catch (e) {
+      loadPlugins();
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  useEffect(() => {
+    if (!pluginSettingsModalId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPluginSettingsModalId(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [pluginSettingsModalId]);
 
   useEffect(() => {
     if (!tagMenuChannelId) return;
@@ -1938,6 +1998,95 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </Popconfirm>
           </div>
           <SidebarNavEditor value={navConfig} onChange={persistNavConfig} />
+        </section>
+      )}
+
+      {!isSettingsLocked && tab === "plugins" && (
+        <section className="settings-section">
+          <div className="plugin-alert">{t("pluginSettingsHint")}</div>
+          <div className="plugin-settings-list">
+            {plugins.map((plugin) => (
+              <div key={plugin.id} className="plugin-settings-row">
+                <div className="plugin-settings-main">
+                  <div className="plugin-settings-name">{plugin.name}</div>
+                  <div className="plugin-settings-description">{plugin.description}</div>
+                  <div className="plugin-permissions">
+                    {plugin.permissions.map((permission) => (
+                      <span key={permission} className="tag-pill">{permission}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="plugin-settings-actions">
+                  {pluginSettings[plugin.id]?.definitions.length > 0 && (
+                    <button className="btn plugin-configure-btn" onClick={() => setPluginSettingsModalId(plugin.id)}>
+                      <Wrench size={15} />
+                      {t("configure")}
+                    </button>
+                  )}
+                  <button
+                    className={`switch ${plugin.enabled ? "on" : ""}`}
+                    role="switch"
+                    aria-checked={plugin.enabled}
+                    onClick={() => togglePlugin(plugin)}
+                  >
+                    <span />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+          {pluginSettingsModalId && (() => {
+            const plugin = plugins.find((p) => p.id === pluginSettingsModalId);
+            const config = pluginSettings[pluginSettingsModalId];
+            if (!plugin || !config) return null;
+            return createPortal(
+              <div className="plugin-modal-backdrop" onMouseDown={() => setPluginSettingsModalId(null)}>
+                <div className="plugin-modal" role="dialog" aria-modal="true" aria-labelledby="plugin-settings-title" onMouseDown={(e) => e.stopPropagation()}>
+                  <div className="plugin-modal-head">
+                    <div>
+                      <h2 id="plugin-settings-title">{plugin.name}</h2>
+                      <p>{plugin.description}</p>
+                    </div>
+                    <button className="icon-btn" title={t("close")} onClick={() => setPluginSettingsModalId(null)}>
+                      <X />
+                    </button>
+                  </div>
+                  <div className="plugin-modal-controls">
+                    {config.definitions.map((def) => {
+                      const value = config.settings[def.key] ?? def.defaultValue;
+                      return (
+                        <label key={def.key} className="plugin-slider-row">
+                          <div className="plugin-slider-copy">
+                            <span className="switch-label">{def.label}</span>
+                            <span className="switch-sub">{def.description}</span>
+                          </div>
+                          <div className="plugin-slider-control">
+                            <input
+                              type="range"
+                              min={def.min}
+                              max={def.max}
+                              step={def.step}
+                              value={value}
+                              onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))}
+                            />
+                            <input
+                              type="number"
+                              min={def.min}
+                              max={def.max}
+                              step={def.step}
+                              value={value}
+                              onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))}
+                            />
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>,
+              document.body
+            );
+          })()}
         </section>
       )}
 

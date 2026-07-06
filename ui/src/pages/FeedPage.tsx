@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Clock, Eye, Grid2X2, Grid3X3, Inbox, RefreshCw, Square } from "lucide-react";
+import { Clock, Eye, Inbox, RefreshCw } from "lucide-react";
 import { api, type Bucket, type Channel, type SearchResult, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { img } from "../img";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
+import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
 
@@ -48,14 +49,6 @@ function ChannelAvatarRow() {
     </div>
   );
 }
-
-type GridSize = "sm" | "md" | "lg";
-
-const GRID_SIZES: { id: GridSize; icon: React.ReactNode; labelKey: "gridSmall" | "gridMedium" | "gridLarge" }[] = [
-  { id: "sm", icon: <Grid3X3 size={15} />, labelKey: "gridSmall" },
-  { id: "md", icon: <Grid2X2 size={15} />, labelKey: "gridMedium" },
-  { id: "lg", icon: <Square size={15} />, labelKey: "gridLarge" },
-];
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 
@@ -115,9 +108,7 @@ export default function FeedPage({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [gridSize, setGridSize] = useState<GridSize>(
-    () => (localStorage.getItem("gridSize") as GridSize) ?? "sm"
-  );
+  const [gridSize, setGridSize] = useState<GridSize>(readGridSize);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const inProgressScroll = useHScroll();
@@ -212,8 +203,7 @@ export default function FeedPage({
 
   const changeGridSize = (size: GridSize) => {
     setGridSize(size);
-    localStorage.setItem("gridSize", size);
-    api.updateSettings({ grid_size: size }).catch(() => {});
+    persistGridSize(size);
   };
 
   const toggleTag = (id: number) => {

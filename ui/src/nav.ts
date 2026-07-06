@@ -1,10 +1,11 @@
-import { Archive, Clapperboard, Clock, History, Home, Radio, Settings, ThumbsUp, type LucideIcon } from "lucide-react";
+import { Archive, Clapperboard, Clock, History, Home, Radio, Settings, Sparkles, ThumbsUp, type LucideIcon } from "lucide-react";
 import type { I18nKey } from "./i18n";
 
 export type NavItem = { to: string; labelKey: I18nKey; icon: LucideIcon; end?: boolean };
 
 export const NAV_ITEMS: NavItem[] = [
   { to: "/", labelKey: "navToday", icon: Home, end: true },
+  { to: "/discovery", labelKey: "navDiscovery", icon: Sparkles },
   { to: "/shorts", labelKey: "navShorts", icon: Clapperboard },
   { to: "/live", labelKey: "navLive", icon: Radio },
   { to: "/watchlist", labelKey: "navWatchlist", icon: Clock },

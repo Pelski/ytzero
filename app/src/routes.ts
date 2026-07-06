@@ -23,6 +23,7 @@ import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
+import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, refreshDiscoveryInBackground, refreshDiscoveryNow, setPluginEnabled, setPluginSettings } from "./plugins";
 import {
   authMethod,
   hashPassword,
@@ -242,6 +243,7 @@ const SETTINGS_MUTATION_PREFIXES = [
   "/rules",
   "/filter-rules",
   "/playlists",
+  "/plugins",
 ];
 
 api.use("*", async (c, next) => {
@@ -474,6 +476,66 @@ api.get("/search/youtube", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
+});
+
+// ---------- built-in plugins ----------
+
+api.get("/plugins", (c) => {
+  const uid = currentUserId(c);
+  return c.json({ plugins: listPlugins(getUserSetting(uid, "language")) });
+});
+
+api.put("/plugins/:id", async (c) => {
+  const { enabled } = await c.req.json() as { enabled?: boolean };
+  try {
+    setPluginEnabled(c.req.param("id"), !!enabled);
+    return c.json({ plugins: listPlugins(getUserSetting(currentUserId(c), "language")) });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+  }
+});
+
+api.get("/plugins/:id/settings", (c) => {
+  try {
+    const uid = currentUserId(c);
+    return c.json(getPluginSettings(uid, c.req.param("id"), getUserSetting(uid, "language")));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+  }
+});
+
+api.put("/plugins/:id/settings", async (c) => {
+  try {
+    const uid = currentUserId(c);
+    const body = await c.req.json();
+    return c.json(setPluginSettings(uid, c.req.param("id"), body, getUserSetting(uid, "language")));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+  }
+});
+
+api.get("/discovery/recommendations", async (c) => {
+  const uid = currentUserId(c);
+  const data = c.req.query("refresh") === "1"
+    ? await refreshDiscoveryNow(uid)
+    : await discoveryRecommendations(uid);
+  const localVideos = data.recommendations
+    .filter((r) => r.kind === "local" && r.video)
+    .map((r) => r.video as VideoRow);
+  const tagged = attachTags(uid, localVideos);
+  let localIndex = 0;
+  return c.json({
+    enabled: data.enabled,
+    recommendations: data.recommendations.map((r) => {
+      if (r.kind !== "local") return r;
+      return { ...r, video: tagged[localIndex++] };
+    }),
+  });
+});
+
+api.post("/discovery/recommendations/:id/dismiss", (c) => {
+  dismissDiscoveryRecommendation(currentUserId(c), c.req.param("id"));
+  return c.json({ ok: true });
 });
 
 api.get("/live", (c) => {
@@ -735,6 +797,7 @@ api.post("/videos/:id/queue", async (c) => {
      VALUES (?, ?, 'queued', ?, datetime('now'), ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'queued', bucket = excluded.bucket, queued_at = excluded.queued_at, show_from = excluded.show_from`
   ).run(uid, id, bucket, showFrom);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -746,6 +809,7 @@ api.post("/videos/:id/archive", (c) => {
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'archived')
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'archived', bucket = NULL, show_from = NULL`
   ).run(uid, id);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -755,6 +819,7 @@ api.post("/videos/:id/restore", (c) => {
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'inbox')
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'inbox', bucket = NULL, show_from = NULL`
   ).run(uid, c.req.param("id"));
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -764,13 +829,17 @@ api.post("/videos/:id/dequeue", (c) => {
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'inbox')
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'inbox', bucket = NULL, queued_at = NULL, show_from = NULL`
   ).run(uid, c.req.param("id"));
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
 api.post("/videos/:id/watch", (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  if (videoExistsStmt.get(id)) db.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
+  if (videoExistsStmt.get(id)) {
+    db.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
+    refreshDiscoveryInBackground(uid);
+  }
   return c.json({ ok: true });
 });
 
@@ -783,6 +852,7 @@ api.put("/videos/:id/like", async (c) => {
     `INSERT INTO user_videos (user_id, video_id, liked) VALUES (?, ?, ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET liked = excluded.liked`
   ).run(uid, id, liked ? 1 : null);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -795,6 +865,7 @@ api.put("/videos/:id/progress", async (c) => {
     `INSERT INTO user_videos (user_id, video_id, watch_position, watch_duration) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET watch_position = excluded.watch_position, watch_duration = excluded.watch_duration`
   ).run(uid, id, position, duration);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -803,6 +874,7 @@ api.delete("/videos/:id/progress", (c) => {
   db.prepare(
     "UPDATE user_videos SET watch_position = NULL, watch_duration = NULL WHERE user_id = ? AND video_id = ?"
   ).run(uid, c.req.param("id"));
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -817,14 +889,17 @@ api.post("/videos/:id/tags", async (c) => {
     c.req.param("id"),
     tag_id
   );
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
 api.delete("/videos/:id/tags/:tagId", (c) => {
+  const uid = currentUserId(c);
   db.prepare("DELETE FROM video_tags WHERE video_id = ? AND tag_id = ?").run(
     c.req.param("id"),
     c.req.param("tagId")
   );
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -854,6 +929,7 @@ api.get("/history", (c) => {
 api.delete("/history/:id", (c) => {
   const uid = currentUserId(c);
   db.prepare("DELETE FROM history WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -938,10 +1014,12 @@ api.post("/channels/:id/tags", async (c) => {
   db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT video_id, ?, 'channel' FROM videos WHERE channel_id = ?"
   ).run(tag_id, channelId);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
 api.delete("/channels/:id/tags/:tagId", (c) => {
+  const uid = currentUserId(c);
   const channelId = c.req.param("id");
   const tagId = c.req.param("tagId");
   db.prepare("DELETE FROM channel_tags WHERE channel_id = ? AND tag_id = ?").run(channelId, tagId);
@@ -949,6 +1027,7 @@ api.delete("/channels/:id/tags/:tagId", (c) => {
   db.prepare(
     "DELETE FROM video_tags WHERE tag_id = ? AND source = 'channel' AND video_id IN (SELECT video_id FROM videos WHERE channel_id = ?)"
   ).run(tagId, channelId);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -1267,6 +1346,7 @@ api.post("/playlists/:id/videos", async (c) => {
   if (!video_id) return c.json({ error: "video_id required" }, 400);
   if (!ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
   db.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)").run(c.req.param("id"), video_id);
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
@@ -1277,6 +1357,7 @@ api.delete("/playlists/:id/videos/:videoId", (c) => {
     c.req.param("id"),
     c.req.param("videoId")
   );
+  refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 

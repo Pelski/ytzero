@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
 import { img } from "./img";
 import FeedPage from "./pages/FeedPage";
+import DiscoveryPage from "./pages/DiscoveryPage";
 import LivePage from "./pages/LivePage";
 import WatchlistPage from "./pages/WatchlistPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -256,6 +257,7 @@ function AppShell() {
   const [appName, setAppName] = useState("YT Zero");
   const [appIconColor, setAppIconColor] = useState("#f2293a");
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
+  const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
   const [showHidden, setShowHidden] = useState(false);
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
@@ -288,6 +290,20 @@ function AppShell() {
   useEffect(loadSettings, [loadSettings]);
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
+
+  const loadPlugins = useCallback(() => {
+    api.plugins()
+      .then((r) => setEnabledPluginRoutes(new Set(r.plugins.filter((p) => p.enabled).map((p) => p.route))))
+      .catch(() => setEnabledPluginRoutes(new Set()));
+  }, []);
+
+  useEffect(loadPlugins, [loadPlugins]);
+  useEffect(() => subscribe("plugins-changed", loadPlugins), [loadPlugins]);
+  useEffect(() => {
+    if (!enabledPluginRoutes) return;
+    if (location.pathname === "/discovery" && !enabledPluginRoutes.has("/discovery")) navigate("/", { replace: true });
+  }, [enabledPluginRoutes, location.pathname, navigate]);
+
   useEffect(() => {
     if (!location.pathname.startsWith("/watch/")) document.title = appName;
   }, [appName, location.pathname]);
@@ -310,7 +326,10 @@ function AppShell() {
     return () => clearInterval(t);
   }, []);
 
-  const { visible: navItems, hidden: hiddenNavItems } = splitNavItems(navConfig);
+  const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(navConfig);
+  const pluginRouteVisible = (to: string) => to !== "/discovery" || enabledPluginRoutes?.has(to);
+  const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to));
+  const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to));
 
   const renderNavLink = (item: (typeof navItems)[number]) => {
     const Icon = item.icon;
@@ -349,6 +368,7 @@ function AppShell() {
           <div className="content">
             <Routes>
               <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} />} />
+              <Route path="/discovery" element={<DiscoveryPage onPlay={play} />} />
               <Route path="/shorts" element={<ShortsPage />} />
               <Route path="/live" element={<LivePage onPlay={play} />} />
               <Route path="/watch/:id" element={<WatchPage />} />
