@@ -1,5 +1,6 @@
 import { db } from "./db";
 import { fetchChannelAbout, fetchVideoInfo, searchYouTube, type SearchResult, type VideoInfo } from "./youtube";
+import { buildKeywordPlan, tokenizeDiscoveryText, type KeywordSeed } from "./discoveryKeywords";
 
 export interface PluginManifest {
   id: string;
@@ -22,6 +23,11 @@ export interface PluginSettingDef {
   max: number;
   step: number;
   defaultValue: number;
+}
+
+export interface PluginTermState {
+  lastTerms: string[];
+  blockedTerms: string[];
 }
 
 type PluginSettingSource = Omit<PluginSettingDef, "label" | "description"> & {
@@ -150,7 +156,11 @@ export function getPluginSettings(uid: number, pluginId: string, language?: stri
     const raw = values.get(def.key);
     settings[def.key] = clampSetting(Number.isFinite(raw) ? raw! : def.defaultValue, def);
   }
-  return { definitions: defs.map((def) => localizeSetting(def, language)), settings };
+  return {
+    definitions: defs.map((def) => localizeSetting(def, language)),
+    settings,
+    terms: pluginId === "discovery" ? discoveryTermState(uid) : undefined,
+  };
 }
 
 export function setPluginSettings(uid: number, pluginId: string, patch: Record<string, unknown>, language?: string | null) {
@@ -169,6 +179,9 @@ export function setPluginSettings(uid: number, pluginId: string, patch: Record<s
     }
   });
   tx();
+  if (pluginId === "discovery" && "blockedTerms" in patch) {
+    setDiscoveryBlockedTerms(uid, patch.blockedTerms);
+  }
   if (pluginId === "discovery") {
     invalidateDiscoveryRecommendations(uid);
     refreshDiscoveryInBackground(uid);
@@ -176,8 +189,79 @@ export function setPluginSettings(uid: number, pluginId: string, patch: Record<s
   return getPluginSettings(uid, pluginId, language);
 }
 
+export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
+  if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
+  if (pluginId === "discovery") {
+    const timer = discoveryRefreshTimers.get(uid);
+    if (timer) {
+      clearTimeout(timer);
+      discoveryRefreshTimers.delete(uid);
+    }
+    await discoveryRefreshInFlight.get(uid)?.catch(() => {});
+  }
+
+  const tx = db.transaction(() => {
+    if (pluginId === "discovery") {
+      // Remove only temporary videos introduced by this profile's recommendations.
+      // Anything watched, queued, liked or saved by any profile remains intact.
+      db.prepare(`
+        DELETE FROM videos
+        WHERE external = 1
+          AND video_id IN (SELECT video_id FROM discovery_recommendations WHERE user_id = ?)
+          AND NOT EXISTS (
+            SELECT 1 FROM user_videos uv
+            WHERE uv.video_id = videos.video_id
+              AND (uv.status = 'queued' OR uv.liked = 1 OR uv.watch_position IS NOT NULL)
+          )
+          AND NOT EXISTS (SELECT 1 FROM user_playlist_videos upv WHERE upv.video_id = videos.video_id)
+          AND NOT EXISTS (SELECT 1 FROM history h WHERE h.video_id = videos.video_id)
+      `).run(uid);
+      db.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
+      db.prepare("DELETE FROM recommendation_feedback WHERE user_id = ?").run(uid);
+      db.prepare("DELETE FROM channels WHERE external = 1 AND channel_id NOT IN (SELECT DISTINCT channel_id FROM videos)").run();
+    }
+    db.prepare("DELETE FROM plugin_settings WHERE plugin_id = ? AND user_id = ?").run(pluginId, uid);
+    db.prepare("DELETE FROM plugin_state WHERE plugin_id = ? AND user_id = ?").run(pluginId, uid);
+  });
+  tx();
+  return getPluginSettings(uid, pluginId, language);
+}
+
 function discoverySettings(uid: number) {
   return getPluginSettings(uid, "discovery").settings;
+}
+
+function discoveryTermState(uid: number): PluginTermState {
+  return {
+    lastTerms: readDiscoveryTerms(uid, "last_terms"),
+    blockedTerms: readDiscoveryTerms(uid, "blocked_terms"),
+  };
+}
+
+function readDiscoveryTerms(uid: number, key: "last_terms" | "blocked_terms") {
+  const row = db.prepare("SELECT value FROM plugin_state WHERE plugin_id = 'discovery' AND user_id = ? AND key = ?")
+    .get(uid, key) as { value: string } | null;
+  if (!row) return [];
+  try {
+    const parsed = JSON.parse(row.value);
+    return Array.isArray(parsed) ? parsed.filter((term) => typeof term === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeDiscoveryTerms(uid: number, key: "last_terms" | "blocked_terms", terms: string[]) {
+  db.prepare(`
+    INSERT INTO plugin_state (plugin_id, user_id, key, value, updated_at)
+    VALUES ('discovery', ?, ?, ?, datetime('now'))
+    ON CONFLICT(plugin_id, user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+  `).run(uid, key, JSON.stringify(terms));
+}
+
+function setDiscoveryBlockedTerms(uid: number, value: unknown) {
+  const raw = Array.isArray(value) ? value : [];
+  const normalized = Array.from(new Set(raw.flatMap((term) => typeof term === "string" ? tokenizeDiscoveryText(term) : []))).sort();
+  writeDiscoveryTerms(uid, "blocked_terms", normalized);
 }
 
 function clampSetting(value: number, def: Pick<PluginSettingDef, "min" | "max" | "step">) {
@@ -197,30 +281,6 @@ export interface DiscoveryRecommendation {
 const DISCOVERY_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const discoveryRefreshInFlight = new Map<number, Promise<void>>();
 const discoveryRefreshTimers = new Map<number, ReturnType<typeof setTimeout>>();
-
-function tokenize(input: string) {
-  return input
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}\s-]/gu, " ")
-    .split(/\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 4 && !STOP_WORDS.has(s));
-}
-
-const STOP_WORDS = new Set([
-  "this", "that", "with", "from", "your", "have", "what", "when", "where", "about", "into", "over",
-  "dla", "oraz", "jest", "jako", "przez", "ktore", "które", "czyli", "tego", "tych", "eine", "einer",
-  "und", "oder", "dass", "nicht", "this", "video", "film", "episode", "official",
-]);
-
-function topTerms(rows: { text: string; weight: number }[], limit: number) {
-  const scores = new Map<string, number>();
-  for (const row of rows) {
-    for (const token of tokenize(row.text)) scores.set(token, (scores.get(token) ?? 0) + row.weight);
-  }
-  return [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([term]) => term);
-}
 
 function localRecommendations(uid: number, limit: number, settings: Record<string, number>): DiscoveryRecommendation[] {
   const rows = db.prepare(`
@@ -343,41 +403,47 @@ function localRecommendations(uid: number, limit: number, settings: Record<strin
 
 async function externalRecommendations(uid: number, limit: number, settings: Record<string, number>): Promise<DiscoveryRecommendation[]> {
   const seedRows = db.prepare(`
-    SELECT (v.title || ' ' || COALESCE(v.description, '') || ' ' || c.title) AS text,
-           CASE WHEN uv.liked = 1 THEN 4 WHEN h.video_id IS NOT NULL THEN 2 ELSE 1 END AS weight
+    SELECT v.title AS text,
+           CASE WHEN uv.liked = 1 THEN 6
+                WHEN EXISTS (SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?) THEN 3
+                ELSE 2 END AS weight,
+           'title' AS kind
     FROM videos v
-    JOIN channels c ON c.channel_id = v.channel_id
     LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
-    LEFT JOIN history h ON h.video_id = v.video_id AND h.user_id = ?
-    WHERE uv.liked = 1 OR h.video_id IS NOT NULL OR uv.watch_position IS NOT NULL
-    ORDER BY COALESCE(h.watched_at, v.published_at, v.created_at) DESC
+    WHERE uv.liked = 1
+       OR EXISTS (SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?)
+       OR uv.watch_position IS NOT NULL
+    ORDER BY COALESCE(
+      (SELECT MAX(h.watched_at) FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?),
+      v.published_at,
+      v.created_at
+    ) DESC
     LIMIT 80
-  `).all(uid, uid) as { text: string; weight: number }[];
+  `).all(uid, uid, uid, uid) as KeywordSeed[];
   const tagRows = db.prepare(`
-    SELECT t.name AS text, 5 AS weight
+    SELECT t.name AS text, 5 AS weight, 'tag' AS kind
     FROM tags t
     WHERE t.user_id = ? AND (
       EXISTS (SELECT 1 FROM video_tags vt JOIN user_videos uv ON uv.video_id = vt.video_id AND uv.user_id = ? WHERE vt.tag_id = t.id AND uv.liked = 1)
       OR EXISTS (SELECT 1 FROM channel_tags ct JOIN videos v ON v.channel_id = ct.channel_id JOIN history h ON h.video_id = v.video_id AND h.user_id = ? WHERE ct.tag_id = t.id)
     )
-  `).all(uid, uid, uid) as { text: string; weight: number }[];
-  const terms = topTerms([...tagRows, ...seedRows], 8);
-  const termSet = new Set(terms);
-  const queries = Array.from(new Set([
-    terms.slice(0, 3).join(" "),
-    terms.slice(1, 4).join(" "),
-    terms.slice(3, 6).join(" "),
-  ].filter((q) => q.trim().length >= 4))).slice(0, 3);
+  `).all(uid, uid, uid) as KeywordSeed[];
+  const blockedTerms = new Set(readDiscoveryTerms(uid, "blocked_terms"));
+  const keywordPlan = buildKeywordPlan([...tagRows, ...seedRows], blockedTerms, 24, 3);
+  const foundTerms = keywordPlan.terms;
+  writeDiscoveryTerms(uid, "last_terms", foundTerms);
+  const queries = keywordPlan.queries;
 
   const candidates: (SearchResult & { query: string; matchScore: number })[] = [];
   const seen = new Set<string>();
   for (const query of queries) {
+    const queryTerms = new Set(tokenizeDiscoveryText(query));
     const results = await searchYouTube(query).catch(() => []);
     for (const result of results) {
       if (seen.has(result.videoId)) continue;
       if (db.prepare("SELECT 1 FROM recommendation_feedback WHERE user_id = ? AND video_id = ? AND action = 'dismiss'").get(uid, result.videoId)) continue;
       seen.add(result.videoId);
-      const matchScore = scoreSearchResult(result, termSet, settings);
+      const matchScore = scoreSearchResult(result, queryTerms, settings);
       if (matchScore <= 0) continue;
       candidates.push({ ...result, query, matchScore });
     }
@@ -404,7 +470,7 @@ async function externalRecommendations(uid: number, limit: number, settings: Rec
 }
 
 function scoreSearchResult(result: SearchResult, terms: Set<string>, settings: Record<string, number>) {
-  const titleTokens = tokenize(`${result.title} ${result.channelTitle}`);
+  const titleTokens = tokenizeDiscoveryText(`${result.title} ${result.channelTitle}`);
   let score = 0;
   for (const token of titleTokens) {
     if (terms.has(token)) score += settings.outside_exact_match_points;

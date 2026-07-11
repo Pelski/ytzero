@@ -23,6 +23,13 @@ const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 // tripping YouTube's rate limiting (HTTP 429).
 const MAX_SYNC_PLAYLISTS = 25;
 const PLAYLIST_SYNC_DELAY_MS = 800;
+const VIDEO_MAINTENANCE_MAX_AGE_DAYS = positiveNumber(process.env.VIDEO_MAINTENANCE_MAX_AGE_DAYS, 90);
+const VIDEO_MAINTENANCE_CUTOFF = `-${VIDEO_MAINTENANCE_MAX_AGE_DAYS} days`;
+
+function positiveNumber(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
 
 async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh = false) {
   const about = await fetchChannelAbout(channelId);
@@ -134,8 +141,13 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
   await backfillShorts(feed.videos.map((v) => v.videoId));
 
   const missingDuration = db.prepare(
-    "SELECT 1 FROM videos WHERE channel_id = ? AND duration IS NULL AND live_status IN ('none', 'was_live') LIMIT 1"
-  ).get(channelId);
+    `SELECT 1 FROM videos
+     WHERE channel_id = ?
+       AND duration IS NULL
+       AND live_status IN ('none', 'was_live')
+       AND COALESCE(published_at, created_at) >= datetime('now', ?)
+     LIMIT 1`
+  ).get(channelId, VIDEO_MAINTENANCE_CUTOFF);
   if (missingDuration) {
     fetchChannelVideosDurations(channelId).then((durations) => {
       const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
@@ -170,8 +182,12 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
       .all(...videoIds) as any[];
   } else {
     rows = db
-      .prepare("SELECT video_id, title FROM videos WHERE is_short IS NULL LIMIT ?")
-      .all(limit) as any[];
+      .prepare(`SELECT video_id, title FROM videos
+                WHERE is_short IS NULL
+                  AND COALESCE(published_at, created_at) >= datetime('now', ?)
+                ORDER BY COALESCE(published_at, created_at) DESC
+                LIMIT ?`)
+      .all(VIDEO_MAINTENANCE_CUTOFF, limit) as any[];
   }
   const setShort = db.prepare("UPDATE videos SET is_short = ? WHERE video_id = ?");
   for (const r of rows) {
@@ -346,8 +362,9 @@ export async function refreshAvatarsBatch() {
 /**
  * Backfill `duration` for videos that don't have it yet, one video at a time
  * via the watch page (reliable `lengthSeconds`). This is the backstop for
- * everything the per-channel /videos scrape misses: older uploads beyond the
- * recent tab, RSS-only rows, and externally imported "related" videos.
+ * recent items the per-channel /videos scrape misses: RSS-only rows and
+ * externally imported "related" videos. Automatic maintenance deliberately
+ * ignores old rows; opening a video still resolves its metadata on demand.
  * Videos that already have a duration are never touched. Active/upcoming live
  * videos are skipped (no fixed length yet), but completed live videos are
  * included once YouTube exposes their final length. Shorts are fine to fill —
@@ -358,11 +375,13 @@ export async function refreshDurationsBatch(limit = 10) {
   const rows = db
     .prepare(
       `SELECT video_id, live_status FROM videos
-       WHERE duration IS NULL AND live_status IN ('none', 'was_live')
+       WHERE duration IS NULL
+         AND live_status IN ('none', 'was_live')
+         AND COALESCE(published_at, created_at) >= datetime('now', ?)
        ORDER BY COALESCE(published_at, '1970-01-01') DESC
        LIMIT ?`
     )
-    .all(limit) as { video_id: string; live_status: string }[];
+    .all(VIDEO_MAINTENANCE_CUTOFF, limit) as { video_id: string; live_status: string }[];
   if (rows.length === 0) return;
 
   const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
@@ -474,11 +493,12 @@ export async function refreshAllLiveStatuses(): Promise<void> {
 }
 
 export function startScheduler() {
+  const refreshIntervalMin = positiveNumber(process.env.REFRESH_INTERVAL_MINUTES, 5);
   setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
-  setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 10 * 60_000);
-  log.info("scheduler.feed_refresh", { intervalMin: 10, batchSize: 10 });
+  setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), refreshIntervalMin * 60_000);
+  log.info("scheduler.feed_refresh", { intervalMin: refreshIntervalMin, batchSize: 10 });
 
-  const liveIntervalMin = Number(process.env.LIVE_INTERVAL_MINUTES ?? 3);
+  const liveIntervalMin = positiveNumber(process.env.LIVE_INTERVAL_MINUTES, 3);
   setTimeout(() => refreshAllLiveStatuses().catch((e) => log.error("live.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);
   setInterval(() => refreshAllLiveStatuses().catch((e) => log.error("live.cron_failed", { error: e instanceof Error ? e.message : String(e) })), liveIntervalMin * 60_000);
   log.info("scheduler.live_refresh", { intervalMin: liveIntervalMin });
@@ -486,9 +506,13 @@ export function startScheduler() {
 
   // Duration backfill cron: fill `duration` for videos still missing it,
   // most-recent first, a small polite batch every few minutes.
-  const durationBatch = Number(process.env.DURATION_BATCH_SIZE ?? 20);
-  const durationIntervalMin = Number(process.env.DURATION_INTERVAL_MINUTES ?? 3);
+  const durationBatch = positiveNumber(process.env.DURATION_BATCH_SIZE, 20);
+  const durationIntervalMin = positiveNumber(process.env.DURATION_INTERVAL_MINUTES, 3);
   setTimeout(() => refreshDurationsBatch(durationBatch).catch((e) => log.error("durations.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 30_000);
   setInterval(() => refreshDurationsBatch(durationBatch).catch((e) => log.error("durations.cron_failed", { error: e instanceof Error ? e.message : String(e) })), durationIntervalMin * 60_000);
-  log.info("scheduler.duration_backfill", { intervalMin: durationIntervalMin, batchSize: durationBatch });
+  log.info("scheduler.duration_backfill", {
+    intervalMin: durationIntervalMin,
+    batchSize: durationBatch,
+    maxAgeDays: VIDEO_MAINTENANCE_MAX_AGE_DAYS,
+  });
 }

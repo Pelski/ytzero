@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Clock, Eye, Inbox, RefreshCw } from "lucide-react";
 import { api, type Bucket, type Channel, type SearchResult, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -89,7 +89,6 @@ export default function FeedPage({
   showToast: (m: string) => void;
 }) {
   const { t, locale } = useI18n();
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const q = params.get("q") ?? "";
   const [videos, setVideos] = useState<Video[]>([]);
@@ -416,10 +415,10 @@ export default function FeedPage({
           ) : ytResults.length === 0 ? null : (
             <div className="yt-results-list">
               {ytResults.map((r) => (
-                <div
+                <Link
                   key={r.videoId}
                   className="yt-result-row"
-                  onClick={() => navigate(`/watch/${r.videoId}`)}
+                  to={`/watch/${r.videoId}`}
                 >
                   <div className="yt-result-thumb">
                     <img src={r.thumbnail} alt="" loading="lazy" />
@@ -432,7 +431,7 @@ export default function FeedPage({
                       {r.viewCount != null && ` · ${r.viewCount.toLocaleString(locale)} ${t("views")}`}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

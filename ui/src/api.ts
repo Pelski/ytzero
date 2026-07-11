@@ -176,6 +176,17 @@ export interface PluginSettingDef {
   defaultValue: number;
 }
 
+export interface PluginTermState {
+  lastTerms: string[];
+  blockedTerms: string[];
+}
+
+export interface PluginSettingsResponse {
+  definitions: PluginSettingDef[];
+  settings: Record<string, number>;
+  terms?: PluginTermState;
+}
+
 export type DiscoveryRecommendation =
   | { kind: "local"; score: number; reasons: string[]; video: Video; query?: string }
   | { kind: "external"; score: number; reasons: string[]; result: SearchResult; query: string };
@@ -335,9 +346,11 @@ export const api = {
   updatePlugin: (id: string, enabled: boolean) =>
     http<{ plugins: PluginManifest[] }>(`/plugins/${id}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
   pluginSettings: (id: string) =>
-    http<{ definitions: PluginSettingDef[]; settings: Record<string, number> }>(`/plugins/${id}/settings`),
-  updatePluginSettings: (id: string, patch: Record<string, number>) =>
-    http<{ definitions: PluginSettingDef[]; settings: Record<string, number> }>(`/plugins/${id}/settings`, { method: "PUT", body: JSON.stringify(patch) }),
+    http<PluginSettingsResponse>(`/plugins/${id}/settings`),
+  updatePluginSettings: (id: string, patch: Record<string, number> | { blockedTerms: string[] }) =>
+    http<PluginSettingsResponse>(`/plugins/${id}/settings`, { method: "PUT", body: JSON.stringify(patch) }),
+  resetPlugin: (id: string) =>
+    http<PluginSettingsResponse>(`/plugins/${id}/reset`, { method: "POST", body: "{}" }),
   discoveryRecommendations: (refresh = false) => http<{ enabled: boolean; recommendations: DiscoveryRecommendation[] }>(`/discovery/recommendations${refresh ? "?refresh=1" : ""}`),
   dismissDiscoveryRecommendation: (id: string) =>
     http<{ ok: true }>(`/discovery/recommendations/${id}/dismiss`, { method: "POST", body: "{}" }),

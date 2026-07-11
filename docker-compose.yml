@@ -9,6 +9,7 @@ services:
     environment:
       - IDLE_TIMEOUT_SECONDS=120
       - REFRESH_INTERVAL_MINUTES=5
+      - VIDEO_MAINTENANCE_MAX_AGE_DAYS=90
       - DB_PATH=/data/db/ytzero.db
       - IMG_CACHE_DIR=/data/imgcache
     restart: unless-stopped

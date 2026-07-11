@@ -299,6 +299,15 @@ function oidcRedirectUri(c: any) {
   return `${requestOrigin(c)}/api/auth/oidc/callback`;
 }
 
+// openid-client derives the redirect_uri used by the token request from the
+// callback URL passed to authorizationCodeGrant. c.req.url can contain the
+// app's internal http origin behind a TLS-terminating proxy, so replace only
+// its origin with the same public origin used for the authorization request.
+function oidcCallbackUrl(c: any, currentUrl: string): URL {
+  const incoming = new URL(currentUrl);
+  return new URL(`${incoming.pathname}${incoming.search}`, `${requestOrigin(c)}/`);
+}
+
 // Probe the issuer's discovery document; used by the setup wizard's "test" button.
 export async function testOidc(): Promise<{ ok: boolean; authorization_endpoint?: string; token_endpoint?: string; error?: string }> {
   try {
@@ -362,7 +371,7 @@ export async function oidcCallback(
   if (!flow) throw new Error("login flow expired");
   const { codeVerifier, state } = JSON.parse(flow.value) as { codeVerifier: string; state: string };
   const config = await getOidcConfig();
-  const tokens = await oidc.authorizationCodeGrant(config, new URL(currentUrl), {
+  const tokens = await oidc.authorizationCodeGrant(config, oidcCallbackUrl(c, currentUrl), {
     pkceCodeVerifier: codeVerifier,
     expectedState: state,
     expectedNonce: flow.nonce,

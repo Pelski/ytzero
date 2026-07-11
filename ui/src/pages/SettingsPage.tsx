@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingDef, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -838,8 +838,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [playlistRules, setPlaylistRules] = useState<Record<number, UserPlaylistRule[]>>({});
   const [plugins, setPlugins] = useState<PluginManifest[]>([]);
-  const [pluginSettings, setPluginSettings] = useState<Record<string, { definitions: PluginSettingDef[]; settings: Record<string, number> }>>({});
+  const [pluginSettings, setPluginSettings] = useState<Record<string, PluginSettingsResponse>>({});
   const [pluginSettingsModalId, setPluginSettingsModalId] = useState<string | null>(null);
+  const [resettingPluginId, setResettingPluginId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [addingChannel, setAddingChannel] = useState(false);
   const [addingTag, setAddingTag] = useState(false);
@@ -1049,6 +1050,44 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     } catch (e) {
       loadPlugins();
       showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const updatePluginBlockedTerms = async (pluginId: string, blockedTerms: string[]) => {
+    setPluginSettings((current) => {
+      const currentPlugin = current[pluginId];
+      if (!currentPlugin) return current;
+      return {
+        ...current,
+        [pluginId]: {
+          ...currentPlugin,
+          terms: {
+            lastTerms: currentPlugin.terms?.lastTerms ?? [],
+            blockedTerms,
+          },
+        },
+      };
+    });
+    try {
+      const next = await api.updatePluginSettings(pluginId, { blockedTerms });
+      setPluginSettings((current) => ({ ...current, [pluginId]: next }));
+    } catch (e) {
+      loadPlugins();
+      showToast(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const resetPlugin = async (pluginId: string) => {
+    setResettingPluginId(pluginId);
+    try {
+      const next = await api.resetPlugin(pluginId);
+      setPluginSettings((current) => ({ ...current, [pluginId]: next }));
+      emit("plugins-changed");
+      showToast(t("pluginResetDone"));
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : String(e));
+    } finally {
+      setResettingPluginId(null);
     }
   };
 
@@ -2039,48 +2078,155 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             const plugin = plugins.find((p) => p.id === pluginSettingsModalId);
             const config = pluginSettings[pluginSettingsModalId];
             if (!plugin || !config) return null;
+            const discoverySections = [
+              {
+                id: "display",
+                title: t("pluginSectionDisplay"),
+                description: t("pluginSectionDisplayHint"),
+                keys: ["total_limit", "per_channel_limit", "early_external_count", "random_pick_count", "high_pick_count"],
+              },
+              {
+                id: "personalization",
+                title: t("pluginSectionPersonalization"),
+                description: t("pluginSectionPersonalizationHint"),
+                keys: ["shared_tag_points", "tag_history_points", "tag_history_cap", "watched_channel_points", "watched_channel_cap", "playlist_points", "liked_points", "already_watched_points", "started_points", "recency_points"],
+              },
+              {
+                id: "outside",
+                title: t("pluginSectionOutside"),
+                description: t("pluginSectionOutsideHint"),
+                keys: ["external_adjustment", "outside_base_points", "outside_exact_match_points", "outside_partial_match_points"],
+              },
+            ];
+            const sections = plugin.id === "discovery"
+              ? discoverySections.map((section) => ({
+                  ...section,
+                  definitions: section.keys.flatMap((key) => config.definitions.filter((def) => def.key === key)),
+                })).filter((section) => section.definitions.length > 0)
+              : [{
+                  id: "general",
+                  title: t("pluginSectionGeneral"),
+                  description: t("pluginSectionGeneralHint"),
+                  definitions: config.definitions,
+                }];
             return createPortal(
               <div className="plugin-modal-backdrop" onMouseDown={() => setPluginSettingsModalId(null)}>
                 <div className="plugin-modal" role="dialog" aria-modal="true" aria-labelledby="plugin-settings-title" onMouseDown={(e) => e.stopPropagation()}>
-                  <div className="plugin-modal-head">
-                    <div>
+                  <div className="plugin-modal-hero">
+                    <div className="plugin-modal-icon" aria-hidden="true">
+                      {plugin.icon === "Sparkles" ? <Sparkles /> : <Plug />}
+                    </div>
+                    <div className="plugin-modal-identity">
+                      <div className="plugin-modal-eyebrow">{t("pluginDetailsLabel")}</div>
                       <h2 id="plugin-settings-title">{plugin.name}</h2>
                       <p>{plugin.description}</p>
+                      <div className="plugin-modal-meta">
+                        <span>v{plugin.version}</span>
+                        <span className={`plugin-status${plugin.enabled ? " enabled" : ""}`}>
+                          <span />{plugin.enabled ? t("pluginEnabled") : t("pluginDisabled")}
+                        </span>
+                      </div>
                     </div>
-                    <button className="icon-btn" title={t("close")} onClick={() => setPluginSettingsModalId(null)}>
+                    <button className="icon-btn plugin-modal-close" title={t("close")} onClick={() => setPluginSettingsModalId(null)}>
                       <X />
                     </button>
                   </div>
-                  <div className="plugin-modal-controls">
-                    {config.definitions.map((def) => {
-                      const value = config.settings[def.key] ?? def.defaultValue;
-                      return (
-                        <label key={def.key} className="plugin-slider-row">
-                          <div className="plugin-slider-copy">
-                            <span className="switch-label">{def.label}</span>
-                            <span className="switch-sub">{def.description}</span>
+                  <div className="plugin-modal-permissions">
+                    <ShieldCheck size={16} />
+                    <div>
+                      <strong>{t("pluginPermissionsTitle")}</strong>
+                      <div>{plugin.permissions.join(" · ")}</div>
+                    </div>
+                  </div>
+                  <div className="plugin-modal-content">
+                    <div className="plugin-modal-content-head">
+                      <span>{t("pluginConfigurationTitle")}</span>
+                      <span>{config.definitions.length}</span>
+                    </div>
+                    {sections.map((section) => (
+                      <section className="plugin-config-section" key={section.id}>
+                        <div className="plugin-config-section-head">
+                          <h3>{section.title}</h3>
+                          <p>{section.description}</p>
+                        </div>
+                        <div className="plugin-modal-controls">
+                          {section.definitions.map((def) => {
+                            const value = config.settings[def.key] ?? def.defaultValue;
+                            return (
+                              <label key={def.key} className="plugin-slider-row">
+                                <div className="plugin-slider-copy">
+                                  <span className="switch-label">{def.label}</span>
+                                  <span className="switch-sub">{def.description}</span>
+                                </div>
+                                <div className="plugin-slider-control">
+                                  <input type="range" min={def.min} max={def.max} step={def.step} value={value} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
+                                  <input type="number" min={def.min} max={def.max} step={def.step} value={value} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))}
+                  {config.terms && (
+                    <section className="plugin-config-section plugin-terms-panel">
+                      <div className="plugin-terms-head">
+                        <h3>{t("pluginTermsTitle")}</h3>
+                        <p>{t("pluginTermsHint")}</p>
+                      </div>
+                      <div className="plugin-term-group">
+                        <div className="plugin-term-label">{t("pluginTermsFound")}</div>
+                        <div className="plugin-term-list">
+                          {config.terms.lastTerms.length === 0 && <span className="plugin-term-empty">{t("pluginTermsEmpty")}</span>}
+                          {config.terms.lastTerms.map((term) => {
+                            const blocked = config.terms?.blockedTerms.includes(term);
+                            return (
+                              <button
+                                key={term}
+                                className={`plugin-term-chip${blocked ? " blocked" : ""}`}
+                                onClick={() => updatePluginBlockedTerms(
+                                  plugin.id,
+                                  blocked
+                                    ? (config.terms?.blockedTerms ?? []).filter((item) => item !== term)
+                                    : [...(config.terms?.blockedTerms ?? []), term],
+                                )}
+                              >
+                                {term}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      {config.terms.blockedTerms.length > 0 && (
+                        <div className="plugin-term-group">
+                          <div className="plugin-term-label">{t("pluginTermsBlocked")}</div>
+                          <div className="plugin-term-list">
+                            {config.terms.blockedTerms.map((term) => (
+                              <button
+                                key={term}
+                                className="plugin-term-chip blocked"
+                                onClick={() => updatePluginBlockedTerms(plugin.id, config.terms!.blockedTerms.filter((item) => item !== term))}
+                              >
+                                {term}
+                              </button>
+                            ))}
                           </div>
-                          <div className="plugin-slider-control">
-                            <input
-                              type="range"
-                              min={def.min}
-                              max={def.max}
-                              step={def.step}
-                              value={value}
-                              onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))}
-                            />
-                            <input
-                              type="number"
-                              min={def.min}
-                              max={def.max}
-                              step={def.step}
-                              value={value}
-                              onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))}
-                            />
-                          </div>
-                        </label>
-                      );
-                    })}
+                        </div>
+                      )}
+                    </section>
+                  )}
+                  </div>
+                  <div className="plugin-modal-footer">
+                    <div>
+                      <strong>{t("pluginResetTitle")}</strong>
+                      <span>{t("pluginResetHint")}</span>
+                    </div>
+                    <Popconfirm message={t("pluginResetConfirm")} onConfirm={() => resetPlugin(plugin.id)}>
+                      <button className="btn danger plugin-reset-btn" disabled={resettingPluginId === plugin.id}>
+                        {resettingPluginId === plugin.id ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}
+                        {t("pluginResetAction")}
+                      </button>
+                    </Popconfirm>
                   </div>
                 </div>
               </div>,

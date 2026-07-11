@@ -23,7 +23,7 @@ import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
-import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, refreshDiscoveryInBackground, refreshDiscoveryNow, setPluginEnabled, setPluginSettings } from "./plugins";
+import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import {
   authMethod,
   hashPassword,
@@ -509,6 +509,15 @@ api.put("/plugins/:id/settings", async (c) => {
     const uid = currentUserId(c);
     const body = await c.req.json();
     return c.json(setPluginSettings(uid, c.req.param("id"), body, getUserSetting(uid, "language")));
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+  }
+});
+
+api.post("/plugins/:id/reset", async (c) => {
+  try {
+    const uid = currentUserId(c);
+    return c.json(await resetPluginState(uid, c.req.param("id"), getUserSetting(uid, "language")));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
   }
