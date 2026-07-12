@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Clock, Coffee, Sun, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, type Bucket, type Video } from "../api";
 import { emit } from "../events";
 import { useI18n, type I18nKey } from "../i18n";
@@ -36,7 +37,7 @@ function formatShowFrom(showFrom: string, t: TranslateFn, locale: string): strin
   return t("scheduledAt", { weekday, date, time });
 }
 
-export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }) {
+export default function WatchlistPage() {
   const { t, bucketLabel, locale } = useI18n();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,9 +85,11 @@ export default function WatchlistPage({ onPlay }: { onPlay: (v: Video) => void }
                 <div className="scheduled-list">
                   {items.map((v) => (
                     <article key={v.video_id} className="scheduled-item">
-                      <img src={v.thumbnail} alt="" className="scheduled-thumb" onClick={() => onPlay(v)} />
+                      <Link to={`/watch/${v.video_id}`} className="scheduled-thumb-link" aria-label={v.title}>
+                        <img src={v.thumbnail} alt="" className="scheduled-thumb" />
+                      </Link>
                       <div className="scheduled-info">
-                        <div className="scheduled-title">{v.title}</div>
+                        <Link to={`/watch/${v.video_id}`} className="scheduled-title">{v.title}</Link>
                         <div className="muted scheduled-channel">{v.channel_title}</div>
                       </div>
                       <div className="muted scheduled-date">

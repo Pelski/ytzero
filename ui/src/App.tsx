@@ -27,7 +27,6 @@ type RecentChannel = { channel_id: string; title: string; thumbnail: string; lat
 
 function SidebarSubscriptions() {
   const { t } = useI18n();
-  const navigate = useNavigate();
   const [channels, setChannels] = useState<RecentChannel[]>([]);
   const [loading, setLoading] = useState(true);
   const visibleChannels = channels.slice(0, 5);
@@ -58,22 +57,21 @@ function SidebarSubscriptions() {
           </div>
         )}
         {visibleChannels.map((ch) => (
-          <Link key={ch.channel_id} to={`/channel/${ch.channel_id}`} className="sidebar-sub-item">
-            {ch.thumbnail ? (
-              <img className="sidebar-sub-avatar" src={img(ch.thumbnail)} alt="" />
-            ) : (
-              <div className="sidebar-sub-avatar" />
-            )}
-            <span className="sidebar-sub-name">{ch.title}</span>
+          <div key={ch.channel_id} className="sidebar-sub-item">
+            <Link to={`/channel/${ch.channel_id}`} className="sidebar-sub-channel">
+              {ch.thumbnail ? (
+                <img className="sidebar-sub-avatar" src={img(ch.thumbnail)} alt="" />
+              ) : (
+                <div className="sidebar-sub-avatar" />
+              )}
+              <span className="sidebar-sub-name">{ch.title}</span>
+            </Link>
             {ch.latest_thumbnail && ch.latest_video_id && (
-              <img
-                className="sidebar-sub-thumb"
-                src={img(ch.latest_thumbnail)}
-                alt=""
-                onClick={(e) => { e.preventDefault(); navigate(`/watch/${ch.latest_video_id}`); }}
-              />
+              <Link to={`/watch/${ch.latest_video_id}`} className="sidebar-sub-video" aria-label={ch.title}>
+                <img className="sidebar-sub-thumb" src={img(ch.latest_thumbnail)} alt="" />
+              </Link>
             )}
-          </Link>
+          </div>
         ))}
         {!loading && channels.length > 0 && (
           <NavLink to="/subscriptions" className={({ isActive }) => `sidebar-show-more${isActive ? " active" : ""}`}>
@@ -376,7 +374,7 @@ function AppShell() {
               <Route path="/channel/:id" element={<ChannelPage onPlay={play} />} />
               <Route path="/subscriptions" element={<SubscriptionsPage />} />
               <Route path="/playlists/:id" element={<UserPlaylistPage onPlay={play} />} />
-              <Route path="/watchlist" element={<WatchlistPage onPlay={play} />} />
+              <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/liked" element={<LikedPage onPlay={play} />} />
               <Route path="/history" element={<HistoryPage onPlay={play} />} />
               <Route path="/archive" element={<ArchivePage onPlay={play} />} />

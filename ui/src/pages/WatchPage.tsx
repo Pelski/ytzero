@@ -956,7 +956,7 @@ export default function WatchPage() {
         )}
         <h2 className="related-title">{t("moreLikeThis")}</h2>
         {related.filter((v) => v.is_short !== 1).map((v) => (
-          <div key={v.video_id} className="related-item" onClick={() => navigate(`/watch/${v.video_id}`)}>
+          <Link key={v.video_id} className="related-item" to={`/watch/${v.video_id}`}>
             <div className="thumb-wrap">
               <img src={img(v.thumbnail)} alt="" loading="lazy" />
               {v.live_status === "live" && (
@@ -977,7 +977,7 @@ export default function WatchPage() {
                 {formatTimeAgo(v.published_at, language)}
               </div>
             </div>
-          </div>
+          </Link>
         ))}
       </aside>
     </div>

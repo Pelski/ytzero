@@ -176,6 +176,16 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
   min-width: 0;
 }
 .sidebar-sub-item:hover { background: var(--surface); }
+.sidebar-sub-channel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+.sidebar-sub-video { display: block; flex-shrink: 0; }
 .sidebar-sub-avatar {
   width: 28px;
   height: 28px;
@@ -1908,8 +1918,11 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   cursor: pointer;
   border-radius: 10px;
   padding: 4px;
+  color: inherit;
+  text-decoration: none;
 }
 .related-item:hover { background: var(--surface); }
+.related-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .related-item img {
   width: 168px;
   aspect-ratio: 16/9;
@@ -2295,9 +2308,11 @@ a.playlist-item { text-decoration: none; }
   padding: 9px 0;
   border-bottom: 1px solid var(--surface-2);
 }
+.scheduled-thumb-link { display: block; border-radius: 4px; }
 .scheduled-thumb { width: 88px; border-radius: 4px; display: block; cursor: pointer; }
 .scheduled-info { min-width: 0; }
-.scheduled-title { font-weight: 500; margin-bottom: 2px; }
+.scheduled-title { display: block; color: inherit; text-decoration: none; font-weight: 500; margin-bottom: 2px; }
+.scheduled-title:hover { color: var(--accent); }
 .scheduled-channel { font-size: 12px; }
 .scheduled-when { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
 .scheduled-date { font-size: 12px; margin-top: 2px; white-space: nowrap; }
@@ -2959,6 +2974,7 @@ a.playlist-item { text-decoration: none; }
   width: 56px; height: 32px; object-fit: cover; border-radius: 4px;
   display: block; cursor: pointer; background: var(--surface-2);
 }
+.external-thumb-link { display: block; flex-shrink: 0; border-radius: 4px; }
 .external-groups { display: flex; flex-direction: column; gap: 0; }
 .external-group { border-top: 1px solid var(--surface-3); padding: 16px 0; }
 .external-group:first-child { border-top: none; }
@@ -2984,6 +3000,7 @@ a.playlist-item { text-decoration: none; }
 }
 .external-title-cell {
   flex: 1; min-width: 0; cursor: pointer;
+  color: inherit; text-decoration: none;
   font-size: 13.5px; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
@@ -824,7 +824,6 @@ function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
 
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage, locale } = useI18n();
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) ?? "channels";
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
@@ -2309,16 +2308,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                     <div className="external-video-list">
                       {ch.videos.map((v) => (
                         <div key={v.video_id} className="external-video-row">
-                          <img
-                            className="external-thumb"
-                            src={img(v.thumbnail)}
-                            alt=""
-                            loading="lazy"
-                            onClick={() => navigate(`/watch/${v.video_id}`)}
-                          />
-                          <div className="external-title-cell" onClick={() => navigate(`/watch/${v.video_id}`)}>
+                          <Link to={`/watch/${v.video_id}`} className="external-thumb-link" aria-label={v.title}>
+                            <img className="external-thumb" src={img(v.thumbnail)} alt="" loading="lazy" />
+                          </Link>
+                          <Link to={`/watch/${v.video_id}`} className="external-title-cell">
                             {v.title}
-                          </div>
+                          </Link>
                           <button
                             className="icon-btn danger"
                             title={t("delete")}
