@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Clock, Coffee, Sun, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Bucket, type Video } from "../api";
-import { emit } from "../events";
+import { emit, emitToast } from "../events";
 import { useI18n, type I18nKey } from "../i18n";
 import { BUCKET_ICONS } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
@@ -113,7 +113,11 @@ export default function WatchlistPage() {
                                     className={`icon-btn${active ? " active" : ""}`}
                                     title={active ? bucketLabel(bucket) : `${t("moveTo")} ${bucketLabel(bucket)}`}
                                     style={active ? { color: "var(--accent)" } : undefined}
-                                    onClick={() => api.queue(v.video_id, bucket).then(() => { emit("queue-changed"); load(); })}
+                                    onClick={() => api.queue(v.video_id, bucket).then(() => {
+                                      emit("queue-changed");
+                                      emitToast(t("scheduledFeedback"), "scheduled");
+                                      load();
+                                    })}
                                   >
                                     <Icon size={15} />
                                   </button>

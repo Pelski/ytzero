@@ -36,6 +36,8 @@ export const pl: Locale = {
     restore: "Przywróć",
     reject: "Odrzuć",
     watched: "Obejrzane",
+    scheduledFeedback: "Zaplanowano",
+    scheduleRemovedFeedback: "Usunięto z planu",
     remove: "Usuń",
     removeFromPlaylist: "Usuń z playlisty",
     liveBadge: "NA ŻYWO",

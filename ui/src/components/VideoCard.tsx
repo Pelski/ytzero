@@ -1,5 +1,7 @@
 import {
   Archive,
+  CalendarCheck,
+  CalendarX,
   Eye,
   Heart,
   Trash2,
@@ -23,6 +25,7 @@ const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
 const SWIPE_FEEDBACK_MS = 720;
 const FINAL_EXIT_MS = 280;
+type CardFeedback = "watched" | "rejected" | "scheduled" | "unscheduled";
 
 export function formatVideoDuration(duration: string | null): string {
   if (!duration) return "";
@@ -89,6 +92,7 @@ export default function VideoCard({
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [committedDir, setCommittedDir] = useState<"left" | "right" | null>(null);
+  const [committedFeedback, setCommittedFeedback] = useState<CardFeedback | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
@@ -108,17 +112,18 @@ export default function VideoCard({
     }, FINAL_EXIT_MS);
   };
 
-  const fade = (fn: () => Promise<unknown>, dir: "left" | "right" = "left") => {
+  const fade = (fn: () => Promise<unknown>, feedback: CardFeedback = "rejected") => {
     fn().then(() => {
-      setCommittedDir(dir);
+      setCommittedFeedback(feedback);
+      setCommittedDir(feedback === "watched" ? "right" : "left");
       setFading(true);
       setTimeout(removeWithLayoutAnimation, 180);
     });
   };
 
-  const act = (e: MouseEvent, fn: () => Promise<unknown>, dir?: "left" | "right") => {
+  const act = (e: MouseEvent, fn: () => Promise<unknown>, feedback?: CardFeedback) => {
     e.stopPropagation();
-    fade(fn, dir);
+    fade(fn, feedback);
   };
 
   const queueAct = (fn: () => Promise<unknown>) =>
@@ -166,6 +171,7 @@ export default function VideoCard({
       const exitX = (dir === "left" ? -1 : 1) * (cardWidth + SWIPE_EXIT_GUTTER);
       setSwiping(false);
       setCommittedDir(dir);
+      setCommittedFeedback(dir === "left" ? "rejected" : "watched");
       setSwipeX(exitX);
       setFading(true);
       const action = dir === "left"
@@ -176,6 +182,7 @@ export default function VideoCard({
       });
     } else {
       setCommittedDir(null);
+      setCommittedFeedback(null);
       setSwipeX(0);
     }
   };
@@ -234,6 +241,29 @@ export default function VideoCard({
   const revealProgress = Math.min(1, absX / SWIPE_THRESHOLD);
   const swipeDir = swipeX < -4 ? "left" : swipeX > 4 ? "right" : null;
   const activeSwipeDir = committedDir ?? swipeDir;
+  const revealFeedback: CardFeedback | null = committedFeedback
+    ?? (activeSwipeDir === "right" ? "watched" : activeSwipeDir === "left" ? "rejected" : null);
+  const RevealIcon = revealFeedback === "watched"
+    ? Eye
+    : revealFeedback === "scheduled"
+      ? CalendarCheck
+      : revealFeedback === "unscheduled"
+        ? CalendarX
+        : Archive;
+  const revealLabel = revealFeedback === "watched"
+    ? t("watched")
+    : revealFeedback === "scheduled"
+      ? t("scheduledFeedback")
+      : revealFeedback === "unscheduled"
+        ? t("scheduleRemovedFeedback")
+        : t("reject");
+  const revealClass = revealFeedback === "watched"
+    ? "swipe-reveal--left"
+    : revealFeedback === "scheduled"
+      ? "swipe-reveal--scheduled"
+      : revealFeedback === "unscheduled"
+        ? "swipe-reveal--unscheduled"
+        : "swipe-reveal--right";
   const watched = isWatched ?? video.watched === 1;
 
   const contentOpacity = Math.min(1, revealProgress * 2.5);
@@ -253,20 +283,12 @@ export default function VideoCard({
 
   return (
     <div className={`swipe-wrap${fading ? " card-fading" : ""}`}>
-      {activeSwipeDir === "right" && (
-        <div className="swipe-reveal swipe-reveal--left" style={{ width: revealWidth, opacity: fading ? undefined : contentOpacity }}>
+      {revealFeedback && (
+        <div className={`swipe-reveal ${revealClass}`} style={{ width: revealWidth, opacity: fading ? undefined : contentOpacity }}>
           <span className="swipe-reveal-icon">
-            <Eye size={22} />
+            <RevealIcon size={22} />
           </span>
-          <span className="swipe-reveal-label">{t("watched")}</span>
-        </div>
-      )}
-      {activeSwipeDir === "left" && (
-        <div className="swipe-reveal swipe-reveal--right" style={{ width: revealWidth, opacity: fading ? undefined : contentOpacity }}>
-          <span className="swipe-reveal-icon">
-            <Archive size={22} />
-          </span>
-          <span className="swipe-reveal-label">{t("reject")}</span>
+          <span className="swipe-reveal-label">{revealLabel}</span>
         </div>
       )}
 
@@ -334,19 +356,23 @@ export default function VideoCard({
               <VideoScheduleActions
                 video={video}
                 variant="overlay"
-                onToggle={(e, bucket, active) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, bucket)))}
+                onToggle={(e, bucket, active) => act(
+                  e,
+                  () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, bucket)),
+                  active ? "unscheduled" : "scheduled",
+                )}
               />
               <div className="thumb-actions-row secondary">
                 {video.status !== "archived" && (
                   <Tooltip text={t("reject")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "left")}>
+                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
                       <Archive />
                     </button>
                   </Tooltip>
                 )}
                 {video.status !== "archived" && (
                   <Tooltip text={t("watched")}>
-                    <button className="action-btn" onClick={(e) => act(e, markWatchedAndArchive, "right")}>
+                    <button className="action-btn" onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
                       <Eye />
                     </button>
                   </Tooltip>

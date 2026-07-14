@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
-import { emit } from "../events";
+import { emit, emitToast } from "../events";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Archive,
@@ -528,6 +528,7 @@ export default function WatchPage() {
       ? { ...item, status: active ? "inbox" : "queued", bucket: active ? null : bucket }
       : item));
     emit("queue-changed");
+    emitToast(t(active ? "scheduleRemovedFeedback" : "scheduledFeedback"), active ? "default" : "scheduled");
   };
 
   const copyLink = () => {
@@ -542,6 +543,7 @@ export default function WatchPage() {
     setMenuOpen(false);
     await api.queue(video.video_id, bucket);
     emit("queue-changed");
+    emitToast(t("scheduledFeedback"), "scheduled");
     reload();
   };
 

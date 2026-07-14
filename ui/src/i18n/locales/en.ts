@@ -35,6 +35,8 @@ export const en = {
     restore: "Restore",
     reject: "Reject",
     watched: "Watched",
+    scheduledFeedback: "Scheduled",
+    scheduleRemovedFeedback: "Removed from schedule",
     remove: "Remove",
     removeFromPlaylist: "Remove from playlist",
     liveBadge: "LIVE",

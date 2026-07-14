@@ -34,6 +34,8 @@ export const de: Locale = {
     restore: "Wiederherstellen",
     reject: "Ablehnen",
     watched: "Angesehen",
+    scheduledFeedback: "Geplant",
+    scheduleRemovedFeedback: "Aus der Planung entfernt",
     remove: "Entfernen",
     removeFromPlaylist: "Aus Playlist entfernen",
     liveBadge: "LIVE",

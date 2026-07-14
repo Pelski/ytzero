@@ -1073,6 +1073,8 @@ body.cinema .topbar.topbar--solid {
 }
 .swipe-reveal--left { left: 0; background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--accent); }
 .swipe-reveal--right { right: 0; background: rgba(229, 41, 58, 0.16); color: #ff6a76; }
+.swipe-reveal--scheduled { left: 0; background: rgba(139, 92, 246, 0.2); color: #c4a7ff; }
+.swipe-reveal--unscheduled { left: 0; background: rgba(139, 92, 246, 0.1); color: #b9a7dc; }
 .swipe-reveal-icon {
   display: flex;
   align-items: center;
@@ -1480,6 +1482,12 @@ button.video-card:disabled { cursor: default; }
 }
 .swipe-wrap.card-fading .swipe-reveal--right {
   background: rgba(229, 41, 58, 0.26);
+}
+.swipe-wrap.card-fading .swipe-reveal--scheduled {
+  background: rgba(139, 92, 246, 0.34);
+}
+.swipe-wrap.card-fading .swipe-reveal--unscheduled {
+  background: rgba(139, 92, 246, 0.2);
 }
 .swipe-wrap.card-fading .swipe-reveal-icon {
   transform: scale(1.18);
@@ -3539,6 +3547,12 @@ a.playlist-item { text-decoration: none; }
   z-index: 200;
   box-shadow: 0 6px 30px rgba(0, 0, 0, 0.5);
   font-size: 13.5px;
+}
+.toast--scheduled {
+  color: #f7f2ff;
+  background: #6d3cc7;
+  border: 1px solid rgba(220, 199, 255, 0.34);
+  box-shadow: 0 8px 34px rgba(89, 45, 170, 0.48);
 }
 
 @media (max-width: 1240px) {

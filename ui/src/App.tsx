@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { subscribe, emit } from "./events";
+import { subscribe, subscribeToast, emit, type ToastVariant } from "./events";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
 import { api, type AuthStatus, type UserPlaylist, type Video } from "./api";
@@ -252,19 +252,29 @@ function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const [liveCount, setLiveCount] = useState(0);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; variant: ToastVariant } | null>(null);
   const [showShorts, setShowShorts] = useState(false);
   const [appName, setAppName] = useState("YT Zero");
   const [appIconColor, setAppIconColor] = useState("#f2293a");
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
   const [showHidden, setShowHidden] = useState(false);
+  const toastTimeoutRef = useRef<number | null>(null);
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
 
-  const showToast = useCallback((msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3500);
+  const showToast = useCallback((message: string, variant: ToastVariant = "default") => {
+    if (toastTimeoutRef.current != null) window.clearTimeout(toastTimeoutRef.current);
+    setToast({ message, variant });
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 3500);
+  }, []);
+
+  useEffect(() => subscribeToast(showToast), [showToast]);
+  useEffect(() => () => {
+    if (toastTimeoutRef.current != null) window.clearTimeout(toastTimeoutRef.current);
   }, []);
 
   useEffect(() => {
@@ -387,7 +397,7 @@ function AppShell() {
           </div>
         </main>
       </div>
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className={`toast toast--${toast.variant}`}>{toast.message}</div>}
     </div>
   );
 }
