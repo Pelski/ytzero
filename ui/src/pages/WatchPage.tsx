@@ -25,6 +25,8 @@ import { compactNumber, formatTimeAgo, formatViewsCount, useI18n, type I18nKey }
 import TagChip from "../components/TagChip";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
 import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
+import { VideoThumbnail } from "../components/VideoThumbnail";
+import { VideoScheduleActions } from "../components/VideoScheduleActions";
 import { img } from "../img";
 
 let ytApiReady: Promise<void> | null = null;
@@ -357,7 +359,10 @@ export default function WatchPage() {
             }
             // 0 === ended: advance to the next playlist video when in a playlist.
             if (e?.data === 0 && nextInPlaylistRef.current) {
+              api.complete(id).catch(() => {});
               navigate(nextInPlaylistRef.current);
+            } else if (e?.data === 0) {
+              api.complete(id).catch(() => {});
             }
           },
         },
@@ -375,6 +380,7 @@ export default function WatchPage() {
           if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
             api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
+            api.complete(id).catch(() => {});
             api.archiveVideo(id).catch(() => {});
           }
           if (!sbPausedRef.current) {
@@ -514,6 +520,15 @@ export default function WatchPage() {
   if (!video && !videoMissing) return null;
 
   const reload = () => video && api.video(video.video_id).then((r) => setVideo(r.video));
+
+  const toggleRelatedSchedule = async (relatedVideo: Video, bucket: Bucket, active: boolean) => {
+    if (active) await api.dequeue(relatedVideo.video_id);
+    else await api.queue(relatedVideo.video_id, bucket);
+    setRelated((current) => current.map((item) => item.video_id === relatedVideo.video_id
+      ? { ...item, status: active ? "inbox" : "queued", bucket: active ? null : bucket }
+      : item));
+    emit("queue-changed");
+  };
 
   const copyLink = () => {
     if (!video) return;
@@ -936,15 +951,14 @@ export default function WatchPage() {
                   className={`playlist-item${v.videoId === id ? " active" : ""}`}
                 >
                   <span className="playlist-item-num">{i + 1}</span>
-                  <div className="playlist-item-thumb">
-                    <img src={img(v.thumbnail)} alt="" loading="lazy" />
+                  <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="playlist" loading="lazy">
                     {v.duration && <span className="playlist-item-dur">{v.duration}</span>}
                     {v.videoId === id && (
                       <span className="playlist-item-playing">
                         <Play size={12} fill="currentColor" />
                       </span>
                     )}
-                  </div>
+                  </VideoThumbnail>
                   <div className="playlist-item-info">
                     <div className="playlist-item-title">{v.title}</div>
                     {v.channelTitle && <div className="playlist-item-ch">{v.channelTitle}</div>}
@@ -956,20 +970,32 @@ export default function WatchPage() {
         )}
         <h2 className="related-title">{t("moreLikeThis")}</h2>
         {related.filter((v) => v.is_short !== 1).map((v) => (
-          <Link key={v.video_id} className="related-item" to={`/watch/${v.video_id}`}>
-            <div className="thumb-wrap">
-              <img src={img(v.thumbnail)} alt="" loading="lazy" />
-              {v.live_status === "live" && (
-                <span className="live-badge">
-                  <span className="pulse" /> {t("liveBadge")}
-                </span>
-              )}
-              {v.duration && v.is_short !== 1 && (
-                <span className="duration-badge">{formatVideoDuration(v.duration)}</span>
-              )}
+          <div key={v.video_id} className="related-item">
+            <div className="related-thumb-shell">
+              <Link className="related-thumb-link" to={`/watch/${v.video_id}`} aria-label={v.title}>
+                <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="related" loading="lazy">
+                  {v.live_status === "live" && (
+                    <span className="live-badge">
+                      <span className="pulse" /> {t("liveBadge")}
+                    </span>
+                  )}
+                  {v.duration && v.is_short !== 1 && (
+                    <span className="duration-badge">{formatVideoDuration(v.duration)}</span>
+                  )}
+                </VideoThumbnail>
+              </Link>
+              <VideoScheduleActions
+                video={v}
+                variant="compact"
+                onToggle={(event, bucket, active) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleRelatedSchedule(v, bucket, active).catch(console.error);
+                }}
+              />
             </div>
-            <div>
-              <div className="r-title">{v.title}</div>
+            <div className="related-item-info">
+              <Link className="r-title" to={`/watch/${v.video_id}`}>{v.title}</Link>
               <div className="r-meta">
                 {v.channel_title}
                 <br />
@@ -977,7 +1003,7 @@ export default function WatchPage() {
                 {formatTimeAgo(v.published_at, language)}
               </div>
             </div>
-          </Link>
+          </div>
         ))}
       </aside>
     </div>

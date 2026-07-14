@@ -193,6 +193,7 @@ CREATE TABLE IF NOT EXISTS user_videos (
   show_from      TEXT,
   watch_position REAL,
   watch_duration REAL,
+  watched        INTEGER,
   liked          INTEGER,
   PRIMARY KEY (user_id, video_id)
 );
@@ -278,6 +279,10 @@ try { db.exec("ALTER TABLE channels ADD COLUMN subscriber_count TEXT"); } catch 
 try { db.exec("ALTER TABLE channels ADD COLUMN avatar_checked_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN show_from TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN liked INTEGER"); } catch {}
+try { db.exec("ALTER TABLE user_videos ADD COLUMN watched INTEGER"); } catch {}
+db.exec(`UPDATE user_videos SET watched = 1
+  WHERE watched IS NULL AND watch_duration > 0
+    AND CAST(watch_position AS REAL) / watch_duration >= 0.9`);
 try { db.exec("ALTER TABLE tags ADD COLUMN filter_only INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
@@ -309,6 +314,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   app_icon_color: "#f2293a",
   shorts_tab: "1",
   show_top_channels: "1",
+  watched_style: "dimmed",
   sidebar_nav: "",
   sponsorblock_enabled: "0",
   sponsorblock_categories: '["sponsor"]',

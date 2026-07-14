@@ -130,6 +130,14 @@ export default function ShortsPlayer({
             if (event.data === 1 /* PLAYING */ && s !== currentSlotRef.current) {
               event.target.pauseVideo();
             }
+            if (event.data === 0 /* ENDED */ && s === currentSlotRef.current) {
+              const videoIdx = slotsRef.current[s]?.videoIdx;
+              const completed = videoIdx == null ? undefined : videosRef.current[videoIdx];
+              if (completed) {
+                api.complete(completed.video_id).catch(() => {});
+                onWatchedRef.current(completed.video_id);
+              }
+            }
           },
         },
       });
@@ -153,11 +161,10 @@ export default function ShortsPlayer({
         if (vidI === null || vidI < 0 || vidI >= videosRef.current.length) continue;
         ensurePlayer(s, videosRef.current[vidI].video_id, s === 1 /* autoplay current */);
       }
-      // Mark initial video as watched
+      // Opening a Short adds it to history; completion is recorded on ENDED.
       const initVid = videosRef.current[initialIndex];
       if (initVid) {
         api.watch(initVid.video_id).catch(() => {});
-        onWatchedRef.current(initVid.video_id);
       }
     });
     return () => {
@@ -217,11 +224,10 @@ export default function ShortsPlayer({
       // Remove all transitions
       setSlots((prev) => prev.map((s) => ({ ...s, animate: false })));
 
-      // Mark new video as watched
+      // Opening a Short adds it to history; completion is recorded on ENDED.
       const newVid = vids[newVidIdx];
       if (newVid) {
         api.watch(newVid.video_id).catch(() => {});
-        onWatchedRef.current(newVid.video_id);
       }
 
       // Trigger load-more if near end

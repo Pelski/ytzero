@@ -1378,6 +1378,76 @@ button.video-card:disabled { cursor: default; }
   min-width: 2px;
 }
 
+/* Shared thumbnail state; the profile setting on <html> decides which visual
+   layers are visible in every surface that renders a video destination. */
+.watched-thumbnail {
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+.watched-progress-bar {
+  display: none;
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 0 0 var(--radius) var(--radius);
+  pointer-events: none;
+}
+.watched-progress-bar .progress-bar-fill { width: 100%; }
+.watched-check-badge {
+  display: none;
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  width: 23px;
+  height: 23px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(20, 20, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.watched-thumbnail--watched .watched-progress-bar {
+  display: block;
+}
+:root[data-watched-style="dimmed"] .watched-thumbnail--watched .watched-thumbnail-image {
+  filter: grayscale(0.45) brightness(0.58) saturate(0.32);
+  opacity: 0.82;
+}
+:root[data-watched-style="badge_dimmed"] .watched-thumbnail--watched .watched-thumbnail-image {
+  filter: brightness(0.62) saturate(0.72);
+}
+:root[data-watched-style="grayscale"] .watched-thumbnail--watched .watched-thumbnail-image {
+  filter: grayscale(1) brightness(0.68);
+}
+:root[data-watched-style="badge_dimmed"] .watched-thumbnail--watched .watched-check-badge {
+  display: flex;
+}
+.sidebar-sub-video .watched-progress-bar,
+.external-thumb-link .watched-progress-bar { height: 2px; }
+.sidebar-sub-video .watched-check-badge,
+.external-thumb-link .watched-check-badge {
+  left: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+}
+.sidebar-sub-video .watched-check-badge svg,
+.external-thumb-link .watched-check-badge svg { width: 9px; height: 9px; }
+.playlist-item-thumb .watched-check-badge {
+  left: 4px;
+  bottom: 4px;
+  width: 18px;
+  height: 18px;
+}
+.playlist-item-thumb .watched-check-badge svg { width: 10px; height: 10px; }
+
 .duration-badge {
   position: absolute;
   bottom: 6px;
@@ -1908,6 +1978,11 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
 .watch-layout.theater .related-item img {
   width: 100%;
 }
+.watch-layout.theater .related-thumb {
+  width: 100%;
+  flex-basis: auto;
+}
+.watch-layout.theater .related-thumb-shell { width: 100%; flex-basis: auto; }
 
 /* related list */
 .related-title { font-size: 15px; font-weight: 700; margin: 0 0 12px; }
@@ -1915,14 +1990,29 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   display: flex;
   gap: 10px;
   margin-bottom: 10px;
-  cursor: pointer;
   border-radius: 10px;
   padding: 4px;
   color: inherit;
-  text-decoration: none;
 }
 .related-item:hover { background: var(--surface); }
-.related-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.related-thumb-link {
+  display: block;
+  width: 100%;
+  color: inherit;
+  text-decoration: none;
+}
+.related-thumb-link:focus-visible,
+.related-item .r-title:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.related-thumb {
+  width: 100%;
+  border-radius: 8px;
+}
+.related-thumb-shell {
+  position: relative;
+  width: 168px;
+  flex: 0 0 168px;
+  border-radius: 8px;
+}
 .related-item img {
   width: 168px;
   aspect-ratio: 16/9;
@@ -1932,6 +2022,8 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   background: var(--surface);
 }
 .related-item .r-title {
+  color: var(--text);
+  text-decoration: none;
   font-size: 13px;
   font-weight: 600;
   line-height: 1.35;
@@ -1940,7 +2032,42 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.related-item .r-title:hover { color: #fff; }
 .related-item .r-meta { font-size: 11.5px; color: var(--text-2); margin-top: 4px; }
+.related-item-info { flex: 1; min-width: 0; }
+.related-schedule-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 4;
+  display: flex;
+  gap: 4px;
+  width: max-content;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(5px);
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.related-thumb-shell:hover .related-schedule-actions,
+.related-thumb-shell:focus-within .related-schedule-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.related-schedule-actions .schedule-action-label { display: none; }
+.related-schedule-actions .schedule-action-group { display: block; }
+.related-schedule-actions .schedule-action-segment .action-btn,
+.related-schedule-actions .schedule-action-group--single .action-btn {
+  width: 26px;
+  height: 26px;
+  color: rgba(255, 255, 255, 0.82);
+}
+.related-schedule-actions .schedule-action-segment .action-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.2); }
+.related-schedule-actions .schedule-action-segment .action-btn.active { color: #0f0f0f; background: var(--accent); }
 
 /* ---------- channel page ---------- */
 .channel-banner {
@@ -3274,6 +3401,74 @@ a.playlist-item { text-decoration: none; }
 .settings-select-row .select {
   min-width: 190px;
 }
+
+.watched-style-setting {
+  display: grid;
+  gap: 10px;
+  padding: 10px 0 14px;
+}
+.watched-style-setting .switch-sub { color: var(--text-2); font-size: 12px; margin-top: 2px; line-height: 1.5; }
+.watched-style-segmented {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(92px, 1fr));
+  padding: 3px;
+  border: 1px solid var(--surface-3);
+  border-radius: 11px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+.watched-style-option {
+  position: relative;
+  display: flex;
+  min-width: 92px;
+  padding: 8px 6px;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: center;
+}
+.watched-style-option:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  right: 0;
+  bottom: 8px;
+  width: 1px;
+  background: var(--surface-3);
+  pointer-events: none;
+}
+.watched-style-option:hover { color: var(--text); background: var(--surface-2); }
+.watched-style-option.active { color: var(--text); background: var(--surface-3); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22); }
+.watched-style-option:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.watched-style-preview {
+  position: relative;
+  display: block;
+  width: 48px;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #30343a;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+.watched-style-preview-image {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(135deg, transparent 44%, rgba(255,255,255,0.14) 45% 56%, transparent 57%),
+    linear-gradient(155deg, #5481a0 0 42%, #bb7248 43% 68%, #52634c 69%);
+}
+.watched-style-preview-progress { display: block; position: absolute; inset: auto 0 0; height: 2px; background: var(--live); }
+.watched-style-preview-check { display: none; position: absolute; left: 3px; bottom: 3px; width: 11px; height: 11px; align-items: center; justify-content: center; border-radius: 50%; color: #fff; background: rgba(15,15,15,.82); }
+.watched-style-preview--dimmed .watched-style-preview-image { filter: grayscale(.45) brightness(.58) saturate(.32); opacity: .82; }
+.watched-style-preview--badge_dimmed .watched-style-preview-image { filter: brightness(.62) saturate(.72); }
+.watched-style-preview--grayscale .watched-style-preview-image { filter: grayscale(1) brightness(.68); }
+.watched-style-preview--badge_dimmed .watched-style-preview-check { display: flex; }
 
 .child-lock-panel {
   max-width: 980px;

@@ -9,6 +9,7 @@ import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
+import { VideoThumbnail } from "../components/VideoThumbnail";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
 
@@ -420,10 +421,9 @@ export default function FeedPage({
                   className="yt-result-row"
                   to={`/watch/${r.videoId}`}
                 >
-                  <div className="yt-result-thumb">
-                    <img src={r.thumbnail} alt="" loading="lazy" />
+                  <VideoThumbnail src={r.thumbnail} watched={r.watched === 1} variant="search" loading="lazy">
                     {r.duration && <span className="yt-result-dur">{r.duration}</span>}
-                  </div>
+                  </VideoThumbnail>
                   <div className="yt-result-info">
                     <div className="yt-result-title">{r.title}</div>
                     <div className="yt-result-meta">

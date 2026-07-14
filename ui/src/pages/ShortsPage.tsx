@@ -188,7 +188,7 @@ export default function ShortsPage() {
                   video={v}
                   onPlay={openPlayer}
                   onChanged={reload}
-                  isWatched={v.in_history === 1 || watchedIds.has(v.video_id)}
+                  isWatched={v.watched === 1 || watchedIds.has(v.video_id)}
                   isLiked={liked}
                 />
               );

@@ -6,6 +6,7 @@ import { emit } from "../events";
 import { useI18n, type I18nKey } from "../i18n";
 import { BUCKET_ICONS } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
+import { VideoThumbnail } from "../components/VideoThumbnail";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 const BUCKET_ACTION_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
@@ -86,7 +87,7 @@ export default function WatchlistPage() {
                   {items.map((v) => (
                     <article key={v.video_id} className="scheduled-item">
                       <Link to={`/watch/${v.video_id}`} className="scheduled-thumb-link" aria-label={v.title}>
-                        <img src={v.thumbnail} alt="" className="scheduled-thumb" />
+                        <VideoThumbnail src={v.thumbnail} watched={v.watched === 1} variant="scheduled" />
                       </Link>
                       <div className="scheduled-info">
                         <Link to={`/watch/${v.video_id}`} className="scheduled-title">{v.title}</Link>

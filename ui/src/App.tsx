@@ -22,8 +22,10 @@ import LikedPage from "./pages/LikedPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
+import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
+import { VideoThumbnail } from "./components/VideoThumbnail";
 
-type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null };
+type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number };
 
 function SidebarSubscriptions() {
   const { t } = useI18n();
@@ -68,7 +70,7 @@ function SidebarSubscriptions() {
             </Link>
             {ch.latest_thumbnail && ch.latest_video_id && (
               <Link to={`/watch/${ch.latest_video_id}`} className="sidebar-sub-video" aria-label={ch.title}>
-                <img className="sidebar-sub-thumb" src={img(ch.latest_thumbnail)} alt="" />
+                <VideoThumbnail src={img(ch.latest_thumbnail)} watched={ch.watched === 1} variant="sidebar" />
               </Link>
             )}
           </div>
@@ -275,6 +277,7 @@ function AppShell() {
       setShowShorts(r.settings.show_shorts === "1");
       setAppName(r.settings.app_name || "YT Zero");
       setAppIconColor(r.settings.app_icon_color || "#f2293a");
+      applyWatchedStyle(parseWatchedStyle(r.settings.watched_style));
       const raw = r.settings.sidebar_nav;
       const navCfg = parseNavConfig(raw);
       if (!raw && r.settings.shorts_tab === "1") {
@@ -288,6 +291,7 @@ function AppShell() {
   useEffect(loadSettings, [loadSettings]);
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
+  useEffect(() => subscribe("watched-style-changed", loadSettings), [loadSettings]);
 
   const loadPlugins = useCallback(() => {
     api.plugins()

@@ -14,6 +14,8 @@ import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
+import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
+import { VideoThumbnail } from "../components/VideoThumbnail";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -872,6 +874,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [isPrimary, setIsPrimary] = useState(true);
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
+  const [watchedStyle, setWatchedStyle] = useState<WatchedStyle>("dimmed");
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const navSaveTimer = useRef<number | null>(null);
   const [playerHl, setPlayerHl] = useState("pl");
@@ -999,6 +1002,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setAppIconColor(r.settings.app_icon_color || "#f2293a");
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
+        setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
         const raw = r.settings.sidebar_nav;
         const navCfg = parseNavConfig(raw);
         if (!raw && r.settings.shorts_tab === "1") {
@@ -1120,6 +1124,14 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     setShowTopChannels(next);
     await api.updateSettings({ show_top_channels: next ? "1" : "0" });
     emit("top-channels-changed");
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const changeWatchedStyle = async (next: WatchedStyle) => {
+    setWatchedStyle(next);
+    applyWatchedStyle(next);
+    await api.updateSettings({ watched_style: next });
+    emit("watched-style-changed");
     showToast(t("displaySettingsSaved"));
   };
 
@@ -1876,6 +1888,33 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             />
           </div>
 
+          <div className="watched-style-setting">
+            <div>
+              <div className="switch-label">{t("watchedStyleLabel")}</div>
+              <div className="switch-sub">{t("watchedStyleHint")}</div>
+            </div>
+            <div className="watched-style-segmented" role="radiogroup" aria-label={t("watchedStyleLabel")}>
+              {WATCHED_STYLES.map((style) => (
+                <button
+                  key={style.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={watchedStyle === style.id}
+                  className={`watched-style-option${watchedStyle === style.id ? " active" : ""}`}
+                  title={t(style.labelKey)}
+                  onClick={() => changeWatchedStyle(style.id)}
+                >
+                  <span className={`watched-style-preview watched-style-preview--${style.id}`} aria-hidden="true">
+                    <span className="watched-style-preview-image" />
+                    <span className="watched-style-preview-progress" />
+                    <span className="watched-style-preview-check"><Check size={7} strokeWidth={3} /></span>
+                  </span>
+                  <span>{t(style.labelKey)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="switch-row">
             <div>
               <div className="switch-label">{t("showTopChannels")}</div>
@@ -2309,7 +2348,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                       {ch.videos.map((v) => (
                         <div key={v.video_id} className="external-video-row">
                           <Link to={`/watch/${v.video_id}`} className="external-thumb-link" aria-label={v.title}>
-                            <img className="external-thumb" src={img(v.thumbnail)} alt="" loading="lazy" />
+                            <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="external" loading="lazy" />
                           </Link>
                           <Link to={`/watch/${v.video_id}`} className="external-title-cell">
                             {v.title}

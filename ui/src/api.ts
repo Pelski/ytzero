@@ -1,4 +1,5 @@
 import type { I18nKey } from "./i18n";
+import { decodeApiTitles } from "./htmlEntities";
 
 // YouTube-supported playback rates, shared by the settings, watch and channel UIs.
 export const PLAYBACK_SPEEDS = ["0.25", "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
@@ -34,6 +35,7 @@ export interface Video {
   in_history: number;
   external?: number;
   liked: number | null;
+  watched: number | null;
   channel_title: string;
   channel_thumbnail: string | null;
   channel_subscriber_count: string | null;
@@ -108,6 +110,7 @@ export interface PlaylistVideo {
   channelTitle: string;
   duration: string;
   index: number;
+  watched: number;
 }
 
 export interface UserPlaylist {
@@ -141,6 +144,7 @@ export interface AppSettings {
   app_icon_color: string;
   shorts_tab: string;
   show_top_channels: string;
+  watched_style: string;
   sidebar_nav: string;
   sponsorblock_enabled: string;
   sponsorblock_categories: string;
@@ -153,6 +157,7 @@ export interface SearchResult {
   duration: string;
   channelTitle: string;
   viewCount: number | null;
+  watched: number;
 }
 
 export interface PluginManifest {
@@ -309,7 +314,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any).error ?? `HTTP ${res.status}`);
   }
-  return res.json();
+  return decodeApiTitles(await res.json()) as T;
 }
 
 export const api = {
@@ -374,6 +379,7 @@ export const api = {
   archiveVideo: (id: string) => http(`/videos/${id}/archive`, { method: "POST" }),
   restore: (id: string) => http(`/videos/${id}/restore`, { method: "POST" }),
   watch: (id: string) => http(`/videos/${id}/watch`, { method: "POST" }),
+  complete: (id: string) => http(`/videos/${id}/complete`, { method: "POST" }),
   likeVideo: (id: string, liked: boolean) =>
     http(`/videos/${id}/like`, { method: "PUT", body: JSON.stringify({ liked }) }),
   tagVideo: (id: string, tag_id: number) =>
@@ -383,7 +389,7 @@ export const api = {
 
   channels: () => http<{ channels: Channel[] }>("/channels"),
   channel: (id: string) => http<{ channel: Channel }>(`/channels/${id}`),
-  recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null })[] }>("/channels/recent"),
+  recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number })[] }>("/channels/recent"),
   topChannels: () => http<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("/channels/top"),
   syncChannel: (id: string) => http<{ added: number }>(`/channels/${id}/sync`, { method: "POST" }),
   addChannel: (url: string) =>

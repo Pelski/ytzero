@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import { createRequire } from "module";
+import { decodeHtmlEntities } from "./htmlEntities";
 const _require = createRequire(import.meta.url);
 const InnerTubeClient = _require("innertube.js");
 const _yt = new InnerTubeClient();
@@ -51,7 +52,7 @@ export async function fetchChannelFeed(channelId: string): Promise<ChannelFeed> 
     const likes = Number(community?.["media:starRating"]?.["@_count"]);
     return {
       videoId: e["yt:videoId"] ?? "",
-      title: String(e.title ?? ""),
+      title: decodeHtmlEntities(String(e.title ?? "")),
       description: String(e["media:group"]?.["media:description"] ?? ""),
       thumbnail:
         e["media:group"]?.["media:thumbnail"]?.["@_url"] ??
@@ -63,7 +64,7 @@ export async function fetchChannelFeed(channelId: string): Promise<ChannelFeed> 
   });
   return {
     channelId,
-    channelTitle: String(feed.title ?? ""),
+    channelTitle: decodeHtmlEntities(String(feed.title ?? "")),
     videos: videos.filter((v) => v.videoId),
   };
 }
@@ -91,7 +92,7 @@ export async function resolveChannelId(input: string): Promise<{ channelId: stri
   const thumbMatch = html.match(/<meta property="og:image" content="([^"]*)"/);
   return {
     channelId: idMatch[1],
-    title: titleMatch?.[1] ?? "",
+    title: decodeHtmlEntities(titleMatch?.[1] ?? ""),
     thumbnail: thumbMatch?.[1] ?? "",
   };
 }
@@ -132,7 +133,7 @@ export async function fetchLiveInfo(channelId: string): Promise<LiveInfo | null>
   const titleMatch = html.match(/<meta name="title" content="([^"]*)"/);
   return {
     videoId: videoIdMatch[1],
-    title: titleMatch?.[1] ?? "",
+    title: decodeHtmlEntities(titleMatch?.[1] ?? ""),
     thumbnail: `https://i.ytimg.com/vi/${videoIdMatch[1]}/hqdefault.jpg`,
     isLiveNow,
     isUpcoming: !isLiveNow && isUpcoming,
@@ -308,7 +309,7 @@ export async function fetchChannelAbout(channelId: string): Promise<ChannelAbout
 
   const meta = deepCollect(data, "channelMetadataRenderer")[0] ?? {};
   const avatar: string = meta.avatar?.thumbnails?.at(-1)?.url ?? "";
-  const title: string = meta.title ?? "";
+  const title = decodeHtmlEntities(String(meta.title ?? ""));
   const description: string = meta.description ?? "";
   const handle: string =
     (meta.vanityChannelUrl ?? "").replace(/^https?:\/\/www\.youtube\.com\//, "") ||
@@ -360,7 +361,7 @@ export async function fetchVideoOwnerSubscriberCount(videoId: string): Promise<W
     subscriberCount,
     videoId,
     ownerChannelId: owner.navigationEndpoint?.browseEndpoint?.browseId ?? "",
-    ownerTitle: owner.title?.runs?.[0]?.text ?? owner.title?.simpleText ?? "",
+    ownerTitle: decodeHtmlEntities(owner.title?.runs?.[0]?.text ?? owner.title?.simpleText ?? ""),
   };
 }
 
@@ -400,7 +401,7 @@ export async function fetchChannelPlaylists(channelId: string): Promise<Playlist
     seen.add(r.playlistId);
     out.push({
       playlistId: r.playlistId,
-      title: r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? "",
+      title: decodeHtmlEntities(r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? ""),
       thumbnail: r.thumbnail?.thumbnails?.at(-1)?.url ?? "",
       videoCount: r.videoCountShortText?.simpleText ?? "",
     });
@@ -415,7 +416,7 @@ export async function fetchChannelPlaylists(channelId: string): Promise<Playlist
       .filter((t: any) => typeof t === "string");
     out.push({
       playlistId: id,
-      title: vm?.metadata?.lockupMetadataViewModel?.title?.content ?? "",
+      title: decodeHtmlEntities(vm?.metadata?.lockupMetadataViewModel?.title?.content ?? ""),
       thumbnail: deepCollect(vm, "sources")[0]?.[0]?.url ?? "",
       videoCount: badges[0] ?? "",
     });
@@ -480,7 +481,7 @@ export async function fetchPlaylistFeed(playlistId: string): Promise<PlaylistFee
       const videoId = e["yt:videoId"] ?? "";
       return {
         videoId,
-        title: String(e["media:group"]?.["media:title"] ?? e.title ?? ""),
+        title: decodeHtmlEntities(String(e["media:group"]?.["media:title"] ?? e.title ?? "")),
         description: String(e["media:group"]?.["media:description"] ?? ""),
         thumbnail:
           e["media:group"]?.["media:thumbnail"]?.["@_url"] ??
@@ -495,7 +496,7 @@ export async function fetchPlaylistFeed(playlistId: string): Promise<PlaylistFee
   const data: PlaylistFeed = {
     playlistId,
     channelId: String(feed["yt:channelId"] ?? ""),
-    channelTitle: String(feed.author?.name ?? feed.title ?? ""),
+    channelTitle: decodeHtmlEntities(String(feed.author?.name ?? feed.title ?? "")),
     videos,
   };
   playlistFeedCache.set(playlistId, { at: Date.now(), data });
@@ -539,7 +540,7 @@ export async function fetchChannelVideos(channelId: string): Promise<ScrapedVide
     const viewNum = parseInt(viewStr.replace(/\D/g, ""), 10);
     out.push({
       videoId: r.videoId,
-      title: r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? "",
+      title: decodeHtmlEntities(r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? ""),
       thumbnail:
         r.thumbnail?.thumbnails?.at(-1)?.url ??
         `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
@@ -577,10 +578,10 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
     const viewNum = parseInt(viewStr.replace(/\D/g, ""), 10);
     out.push({
       videoId: r.videoId,
-      title: r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? "",
+      title: decodeHtmlEntities(r.title?.runs?.[0]?.text ?? r.title?.simpleText ?? ""),
       thumbnail: r.thumbnail?.thumbnails?.at(-1)?.url ?? `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
       duration: r.lengthText?.simpleText ?? "",
-      channelTitle: r.shortBylineText?.runs?.[0]?.text ?? "",
+      channelTitle: decodeHtmlEntities(r.shortBylineText?.runs?.[0]?.text ?? ""),
       viewCount: Number.isFinite(viewNum) && viewNum > 0 ? viewNum : null,
     });
   }
@@ -616,9 +617,9 @@ function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
 
   return {
     videoId: vd.videoId,
-    title: vd.title ?? "",
+    title: decodeHtmlEntities(vd.title ?? ""),
     channelId: vd.channelId ?? mf?.externalChannelId ?? "",
-    channelTitle: vd.author ?? mf?.ownerChannelName ?? "",
+    channelTitle: decodeHtmlEntities(vd.author ?? mf?.ownerChannelName ?? ""),
     description: vd.shortDescription ?? "",
     thumbnail: vd.thumbnail?.thumbnails?.at(-1)?.url
       ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
@@ -732,7 +733,7 @@ export function parseOpml(content: string): { channelId: string; title: string }
     for (const outline of asArray<any>(node?.outline)) {
       const xmlUrl: string = outline["@_xmlUrl"] ?? "";
       const m = xmlUrl.match(/channel_id=(UC[\w-]{22})/);
-      if (m) result.push({ channelId: m[1], title: outline["@_title"] ?? outline["@_text"] ?? "" });
+      if (m) result.push({ channelId: m[1], title: decodeHtmlEntities(outline["@_title"] ?? outline["@_text"] ?? "") });
       walk(outline);
     }
   };
@@ -749,7 +750,7 @@ export function parseTakeoutCsv(content: string): { channelId: string; title: st
     if (!m) continue;
     // Title is the last CSV column; tolerate commas elsewhere.
     const cols = line.split(",");
-    result.push({ channelId: m[1], title: cols.length >= 3 ? cols.slice(2).join(",").trim() : "" });
+    result.push({ channelId: m[1], title: decodeHtmlEntities(cols.length >= 3 ? cols.slice(2).join(",").trim() : "") });
   }
   return result;
 }

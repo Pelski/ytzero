@@ -271,8 +271,20 @@ interface VideoRow {
   views: number | null;
   likes: number | null;
   liked: number | null;
+  watched: number | null;
   in_history: number;
   channel_title: string;
+}
+
+function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => string | null | undefined) {
+  const ids = [...new Set(items.map(videoId).filter((id): id is string => !!id))];
+  if (ids.length === 0) return items.map((item) => ({ ...item, watched: 0 }));
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = db.prepare(
+    `SELECT video_id FROM user_videos WHERE user_id = ? AND watched = 1 AND video_id IN (${placeholders})`
+  ).all(uid, ...ids) as { video_id: string }[];
+  const watched = new Set(rows.map((row) => row.video_id));
+  return items.map((item) => ({ ...item, watched: watched.has(videoId(item) ?? "") ? 1 : 0 }));
 }
 
 function attachTags(uid: number, videos: VideoRow[]) {
@@ -340,7 +352,7 @@ function videoSelect(uid: number) {
   return `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
          v.published_at, v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
-         v.is_short, v.views, v.likes, uv.liked,
+         v.is_short, v.views, v.likes, uv.liked, uv.watched,
          v.duration, uv.watch_position, uv.watch_duration, v.external,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
          c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
@@ -469,10 +481,12 @@ api.get("/in-progress", (c) => {
 });
 
 api.get("/search/youtube", async (c) => {
+  const uid = currentUserId(c);
   const q = c.req.query("q");
   if (!q?.trim()) return c.json({ results: [] });
   try {
-    return c.json({ results: await searchYouTube(q.trim()) });
+    const results = await searchYouTube(q.trim());
+    return c.json({ results: attachWatchedState(uid, results, (result) => result.videoId) });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
@@ -852,6 +866,19 @@ api.post("/videos/:id/watch", (c) => {
   return c.json({ ok: true });
 });
 
+api.post("/videos/:id/complete", (c) => {
+  const uid = currentUserId(c);
+  const id = c.req.param("id");
+  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  db.prepare(
+    `INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1`
+  ).run(uid, id);
+  db.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
+  refreshDiscoveryInBackground(uid);
+  return c.json({ ok: true });
+});
+
 api.put("/videos/:id/like", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
@@ -922,7 +949,7 @@ api.get("/history", (c) => {
       `SELECT MAX(h.id) AS history_id, MAX(h.watched_at) AS watched_at,
               v.video_id, v.channel_id, v.title, v.description, v.duration,
               v.thumbnail, v.published_at, v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket,
-              uv.watch_position, uv.watch_duration,
+              uv.watch_position, uv.watch_duration, uv.watched,
               c.title AS channel_title, c.thumbnail AS channel_thumbnail
        FROM history h JOIN videos v ON v.video_id = h.video_id
        JOIN channels c ON c.channel_id = v.channel_id
@@ -1239,7 +1266,7 @@ api.get("/channels/recent", (c) => {
     ) DESC
     LIMIT 20
   `).all(uid) as any[];
-  return c.json({ channels: rows });
+  return c.json({ channels: attachWatchedState(uid, rows, (row) => row.latest_video_id) });
 });
 
 api.get("/channels/:id", (c) => {
@@ -1412,7 +1439,7 @@ api.get("/playlists/:id/videos", async (c) => {
     // then return them for the player. Both calls share a cached feed fetch.
     const videos = await fetchPlaylistVideos(id);
     importPlaylistVideos(id).catch((e) => log.error("playlist.import.failed", { playlistId: id, error: e instanceof Error ? e.message : String(e) }));
-    return c.json({ videos });
+    return c.json({ videos: attachWatchedState(currentUserId(c), videos, (video) => video.videoId) });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }

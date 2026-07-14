@@ -1,11 +1,7 @@
 import {
   Archive,
-  CalendarDays,
-  Coffee,
   Eye,
   Heart,
-  Moon,
-  Sun,
   Trash2,
   Undo2,
 } from "lucide-react";
@@ -13,25 +9,15 @@ import type { CSSProperties, MouseEvent, PointerEvent } from "react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
-import { api, type Bucket, type Video } from "../api";
+import { api, type Video } from "../api";
 import { emit } from "../events";
-import { formatTimeAgo, useI18n, type I18nKey } from "../i18n";
+import { formatTimeAgo, useI18n } from "../i18n";
 import { img } from "../img";
 import Tooltip from "./Tooltip";
+import { VideoThumbnail } from "./VideoThumbnail";
+import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
 
-export const BUCKET_ICONS: Record<Bucket, typeof CalendarDays> = {
-  today: Sun,
-  tonight: Moon,
-  tomorrow: Sun,
-  tomorrow_evening: Moon,
-  weekend: Coffee,
-};
-
-const BUCKET_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
-  { labelKey: "groupToday", buckets: ["today", "tonight"] },
-  { labelKey: "groupTomorrow", buckets: ["tomorrow", "tomorrow_evening"] },
-  { labelKey: "groupWeekend", buckets: ["weekend"] },
-];
+export { BUCKET_ICONS } from "./VideoScheduleActions";
 const SWIPE_THRESHOLD = 90;
 const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
@@ -95,7 +81,7 @@ export default function VideoCard({
   isLiked?: boolean;
   showWatchProgress?: boolean;
 }) {
-  const { t, bucketLabel, language } = useI18n();
+  const { t, language } = useI18n();
   const [fading, setFading] = useState(false);
   const [removed, setRemoved] = useState(false);
   const [actionProximity, setActionProximity] = useState(0);
@@ -142,7 +128,7 @@ export default function VideoCard({
     });
 
   const markWatchedAndArchive = () =>
-    api.watch(video.video_id).then(() => api.archiveVideo(video.video_id));
+    api.complete(video.video_id).then(() => api.archiveVideo(video.video_id));
 
   const bind = useDrag(
     ({ active, movement: [mx], tap, cancel, last }) => {
@@ -248,6 +234,7 @@ export default function VideoCard({
   const revealProgress = Math.min(1, absX / SWIPE_THRESHOLD);
   const swipeDir = swipeX < -4 ? "left" : swipeX > 4 ? "right" : null;
   const activeSwipeDir = committedDir ?? swipeDir;
+  const watched = isWatched ?? video.watched === 1;
 
   const contentOpacity = Math.min(1, revealProgress * 2.5);
   const revealGap = swiping ? 10 : 0;
@@ -286,7 +273,7 @@ export default function VideoCard({
       <div
         ref={cardRef}
         {...bind()}
-        className="video-card"
+        className={`video-card${watched ? " video-card--watched" : ""}`}
         style={{
           transform: `translateX(${swipeX}px) ${cardTilt} ${cardFadeScale}`,
           transition: cardTransition,
@@ -310,13 +297,14 @@ export default function VideoCard({
             onDragStart={(e) => e.preventDefault()}
             aria-label={video.title}
           >
-            <img className="thumb" src={img(video.thumbnail)} alt="" loading="lazy" draggable={false} />
+            <VideoThumbnail
+              src={img(video.thumbnail)}
+              watched={watched}
+              variant="card"
+              loading="lazy"
+              draggable={false}
+            />
           </Link>
-          {isWatched && video.is_short === 1 && (
-            <div className="thumb-watched-overlay">
-              <span>{t("shortWatched")}</span>
-            </div>
-          )}
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}
@@ -338,38 +326,16 @@ export default function VideoCard({
               />
             </div>
           )}
-
           <div className="thumb-actions-zone">
             <div className="thumb-actions-peek" aria-hidden="true">
               <span /><span /><span /><span />
             </div>
             <div className="thumb-actions">
-              <div className="thumb-actions-row thumb-actions-row--schedule">
-                {BUCKET_GROUPS.map((group) => (
-                  <div
-                    key={group.labelKey}
-                    className={`schedule-action-group${group.buckets.length === 1 ? " schedule-action-group--single" : ""}`}
-                  >
-                    <div className="schedule-action-label">{t(group.labelKey)}</div>
-                    <div className="schedule-action-segment">
-                      {group.buckets.map((b) => {
-                        const Icon = BUCKET_ICONS[b];
-                        const active = video.bucket === b;
-                        return (
-                          <Tooltip key={b} text={active ? t("remove") : bucketLabel(b)}>
-                            <button
-                              className={`action-btn${active ? " active" : ""}`}
-                              onClick={(e) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, b)))}
-                            >
-                              <Icon />
-                            </button>
-                          </Tooltip>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <VideoScheduleActions
+                video={video}
+                variant="overlay"
+                onToggle={(e, bucket, active) => act(e, () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, bucket)))}
+              />
               <div className="thumb-actions-row secondary">
                 {video.status !== "archived" && (
                   <Tooltip text={t("reject")}>
