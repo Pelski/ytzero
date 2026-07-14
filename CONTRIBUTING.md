@@ -1,4 +1,4 @@
-# Contributing to YouTube Zero
+# Contributing to YT Zero
 
 Thanks for your interest in improving ytzero! This is a personal, self-hosted
 project, so contributions are welcome but kept lightweight. Please read this
