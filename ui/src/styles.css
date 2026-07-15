@@ -963,6 +963,9 @@ body.cinema .topbar.topbar--solid {
 .yt-result-info { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .yt-result-title { font-size: 14px; font-weight: 500; line-height: 1.35; }
 .yt-result-meta { font-size: 12px; color: var(--text-2); }
+.yt-result-channel { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin-top: 2px; min-width: 0; }
+.yt-result-channel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yt-result-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--surface-2); }
 .discovery-section { margin-top: 24px; }
 .recommendation-card { position: relative; min-width: 0; }
 .recommendation-meta {

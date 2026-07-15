@@ -129,6 +129,10 @@ YouTube is a trademark of Google LLC. This project is not affiliated with, endor
 
 Licensed under the **GNU Affero General Public License v3.0 only** (`AGPL-3.0-only`). See [LICENSE](LICENSE). More in **[Privacy & License](https://github.com/Pelski/ytzero/wiki/Privacy-and-License)**.
 
+## Mentions
+
+- **XDA Developers** — [This self-hosted YouTube frontend strips out recommendations and gives you back your feed](https://www.xda-developers.com/self-hosted-youtube-frontend-strips-out-recommendations-gives-back-feed/) (July 2026)
+
 ## Thanks
 
 Thanks to [Green-Kite](https://github.com/Green-Kite) for help with the German language support and updating the wiki.

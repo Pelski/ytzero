@@ -143,3 +143,9 @@ export function formatTimeAgo(iso: string | null, language: Language): string {
 
   return new Intl.RelativeTimeFormat(LOCALE_TAGS[language], { numeric: "always", style: "short" }).format(-value, unit);
 }
+
+/** Format a pre-parsed "time ago" pair (e.g. from YouTube search results) in the UI language. */
+export function formatPublishedAgo(published: { value: number; unit: Intl.RelativeTimeFormatUnit } | null, language: Language): string {
+  if (!published) return "";
+  return new Intl.RelativeTimeFormat(LOCALE_TAGS[language], { numeric: "always", style: "short" }).format(-published.value, published.unit);
+}

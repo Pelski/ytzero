@@ -3,7 +3,7 @@ import { subscribe } from "../events";
 import { Link, useSearchParams } from "react-router-dom";
 import { Clock, Eye, Inbox, RefreshCw } from "lucide-react";
 import { api, type Bucket, type Channel, type SearchResult, type Tag, type Video } from "../api";
-import { useI18n } from "../i18n";
+import { formatPublishedAgo, useI18n } from "../i18n";
 import { img } from "../img";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
@@ -89,7 +89,7 @@ export default function FeedPage({
   onPlay: (v: Video) => void;
   showToast: (m: string) => void;
 }) {
-  const { t, locale } = useI18n();
+  const { t, locale, language } = useI18n();
   const [params] = useSearchParams();
   const q = params.get("q") ?? "";
   const [videos, setVideos] = useState<Video[]>([]);
@@ -426,9 +426,18 @@ export default function FeedPage({
                   </VideoThumbnail>
                   <div className="yt-result-info">
                     <div className="yt-result-title">{r.title}</div>
-                    <div className="yt-result-meta">
-                      {r.channelTitle}
-                      {r.viewCount != null && ` · ${r.viewCount.toLocaleString(locale)} ${t("views")}`}
+                    {(r.viewCount != null || r.published) && (
+                      <div className="yt-result-meta">
+                        {r.viewCount != null && `${r.viewCount.toLocaleString(locale)} ${t("views")}`}
+                        {r.viewCount != null && r.published && " · "}
+                        {r.published && formatPublishedAgo(r.published, language)}
+                      </div>
+                    )}
+                    <div className="yt-result-channel">
+                      {r.channelAvatar && (
+                        <img className="yt-result-avatar" src={img(r.channelAvatar)} alt="" loading="lazy" draggable={false} />
+                      )}
+                      <span>{r.channelTitle}</span>
                     </div>
                   </div>
                 </Link>

@@ -557,7 +557,22 @@ export interface SearchResult {
   thumbnail: string;
   duration: string;
   channelTitle: string;
+  channelAvatar: string | null;
   viewCount: number | null;
+  published: PublishedAgo | null;
+}
+
+export interface PublishedAgo {
+  value: number;
+  unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year";
+}
+
+// YouTube only exposes a relative label here ("3 days ago", "Streamed 2 weeks ago");
+// English wording is guaranteed by the Accept-Language pin in FETCH_HEADERS.
+function parsePublishedTimeText(text: string | undefined): PublishedAgo | null {
+  const m = text?.match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/);
+  if (!m) return null;
+  return { value: parseInt(m[1], 10), unit: m[2] as PublishedAgo["unit"] };
 }
 
 const searchCache = new Map<string, { at: number; data: SearchResult[] }>();
@@ -582,7 +597,10 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
       thumbnail: r.thumbnail?.thumbnails?.at(-1)?.url ?? `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
       duration: r.lengthText?.simpleText ?? "",
       channelTitle: decodeHtmlEntities(r.shortBylineText?.runs?.[0]?.text ?? ""),
+      channelAvatar: r.channelThumbnailSupportedRenderers?.channelThumbnailWithLinkRenderer
+        ?.thumbnail?.thumbnails?.at(-1)?.url ?? null,
       viewCount: Number.isFinite(viewNum) && viewNum > 0 ? viewNum : null,
+      published: parsePublishedTimeText(r.publishedTimeText?.simpleText),
     });
   }
   const result = out.slice(0, 20);

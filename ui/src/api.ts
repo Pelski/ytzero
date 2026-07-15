@@ -156,8 +156,15 @@ export interface SearchResult {
   thumbnail: string;
   duration: string;
   channelTitle: string;
+  channelAvatar: string | null;
   viewCount: number | null;
+  published: PublishedAgo | null;
   watched: number;
+}
+
+export interface PublishedAgo {
+  value: number;
+  unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year";
 }
 
 export interface PluginManifest {
