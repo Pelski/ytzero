@@ -485,6 +485,14 @@ export interface HouseholdInsights {
     profile_count: number;
     profiles: { user_id: number; seconds: number }[];
   }[];
+  tag_rhythms: (InsightProfileRef & {
+    tags: {
+      name: string;
+      seconds: number;
+      peak_hour: number | null;
+      hours: { hour: number; seconds: number }[];
+    }[];
+  })[];
   videos: {
     video_id: string;
     title: string;

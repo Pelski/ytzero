@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, CalendarDays, Clock3, FastForward, Film, Flame, Play, TrendingDown, TrendingUp, Users } from "lucide-react";
+import { Activity, CalendarDays, Clock3, FastForward, Film, Flame, Play, Tags, TrendingDown, TrendingUp, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type HouseholdInsights, type InsightProfileRef } from "../api";
 import { img } from "../img";
@@ -10,6 +10,18 @@ const RANGES = [7, 30, 90, 365];
 function formatDuration(seconds: number, locale: string) {
   if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(seconds / 3600)} h`;
+}
+
+function formatAxisDuration(seconds: number, locale: string) {
+  if (seconds < 60) return `${Math.round(seconds)} s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(seconds / 3600)} h`;
+}
+
+function TimeAxis({ max, locale }: { max: number; locale: string }) {
+  return <div className="insights-chart-y-axis" aria-hidden="true">
+    {[1, .75, .5, .25, 0].map((part) => <span key={part}>{formatAxisDuration(max * part, locale)}</span>)}
+  </div>;
 }
 
 function ProfileAvatar({ profile, small = false }: { profile: InsightProfileRef; small?: boolean }) {
@@ -55,6 +67,7 @@ export default function InsightsPage() {
   const maxHeat = Math.max(...data.heatmap.flatMap((day) => day.hours.map((hour) => hour.seconds)), 1);
   const maxChannel = Math.max(data.channels[0]?.seconds ?? 0, 1);
   const maxTag = Math.max(data.tags[0]?.seconds ?? 0, 1);
+  const visibleTagRhythms = data.tag_rhythms.filter((profile) => profile.tags.length > 0);
   const contentTotal = data.content.reduce((sum, item) => sum + item.seconds, 0);
   const regular = data.content.find((item) => item.key === "regular")?.seconds ?? 0;
   const shorts = data.content.find((item) => item.key === "shorts")?.seconds ?? 0;
@@ -72,16 +85,15 @@ export default function InsightsPage() {
         <div>
           <span className="insights-eyebrow"><Activity size={15} /> {t("insightsEyebrow")}</span>
           <h1>{t("insightsTitle")}</h1>
-          <p>{t("insightsSubtitle")}</p>
         </div>
         <div className="insights-filters">
-          <label>
-            <span>{t("insightsView")}</span>
-            <select value={profileId ?? "all"} onChange={(event) => setProfileId(event.target.value === "all" ? null : Number(event.target.value))}>
+          <div className="settings-select-row insights-profile-filter">
+            <label className="switch-label" htmlFor="insights-profile">{t("insightsView")}</label>
+            <select id="insights-profile" className="select" value={profileId ?? "all"} onChange={(event) => setProfileId(event.target.value === "all" ? null : Number(event.target.value))}>
               <option value="all">{t("insightsHousehold")}</option>
               {data.available_profiles.map((profile) => <option value={profile.id} key={profile.id}>{profile.name}</option>)}
             </select>
-          </label>
+          </div>
           <div className="insights-range" aria-label={t("insightsPeriod")}>{RANGES.map((value) => (
             <button className={days === value ? "active" : ""} key={value} onClick={() => setDays(value)}>{rangeLabels[value]}</button>
           ))}</div>
@@ -106,10 +118,13 @@ export default function InsightsPage() {
           <article className="insights-card insights-trend-card">
             <div className="insights-card-head"><div><h2>{t("insightsDailyTrend")}</h2><p>{t("insightsDailyTrendHint")}</p></div></div>
             <div className="insights-daily-chart">
-              {data.daily.map((item, index) => <div className="insights-daily-column" key={item.day} title={`${item.day}: ${formatDuration(item.seconds, locale)}`}>
-                <span style={{ height: `${Math.max(item.seconds / maxDay * 100, item.seconds ? 4 : 0)}%` }} />
-                {(index === 0 || index === data.daily.length - 1) && <em>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(new Date(`${item.day}T12:00:00`))}</em>}
-              </div>)}
+              <TimeAxis max={maxDay} locale={locale} />
+              <div className="insights-daily-bars">
+                {data.daily.map((item, index) => <div className="insights-daily-column" key={item.day} title={`${item.day}: ${formatDuration(item.seconds, locale)}`}>
+                  <span style={{ height: `${Math.max(item.seconds / maxDay * 100, item.seconds ? 4 : 0)}%` }} />
+                  {(index === 0 || index === data.daily.length - 1) && <em>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(new Date(`${item.day}T12:00:00`))}</em>}
+                </div>)}
+              </div>
             </div>
           </article>
 
@@ -124,7 +139,10 @@ export default function InsightsPage() {
 
         <section className="insights-card insights-rhythm">
           <div className="insights-card-head"><div><h2>{t("insightsRhythm")}</h2><p>{t("insightsRhythmHint")}</p></div><strong>{summary.favorite_hour != null ? t("insightsPeakAt", { hour: String(summary.favorite_hour).padStart(2, "0") }) : ""}</strong></div>
-          <div className="insights-hour-chart">{data.hours.map((item) => <div key={item.hour} title={`${String(item.hour).padStart(2, "0")}:00 · ${formatDuration(item.seconds, locale)}`}><span style={{ height: `${Math.max(item.seconds / maxHour * 100, item.seconds ? 5 : 0)}%` }} />{item.hour % 3 === 0 && <em>{String(item.hour).padStart(2, "0")}</em>}</div>)}</div>
+          <div className="insights-hour-chart">
+            <TimeAxis max={maxHour} locale={locale} />
+            <div className="insights-hour-bars">{data.hours.map((item) => <div key={item.hour} title={`${String(item.hour).padStart(2, "0")}:00 · ${formatDuration(item.seconds, locale)}`}><span style={{ height: `${Math.max(item.seconds / maxHour * 100, item.seconds ? 5 : 0)}%` }} />{item.hour % 3 === 0 && <em>{String(item.hour).padStart(2, "0")}</em>}</div>)}</div>
+          </div>
           <div className="insights-heatmap-wrap">
             <div className="insights-heatmap">
               {data.heatmap.map((day) => <div className="insights-heat-row" key={day.weekday}><strong>{weekdayLabels[day.weekday]}</strong>{day.hours.map((hour) => {
@@ -134,6 +152,26 @@ export default function InsightsPage() {
             </div>
           </div>
           <div className="insights-dayparts">{data.time_of_day.map((item) => <div key={item.key}><span>{periodLabels[item.key]}</span><strong>{formatDuration(item.seconds, locale)}</strong><i><b style={{ width: `${item.seconds / summary.total_seconds * 100}%` }} /></i></div>)}</div>
+        </section>
+
+        <section className="insights-card insights-tag-rhythms-card">
+          <div className="insights-card-head"><div><h2>{t("insightsTagRhythms")}</h2><p>{t("insightsTagRhythmsHint")}</p></div><Tags /></div>
+          {visibleTagRhythms.length === 0 ? <p className="insights-tag-rhythm-empty">{t("insightsNoTaggedViewing")}</p> : <div className="insights-tag-rhythms">{visibleTagRhythms.map((profile) => <article key={profile.id}>
+            <div className="insights-tag-rhythm-profile"><ProfileAvatar profile={profile} small /><strong>{profile.name}</strong></div>
+            <div className="insights-tag-rhythm-list">{profile.tags.map((tag) => {
+                const max = Math.max(...tag.hours.map((hour) => hour.seconds), 1);
+                return <div className="insights-tag-rhythm" key={tag.name}>
+                  <strong className="insights-tag-rhythm-name">{tag.name}</strong>
+                  <div className="insights-tag-hour-strip">{tag.hours.map((hour) => {
+                    const ratio = hour.seconds / max;
+                    return <i key={hour.hour} title={`${String(hour.hour).padStart(2, "0")}:00 · ${formatDuration(hour.seconds, locale)}`} style={{ background: `rgba(124, 92, 255, ${hour.seconds ? .16 + ratio * .84 : .045})` }} />;
+                  })}</div>
+                  <span className="insights-tag-rhythm-meta">{tag.peak_hour == null ? "" : <><span className="insights-peak-label">{t("insightsPeakLabel")} </span>{String(tag.peak_hour).padStart(2, "0")}:00 · </>}{formatDuration(tag.seconds, locale)}</span>
+                </div>;
+              })}</div>
+            <div className="insights-tag-hour-axis-row" aria-hidden="true"><span /><div className="insights-tag-hour-axis"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div><span /></div>
+          </article>)}</div>}
+          <p className="insights-footnote">{t("insightsTagOverlapHint")}</p>
         </section>
 
         <section className="insights-card">

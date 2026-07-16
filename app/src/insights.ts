@@ -34,6 +34,14 @@ type TagRow = {
   video_count: number;
 };
 
+type TagHourRow = {
+  user_id: number;
+  key: string;
+  name: string;
+  hour: number;
+  seconds: number;
+};
+
 const round = (value: number) => Math.round(value);
 
 function localDay(offsetDays = 0): string {
@@ -97,6 +105,16 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     WHERE w.day >= date('now', 'localtime', ?)${scopeSql}
     GROUP BY w.user_id, lower(t.name)
   `).all(...params) as TagRow[];
+
+  const tagHourRows = db.prepare(`
+    SELECT w.user_id, lower(t.name) AS key, t.name, w.hour,
+           SUM(w.seconds) AS seconds
+    FROM watch_time_log w
+    JOIN video_tags vt ON vt.video_id = w.video_id
+    JOIN tags t ON t.id = vt.tag_id AND t.user_id = w.user_id
+    WHERE w.day >= date('now', 'localtime', ?)${scopeSql}
+    GROUP BY w.user_id, lower(t.name), w.hour
+  `).all(...params) as TagHourRow[];
 
   const totalSeconds = rows.reduce((sum, row) => sum + row.seconds, 0);
   const daysMap = new Map<string, number>();
@@ -259,6 +277,35 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     WHERE day >= date('now', 'localtime', ?)${profileId == null ? "" : " AND user_id = ?"}
   `).get(...sponsorParams) as { seconds: number };
 
+  const tagRhythmMap = new Map<number, Map<string, { name: string; hours: number[] }>>();
+  for (const row of tagHourRows) {
+    if (!tagRhythmMap.has(row.user_id)) tagRhythmMap.set(row.user_id, new Map());
+    const profileTags = tagRhythmMap.get(row.user_id)!;
+    if (!profileTags.has(row.key)) profileTags.set(row.key, { name: row.name, hours: Array(24).fill(0) });
+    profileTags.get(row.key)!.hours[row.hour] += row.seconds;
+  }
+
+  const tagRhythms = profileBreakdown.map((profile) => ({
+    id: profile.id,
+    name: profile.name,
+    avatar: profile.avatar,
+    avatar_color: profile.avatar_color,
+    is_child: profile.is_child,
+    tags: [...(tagRhythmMap.get(profile.id)?.values() ?? [])]
+      .map((tag) => {
+        const seconds = tag.hours.reduce((sum, value) => sum + value, 0);
+        const peakHour = tag.hours.reduce((best, value, hour) => value > tag.hours[best] ? hour : best, 0);
+        return {
+          name: tag.name,
+          seconds: round(seconds),
+          peak_hour: seconds > 0 ? peakHour : null,
+          hours: tag.hours.map((value, hour) => ({ hour, seconds: round(value) })),
+        };
+      })
+      .sort((a, b) => b.seconds - a.seconds)
+      .slice(0, 8),
+  }));
+
   return {
     range: { days, from: daily[0].day, to: daily[daily.length - 1].day },
     scope: { profile_id: profileId },
@@ -293,6 +340,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     profiles: profileBreakdown,
     channels,
     tags,
+    tag_rhythms: tagRhythms,
     videos: [...videoMap.values()]
       .sort((a, b) => b.seconds - a.seconds)
       .slice(0, 10)
