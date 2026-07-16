@@ -30,6 +30,17 @@ export function VideoGridSkeleton({
   );
 }
 
+export function ShortsGridSkeleton({ count = 12 }: { count?: number }) {
+  const { t } = useI18n();
+  return (
+    <div className="shorts-grid skeleton-grid" aria-label={t("loading")}>
+      {Array.from({ length: count }, (_, i) => (
+        <div className="short-card skeleton skeleton-short" aria-hidden="true" key={i} />
+      ))}
+    </div>
+  );
+}
+
 export function TableSkeleton({ rows = 6, columns = 3 }: { rows?: number; columns?: number }) {
   const { t } = useI18n();
   return (

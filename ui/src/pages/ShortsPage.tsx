@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Heart, Inbox } from "lucide-react";
+import { Heart, Play, Shuffle, Zap } from "lucide-react";
 import { subscribe } from "../events";
 import { api, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import TagFilterBar from "../components/TagFilterBar";
-import VideoCard from "../components/VideoCard";
+import ShortCard from "../components/ShortCard";
 import ShortsPlayer from "../components/ShortsPlayer";
-import { VideoGridSkeleton } from "../components/LoadingState";
+import { ShortsGridSkeleton } from "../components/LoadingState";
 
 export default function ShortsPage() {
   const { t } = useI18n();
@@ -25,7 +25,7 @@ export default function ShortsPage() {
   const [playerIdx, setPlayerIdx] = useState<number | null>(null);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [likedIds, setLikedIds] = useState<Map<string, boolean>>(new Map());
-  const loadMoreRef = useRef<HTMLButtonElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const hasMoreRef = useRef(true);
   const loadingMoreRef = useRef(false);
 
@@ -64,8 +64,10 @@ export default function ShortsPage() {
     const el = loadMoreRef.current;
     if (!el || !hasMore) return;
     const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setPage((p) => p + 1); },
-      { rootMargin: "200px" }
+      ([entry]) => {
+        if (entry.isIntersecting && !loadingMoreRef.current) setPage((p) => p + 1);
+      },
+      { rootMargin: "300px" }
     );
     obs.observe(el);
     return () => obs.disconnect();
@@ -102,11 +104,6 @@ export default function ShortsPage() {
     setPage(0);
   };
 
-  const reload = useCallback(() => {
-    setPage(0);
-    load(0).catch(console.error);
-  }, [load]);
-
   const loadMore = useCallback(() => {
     if (!hasMoreRef.current || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
@@ -117,6 +114,26 @@ export default function ShortsPage() {
     const idx = videos.findIndex((x) => x.video_id === v.video_id);
     setPlayerIdx(idx >= 0 ? idx : 0);
   }, [videos]);
+
+  const isWatched = useCallback(
+    (v: Video) => v.watched === 1 || watchedIds.has(v.video_id),
+    [watchedIds]
+  );
+
+  const playFromStart = () => {
+    if (videos.length === 0) return;
+    const firstUnwatched = videos.findIndex((v) => !isWatched(v));
+    setPlayerIdx(firstUnwatched >= 0 ? firstUnwatched : 0);
+  };
+
+  const playRandom = () => {
+    if (videos.length === 0) return;
+    const pool = videos
+      .map((v, i) => ({ v, i }))
+      .filter(({ v }) => !isWatched(v));
+    const candidates = pool.length > 0 ? pool : videos.map((v, i) => ({ v, i }));
+    setPlayerIdx(candidates[Math.floor(Math.random() * candidates.length)].i);
+  };
 
   const handleWatched = useCallback((videoId: string) => {
     setWatchedIds((prev) => {
@@ -138,6 +155,10 @@ export default function ShortsPage() {
     }
   }, [likedOnly]);
 
+  const handleRemoved = useCallback((videoId: string) => {
+    setVideos((prev) => prev.filter((v) => v.video_id !== videoId));
+  }, []);
+
   return (
     <>
       {playerIdx !== null && (
@@ -151,7 +172,14 @@ export default function ShortsPage() {
         />
       )}
 
-      <h1 className="page-title">{t("navShorts")}</h1>
+      <div className="shorts-hero">
+        <button className="btn primary" onClick={playFromStart} disabled={videos.length === 0}>
+          <Play size={15} /> {t("shortsPlayAll")}
+        </button>
+        <button className="btn" onClick={playRandom} disabled={videos.length === 0}>
+          <Shuffle size={15} /> {t("shortsShuffle")}
+        </button>
+      </div>
 
       <TagFilterBar
         tags={tags}
@@ -171,33 +199,34 @@ export default function ShortsPage() {
       />
 
       {loading && videos.length === 0 ? (
-        <VideoGridSkeleton gridSize="sm" />
+        <ShortsGridSkeleton />
       ) : videos.length === 0 ? (
         <div className="empty-state">
-          <Inbox />
-          <div>{t("noVideos")}</div>
+          <Zap />
+          <div>{t("shortsEmpty")}</div>
         </div>
       ) : (
         <>
-          <div className="video-grid video-grid--sm">
+          <div className="shorts-grid">
             {videos.map((v) => {
               const liked = likedIds.has(v.video_id) ? likedIds.get(v.video_id)! : v.liked === 1;
               return (
-                <VideoCard
+                <ShortCard
                   key={v.video_id}
                   video={v}
                   onPlay={openPlayer}
-                  onChanged={reload}
-                  isWatched={v.watched === 1 || watchedIds.has(v.video_id)}
+                  onRemoved={handleRemoved}
+                  onLiked={handleLiked}
+                  isWatched={isWatched(v)}
                   isLiked={liked}
                 />
               );
             })}
           </div>
-          {loadingMore && <VideoGridSkeleton count={4} gridSize="sm" />}
+          {loadingMore && <ShortsGridSkeleton count={6} />}
           {hasMore && !loadingMore && (
-            <div className="load-more">
-              <button ref={loadMoreRef} className="btn" onClick={() => setPage((p) => p + 1)}>
+            <div className="load-more" ref={loadMoreRef}>
+              <button className="btn" onClick={() => setPage((p) => p + 1)}>
                 {t("loadMore")}
               </button>
             </div>
