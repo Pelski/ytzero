@@ -1797,6 +1797,7 @@ button.video-card:disabled { cursor: default; }
 }
 .watch-player {
   /* constrained to 80 vh so tall displays don't dwarf the content below */
+  position: relative;
   width: 100%;
   aspect-ratio: 16/9;
   border: none;
@@ -1995,6 +1996,14 @@ button.video-card:disabled { cursor: default; }
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.wp-autoplay-blocked {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.42);
 }
 .wp-panel-scrim {
   position: absolute;

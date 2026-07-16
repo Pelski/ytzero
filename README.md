@@ -96,6 +96,16 @@ That means:
 
 ## Quick start
 
+YT Zero can run as a regular Docker container, an Unraid Community App, a
+native systemd service, or in its own Proxmox LXC:
+
+| Method | Best for | How it runs |
+| --- | --- | --- |
+| Docker Compose | Most servers and NAS systems | Published multi-architecture GHCR image |
+| Unraid | Unraid users who prefer DockerMan / Community Apps | The same GHCR image with persistent appdata |
+| Proxmox VE | Homelabs managed from a PVE host | Unprivileged Debian LXC, without Docker inside |
+| Debian / Ubuntu | LXC, VM or bare-metal Linux | Native Bun application managed by systemd |
+
 ### Docker
 
 Run with the published GHCR image:
@@ -115,6 +125,20 @@ services:
 ```bash
 docker compose up -d
 ```
+
+### Unraid
+
+The repository includes an official-layout Community Apps template. Once YT
+Zero is listed, find it by searching for **YT Zero** under **Apps**. Until then,
+load the bundled template from an Unraid terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Pelski/ytzero/main/templates/ytzero.xml \
+  -o /boot/config/plugins/dockerMan/templates-user/my-ytzero.xml
+```
+
+Reload **Docker → Add Container**, select the `ytzero` template, review the
+`/mnt/user/appdata/ytzero` data path and port `3001`, then apply it.
 
 ### Proxmox VE
 
@@ -144,7 +168,7 @@ only.
 
 Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)**:
 
-- **[Installation](https://github.com/Pelski/ytzero/wiki/Installation)** — Docker, local dev, and scripts.
+- **[Installation](https://github.com/Pelski/ytzero/wiki/Installation)** — Docker, Unraid, Proxmox, native Linux, and local development.
 - **[Configuration](https://github.com/Pelski/ytzero/wiki/Configuration)** — environment variables.
 - **[Features](https://github.com/Pelski/ytzero/wiki/Features)** — everything the app does, with screens.
 - **[Importing Subscriptions](https://github.com/Pelski/ytzero/wiki/Importing-Subscriptions)** — OPML and Google Takeout.
@@ -164,7 +188,7 @@ Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)*
 | Frontend | React, Vite, TypeScript |
 | Storage | SQLite |
 | Downloads | [yt-dlp](https://github.com/yt-dlp/yt-dlp) + ffmpeg (optional plugin, bundled in Docker) |
-| Runtime | Docker, a Proxmox LXC or Debian/Ubuntu host via systemd, or local Bun |
+| Runtime | Docker/Unraid, a Proxmox LXC or Debian/Ubuntu host via systemd, or local Bun |
 
 ## Privacy & license
 

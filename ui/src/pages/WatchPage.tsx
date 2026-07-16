@@ -36,6 +36,7 @@ import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
 import { VideoThumbnail } from "../components/VideoThumbnail";
 import { VideoScheduleActions } from "../components/VideoScheduleActions";
 import { img } from "../img";
+import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
 
 let ytApiReady: Promise<void> | null = null;
 function loadYouTubeApi(): Promise<void> {
@@ -160,7 +161,26 @@ export default function WatchPage() {
   const [related, setRelated] = useState<Video[]>([]);
   const [copyKey, setCopyKey] = useState(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [isChildProfile, setIsChildProfile] = useState(false);
+  const [playbackPolicy, setPlaybackPolicy] = useState<{
+    ready: boolean;
+    downloadsEnabled: boolean;
+    isChildProfile: boolean;
+    childDownloadsOnly: boolean;
+    pluginWatchMode: WatchSourceMode;
+  }>({
+    ready: false,
+    downloadsEnabled: false,
+    isChildProfile: false,
+    childDownloadsOnly: false,
+    pluginWatchMode: "youtube",
+  });
+  const {
+    ready: playbackPolicyReady,
+    downloadsEnabled,
+    isChildProfile,
+    childDownloadsOnly,
+    pluginWatchMode,
+  } = playbackPolicy;
   const [descOpen, setDescOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
@@ -179,16 +199,13 @@ export default function WatchPage() {
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
   const [speed, setSpeed] = useState("1");
-  const [downloadsEnabled, setDownloadsEnabled] = useState(false);
   // "auto" plays the local file when one exists; "youtube" forces the iframe.
   const [playerSource, setPlayerSource] = useState<"auto" | "youtube">("auto");
   // watch_source_mode = "ask"/"download": what the viewer decided for THIS video.
   const [sourceChoice, setSourceChoice] = useState<"undecided" | "youtube" | "wait">("undecided");
   const [waitProgress, setWaitProgress] = useState<{ percent: number; speed: string | null } | null>(null);
   const [waitError, setWaitError] = useState<string | null>(null);
-  const [childDownloadsOnly, setChildDownloadsOnly] = useState(false);
-  // "Opening a video" mode from the YT-DLP plugin's global settings.
-  const [pluginWatchMode, setPluginWatchMode] = useState("youtube");
+  const [youtubeAutoplayBlocked, setYoutubeAutoplayBlocked] = useState(false);
   // Path to the next playlist video, read by the player's onStateChange when a
   // video ends. A ref keeps the player effect free of playlist dependencies.
   const nextInPlaylistRef = useRef<string | null>(null);
@@ -230,35 +247,64 @@ export default function WatchPage() {
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
     api.config().then((r) => setAppUrl(r.app_url)).catch(() => {});
-    api.childStatus().then((status) => {
-      setIsChildProfile(status.is_child);
-      setChildDownloadsOnly(status.is_child && status.downloads_only);
-    }).catch(() => {});
-    api.plugins()
-      .then((r) => {
-        const enabled = r.plugins.some((p) => p.id === "downloads" && p.enabled);
-        setDownloadsEnabled(enabled);
-        if (enabled) {
-          api.pluginSettings("downloads")
-            .then((s) => setPluginWatchMode(String(s.settings.watch_source_mode ?? "youtube")))
-            .catch(() => {});
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
+    void (async () => {
+      const [childStatus, plugins] = await Promise.all([
+        api.childStatus().catch(() => null),
+        api.plugins().catch(() => ({ plugins: [] })),
+      ]);
+      const downloadsEnabled = plugins.plugins.some((p) => p.id === "downloads" && p.enabled);
+      let pluginWatchMode: WatchSourceMode = "youtube";
+      if (downloadsEnabled) {
+        const pluginSettings = await api.pluginSettings("downloads").catch(() => null);
+        const configuredMode = pluginSettings?.settings.watch_source_mode;
+        if (configuredMode === "ask" || configuredMode === "download") pluginWatchMode = configuredMode;
+      }
+      if (cancelled) return;
+      setPlaybackPolicy({
+        ready: true,
+        downloadsEnabled,
+        isChildProfile: childStatus?.is_child ?? false,
+        childDownloadsOnly: !!(childStatus?.is_child && childStatus.downloads_only),
+        pluginWatchMode,
+      });
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   const downloadStatus = video?.download_status ?? null;
   // Which surface fills the player area. Children never get a choice: with
   // downloads_only they are locked to local files, otherwise plain YouTube.
   const watchMode = downloadsEnabled && !isChildProfile ? pluginWatchMode : "youtube";
-  type PlayerKind = "local" | "youtube" | "blocked" | "choice" | "waiting";
-  let playerKind: PlayerKind = "youtube";
-  if (video && downloadStatus === "done" && playerSource === "auto") playerKind = "local";
-  else if (video && childDownloadsOnly) playerKind = "blocked";
-  else if (video && sourceChoice === "wait") playerKind = "waiting";
-  else if (video && watchMode === "download" && sourceChoice !== "youtube") playerKind = "waiting";
-  else if (video && watchMode === "ask" && sourceChoice === "undecided") playerKind = "choice";
+  const playerKind = resolvePlayerKind({
+    hasVideo: !!video,
+    downloadStatus,
+    playerSource,
+    playbackPolicyReady,
+    childDownloadsOnly,
+    sourceChoice,
+    watchMode,
+  });
   const usingLocal = playerKind === "local";
+
+  const requestYouTubePlayback = useCallback(() => {
+    setYoutubeAutoplayBlocked(false);
+    const p = playerRef.current;
+    try {
+      const iframe = p?.getIframe?.() as HTMLIFrameElement | undefined;
+      if (iframe) {
+        const permissions = new Set((iframe.getAttribute("allow") ?? "").split(";").map((v) => v.trim()).filter(Boolean));
+        permissions.add("autoplay");
+        iframe.setAttribute("allow", [...permissions].join("; "));
+      }
+      p?.playVideo?.();
+    } catch {}
+  }, []);
+
+  const chooseYouTube = useCallback(() => {
+    setYoutubeAutoplayBlocked(false);
+    setSourceChoice("youtube");
+  }, []);
 
   // Effective playback rate: per-channel override, else the global default.
   // Kept in a ref so the player effect can read it without re-creating the player.
@@ -332,6 +378,7 @@ export default function WatchPage() {
     setVideoInfo(null);
     setPlayerSource("auto");
     setSourceChoice("undecided");
+    setYoutubeAutoplayBlocked(false);
     setWaitProgress(null);
     setWaitError(null);
     archivedRef.current = false;
@@ -483,7 +530,14 @@ export default function WatchPage() {
         height: "100%",
         playerVars,
         events: {
-          onReady: (e: any) => applySpeed(e.target),
+          onReady: (e: any) => {
+            if (destroyed) return;
+            applySpeed(e.target);
+            requestYouTubePlayback();
+          },
+          onAutoplayBlocked: () => {
+            if (!destroyed) setYoutubeAutoplayBlocked(true);
+          },
           onStateChange: (e: any) => {
             // 1 === playing: apply the desired speed once (YT resets on load).
             if (e?.data === 1 && !speedApplied) {
@@ -509,7 +563,7 @@ export default function WatchPage() {
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing, playerKind]);
+  }, [id, video?.video_id, videoMissing, playerKind, requestYouTubePlayback]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
@@ -846,6 +900,11 @@ export default function WatchPage() {
                       )}
                     </div>
                   )}
+                  {playerKind === "loading" && (
+                    <div className="wp-panel-content" aria-busy="true">
+                      <LoaderCircle className="spin" size={30} />
+                    </div>
+                  )}
                   {playerKind === "choice" && (
                     <div className="wp-panel-content">
                       <h3>{t("watchChoiceTitle")}</h3>
@@ -853,7 +912,7 @@ export default function WatchPage() {
                         <button className="btn primary" onClick={() => setSourceChoice("wait")}>
                           <ArrowDownToLine size={15} /> {t("watchChoiceWait")}
                         </button>
-                        <button className="btn" onClick={() => setSourceChoice("youtube")}>
+                        <button className="btn" onClick={chooseYouTube}>
                           <MonitorPlay size={15} /> {t("watchChoiceYouTube")}
                         </button>
                       </div>
@@ -881,11 +940,18 @@ export default function WatchPage() {
                           <p className="wp-panel-hint">{t("watchWaitingHint")}</p>
                         </>
                       )}
-                      <button className="btn" onClick={() => setSourceChoice("youtube")}>
+                      <button className="btn" onClick={chooseYouTube}>
                         <MonitorPlay size={15} /> {t("watchChoiceYouTube")}
                       </button>
                     </div>
                   )}
+                </div>
+              )}
+              {playerKind === "youtube" && youtubeAutoplayBlocked && (
+                <div className="wp-autoplay-blocked">
+                  <button className="btn primary" onClick={requestYouTubePlayback}>
+                    <Play size={16} /> {t("playerPlay")}
+                  </button>
                 </div>
               )}
             </div>
