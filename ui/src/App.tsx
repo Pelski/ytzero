@@ -21,6 +21,7 @@ import ShortsPage from "./pages/ShortsPage";
 import DownloadsPage from "./pages/DownloadsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import LikedPage from "./pages/LikedPage";
+import InsightsPage from "./pages/InsightsPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
@@ -401,13 +402,19 @@ function AppShell() {
     }
   }, [childStatus?.hide_shorts, location.pathname, navigate]);
 
+  useEffect(() => {
+    if (childStatus?.is_child && location.pathname === "/insights") {
+      navigate("/", { replace: true });
+    }
+  }, [childStatus?.is_child, location.pathname, navigate]);
+
   const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(navConfig);
   const pluginRouteVisible = (to: string) => !PLUGIN_ROUTES.includes(to) || enabledPluginRoutes?.has(to);
   const childRouteVisible = (to: string) =>
     !(childStatus?.hide_shorts && to === "/shorts")
     && !(childStatus?.hide_live && to === "/live")
     && !(childStatus?.local_only && to === "/discovery")
-    && !(childStatus?.is_child && to === "/downloads");
+    && !(childStatus?.is_child && (to === "/downloads" || to === "/insights"));
   const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
   const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
 
@@ -462,6 +469,7 @@ function AppShell() {
               <Route path="/liked" element={<LikedPage onPlay={play} />} />
               <Route path="/history" element={<HistoryPage onPlay={play} />} />
               <Route path="/archive" element={<ArchivePage onPlay={play} />} />
+              <Route path="/insights" element={<InsightsPage />} />
               <Route path="/settings" element={<SettingsPage showToast={showToast} />} />
             </Routes>
           </div>

@@ -431,6 +431,71 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   return decodeApiTitles(await res.json()) as T;
 }
 
+export interface InsightProfileRef {
+  id: number;
+  name: string;
+  avatar: string;
+  avatar_color: string;
+  is_child: boolean;
+}
+
+export interface HouseholdInsights {
+  range: { days: number; from: string; to: string };
+  scope: { profile_id: number | null };
+  available_profiles: InsightProfileRef[];
+  summary: {
+    total_seconds: number;
+    daily_average_seconds: number;
+    video_count: number;
+    active_days: number;
+    active_profiles: number;
+    streak_days: number;
+    previous_seconds: number;
+    change_percent: number | null;
+    favorite_hour: number | null;
+    favorite_weekday: number | null;
+    sponsorblock_saved_seconds: number;
+  };
+  daily: { day: string; seconds: number }[];
+  hours: { hour: number; seconds: number }[];
+  heatmap: { weekday: number; hours: { hour: number; seconds: number }[] }[];
+  time_of_day: { key: "night" | "morning" | "afternoon" | "evening"; seconds: number }[];
+  content: { key: "regular" | "shorts" | "live"; seconds: number }[];
+  profiles: (InsightProfileRef & {
+    seconds: number;
+    video_count: number;
+    share: number;
+    top_channel: { channel_id: string; title: string; seconds: number } | null;
+    top_tag: { name: string; color: string; seconds: number } | null;
+  })[];
+  channels: {
+    channel_id: string;
+    title: string;
+    thumbnail: string;
+    seconds: number;
+    video_count: number;
+    profile_count: number;
+    profiles: { user_id: number; seconds: number }[];
+  }[];
+  tags: {
+    name: string;
+    color: string;
+    seconds: number;
+    video_count: number;
+    profile_count: number;
+    profiles: { user_id: number; seconds: number }[];
+  }[];
+  videos: {
+    video_id: string;
+    title: string;
+    thumbnail: string;
+    channel_id: string;
+    channel_title: string;
+    seconds: number;
+    profile_count: number;
+  }[];
+}
+
 export const api = {
   feed: (p: {
     page?: number;
@@ -493,6 +558,20 @@ export const api = {
   watchlist: () => http<{ videos: Video[] }>("/watchlist"),
   archive: (page = 0) => http<{ videos: Video[] }>(`/archive?page=${page}`),
   history: (page = 0) => http<{ videos: Video[] }>(`/history?page=${page}`),
+  insights: (days = 30, profileId: number | null = null) => {
+    const qs = new URLSearchParams({ days: String(days), profile: profileId == null ? "all" : String(profileId) });
+    return http<HouseholdInsights>(`/insights?${qs}`);
+  },
+  recordSponsorBlockSkip: (videoId: string, segment: SponsorSegment, skippedSeconds: number) =>
+    http<{ ok: true }>(`/videos/${videoId}/sponsorblock-skip`, {
+      method: "POST",
+      body: JSON.stringify({
+        event_id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        segment_uuid: segment.UUID,
+        category: segment.category,
+        skipped_seconds: skippedSeconds,
+      }),
+    }),
 
   queue: (id: string, bucket: Bucket) =>
     http(`/videos/${id}/queue`, { method: "POST", body: JSON.stringify({ bucket }) }),

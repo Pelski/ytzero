@@ -48,6 +48,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **Real playback controls** — theater view, captions, quality, display settings, and optional SponsorBlock support.
 - **Downloads & local playback** — the optional yt-dlp plugin fetches videos to disk and plays them in YT Zero's own player: instant seeking, no embeds, no buffering, works offline.
 - **Works for households** — profiles, authentication modes, child profiles with watch-time limits, and child lock make one install usable by more than one person.
+- **Pulse** — understand actual viewing time by profile, channel, tag, hour, weekday, and content type without sending analytics outside your server.
 
 ## Features
 
@@ -60,6 +61,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **Tags & rules** — tag videos and channels, inherit channel tags to videos, and automate sorting with rules.
 - **User playlists** — local playlists with icons, manual additions, and rules.
 - **Profiles** — multiple isolated profiles on one install, each with its own state.
+- **Pulse** — an optional, default-hidden sidebar view with combined and per-profile viewing patterns, favorite channels and tags, activity hours, content mix, and time saved by SponsorBlock.
 - **Authentication** — none, shared login, per-profile login, OIDC, or proxy headers, with password and passkey support.
 - **Child lock** — PIN-protect household settings while leaving each profile's own tags and playlists editable.
 - **Child profiles** — daily watch-time limits, parent-approved extensions, subscribed-content-only mode, optional Shorts/live blocking, downloaded-videos-only mode, reduced settings access, and a parent activity panel with immediate stop/unlock controls.

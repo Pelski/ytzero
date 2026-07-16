@@ -26,6 +26,7 @@ import { log, readRecentLogs } from "./logger";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, downloadStats, enqueueDownload, getDownload, listDownloads, prioritizeDownload, removeDownload, setDownloadPinned, ytdlpStatus } from "./downloader";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
+import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
 import {
   authMethod,
   hashPassword,
@@ -637,6 +638,50 @@ api.post("/profiles/:id/unlock-child", (c) => {
   if (!isChildUser(id)) return c.json({ error: "not a child profile" }, 400);
   unlockChildProfile(id);
   log.info("child.pin_unlocked", { id });
+  return c.json({ ok: true });
+});
+
+// ---------- household viewing insights ----------
+
+api.get("/insights", (c) => {
+  const uid = currentUserId(c);
+  // The page compares every household profile, so keep it on the parent side
+  // of the product just like child controls and the activity panel.
+  if (isChildUser(uid)) return c.json({ error: "parent profile required" }, 403);
+
+  const requestedDays = Number(c.req.query("days") ?? 30);
+  const days = INSIGHT_RANGES.includes(requestedDays as (typeof INSIGHT_RANGES)[number]) ? requestedDays : 30;
+  const requestedProfile = c.req.query("profile");
+  const profileId = requestedProfile && requestedProfile !== "all" ? Number(requestedProfile) : null;
+  if (profileId != null && (!Number.isInteger(profileId) || profileId <= 0)) {
+    return c.json({ error: "invalid profile" }, 400);
+  }
+  try {
+    return c.json(buildHouseholdInsights(days, profileId));
+  } catch (error) {
+    if (error instanceof Error && error.message === "profile not found") {
+      return c.json({ error: error.message }, 404);
+    }
+    throw error;
+  }
+});
+
+api.post("/videos/:id/sponsorblock-skip", async (c) => {
+  const videoId = c.req.param("id");
+  const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+  const eventId = typeof body.event_id === "string" ? body.event_id : "";
+  const segmentUuid = typeof body.segment_uuid === "string" ? body.segment_uuid : "";
+  const category = typeof body.category === "string" ? body.category : "";
+  const seconds = Number(body.skipped_seconds);
+  if (!eventId || eventId.length > 100 || !segmentUuid || segmentUuid.length > 100 ||
+      !category || category.length > 50 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 21_600) {
+    return c.json({ error: "invalid SponsorBlock skip" }, 400);
+  }
+  db.prepare(`
+    INSERT OR IGNORE INTO sponsorblock_skip_log
+      (event_id, user_id, video_id, segment_uuid, category, skipped_seconds)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(eventId, currentUserId(c), videoId, segmentUuid, category, seconds);
   return c.json({ ok: true });
 });
 

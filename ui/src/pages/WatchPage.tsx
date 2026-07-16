@@ -227,6 +227,7 @@ export default function WatchPage() {
   const sbSegmentsRef = useRef<SponsorSegment[]>([]);
   const sbPausedRef = useRef(false);
   const disabledSegsRef = useRef<Set<string>>(new Set());
+  const recordedSbSegsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!scheduleOpen && !playlistOpen && !speedOpen) return;
@@ -324,6 +325,7 @@ export default function WatchPage() {
   useEffect(() => {
     setSbPaused(false);
     setDisabledSegs(new Set());
+    recordedSbSegsRef.current.clear();
   }, [id]);
 
   useEffect(() => {
@@ -462,6 +464,10 @@ export default function WatchPage() {
             if (disabledSegsRef.current.has(seg.UUID)) continue;
             if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
               p.seekTo(seg.segment[1], true);
+              if (!recordedSbSegsRef.current.has(seg.UUID)) {
+                recordedSbSegsRef.current.add(seg.UUID);
+                api.recordSponsorBlockSkip(id, seg, seg.segment[1] - position).catch(() => {});
+              }
               break;
             }
           }

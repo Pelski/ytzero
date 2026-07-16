@@ -245,6 +245,22 @@ CREATE TABLE IF NOT EXISTS watch_time_log (
 );
 CREATE INDEX IF NOT EXISTS idx_watch_time_log_day ON watch_time_log(user_id, day);
 
+-- SponsorBlock segments that were actually skipped by the player. Each event
+-- is recorded once so Pulse can report time genuinely saved, rather than all
+-- segments merely returned by the public SponsorBlock API.
+CREATE TABLE IF NOT EXISTS sponsorblock_skip_log (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id        TEXT NOT NULL UNIQUE,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id        TEXT NOT NULL,
+  segment_uuid    TEXT NOT NULL,
+  category        TEXT NOT NULL,
+  skipped_seconds REAL NOT NULL,
+  day             TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+  created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sponsorblock_skip_day ON sponsorblock_skip_log(user_id, day);
+
 -- Per-day limit extensions granted by a parent (unlimited = limit off today).
 CREATE TABLE IF NOT EXISTS child_time_extras (
   user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

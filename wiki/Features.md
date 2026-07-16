@@ -12,6 +12,7 @@ The app is designed around a few primary workflows:
 - **Scheduled** — videos saved into time-based buckets.
 - **Liked** — videos you marked as liked.
 - **History** — watched videos.
+- **Pulse** — local viewing patterns for all profiles combined or a selected profile (hidden in the sidebar by default).
 - **Rejected** — archived videos.
 - **Subscriptions** — followed channels with recent activity.
 - **Settings** — channels, tags, rules, playlists, display, external videos, logs, child lock, authentication, language, and player preferences.
@@ -24,6 +25,7 @@ The app is designed around a few primary workflows:
 - **Watch later buckets** — schedule videos for Today, Tonight, Tomorrow, Tomorrow evening, or Weekend.
 - **Archive flow** — reject videos, restore them later, and keep the main feed clean.
 - **Watch history and progress** — record watched videos and resume partially watched videos.
+- **Pulse** — compare actual playback time across profiles, channels, tags, days and hours; see daily trends, a weekday/hour heatmap, content mix, profile shares, most-watched videos, and time actually saved by automatic SponsorBlock skips. The view is kept under **More** by default and is unavailable to child profiles. All calculations stay on the YT Zero server.
 - **Liked videos** — mark videos as liked and browse them from a dedicated view.
 - **Tags** — tag videos and channels; channel tags are inherited by their videos.
 - **Automatic tag rules** — apply tags by matching title or description text.
