@@ -28,6 +28,7 @@ Any non-primary profile can be marked as a **child profile** in **Settings → P
 - **Subscribed content only** (default on) — hides YouTube search results and Discovery, and blocks watching videos outside the local library. All of this is enforced by the server, not just hidden in the UI.
 - **Hide Shorts** — removes the Shorts tab from the profile.
 - **Disable live streams** — removes the Live tab, filters live and Upcoming entries from the feed, and blocks opening them directly by URL.
+- **Downloaded videos only** — the child can only play videos that the [YT-DLP Integration](YT-DLP-Integration) plugin has downloaded to disk. Videos without a local file show a "ask a parent to download it" panel instead of the YouTube player, and the child cannot manage downloads themselves.
 
 Child profiles also get a reduced Settings view. They can access Channels, Tags & Rules, and Playlists, but do not see Display, Plugins, Advanced, Profiles, or Authentication. Protected channel changes still require the child lock PIN; tags and playlists remain available as described above.
 

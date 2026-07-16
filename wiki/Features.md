@@ -43,6 +43,8 @@ The app is designed around a few primary workflows:
 - **Shorts tab** — dedicated Shorts view that shows only Shorts from channels you follow, filterable by tag. Watched Shorts are marked in the grid.
 - **Shorts player** — a full-screen vertical player for browsing Shorts one at a time. Navigate with on-screen arrows, keyboard arrows, or swipe; Space pauses and resumes. The next and previous Shorts are preloaded for instant playback.
 - **SponsorBlock** — optional integration with [SponsorBlock](https://sponsor.ajay.app) to automatically skip sponsored segments, intros, outros, interaction reminders, and more. Configurable per category.
+- **YT-DLP Integration (plugin)** — download videos to local files and play them in YT Zero's own player: automatic downloads for scheduled videos and fresh uploads, a priority queue with a "wait for the download" mode, quality selection, smart retention with a storage cap, a dedicated Downloads tab, and download-progress bars on thumbnails. Disabled by default. See [YT-DLP Integration](YT-DLP-Integration).
+- **Fullscreen in landscape (mobile)** — optional setting under **Settings → Display**: rotating the phone to landscape on the watch page enters fullscreen automatically. Not available in Safari on iOS or in an iPhone PWA (Apple doesn't let pages enter fullscreen); there it works only for downloaded videos via the native player.
 - **Temporary videos** — open videos from YouTube search even when they are not from followed channels, then review or clear them later.
 - **Application logs** — inspect recent backend logs from the settings UI.
 - **Image cache** — local thumbnail and image cache for faster repeat loads.

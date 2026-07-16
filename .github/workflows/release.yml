@@ -1,7 +1,9 @@
 name: Release
 
 # Pushing a vX.Y.Z tag creates a GitHub Release with a list of commits
-# made since the previous tag.
+# made since the previous tag, plus a tarball with a prebuilt UI that
+# scripts/install.sh downloads (native installs must not build the frontend
+# on the target host).
 # Docker images are built by docker-ghcr.yml for the same tag.
 on:
   push:
@@ -20,6 +22,36 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Build ui
+        run: |
+          set -euo pipefail
+          cd ui
+          bun install --frozen-lockfile
+          bun run build
+
+      # Same layout as the Docker image: src/, package.json and the built UI in
+      # public/, so both runtimes start with the identical command.
+      - name: Assemble release tarball
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          stage="ytzero-${tag}"
+
+          mkdir -p "${stage}/public"
+          cp -r app/src "${stage}/src"
+          cp app/package.json "${stage}/package.json"
+          cp app/bun.lock "${stage}/bun.lock"
+          cp -r ui/dist/. "${stage}/public/"
+          echo "${tag}" > "${stage}/VERSION"
+
+          tar -czf "ytzero-${tag}.tar.gz" "${stage}"
+          sha256sum "ytzero-${tag}.tar.gz" > "ytzero-${tag}.tar.gz.sha256"
 
       - name: Generate release notes from commits
         shell: bash
@@ -65,4 +97,6 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
             --notes-file release-notes.md \
-            "${prerelease[@]}"
+            "${prerelease[@]}" \
+            "ytzero-${GITHUB_REF_NAME}.tar.gz" \
+            "ytzero-${GITHUB_REF_NAME}.tar.gz.sha256"

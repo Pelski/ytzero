@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>ytzero</Name>
+  <Repository>ghcr.io/pelski/ytzero:latest</Repository>
+  <Registry>https://github.com/Pelski/ytzero/pkgs/container/ytzero</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+
+  <Icon>https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/icon.png</Icon>
+  <WebUI>http://[IP]:[PORT:3001]/</WebUI>
+  <Overview>A self-hosted YouTube inbox for people who want subscriptions, not recommendations. YT Zero reads public YouTube RSS feeds, stores everything locally in SQLite, and provides a calm place to sort, schedule, watch, archive and revisit videos from chosen creators. No Google account, API key or algorithmic home feed is required. The app starts empty; add channels from Settings, then Channels.</Overview>
+
+  <Support>https://github.com/Pelski/ytzero/issues</Support>
+  <Project>https://github.com/Pelski/ytzero</Project>
+  <TemplateURL>https://raw.githubusercontent.com/Pelski/ytzero/main/templates/ytzero.xml</TemplateURL>
+  <ReadMe>https://raw.githubusercontent.com/Pelski/ytzero/main/README.md</ReadMe>
+
+  <Category>MediaApp:Video Tools:Utilities</Category>
+  <ExtraSearchTerms>YouTube subscriptions inbox RSS offline yt-dlp</ExtraSearchTerms>
+  <Requires>Internet access is required to fetch channel feeds, metadata and videos. Persistent storage is required for /data.</Requires>
+  <Changes>Initial Community Apps template.</Changes>
+  <Date>2026-07-16</Date>
+  <License>AGPL-3.0-only</License>
+
+  <Screenshot>https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/feed.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/video-standard.png</Screenshot>
+  <Screenshot>https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/video-theater.png</Screenshot>
+
+  <DefaultTagDescription>Stable releases</DefaultTagDescription>
+  <Branch>
+    <Tag>edge</Tag>
+    <TagDescription>Bleeding edge, built from main</TagDescription>
+  </Branch>
+
+  <Config Name="WebUI Port" Target="3001" Default="3001" Mode="tcp" Description="Port exposed for the YT Zero web interface." Type="Port" Display="always" Required="true" Mask="false"/>
+  <Config Name="Appdata" Target="/data" Default="/mnt/user/appdata/ytzero" Mode="rw" Description="Database, image cache, avatars, logs and downloaded videos. Back up this directory." Type="Path" Display="always" Required="true" Mask="false"/>
+  <Config Name="Feed refresh (minutes)" Target="REFRESH_INTERVAL_MINUTES" Default="5" Mode="" Description="How often to poll channel RSS feeds for new videos." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Metadata maintenance age (days)" Target="VIDEO_MAINTENANCE_MAX_AGE_DAYS" Default="90" Mode="" Description="Maximum video age considered by automatic Shorts and duration metadata backfills." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Idle timeout (seconds)" Target="IDLE_TIMEOUT_SECONDS" Default="120" Mode="" Description="HTTP idle timeout. Manual synchronization can take longer than Bun's default." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="yt-dlp auto-update" Target="YTDLP_AUTO_UPDATE" Default="1" Mode="" Description="Keep the bundled yt-dlp binary updated daily. Only matters when the Downloads plugin is enabled." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="App URL" Target="APP_URL" Default="" Mode="" Description="External URL, for example https://ytzero.example.com. Needed for OIDC and passkeys behind a reverse proxy." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+</Container>

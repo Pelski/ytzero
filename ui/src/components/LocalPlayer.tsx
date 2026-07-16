@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
+import { Clapperboard, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
 import type { SponsorSegment, VideoChapter } from "../api";
 import { SB_CATEGORIES } from "../api";
 import { useI18n } from "../i18n";
@@ -45,6 +45,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   artworkUrl?: string;
   chapters?: VideoChapter[];
   sbSegments?: SponsorSegment[];
+  cinemaMode?: boolean;
+  onToggleCinema?: () => void;
   onEnded?: () => void;
 }>(function LocalPlayer({
   src,
@@ -57,6 +59,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   artworkUrl,
   chapters = [],
   sbSegments = [],
+  cinemaMode = false,
+  onToggleCinema,
   onEnded,
 }, ref) {
   const { t } = useI18n();
@@ -391,6 +395,17 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           </div>
           <span className="lp-time">{fmtTime(currentTime)} / {fmtTime(duration)}</span>
           <span className="lp-spacer" />
+          {onToggleCinema && (
+            <button
+              className={`lp-btn${cinemaMode ? " active" : ""}`}
+              onClick={onToggleCinema}
+              aria-label={t("cinemaMode")}
+              aria-pressed={cinemaMode}
+              title={t("cinemaMode")}
+            >
+              <Clapperboard size={19} />
+            </button>
+          )}
           <button className="lp-btn" onClick={togglePip} aria-label={t("playerPip")}>
             <PictureInPicture2 size={19} />
           </button>

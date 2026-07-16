@@ -10,6 +10,7 @@
 - [Profiles](Profiles)
 - [Authentication](Authentication)
 - [Child Lock](Child-Lock)
+- [YT-DLP Integration](YT-DLP-Integration)
 
 **Operations**
 - [Backup & Updates](Backup-and-Updates)

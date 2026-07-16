@@ -2240,6 +2240,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             <div>
               <div className="switch-label">{t("autoFullscreenLandscape")}</div>
               <div className="switch-sub">{t("autoFullscreenLandscapeHint")}</div>
+              <div className="switch-sub switch-sub--note">{t("autoFullscreenLandscapeCaveat")}</div>
             </div>
             <button
               className={`switch${autoFullscreen ? " on" : ""}`}

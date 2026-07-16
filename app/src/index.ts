@@ -1,12 +1,29 @@
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { api } from "./routes";
-import { getSetting } from "./db";
+import { db, getSetting } from "./db";
 import { startScheduler } from "./refresher";
 import { startDownloader } from "./downloader";
 import { log } from "./logger";
 
+// Baked in by the Docker build and by scripts/install.sh; "dev" when running
+// straight from a checkout.
+const VERSION = process.env.YTZERO_VERSION || "dev";
+
 const app = new Hono();
+
+// Health probe for container runtimes, reverse proxies and installers. Declared
+// before the API router so the session middleware never sees it — probes have no
+// cookies and must not depend on the configured auth method.
+app.get("/api/health", (c) => {
+  try {
+    db.query("SELECT 1").get();
+  } catch (err) {
+    log.error("health.db", { error: String(err) });
+    return c.json({ status: "error", version: VERSION }, 503);
+  }
+  return c.json({ status: "ok", version: VERSION, uptime: Math.round(process.uptime()) });
+});
 
 app.route("/api", api);
 

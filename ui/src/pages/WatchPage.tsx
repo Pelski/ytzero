@@ -8,12 +8,13 @@ import {
   BookmarkPlus,
   CalendarDays,
   Check,
+  ChevronLeft,
   Clock,
   Clapperboard,
+  EllipsisVertical,
   ExternalLink,
   Eye,
   Gauge,
-  HardDrive,
   LoaderCircle,
   MonitorPlay,
   Pause,
@@ -22,6 +23,7 @@ import {
   SkipForward,
   Square,
   ThumbsUp,
+  Trash2,
   Undo2,
 } from "lucide-react";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
@@ -160,8 +162,11 @@ export default function WatchPage() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [isChildProfile, setIsChildProfile] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [speedOpen, setSpeedOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [moreView, setMoreView] = useState<"root" | "speed" | "watchlater" | "playlist">("root");
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [newPlaylistIcon, setNewPlaylistIcon] = useState("ListMusic");
@@ -174,7 +179,6 @@ export default function WatchPage() {
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
   const [speed, setSpeed] = useState("1");
-  const [speedOpen, setSpeedOpen] = useState(false);
   const [downloadsEnabled, setDownloadsEnabled] = useState(false);
   // "auto" plays the local file when one exists; "youtube" forces the iframe.
   const [playerSource, setPlayerSource] = useState<"auto" | "youtube">("auto");
@@ -188,9 +192,10 @@ export default function WatchPage() {
   // Path to the next playlist video, read by the player's onStateChange when a
   // video ends. A ref keeps the player effect free of playlist dependencies.
   const nextInPlaylistRef = useRef<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const scheduleMenuRef = useRef<HTMLDivElement>(null);
   const playlistMenuRef = useRef<HTMLDivElement>(null);
   const speedMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
@@ -205,6 +210,22 @@ export default function WatchPage() {
   const sbSegmentsRef = useRef<SponsorSegment[]>([]);
   const sbPausedRef = useRef(false);
   const disabledSegsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!scheduleOpen && !playlistOpen && !speedOpen) return;
+    const close = (e: MouseEvent) => {
+      const target = e.target as Element;
+      if (scheduleMenuRef.current?.contains(target)) return;
+      if (playlistMenuRef.current?.contains(target)) return;
+      if (speedMenuRef.current?.contains(target)) return;
+      if (target.closest?.(".playlist-icon-popover")) return;
+      setScheduleOpen(false);
+      setPlaylistOpen(false);
+      setSpeedOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [scheduleOpen, playlistOpen, speedOpen]);
 
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
@@ -511,22 +532,21 @@ export default function WatchPage() {
   }, [playerKind, id]);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!moreOpen) return;
     const close = (e: MouseEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+      const target = e.target as Element;
+      if (moreMenuRef.current?.contains(target)) return;
+      if (target.closest?.(".playlist-icon-popover")) return;
+      if (target.closest?.(".popconfirm-popover")) return;
+      setMoreOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [menuOpen]);
+  }, [moreOpen]);
 
   useEffect(() => {
-    if (!speedOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!speedMenuRef.current?.contains(e.target as Node)) setSpeedOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [speedOpen]);
+    if (!moreOpen) setMoreView("root");
+  }, [moreOpen]);
 
   // Apply a speed: change playback now and persist it as this channel's override
   // (null clears the override, falling back to the global default).
@@ -535,24 +555,13 @@ export default function WatchPage() {
     setSpeed(eff);
     speedRef.current = eff;
     try { playerRef.current?.setPlaybackRate(Number(eff)); } catch {}
+    setMoreOpen(false);
     setSpeedOpen(false);
     if (video) {
       api.setChannelSpeed(video.channel_id, v).catch(() => {});
       setVideo((prev) => (prev ? { ...prev, channel_playback_speed: v } : prev));
     }
   };
-
-  useEffect(() => {
-    if (!playlistOpen) return;
-    const close = (e: MouseEvent) => {
-      const target = e.target as Element;
-      if (playlistMenuRef.current?.contains(target)) return;
-      if (target.closest?.(".playlist-icon-popover")) return;
-      setPlaylistOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [playlistOpen]);
 
   // Cinema class lifecycle — separated from key listener so cleanup doesn't
   // prematurely remove the class when transitioning out.
@@ -585,35 +594,48 @@ export default function WatchPage() {
   useEffect(() => restoreSidebarVisibility, []);
 
   // Mobile: rotating to landscape enters player fullscreen (opt-in setting).
-  // Chrome for Android allows requestFullscreen() from an orientation-change
-  // handler; iPhones lack element fullscreen, so fall back to the <video>
-  // element's webkitEnterFullscreen (local player only).
+  // Chrome for Android permits requestFullscreen() inside a user-generated
+  // orientation-change handler — the call must stay synchronous or that
+  // exemption is lost. iPhones lack element fullscreen entirely, so fall back
+  // to the <video> element's webkitEnterFullscreen (local player only).
   useEffect(() => {
     if (settings?.auto_fullscreen_landscape !== "1") return;
     if (!window.matchMedia("(pointer: coarse)").matches) return;
-    const onOrientation = () => {
-      const landscape = window.matchMedia("(orientation: landscape)").matches;
+
+    // screen.orientation.type updates before its change event fires; the
+    // matchMedia fallback can still report the OLD orientation at that point.
+    const isLandscape = () => {
+      const type = (screen as any).orientation?.type as string | undefined;
+      if (type) return type.startsWith("landscape");
+      return window.matchMedia("(orientation: landscape)").matches;
+    };
+    const enterFullscreen = () => {
       const el = playerWrapRef.current;
-      if (!el) return;
-      if (landscape && !document.fullscreenElement) {
-        if (el.requestFullscreen) {
-          el.requestFullscreen().catch(() => {});
-        } else {
-          const vid = el.querySelector("video") as any;
-          try { vid?.webkitEnterFullscreen?.(); } catch {}
-        }
-      } else if (!landscape && document.fullscreenElement) {
-        document.exitFullscreen?.().catch(() => {});
+      if (!el || document.fullscreenElement) return;
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch(() => {});
+      } else {
+        const vid = el.querySelector("video") as any;
+        try { vid?.webkitEnterFullscreen?.(); } catch {}
       }
+    };
+    const onOrientation = () => {
+      if (isLandscape()) enterFullscreen();
+      else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
     };
     const orientation: any = (screen as any).orientation;
     orientation?.addEventListener?.("change", onOrientation);
     window.addEventListener("orientationchange", onOrientation);
+    // Opened already in landscape: no rotation event will come. Try once —
+    // the tap that navigated here usually still counts as user activation.
+    let initialTimer: number | undefined;
+    if (isLandscape()) initialTimer = window.setTimeout(enterFullscreen, 400);
     return () => {
+      if (initialTimer) window.clearTimeout(initialTimer);
       orientation?.removeEventListener?.("change", onOrientation);
       window.removeEventListener("orientationchange", onOrientation);
     };
-  }, [settings?.auto_fullscreen_landscape]);
+  }, [settings?.auto_fullscreen_landscape, id]);
 
   // Keyboard shortcuts: T = cinema, F = fullscreen
   useEffect(() => {
@@ -696,7 +718,8 @@ export default function WatchPage() {
 
   const queue = async (bucket: Bucket) => {
     if (!video) return;
-    setMenuOpen(false);
+    setMoreOpen(false);
+    setScheduleOpen(false);
     await api.queue(video.video_id, bucket);
     emit("queue-changed");
     emitToast(t("scheduledFeedback"), "scheduled");
@@ -704,6 +727,13 @@ export default function WatchPage() {
   };
 
   const openPlaylistMenu = async () => {
+    if (!video) return;
+    setMoreView("playlist");
+    const r = await api.userPlaylists(video.video_id);
+    setPlaylists(r.playlists);
+  };
+
+  const toggleDesktopPlaylist = async () => {
     if (!video) return;
     const next = !playlistOpen;
     setPlaylistOpen(next);
@@ -795,6 +825,8 @@ export default function WatchPage() {
                   artworkUrl={img(video.thumbnail)}
                   chapters={chapters}
                   sbSegments={sbSegments}
+                  cinemaMode={cinemaMode}
+                  onToggleCinema={() => setCinemaMode((mode) => !mode)}
                   onEnded={handleEnded}
                 />
               ) : playerKind === "youtube" ? (
@@ -939,20 +971,23 @@ export default function WatchPage() {
               onClick={toggleLiked}
             >
               <ThumbsUp fill={video.liked === 1 ? "currentColor" : "none"} />
-              {t("like")}
+              <span className="btn-label">{t("like")}</span>
             </button>
+            <div className="watch-action-group watch-action-group--playback">
             <button
-              className={`btn${cinemaMode ? " active" : ""}`}
+              className={`btn icon-only watch-action-desktop watch-action-medium${cinemaMode ? " active" : ""}`}
               onClick={() => setCinemaMode((m) => !m)}
               title={t("cinemaMode")}
+              aria-pressed={cinemaMode}
             >
-              <Clapperboard size={15} /> {t("cinema")}
+              <Clapperboard size={15} />
             </button>
-            <div className="dropdown" ref={speedMenuRef}>
+            <div className="dropdown watch-action-desktop watch-action-medium" ref={speedMenuRef}>
               <button
                 className={`btn${speed !== "1" ? " active" : ""}`}
-                onClick={() => setSpeedOpen((o) => !o)}
+                onClick={() => setSpeedOpen((open) => !open)}
                 title={t("playbackSpeed")}
+                aria-expanded={speedOpen}
               >
                 <Gauge size={15} /> {speed}×
               </button>
@@ -968,17 +1003,23 @@ export default function WatchPage() {
                       {speed === s && <span className="dropdown-menu-status"><Check size={14} /></span>}
                     </button>
                   ))}
-                  {video?.channel_playback_speed != null && (
+                  {video.channel_playback_speed != null && (
                     <button onClick={() => changeSpeed(null)}>{t("speedDefault")}</button>
                   )}
                 </div>
               )}
             </div>
-            <div className="dropdown" ref={menuRef}>
-              <button className="btn" onClick={() => setMenuOpen((o) => !o)}>
+            </div>
+            <div className="watch-action-group watch-action-group--organize watch-action-desktop">
+            <div className="dropdown watch-action-desktop watch-action-medium" ref={scheduleMenuRef}>
+              <button
+                className="btn"
+                onClick={() => setScheduleOpen((open) => !open)}
+                aria-expanded={scheduleOpen}
+              >
                 <Clock /> {t("watchLater")}
               </button>
-              {menuOpen && (
+              {scheduleOpen && (
                 <div className="dropdown-menu schedule-menu">
                   {WATCH_LATER_GROUPS.map((group) => (
                     <div key={group.labelKey} className="dropdown-menu-group">
@@ -998,9 +1039,9 @@ export default function WatchPage() {
                 </div>
               )}
             </div>
-            <div className="dropdown" ref={playlistMenuRef}>
-              <button className="btn icon-only" title={t("addToPlaylist")} onClick={openPlaylistMenu}>
-                <BookmarkPlus />
+            <div className="dropdown watch-action-desktop watch-action-wide" ref={playlistMenuRef}>
+              <button className="btn" title={t("addToPlaylist")} onClick={toggleDesktopPlaylist} aria-expanded={playlistOpen}>
+                <BookmarkPlus /> {t("addToPlaylist")}
               </button>
               {playlistOpen && (
                 <div className="dropdown-menu playlist-picker-menu">
@@ -1009,9 +1050,7 @@ export default function WatchPage() {
                     <button key={p.id} className={p.has_video === 1 ? "is-selected" : undefined} onClick={() => togglePlaylist(p)}>
                       <span className="playlist-dot"><PlaylistIcon icon={p.icon} /></span>
                       {p.name}
-                      {p.has_video === 1 && (
-                        <span className="dropdown-menu-status"><Check size={14} /></span>
-                      )}
+                      {p.has_video === 1 && <span className="dropdown-menu-status"><Check size={14} /></span>}
                     </button>
                   ))}
                   <div className="dropdown-form">
@@ -1030,24 +1069,10 @@ export default function WatchPage() {
                 </div>
               )}
             </div>
-            {downloadStatus === "done" && !childDownloadsOnly && (
-              <button
-                className="btn"
-                title={t("playbackSource")}
-                onClick={() => setPlayerSource(usingLocal ? "youtube" : "auto")}
-              >
-                {usingLocal ? <HardDrive size={15} /> : <MonitorPlay size={15} />}
-                {usingLocal ? t("playerLocal") : "YouTube"}
-              </button>
-            )}
-            {downloadsEnabled && !isChildProfile && (
-              downloadStatus === "done" ? (
-                <Popconfirm message={t("downloadRemoveConfirm")} onConfirm={cancelOrRemoveDownload}>
-                  <button className="btn icon-only active dl-done" title={t("downloadRemove")}>
-                    <ArrowDownToLine />
-                  </button>
-                </Popconfirm>
-              ) : downloadStatus === "queued" || downloadStatus === "downloading" ? (
+            </div>
+            <div className="watch-action-group watch-action-group--utility">
+            {downloadsEnabled && !isChildProfile && downloadStatus !== "done" && (
+              downloadStatus === "queued" || downloadStatus === "downloading" ? (
                 <button
                   className="btn icon-only"
                   title={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}
@@ -1065,15 +1090,6 @@ export default function WatchPage() {
                 </button>
               )
             )}
-            {video.status !== "archived" ? (
-              <button className="btn icon-only" title={t("reject")} onClick={() => api.archiveVideo(video.video_id).then(reload)}>
-                <Archive />
-              </button>
-            ) : (
-              <button className="btn icon-only" title={t("restore")} onClick={() => api.restore(video.video_id).then(reload)}>
-                <Undo2 />
-              </button>
-            )}
             <div className="share-btn-wrap">
               <button
                 className="btn icon-only"
@@ -1086,17 +1102,135 @@ export default function WatchPage() {
                 <span key={copyKey} className="copy-toast">{t("copied")}</span>
               )}
             </div>
-            {!isChildProfile && (
-              <a
-                className="btn"
-                href={`https://www.youtube.com/watch?v=${video.video_id}`}
-                target="_blank"
-                rel="noreferrer"
+            <div className="dropdown watch-action-overflow" ref={moreMenuRef}>
+              <button
+                className={`btn icon-only${moreOpen ? " active" : ""}`}
+                title={t("moreActions")}
+                onClick={() => setMoreOpen((o) => !o)}
               >
-                <ExternalLink size={15} />
-                YouTube
-              </a>
-            )}
+                <EllipsisVertical />
+              </button>
+              {moreOpen && (
+                <div className="dropdown-menu more-menu">
+                  {moreView === "root" && (
+                    <>
+                      <button className="more-item-medium" onClick={() => { setCinemaMode((m) => !m); setMoreOpen(false); }}>
+                        <Clapperboard /> {t("cinemaMode")}
+                        {cinemaMode && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                      </button>
+                      <button className="more-item-medium" onClick={() => setMoreView("speed")}>
+                        <Gauge /> {t("channelSpeed")}
+                        <span className="dropdown-menu-status">{speed}×</span>
+                      </button>
+                      <button className="more-item-medium" onClick={() => setMoreView("watchlater")}>
+                        <Clock /> {t("watchLater")}
+                      </button>
+                      <button className="more-item-wide" onClick={openPlaylistMenu}>
+                        <BookmarkPlus /> {t("addToPlaylist")}
+                      </button>
+                      {downloadsEnabled && !isChildProfile && downloadStatus === "done" && (
+                        <Popconfirm message={t("downloadRemoveConfirm")} onConfirm={cancelOrRemoveDownload}>
+                          <button className="more-item-always">
+                            <Trash2 /> {t("downloadRemove")}
+                          </button>
+                        </Popconfirm>
+                      )}
+                      {video.status !== "archived" ? (
+                        <button className="more-item-always" onClick={() => { api.archiveVideo(video.video_id).then(reload); setMoreOpen(false); }}>
+                          <Archive /> {t("rejectVideo")}
+                        </button>
+                      ) : (
+                        <button className="more-item-always" onClick={() => { api.restore(video.video_id).then(reload); setMoreOpen(false); }}>
+                          <Undo2 /> {t("restoreRejectedVideo")}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {moreView === "speed" && (
+                    <>
+                      <div className="more-menu-header">
+                        <button className="more-menu-back" title={t("back")} onClick={() => setMoreView("root")}>
+                          <ChevronLeft />
+                        </button>
+                        {t("channelSpeed")}
+                      </div>
+                      {PLAYBACK_SPEEDS.map((s) => (
+                        <button
+                          key={s}
+                          className={speed === s ? "is-selected" : undefined}
+                          onClick={() => changeSpeed(s)}
+                        >
+                          {s === "1" ? "1×" : `${s}×`}
+                          {speed === s && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                        </button>
+                      ))}
+                      {video?.channel_playback_speed != null && (
+                        <button onClick={() => changeSpeed(null)}>{t("speedDefault")}</button>
+                      )}
+                    </>
+                  )}
+                  {moreView === "watchlater" && (
+                    <>
+                      <div className="more-menu-header">
+                        <button className="more-menu-back" title={t("back")} onClick={() => setMoreView("root")}>
+                          <ChevronLeft />
+                        </button>
+                        {t("watchLater")}
+                      </div>
+                      {WATCH_LATER_GROUPS.map((group) => (
+                        <div key={group.labelKey} className="dropdown-menu-group">
+                          <div className="dropdown-menu-label">{t(group.labelKey)}</div>
+                          <div className="dropdown-menu-row">
+                            {group.buckets.map((b) => {
+                              const Icon = BUCKET_ICONS[b];
+                              return (
+                                <button key={b} className="schedule-icon-choice" title={bucketLabel(b)} onClick={() => queue(b)}>
+                                  <Icon />
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                  {moreView === "playlist" && (
+                    <>
+                      <div className="more-menu-header">
+                        <button className="more-menu-back" title={t("back")} onClick={() => setMoreView("root")}>
+                          <ChevronLeft />
+                        </button>
+                        {t("addToPlaylist")}
+                      </div>
+                      {playlists.length === 0 && <div className="dropdown-empty">{t("noPlaylists")}</div>}
+                      {playlists.map((p) => (
+                        <button key={p.id} className={p.has_video === 1 ? "is-selected" : undefined} onClick={() => togglePlaylist(p)}>
+                          <span className="playlist-dot"><PlaylistIcon icon={p.icon} /></span>
+                          {p.name}
+                          {p.has_video === 1 && (
+                            <span className="dropdown-menu-status"><Check size={14} /></span>
+                          )}
+                        </button>
+                      ))}
+                      <div className="dropdown-form">
+                        <div className="dropdown-form-title">{t("newPlaylistDots")}</div>
+                        <div className="dropdown-form-row">
+                          <PlaylistIconPicker value={newPlaylistIcon} onChange={setNewPlaylistIcon} compact />
+                          <input
+                            value={newPlaylistName}
+                            placeholder={t("name")}
+                            onChange={(e) => setNewPlaylistName(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && createPlaylist()}
+                          />
+                        </div>
+                        <button className="btn primary" disabled={!newPlaylistName.trim()} onClick={createPlaylist}>{t("createAndAdd")}</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            </div>
           </div>
         </div>}
         {video && (video.live_status === "live" || video.tags.length > 0) && (
@@ -1123,6 +1257,17 @@ export default function WatchPage() {
               )}
               {video.published_at && (
                 <span className="stat"><CalendarDays /> {new Date(video.published_at).toLocaleDateString(locale)}</span>
+              )}
+              {!isChildProfile && (
+                <a
+                  className="watch-youtube-link"
+                  href={`https://www.youtube.com/watch?v=${video.video_id}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <ExternalLink /> YouTube
+                </a>
               )}
             </div>
             {video.description && (

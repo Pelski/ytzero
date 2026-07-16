@@ -21,14 +21,24 @@ RUN bun install --production
 COPY app/src ./src
 COPY --from=ui-build /ui/dist ./public
 
+ARG YTZERO_VERSION=dev
 ENV PORT=3001 \
     IDLE_TIMEOUT_SECONDS=120 \
     DB_PATH=/data/db/ytzero.db \
     IMG_CACHE_DIR=/data/imgcache \
     DOWNLOADS_DIR=/data/downloads \
+    AVATAR_DIR=/data/avatars \
+    LOG_PATH=/data/logs/ytzero.log \
     YTDLP_AUTO_UPDATE=1 \
-    UI_DIST=./public
+    UI_DIST=./public \
+    YTZERO_VERSION=${YTZERO_VERSION}
 
 VOLUME /data
 EXPOSE 3001
+
+# curl is purged above to keep the image small, so probe with the Bun that is
+# already here. Exits non-zero on a non-2xx status or a refused connection.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD bun -e 'const r = await fetch(`http://127.0.0.1:${process.env.PORT ?? 3001}/api/health`); process.exit(r.ok ? 0 : 1)'
+
 CMD ["bun", "src/index.ts"]

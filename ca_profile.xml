@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<CommunityApplications>
+  <Profile>
+    Official Community Apps templates for YT Zero, a self-hosted YouTube inbox focused on subscriptions instead of recommendations. Support and issue tracking are available through the project repository.
+  </Profile>
+  <Icon>https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/icon.svg</Icon>
+  <WebPage>https://github.com/Pelski/ytzero</WebPage>
+</CommunityApplications>

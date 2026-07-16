@@ -1,0 +1,48 @@
+{
+  "name": "YT Zero",
+  "slug": "ytzero",
+  "categories": [
+    13
+  ],
+  "date_created": "2026-07-16",
+  "type": "ct",
+  "updateable": true,
+  "privileged": false,
+  "interface_port": 3001,
+  "documentation": "https://github.com/Pelski/ytzero/wiki",
+  "website": "https://github.com/Pelski/ytzero",
+  "logo": "https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/icon.png",
+  "config_path": "/etc/ytzero/ytzero.env",
+  "description": "YT Zero is a self-hosted YouTube inbox for people who want subscriptions, not recommendations. It reads public YouTube RSS feeds, stores everything locally in SQLite, and gives you a calm place to sort, schedule, watch, archive and revisit videos from creators you already follow — without a Google account or an API key. It supports profiles, several authentication methods, child profiles with watch-time limits, tags and rules, local playlists, SponsorBlock, and an optional yt-dlp plugin for downloads and offline playback.",
+  "install_methods": [
+    {
+      "type": "default",
+      "script": "ct/ytzero.sh",
+      "resources": {
+        "cpu": 2,
+        "ram": 2048,
+        "hdd": 8,
+        "os": "debian",
+        "version": "13"
+      }
+    }
+  ],
+  "default_credentials": {
+    "username": null,
+    "password": null
+  },
+  "notes": [
+    {
+      "text": "The app starts with no channels. Add them from Settings > Channels, or import an OPML file or a Google Takeout subscriptions.csv.",
+      "type": "info"
+    },
+    {
+      "text": "Downloads are optional and off by default. Enabling the YT-DLP Integration plugin stores video files under /opt/ytzero/data/downloads — size the disk accordingly.",
+      "type": "info"
+    },
+    {
+      "text": "Configuration lives in /etc/ytzero/ytzero.env. Run 'systemctl restart ytzero' after editing it.",
+      "type": "info"
+    }
+  ]
+}

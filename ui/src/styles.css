@@ -1521,10 +1521,12 @@ button.video-card:disabled { cursor: default; }
   z-index: 30;
   overflow: hidden;
   padding: 6px 0;
+  border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.55);
 }
 .dropdown-menu.up { top: auto; bottom: calc(100% + 4px); }
-.dropdown-menu button {
+.dropdown-menu button,
+.dropdown-menu > a {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1535,12 +1537,16 @@ button.video-card:disabled { cursor: default; }
   color: var(--text);
   padding: 9px 16px;
   font-size: 13.5px;
+  line-height: 1.35;
+  text-decoration: none;
+  cursor: pointer;
 }
 .dropdown-menu button.is-selected {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .dropdown-menu button svg { width: 17px; height: 17px; stroke-width: 1.7; color: var(--text-2); }
-.dropdown-menu button:hover { background: var(--surface-3); }
+.dropdown-menu button:hover,
+.dropdown-menu > a:hover { background: var(--surface-3); }
 .dropdown-menu button.is-selected:hover {
   background: color-mix(in srgb, var(--accent) 18%, var(--surface-3));
 }
@@ -1608,6 +1614,36 @@ button.video-card:disabled { cursor: default; }
   color: currentColor !important;
 }
 .playlist-picker-menu { min-width: 260px; }
+.more-menu {
+  min-width: 240px;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+  left: auto;
+  right: 0;
+}
+.more-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 8px;
+  margin: 0 0 4px;
+  border-bottom: 1px solid var(--surface-3);
+  font-size: 13px;
+  font-weight: 600;
+}
+.dropdown-menu .more-menu-back {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border-radius: 6px;
+  background: none;
+  flex-shrink: 0;
+}
+.more-menu-back svg { width: 16px; height: 16px; color: var(--text-2); }
+.more-menu-back:hover { background: var(--surface-3); }
 .playlist-dot {
   width: 24px;
   height: 24px;
@@ -1659,6 +1695,73 @@ button.video-card:disabled { cursor: default; }
 }
 .dropdown-form .btn { justify-content: center; }
 
+.watch-action-overflow { display: block; }
+
+.watch-action-group {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  min-height: 34px;
+  background: var(--chip);
+  border-radius: 10px;
+}
+.watch-action-group > * {
+  flex-shrink: 0;
+}
+.watch-action-group > * + * {
+  border-left: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+.watch-action-group > span,
+.watch-action-group > .share-btn-wrap {
+  display: flex;
+}
+.watch-action-group > .btn,
+.watch-action-group > .dropdown > .btn,
+.watch-action-group > .share-btn-wrap > .btn,
+.watch-action-group > span > .btn {
+  height: 34px;
+  background: transparent;
+  border-radius: 0;
+}
+.watch-action-group > .btn:hover,
+.watch-action-group > .dropdown > .btn:hover,
+.watch-action-group > .share-btn-wrap > .btn:hover,
+.watch-action-group > span > .btn:hover {
+  background: var(--chip-hover);
+}
+.watch-action-group > .btn.active,
+.watch-action-group > .dropdown > .btn.active,
+.watch-action-group > .share-btn-wrap > .btn.active,
+.watch-action-group > span > .btn.active {
+  background: var(--surface-3);
+}
+.watch-action-group > .btn:first-child,
+.watch-action-group > :first-child > .btn {
+  border-radius: 9px 0 0 9px;
+}
+.watch-action-group > .btn:last-child,
+.watch-action-group > :last-child > .btn {
+  border-radius: 0 9px 9px 0;
+}
+.more-menu .more-item-medium,
+.more-menu .more-item-wide { display: none; }
+
+/* Collapse actions by the width actually available to the watch header, not
+   only by the device viewport. This also reacts to the sidebar and theater mode. */
+@container (max-width: 980px) {
+  .watch-action-wide { display: none !important; }
+  .more-menu .more-item-wide { display: flex; }
+  .watch-action-group--organize > .watch-action-medium > .btn {
+    border-radius: 0 9px 9px 0;
+  }
+}
+@container (max-width: 760px) {
+  .watch-action-medium { display: none !important; }
+  .watch-action-group--playback,
+  .watch-action-group--organize { display: none !important; }
+  .more-menu .more-item-medium { display: flex; }
+}
+
 /* ---------- watch page ---------- */
 .watch-layout {
   display: grid;
@@ -1673,6 +1776,23 @@ button.video-card:disabled { cursor: default; }
 @media (max-width: 1120px) {
   .watch-actions {
     flex: 0 0 100%;
+  }
+}
+@media (max-width: 640px) {
+  .watch-action-desktop { display: none !important; }
+  .watch-actions {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .watch-actions .btn {
+    padding: 0 10px;
+    gap: 5px;
+  }
+  .watch-actions .btn-label {
+    display: none;
+  }
+  .watch-actions .btn.like-btn {
+    padding: 0 10px;
   }
 }
 .watch-player {
@@ -1844,6 +1964,7 @@ button.video-card:disabled { cursor: default; }
   opacity: 0.92;
 }
 .lp-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.14); }
+.lp-btn.active { opacity: 1; background: rgba(255, 255, 255, 0.2); }
 .lp-volume { display: flex; align-items: center; }
 .lp-volume input[type="range"] {
   width: 0;
@@ -1941,9 +2062,18 @@ button.video-card:disabled { cursor: default; }
 }
 /* Plugin setting "thumb_progress" off → bars disappear app-wide. */
 :root[data-dl-thumb-progress="0"] .dl-progress-top { display: none; }
+
+/* Secondary, platform-caveat note under a setting's description. */
+.switch-sub--note {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 11.5px;
+  max-width: 560px;
+}
 .watch-title { font-size: 19px; font-weight: 700; line-height: 1.35; margin: 14px 0 10px; letter-spacing: -0.2px; }
 .watch-row {
   display: flex;
+  container-type: inline-size;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
@@ -1956,7 +2086,7 @@ button.video-card:disabled { cursor: default; }
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
   margin-left: auto;
   max-width: 100%;
 }
@@ -2015,6 +2145,26 @@ button.video-card:disabled { cursor: default; }
   font-weight: 500;
 }
 .watch-desc-stats .stat svg { width: 16px; height: 16px; stroke-width: 1.8; }
+.watch-youtube-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.watch-youtube-link svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+.watch-youtube-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .watch-desc-sep { border-top: 1px solid var(--surface-3); margin: 10px 0 8px; }
 .watch-desc-toggle {
   background: none;
