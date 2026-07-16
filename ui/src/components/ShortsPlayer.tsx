@@ -43,6 +43,7 @@ export default function ShortsPlayer({
   videos,
   initialIndex,
   onClose,
+  onVideoChange,
   onLoadMore,
   onWatched,
   onLiked,
@@ -50,6 +51,7 @@ export default function ShortsPlayer({
   videos: Video[];
   initialIndex: number;
   onClose: () => void;
+  onVideoChange: (videoId: string) => void;
   onLoadMore: () => void;
   onWatched: (videoId: string) => void;
   onLiked: (videoId: string, liked: boolean) => void;
@@ -64,6 +66,8 @@ export default function ShortsPlayer({
   useEffect(() => { onWatchedRef.current = onWatched; }, [onWatched]);
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+  const onVideoChangeRef = useRef(onVideoChange);
+  useEffect(() => { onVideoChangeRef.current = onVideoChange; }, [onVideoChange]);
   const onLikedRef = useRef(onLiked);
   useEffect(() => { onLikedRef.current = onLiked; }, [onLiked]);
 
@@ -119,6 +123,7 @@ export default function ShortsPlayer({
           controls: 0,
           fs: 0,
           rel: 0,
+          cc_load_policy: 0,
           iv_load_policy: 3,
           disablekb: 1,
           playsinline: 1,
@@ -227,6 +232,7 @@ export default function ShortsPlayer({
       // Opening a Short adds it to history; completion is recorded on ENDED.
       const newVid = vids[newVidIdx];
       if (newVid) {
+        onVideoChangeRef.current(newVid.video_id);
         api.watch(newVid.video_id).catch(() => {});
       }
 

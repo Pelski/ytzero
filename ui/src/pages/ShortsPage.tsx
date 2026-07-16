@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Heart, Play, Shuffle, Zap } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
 import { subscribe } from "../events";
 import { api, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -10,6 +11,8 @@ import { ShortsGridSkeleton } from "../components/LoadingState";
 
 export default function ShortsPage() {
   const { t } = useI18n();
+  const { videoId } = useParams<{ videoId?: string }>();
+  const navigate = useNavigate();
   const [videos, setVideos] = useState<Video[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<number[]>(() => {
@@ -28,6 +31,7 @@ export default function ShortsPage() {
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const hasMoreRef = useRef(true);
   const loadingMoreRef = useRef(false);
+  const deepLinkRequestRef = useRef<string | null>(null);
 
   const load = useCallback(async (requestedPage: number) => {
     if (requestedPage === 0) setLoading(true);
@@ -110,10 +114,37 @@ export default function ShortsPage() {
     setPage((p) => p + 1);
   }, []);
 
+  const playerPath = useCallback((id: string) => `/shorts/${encodeURIComponent(id)}`, []);
+
   const openPlayer = useCallback((v: Video) => {
     const idx = videos.findIndex((x) => x.video_id === v.video_id);
     setPlayerIdx(idx >= 0 ? idx : 0);
-  }, [videos]);
+    navigate(playerPath(v.video_id));
+  }, [navigate, playerPath, videos]);
+
+  // Resolve direct links after the feed loads. If the target isn't in the
+  // current page (or is filtered out), fetch that exact video and prepend it.
+  useEffect(() => {
+    if (!videoId) {
+      deepLinkRequestRef.current = null;
+      setPlayerIdx(null);
+      return;
+    }
+    const idx = videos.findIndex((v) => v.video_id === videoId);
+    if (idx >= 0) {
+      setPlayerIdx(idx);
+      return;
+    }
+    if (loading || deepLinkRequestRef.current === videoId) return;
+    deepLinkRequestRef.current = videoId;
+    api.video(videoId)
+      .then(({ video }) => {
+        if (video.is_short !== 1) throw new Error("not a Short");
+        setVideos((current) => current.some((v) => v.video_id === video.video_id) ? current : [video, ...current]);
+        setPlayerIdx(0);
+      })
+      .catch(() => navigate("/shorts", { replace: true }));
+  }, [loading, navigate, videoId, videos]);
 
   const isWatched = useCallback(
     (v: Video) => v.watched === 1 || watchedIds.has(v.video_id),
@@ -123,7 +154,9 @@ export default function ShortsPage() {
   const playFromStart = () => {
     if (videos.length === 0) return;
     const firstUnwatched = videos.findIndex((v) => !isWatched(v));
-    setPlayerIdx(firstUnwatched >= 0 ? firstUnwatched : 0);
+    const idx = firstUnwatched >= 0 ? firstUnwatched : 0;
+    setPlayerIdx(idx);
+    navigate(playerPath(videos[idx].video_id));
   };
 
   const playRandom = () => {
@@ -132,8 +165,21 @@ export default function ShortsPage() {
       .map((v, i) => ({ v, i }))
       .filter(({ v }) => !isWatched(v));
     const candidates = pool.length > 0 ? pool : videos.map((v, i) => ({ v, i }));
-    setPlayerIdx(candidates[Math.floor(Math.random() * candidates.length)].i);
+    const idx = candidates[Math.floor(Math.random() * candidates.length)].i;
+    setPlayerIdx(idx);
+    navigate(playerPath(videos[idx].video_id));
   };
+
+  const handlePlayerVideoChange = useCallback((nextVideoId: string) => {
+    const idx = videos.findIndex((v) => v.video_id === nextVideoId);
+    if (idx >= 0) setPlayerIdx(idx);
+    navigate(playerPath(nextVideoId), { replace: true });
+  }, [navigate, playerPath, videos]);
+
+  const closePlayer = useCallback(() => {
+    setPlayerIdx(null);
+    navigate("/shorts", { replace: true });
+  }, [navigate]);
 
   const handleWatched = useCallback((videoId: string) => {
     setWatchedIds((prev) => {
@@ -165,7 +211,8 @@ export default function ShortsPage() {
         <ShortsPlayer
           videos={videos}
           initialIndex={playerIdx}
-          onClose={() => setPlayerIdx(null)}
+          onClose={closePlayer}
+          onVideoChange={handlePlayerVideoChange}
           onLoadMore={loadMore}
           onWatched={handleWatched}
           onLiked={handleLiked}

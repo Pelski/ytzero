@@ -384,7 +384,7 @@ function AppShell() {
   // When the limit kicks in mid-video, leave the player page so playback stops
   // (the lock overlay alone would keep the audio running underneath).
   useEffect(() => {
-    if (childStatus?.locked && (location.pathname.startsWith("/watch/") || location.pathname === "/shorts")) {
+    if (childStatus?.locked && (location.pathname.startsWith("/watch/") || location.pathname.startsWith("/shorts"))) {
       navigate("/", { replace: true });
     }
   }, [childStatus?.locked, location.pathname, navigate]);
@@ -394,6 +394,12 @@ function AppShell() {
       navigate("/", { replace: true });
     }
   }, [childStatus?.hide_live, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (childStatus?.hide_shorts && location.pathname.startsWith("/shorts")) {
+      navigate("/", { replace: true });
+    }
+  }, [childStatus?.hide_shorts, location.pathname, navigate]);
 
   const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(navConfig);
   const pluginRouteVisible = (to: string) => !PLUGIN_ROUTES.includes(to) || enabledPluginRoutes?.has(to);
@@ -444,6 +450,7 @@ function AppShell() {
               <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} hideExternalSearch={childStatus?.local_only ?? false} />} />
               <Route path="/discovery" element={<DiscoveryPage onPlay={play} />} />
               <Route path="/shorts" element={<ShortsPage />} />
+              <Route path="/shorts/:videoId" element={<ShortsPage />} />
               <Route path="/live" element={<LivePage onPlay={play} />} />
               <Route path="/watch/:id" element={<WatchPage />} />
               <Route path="/watch/:id/playlist/:playlistId" element={<WatchPage />} />
