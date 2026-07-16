@@ -26,14 +26,17 @@ export default function ProfileMenu() {
   const [open, setOpen] = useState(false);
   const [pinFor, setPinFor] = useState<Profile | null>(null);
   const [pin, setPin] = useState("");
+  const [childLockPin, setChildLockPin] = useState("");
   const [pinError, setPinError] = useState(false);
   const [auth, setAuth] = useState<AuthStatus | null>(null);
+  const [childLockEnabled, setChildLockEnabled] = useState(false);
   const [reloginFor, setReloginFor] = useState<Profile | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
     api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
     api.authStatus().then(setAuth).catch(() => {});
+    api.childLock().then((r) => setChildLockEnabled(r.child_lock.enabled)).catch(() => {});
   }, []);
   useEffect(load, [load]);
   useEffect(() => subscribe("profiles-changed", load), [load]);
@@ -54,15 +57,21 @@ export default function ProfileMenu() {
   }, [open]);
 
   const active = profiles.find((p) => p.active) ?? profiles[0];
+  // Leaving a child profile is gated by the app-wide child lock PIN.
+  const needsChildLock = Boolean(active?.is_child && childLockEnabled);
 
-  const doSwitch = async (p: Profile, enteredPin?: string) => {
+  const doSwitch = async (p: Profile, enteredPin?: string, enteredChildLockPin?: string) => {
     try {
-      await api.switchProfile(p.id, enteredPin);
+      await api.switchProfile(p.id, enteredPin, enteredChildLockPin);
       // Full reload so feed, sidebar, settings and language all re-resolve.
       window.location.reload();
     } catch {
       setPinError(true);
       setPin(""); // clear for a fresh retry (avoids re-firing auto-submit)
+      setChildLockPin("");
+      // Repeated failures may have locked the child profile — reload so the
+      // lock screen takes over right away instead of on the next poll.
+      api.childStatus().then((s) => { if (s.locked) window.location.reload(); }).catch(() => {});
     }
   };
 
@@ -75,9 +84,10 @@ export default function ProfileMenu() {
       setReloginFor(p);
       return;
     }
-    if (p.has_pin) {
+    if (p.has_pin || needsChildLock) {
       setPinFor(p);
       setPin("");
+      setChildLockPin("");
       setPinError(false);
     } else {
       doSwitch(p);
@@ -94,9 +104,12 @@ export default function ProfileMenu() {
     }
   };
 
+  const pinComplete = (p: Profile, targetPin: string, lockPin: string) =>
+    (!p.has_pin || /^\d{6}$/.test(targetPin)) && (!needsChildLock || /^\d{6}$/.test(lockPin));
+
   const submitPin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (pinFor && /^\d{6}$/.test(pin)) doSwitch(pinFor, pin);
+    if (pinFor && pinComplete(pinFor, pin, childLockPin)) doSwitch(pinFor, pin || undefined, childLockPin || undefined);
     else setPinError(true);
   };
 
@@ -173,24 +186,53 @@ export default function ProfileMenu() {
             </button>
             <ProfileAvatar profile={pinFor} size={56} />
             <div className="profile-pin-title">{pinFor.name}</div>
-            <div className="profile-pin-hint">{t("enterProfilePin")}</div>
-            <input
-              className={`profile-pin-input${pinError ? " error" : ""}`}
-              type="password"
-              inputMode="numeric"
-              autoFocus
-              maxLength={6}
-              value={pin}
-              placeholder="••••••"
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, "").slice(0, 6);
-                setPin(v);
-                setPinError(false);
-                // Auto-submit once all 6 digits are in.
-                if (v.length === 6 && pinFor) doSwitch(pinFor, v);
-              }}
-            />
-            <button type="submit" className="btn primary" disabled={pin.length !== 6}>{t("switchProfile")}</button>
+            {needsChildLock && (
+              <>
+                <div className="profile-pin-hint">{t("enterChildLockPin")}</div>
+                <input
+                  className={`profile-pin-input${pinError ? " error" : ""}`}
+                  type="password"
+                  inputMode="numeric"
+                  autoFocus
+                  maxLength={6}
+                  value={childLockPin}
+                  placeholder="••••••"
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    setChildLockPin(v);
+                    setPinError(false);
+                    // Auto-submit when this is the only PIN the switch needs.
+                    if (v.length === 6 && pinFor && !pinFor.has_pin) doSwitch(pinFor, undefined, v);
+                  }}
+                />
+              </>
+            )}
+            {pinFor.has_pin && (
+              <>
+                <div className="profile-pin-hint">{t("enterProfilePin")}</div>
+                <input
+                  className={`profile-pin-input${pinError ? " error" : ""}`}
+                  type="password"
+                  inputMode="numeric"
+                  autoFocus={!needsChildLock}
+                  maxLength={6}
+                  value={pin}
+                  placeholder="••••••"
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                    setPin(v);
+                    setPinError(false);
+                    // Auto-submit once all 6 digits are in.
+                    if (v.length === 6 && pinFor && !needsChildLock) doSwitch(pinFor, v);
+                  }}
+                />
+              </>
+            )}
+            <button
+              type="submit"
+              className="btn primary"
+              disabled={!pinComplete(pinFor, pin, childLockPin)}
+            >{t("switchProfile")}</button>
           </form>
         </div>,
         document.body

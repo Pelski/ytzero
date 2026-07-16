@@ -144,6 +144,7 @@ export interface AppSettings {
   app_icon_color: string;
   shorts_tab: string;
   show_top_channels: string;
+  hide_live_from_feed: string;
   watched_style: string;
   sidebar_nav: string;
   sponsorblock_enabled: string;
@@ -213,6 +214,7 @@ export interface VideoInfo {
   viewCount: number | null;
   publishedAt: string | null;
   duration: string | null;
+  liveStatus: "none" | "live" | "upcoming";
 }
 
 export interface SponsorSegment {
@@ -253,7 +255,64 @@ export interface Profile {
   has_pin: boolean;
   active: boolean;
   is_primary: boolean;
+  is_child: boolean;
+  pin_locked: boolean;
+  child_config: ChildConfig | null;
+  child_status: {
+    remaining_seconds: number | null;
+    unlimited_today: boolean;
+  } | null;
   can_switch: boolean;
+}
+
+export interface ChildConfig {
+  limit_minutes: number;
+  local_only: boolean;
+  hide_shorts: boolean;
+  hide_live: boolean;
+}
+
+export interface ChildStatus {
+  is_child: boolean;
+  limit_seconds: number | null;
+  used_seconds: number;
+  extra_seconds: number;
+  unlimited_today: boolean;
+  remaining_seconds: number | null;
+  locked: boolean;
+  lock_reason: "time" | "pin" | "parent" | null;
+  local_only: boolean;
+  hide_shorts: boolean;
+  hide_live: boolean;
+  has_pending_request: boolean;
+}
+
+export interface ChildNowWatching {
+  user_id: number;
+  name: string;
+  avatar: string;
+  avatar_color: string;
+  video_id: string;
+  title: string;
+  thumbnail: string;
+  channel_id: string;
+  channel_title: string;
+  channel_thumbnail: string | null;
+  remaining_seconds: number | null;
+  unlimited_today: boolean;
+}
+
+export type ChildGrant = "15m" | "1h" | "video_end" | "today_off";
+
+export interface ChildTimeRequest {
+  id: number;
+  user_id: number;
+  video_id: string | null;
+  created_at: string;
+  name: string;
+  avatar: string;
+  avatar_color: string;
+  requires_pin: boolean;
 }
 
 export type AuthMethod = "none" | "shared" | "per_profile" | "oidc" | "proxy_header";
@@ -489,12 +548,13 @@ export const api = {
   profiles: () => http<{ profiles: Profile[]; active_id: number }>("/profiles"),
   createProfile: (p: { name: string; avatar_color?: string; pin?: string }) =>
     http<{ profile: Profile }>("/profiles", { method: "POST", body: JSON.stringify(p) }),
-  updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null }) =>
+  updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null; is_child?: boolean; child_config?: Partial<ChildConfig> }) =>
     http<{ profile: Profile }>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify(p) }),
   deleteProfile: (id: number, pin?: string) =>
     http<{ active_id?: number }>(`/profiles/${id}`, { method: "DELETE", body: JSON.stringify({ pin }) }),
-  switchProfile: (id: number, pin?: string) =>
-    http<{ active_id: number }>("/profiles/switch", { method: "POST", body: JSON.stringify({ id, pin }) }),
+  switchProfile: (id: number, pin?: string, childLockPin?: string) =>
+    http<{ active_id: number }>("/profiles/switch", { method: "POST", body: JSON.stringify({ id, pin, child_lock_pin: childLockPin }) }),
+  unlockChildProfile: (id: number) => http<{ ok: boolean }>(`/profiles/${id}/unlock-child`, { method: "POST" }),
   uploadProfileAvatar: (id: number, file: File) => {
     const fd = new FormData();
     fd.append("file", file);
@@ -502,6 +562,17 @@ export const api = {
   },
   removeProfileAvatar: (id: number) => http<{ profile: Profile }>(`/profiles/${id}/avatar`, { method: "DELETE" }),
   resetProfilePin: (id: number) => http<{ profile: Profile }>(`/profiles/${id}/reset-pin`, { method: "POST" }),
+
+  // ---------- child profiles (time limits & requests) ----------
+  childStatus: () => http<ChildStatus>("/child/status"),
+  childNowWatching: () => http<{ watching: ChildNowWatching[] }>("/child/now-watching"),
+  stopChildWatching: (userId: number) =>
+    http<{ ok: boolean }>(`/child/now-watching/${userId}/stop`, { method: "POST" }),
+  childTimeRequest: (videoId?: string | null) =>
+    http<{ ok: boolean; id: number }>("/child/time-request", { method: "POST", body: JSON.stringify({ video_id: videoId ?? null }) }),
+  childTimeRequests: () => http<{ requests: ChildTimeRequest[] }>("/child/time-requests"),
+  resolveChildTimeRequest: (id: number, action: "dismiss" | "approve", grant?: ChildGrant, pin?: string) =>
+    http<{ ok: boolean }>(`/child/time-requests/${id}/resolve`, { method: "POST", body: JSON.stringify({ action, grant, pin }) }),
 
   config: () => http<{ app_url: string }>("/config"),
 

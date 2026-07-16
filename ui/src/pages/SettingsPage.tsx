@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppLogs, type Channel, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { api, type AppLogs, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -19,16 +19,16 @@ import { VideoThumbnail } from "../components/VideoThumbnail";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
-// `primaryOnly` tabs are hidden entirely from non-primary profiles.
-const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean }[] = [
+// Tabs unavailable to a profile are omitted entirely, not shown as dead ends.
+const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean; hiddenForChild?: boolean }[] = [
   { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
   { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
-  { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
-  { id: "plugins", labelKey: "pluginsTab", icon: <Plug size={15} /> },
-  { id: "advanced", labelKey: "advanced", icon: <Wrench size={15} /> },
-  { id: "profiles", labelKey: "profiles", icon: <Users size={15} /> },
-  { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true },
+  { id: "display", labelKey: "display", icon: <MonitorPlay size={15} />, hiddenForChild: true },
+  { id: "plugins", labelKey: "pluginsTab", icon: <Plug size={15} />, hiddenForChild: true },
+  { id: "advanced", labelKey: "advanced", icon: <Wrench size={15} />, hiddenForChild: true },
+  { id: "profiles", labelKey: "profiles", icon: <Users size={15} />, hiddenForChild: true },
+  { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true, hiddenForChild: true },
 ];
 
 type LogLevel = "INFO" | "WARN" | "ERROR";
@@ -510,7 +510,7 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
 
 const PROFILE_COLORS = ["#f2293a", "#7c5cff", "#3ea6ff", "#00b894", "#e17055", "#fdcb6e", "#e84393", "#636e72"];
 
-function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allowPin, allowPinReset }: {
+function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allowPin, allowPinReset, allowChildToggle }: {
   profile: Profile;
   onSaved: () => void;
   onDeleted: () => void;
@@ -518,6 +518,7 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allo
   canDelete: boolean;
   allowPin: boolean;
   allowPinReset: boolean;
+  allowChildToggle: boolean;
 }) {
   const { t } = useI18n();
   const [name, setName] = useState(profile.name);
@@ -631,6 +632,30 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allo
         </div>
       )}
 
+      {/* Child-profile flag: primary-only, and never on the primary itself. */}
+      {allowChildToggle && (
+        <div className="switch-row">
+          <div>
+            <div className="switch-label">{t("childProfile")}</div>
+            <div className="switch-sub">{t("childProfileHint")}</div>
+          </div>
+          <button
+            className={`switch${profile.is_child ? " on" : ""}`}
+            role="switch"
+            aria-checked={profile.is_child}
+            onClick={async () => {
+              await api.updateProfile(profile.id, { is_child: !profile.is_child });
+              showToast(t("profileSaved"));
+              onSaved();
+            }}
+          />
+        </div>
+      )}
+
+      {allowChildToggle && profile.is_child && (
+        <ChildProfileSettings profile={profile} onSaved={onSaved} showToast={showToast} />
+      )}
+
       {/* Primary can clear (but not set) another profile's forgotten PIN. */}
       {allowPinReset && profile.has_pin && (
         <div className="profile-edit-row">
@@ -672,6 +697,126 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allo
         </div>
       )}
     </div>
+  );
+}
+
+// Child-profile limits & restrictions (primary-only). Stored via PATCH
+// /profiles/:id { child_config }, so a child can't edit them through /settings.
+function ChildProfileSettings({ profile, onSaved, showToast }: {
+  profile: Profile;
+  onSaved: () => void;
+  showToast: (m: string) => void;
+}) {
+  const { t } = useI18n();
+  const cfg = profile.child_config ?? { limit_minutes: 0, local_only: true, hide_shorts: false, hide_live: false };
+  const [minutes, setMinutes] = useState(cfg.limit_minutes > 0 ? String(cfg.limit_minutes) : "60");
+  const [childLockEnabled, setChildLockEnabled] = useState(true);
+
+  useEffect(() => {
+    api.childLock().then((r) => setChildLockEnabled(r.child_lock.enabled)).catch(() => {});
+  }, []);
+
+  const save = async (child_config: Partial<ChildConfig>) => {
+    await api.updateProfile(profile.id, { child_config });
+    showToast(t("profileSaved"));
+    onSaved();
+  };
+
+  const saveMinutes = () => {
+    const n = Math.max(5, Math.min(24 * 60, parseInt(minutes, 10) || 0));
+    setMinutes(String(n));
+    if (n !== cfg.limit_minutes) save({ limit_minutes: n });
+  };
+
+  return (
+    <>
+      <div className="switch-row">
+        <div>
+          <div className="switch-label">{t("childLimit")}</div>
+          <div className="switch-sub">{t("childLimitHint")}</div>
+        </div>
+        <button
+          className={`switch${cfg.limit_minutes > 0 ? " on" : ""}`}
+          role="switch"
+          aria-checked={cfg.limit_minutes > 0}
+          onClick={() => save({ limit_minutes: cfg.limit_minutes > 0 ? 0 : parseInt(minutes, 10) || 60 })}
+        />
+      </div>
+      {cfg.limit_minutes > 0 && (
+        <div className="profile-edit-row">
+          <label className="switch-label" style={{ margin: 0 }}>{t("childLimitMinutes")}</label>
+          <input
+            className="form-input"
+            style={{ width: 90 }}
+            type="number"
+            min={5}
+            max={1440}
+            step={5}
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+            onBlur={saveMinutes}
+            onKeyDown={(e) => e.key === "Enter" && saveMinutes()}
+          />
+        </div>
+      )}
+
+      <div className="switch-row">
+        <div>
+          <div className="switch-label">{t("childLocalOnly")}</div>
+          <div className="switch-sub">{t("childLocalOnlyHint")}</div>
+        </div>
+        <button
+          className={`switch${cfg.local_only ? " on" : ""}`}
+          role="switch"
+          aria-checked={cfg.local_only}
+          onClick={() => save({ local_only: !cfg.local_only })}
+        />
+      </div>
+
+      <div className="switch-row">
+        <div>
+          <div className="switch-label">{t("childHideShorts")}</div>
+          <div className="switch-sub">{t("childHideShortsHint")}</div>
+        </div>
+        <button
+          className={`switch${cfg.hide_shorts ? " on" : ""}`}
+          role="switch"
+          aria-checked={cfg.hide_shorts}
+          onClick={() => save({ hide_shorts: !cfg.hide_shorts })}
+        />
+      </div>
+
+      <div className="switch-row">
+        <div>
+          <div className="switch-label">{t("childHideLive")}</div>
+          <div className="switch-sub">{t("childHideLiveHint")}</div>
+        </div>
+        <button
+          className={`switch${cfg.hide_live ? " on" : ""}`}
+          role="switch"
+          aria-checked={cfg.hide_live}
+          onClick={() => save({ hide_live: !cfg.hide_live })}
+        />
+      </div>
+
+      {!childLockEnabled && (
+        <p className="page-hint child-pin-warning">{t("childPinWarning")}</p>
+      )}
+
+      {profile.pin_locked && (
+        <div className="profile-edit-row">
+          <span className="profile-card-meta">{t("childPinLockedInfo")}</span>
+          <button
+            className="btn"
+            onClick={async () => {
+              await api.unlockChildProfile(profile.id);
+              showToast(t("profileSaved"));
+              onSaved();
+            }}
+          >{t("childUnlockProfile")}</button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -728,7 +873,11 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
                 {p.active && <Check size={15} style={{ color: "var(--accent)" }} />}
               </div>
               <div className="profile-card-meta">
-                {p.is_primary ? t("primaryProfile") : p.has_pin ? t("profilePin") + " ••••••" : "—"}
+                {[
+                  p.is_primary && t("primaryProfile"),
+                  p.is_child && t("childProfile"),
+                  p.has_pin && t("profilePin") + " ••••••",
+                ].filter(Boolean).join(" · ") || "—"}
               </div>
             </div>
             {canEdit && (
@@ -745,6 +894,7 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
                   showToast={showToast}
                   allowPin={p.active}
                   allowPinReset={iAmPrimary && !p.active}
+                  allowChildToggle={iAmPrimary && !p.is_primary}
                   canDelete={profiles.length > 1 && p.active && !p.is_primary}
                   onSaved={refresh}
                   onDeleted={() => { setExpanded(null); refresh(); }}
@@ -872,8 +1022,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   // App-wide settings (app name, icon color, child lock) are owned by the
   // primary profile; other profiles see them read-only.
   const [isPrimary, setIsPrimary] = useState(true);
+  const [isChildProfile, setIsChildProfile] = useState<boolean | null>(null);
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
+  const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
   const [watchedStyle, setWatchedStyle] = useState<WatchedStyle>("dimmed");
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const navSaveTimer = useRef<number | null>(null);
@@ -992,6 +1144,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     // "Admin" = primary profile OR an OIDC session in the configured admin group.
     // is_admin drives the admin-only tabs/sections (kept in the isPrimary var).
     api.authStatus().then((s) => setIsPrimary(!!s.is_admin)).catch(() => {});
+    api.childStatus().then((s) => setIsChildProfile(s.is_child)).catch(() => setIsChildProfile(false));
     load().catch(console.error);
     loadPlugins();
     Promise.all([api.settings(), api.childLock()])
@@ -1002,6 +1155,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setAppIconColor(r.settings.app_icon_color || "#f2293a");
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
+        setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
         setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
         const raw = r.settings.sidebar_nav;
         const navCfg = parseNavConfig(raw);
@@ -1124,6 +1278,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     setShowTopChannels(next);
     await api.updateSettings({ show_top_channels: next ? "1" : "0" });
     emit("top-channels-changed");
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const toggleLiveFromFeed = async () => {
+    const next = !hideLiveFromFeed;
+    setHideLiveFromFeed(next);
+    await api.updateSettings({ hide_live_from_feed: next ? "1" : "0" });
     showToast(t("displaySettingsSaved"));
   };
 
@@ -1341,13 +1502,32 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       })
     : channels;
   const isSettingsLocked = childLock.enabled && childLock.locked;
+  const visibleTabs = TABS.filter((tabItem) =>
+    (!tabItem.primaryOnly || isPrimary)
+    && (!tabItem.hiddenForChild || isChildProfile === false)
+  );
+
+  useEffect(() => {
+    if (isChildProfile == null) return;
+    if (!visibleTabs.some((tabItem) => tabItem.id === tab)) {
+      setTab(visibleTabs[0]?.id ?? "tags");
+    }
+  }, [isChildProfile, isPrimary, tab]);
 
   return (
     <>
       <h1 className="page-title">{t("settingsTitle")}</h1>
 
+      {childLock.enabled && !childLock.locked && (
+        <button className="settings-unlocked-warning" onClick={lockSettings}>
+          <ShieldCheck />
+          <span>{t("settingsUnlockedWarning")}</span>
+          <strong>{t("lockSettingsNow")}</strong>
+        </button>
+      )}
+
       <div className="settings-tabs">
-        {TABS.filter((tabItem) => !tabItem.primaryOnly || isPrimary).map((tabItem) => (
+        {visibleTabs.map((tabItem) => (
           <button
             key={tabItem.id}
             className={`settings-tab${tab === tabItem.id ? " active" : ""}`}
@@ -1362,7 +1542,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         ))}
       </div>
 
-      {isSettingsLocked && (
+      {isSettingsLocked && tab !== "tags" && tab !== "playlists" && (
         <section className="settings-section child-lock-panel">
           <div className="child-lock-header">
             <ShieldCheck />
@@ -1389,7 +1569,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {!isSettingsLocked && tab === "profiles" && (
+      {!isSettingsLocked && tab === "profiles" && isChildProfile === false && (
         <>
           <ProfilesSettings showToast={showToast} />
 
@@ -1704,7 +1884,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {!isSettingsLocked && tab === "tags" && (
+      {tab === "tags" && (
         <section className="settings-section">
           <div className="settings-subtabs">
             <button className={`settings-subtab${tagSubTab === "list" ? " active" : ""}`} onClick={() => setTagSubTab("list")}>
@@ -1798,7 +1978,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </section>
       )}
 
-      {!isSettingsLocked && tab === "playlists" && (
+      {tab === "playlists" && (
         <section className="settings-section">
           <p className="hint">
             {t("playlistHint")}
@@ -1885,6 +2065,19 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               role="switch"
               aria-checked={showShorts}
               onClick={toggleShorts}
+            />
+          </div>
+
+          <div className="switch-row">
+            <div>
+              <div className="switch-label">{t("hideLiveFromFeed")}</div>
+              <div className="switch-sub">{t("hideLiveFromFeedHint")}</div>
+            </div>
+            <button
+              className={`switch${hideLiveFromFeed ? " on" : ""}`}
+              role="switch"
+              aria-checked={hideLiveFromFeed}
+              onClick={toggleLiveFromFeed}
             />
           </div>
 

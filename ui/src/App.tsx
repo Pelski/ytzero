@@ -2,7 +2,8 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { subscribe, subscribeToast, emit, type ToastVariant } from "./events";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
-import { api, type AuthStatus, type UserPlaylist, type Video } from "./api";
+import { api, type AuthStatus, type ChildStatus, type UserPlaylist, type Video } from "./api";
+import ChildLockScreen from "./components/ChildLockScreen";
 import LoginPage from "./pages/LoginPage";
 import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
 import { img } from "./img";
@@ -24,6 +25,7 @@ import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail } from "./components/VideoThumbnail";
+import ChildNowWatching from "./components/ChildNowWatching";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number };
 
@@ -259,6 +261,7 @@ function AppShell() {
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
   const [showHidden, setShowHidden] = useState(false);
+  const [childStatus, setChildStatus] = useState<ChildStatus | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
@@ -338,10 +341,50 @@ function AppShell() {
     return () => clearInterval(t);
   }, []);
 
+  // Child watch-time limit: poll the status while a child profile is active.
+  // Profile switches reload the whole page, so a non-child answer is final.
+  useEffect(() => {
+    let timer: number | undefined;
+    let stopped = false;
+    const tick = () => {
+      api.childStatus().then((s) => {
+        if (stopped) return;
+        setChildStatus(s);
+        if (!s.is_child) return;
+        // Keep this short so a parent pressing "stop" in the watching panel
+        // interrupts playback on the child screen within a few seconds.
+        const next = s.is_child ? 3 : 60;
+        timer = window.setTimeout(tick, next * 1000);
+      }).catch(() => {
+        if (!stopped) timer = window.setTimeout(tick, 60_000);
+      });
+    };
+    tick();
+    return () => { stopped = true; if (timer) window.clearTimeout(timer); };
+  }, []);
+
+  // When the limit kicks in mid-video, leave the player page so playback stops
+  // (the lock overlay alone would keep the audio running underneath).
+  useEffect(() => {
+    if (childStatus?.locked && (location.pathname.startsWith("/watch/") || location.pathname === "/shorts")) {
+      navigate("/", { replace: true });
+    }
+  }, [childStatus?.locked, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (childStatus?.hide_live && location.pathname === "/live") {
+      navigate("/", { replace: true });
+    }
+  }, [childStatus?.hide_live, location.pathname, navigate]);
+
   const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(navConfig);
   const pluginRouteVisible = (to: string) => to !== "/discovery" || enabledPluginRoutes?.has(to);
-  const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to));
-  const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to));
+  const childRouteVisible = (to: string) =>
+    !(childStatus?.hide_shorts && to === "/shorts")
+    && !(childStatus?.hide_live && to === "/live")
+    && !(childStatus?.local_only && to === "/discovery");
+  const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
+  const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
 
   const renderNavLink = (item: (typeof navItems)[number]) => {
     const Icon = item.icon;
@@ -379,7 +422,7 @@ function AppShell() {
         <main className="main">
           <div className="content">
             <Routes>
-              <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} />} />
+              <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} hideExternalSearch={childStatus?.local_only ?? false} />} />
               <Route path="/discovery" element={<DiscoveryPage onPlay={play} />} />
               <Route path="/shorts" element={<ShortsPage />} />
               <Route path="/live" element={<LivePage onPlay={play} />} />
@@ -398,6 +441,8 @@ function AppShell() {
         </main>
       </div>
       {toast && <div className={`toast toast--${toast.variant}`}>{toast.message}</div>}
+      <ChildNowWatching />
+      {childStatus?.locked && <ChildLockScreen status={childStatus} />}
     </div>
   );
 }

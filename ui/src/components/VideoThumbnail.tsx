@@ -8,7 +8,8 @@ export type VideoThumbnailVariant =
   | "playlist"
   | "scheduled"
   | "external"
-  | "sidebar";
+  | "sidebar"
+  | "childWatching";
 
 const VARIANT_CLASSES: Record<VideoThumbnailVariant, { frame: string; image: string }> = {
   card: { frame: "video-card-thumbnail", image: "thumb" },
@@ -18,6 +19,7 @@ const VARIANT_CLASSES: Record<VideoThumbnailVariant, { frame: string; image: str
   scheduled: { frame: "scheduled-thumb-frame", image: "scheduled-thumb" },
   external: { frame: "external-thumb-frame", image: "external-thumb" },
   sidebar: { frame: "sidebar-sub-thumb-frame", image: "sidebar-sub-thumb" },
+  childWatching: { frame: "child-watching-thumb", image: "" },
 };
 
 function WatchedIndicator({ watched }: { watched: boolean }) {

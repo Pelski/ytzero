@@ -208,6 +208,42 @@ CREATE TABLE IF NOT EXISTS user_settings (
   PRIMARY KEY (user_id, key)
 );
 
+-- ---------- Watch-time log & child profiles ----------
+-- Seconds of actual playback for every profile, per video / local day / hour.
+-- Feeds the child-profile daily limits and the (future) stats pages: channel
+-- and tag breakdowns come from joining videos / video tags, the daily heatmap
+-- from the hour column.
+CREATE TABLE IF NOT EXISTS watch_time_log (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id TEXT NOT NULL,
+  day      TEXT NOT NULL,
+  hour     INTEGER NOT NULL,
+  seconds  REAL NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, video_id, day, hour)
+);
+CREATE INDEX IF NOT EXISTS idx_watch_time_log_day ON watch_time_log(user_id, day);
+
+-- Per-day limit extensions granted by a parent (unlimited = limit off today).
+CREATE TABLE IF NOT EXISTS child_time_extras (
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day           TEXT NOT NULL,
+  extra_seconds REAL NOT NULL DEFAULT 0,
+  unlimited     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, day)
+);
+
+-- "More time" requests; pending ones are shown to parent profiles for 1 hour.
+CREATE TABLE IF NOT EXISTS child_time_requests (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id    TEXT,
+  status      TEXT NOT NULL DEFAULT 'pending',
+  grant_type  TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  resolved_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_child_time_requests_status ON child_time_requests(status, created_at);
+
 -- ---------- Authentication ----------
 -- WebAuthn / passkey credentials. user_id NULL = the shared-account credential
 -- (auth_method = 'shared'); a real user_id = a per-profile passkey.
@@ -247,6 +283,11 @@ for (const stmt of [
   // is_admin grants primary-equivalent powers to OIDC sessions whose groups
   // claim contains the configured admin group (older DBs predate this column).
   "ALTER TABLE auth_sessions ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
+  // Child profile: restrictions are enforced server-side; only the primary
+  // profile may toggle this flag.
+  "ALTER TABLE users ADD COLUMN is_child INTEGER NOT NULL DEFAULT 0",
+  // Superseded by watch_time_log (which also feeds the child limits).
+  "DROP TABLE IF EXISTS child_watch_time",
 ]) {
   try { db.exec(stmt); } catch {}
 }
@@ -314,6 +355,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   app_icon_color: "#f2293a",
   shorts_tab: "1",
   show_top_channels: "1",
+  hide_live_from_feed: "0",
   watched_style: "dimmed",
   sidebar_nav: "",
   sponsorblock_enabled: "0",

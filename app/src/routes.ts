@@ -24,6 +24,7 @@ import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./u
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
+import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import {
   authMethod,
   hashPassword,
@@ -246,12 +247,22 @@ const SETTINGS_MUTATION_PREFIXES = [
   "/plugins",
 ];
 
+// Tags and personal playlists belong to the active profile and remain editable
+// even while the shared settings lock is closed.
+function isPersonalMutation(path: string) {
+  return path === "/tags" || path.startsWith("/tags/")
+    || path === "/rules" || path.startsWith("/rules/")
+    || path === "/playlists" || path.startsWith("/playlists/")
+    || path.startsWith("/videos/") && path.includes("/tags")
+    || path.startsWith("/channels/") && path.includes("/tags");
+}
+
 api.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname.replace(/^\/api/, "");
   const method = c.req.method.toUpperCase();
   const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
   const isProtected = SETTINGS_MUTATION_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
-  if (isMutation && isProtected && !path.startsWith("/child-lock") && !hasChildLockSession(c)) {
+  if (isMutation && isProtected && !isPersonalMutation(path) && !path.startsWith("/child-lock") && !hasChildLockSession(c)) {
     return c.json({ error: "settings locked" }, 423);
   }
   await next();
@@ -439,6 +450,11 @@ api.get("/feed", (c) => {
   if (c.req.query("only_shorts") === "1") {
     where.push("v.is_short = 1");
   }
+  // Keep live/upcoming streams available in the dedicated Live tab, while
+  // allowing each profile to keep its main feed focused on regular uploads.
+  if (c.req.query("only_shorts") !== "1" && (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid))) {
+    where.push("v.live_status NOT IN ('live', 'upcoming')");
+  }
   if (c.req.query("liked") === "1") {
     where.push("uv.liked = 1");
   }
@@ -482,6 +498,8 @@ api.get("/in-progress", (c) => {
 
 api.get("/search/youtube", async (c) => {
   const uid = currentUserId(c);
+  // Restricted child profiles search only the local library.
+  if (childLocalOnly(uid)) return c.json({ results: [] });
   const q = c.req.query("q");
   if (!q?.trim()) return c.json({ results: [] });
   try {
@@ -490,6 +508,128 @@ api.get("/search/youtube", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
+});
+
+// ---------- child profiles (time limits & requests) ----------
+
+api.get("/child/status", (c) => c.json(childStatus(currentUserId(c))));
+
+api.get("/child/now-watching", (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ watching: [] });
+  const active = activeChildPlayback();
+  if (active.length === 0) return c.json({ watching: [] });
+  const rows = active.flatMap(({ userId, videoId }) => {
+    const row = db.prepare(
+      `SELECT u.id AS user_id, u.name, u.avatar, u.avatar_color,
+              v.video_id, v.title, v.thumbnail, v.channel_id,
+              ch.title AS channel_title, ch.thumbnail AS channel_thumbnail
+       FROM users u JOIN videos v ON v.video_id = ?
+       JOIN channels ch ON ch.channel_id = v.channel_id
+       WHERE u.id = ? AND u.is_child = 1`
+    ).get(videoId, userId) as any;
+    if (!row) return [];
+    const status = childStatus(userId);
+    return [{
+      ...row,
+      avatar: row.avatar ? `/api/profiles/${row.user_id}/avatar?v=${encodeURIComponent(row.avatar)}` : "",
+      remaining_seconds: status.remaining_seconds,
+      unlimited_today: status.unlimited_today,
+    }];
+  });
+  return c.json({ watching: rows });
+});
+
+api.post("/child/now-watching/:id/stop", (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  const childId = Number(c.req.param("id"));
+  if (!Number.isInteger(childId) || !isChildUser(childId)) return c.json({ error: "not found" }, 404);
+  lockChildByParent(childId);
+  log.info("child.playback_stopped", { user_id: childId, by_user_id: currentUserId(c) });
+  return c.json({ ok: true });
+});
+
+// Child asks for more watch time; parents see it on their home feed for 1 h.
+api.post("/child/time-request", async (c) => {
+  const uid = currentUserId(c);
+  if (!isChildUser(uid)) return c.json({ error: "not a child profile" }, 403);
+  const { video_id } = await c.req.json().catch(() => ({}));
+  const existing = db.prepare(
+    "SELECT id FROM child_time_requests WHERE user_id = ? AND status = 'pending' AND created_at > datetime('now', '-1 hour')"
+  ).get(uid) as { id: number } | null;
+  if (existing) return c.json({ ok: true, id: existing.id });
+  const videoId = typeof video_id === "string" && video_id ? video_id : lastWatchedVideo(uid);
+  const row = db.prepare(
+    "INSERT INTO child_time_requests (user_id, video_id) VALUES (?, ?) RETURNING id"
+  ).get(uid, videoId) as { id: number };
+  log.info("child.time_requested", { user_id: uid, video_id: videoId });
+  return c.json({ ok: true, id: row.id });
+});
+
+// Pending requests, for parent (non-child) profiles.
+api.get("/child/time-requests", (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ requests: [] });
+  const rows = db.prepare(
+    `SELECT r.id, r.user_id, r.video_id, r.created_at, u.name, u.avatar, u.avatar_color
+     FROM child_time_requests r JOIN users u ON u.id = r.user_id
+     WHERE r.status = 'pending' AND r.created_at > datetime('now', '-1 hour')
+     ORDER BY r.created_at DESC`
+  ).all() as (UserRow & { id: number; user_id: number; video_id: string | null; created_at: string })[];
+  return c.json({
+    requests: rows.map((r) => ({
+      id: r.id,
+      user_id: r.user_id,
+      video_id: r.video_id,
+      created_at: r.created_at,
+      name: r.name,
+      avatar: r.avatar ? `/api/profiles/${r.user_id}/avatar?v=${encodeURIComponent(r.avatar)}` : "",
+      avatar_color: r.avatar_color,
+      // Approving is confirmed with the app-wide child lock PIN when set.
+      requires_pin: isChildLockEnabled(),
+    })),
+  });
+});
+
+api.post("/child/time-requests/:id/resolve", async (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  const reqId = Number(c.req.param("id"));
+  const request = db.prepare(
+    "SELECT * FROM child_time_requests WHERE id = ? AND status = 'pending'"
+  ).get(reqId) as { id: number; user_id: number; video_id: string | null } | null;
+  if (!request) return c.json({ error: "not found" }, 404);
+  const { action, grant, pin } = await c.req.json().catch(() => ({}));
+
+  if (action === "dismiss") {
+    db.prepare("UPDATE child_time_requests SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ?").run(reqId);
+    return c.json({ ok: true });
+  }
+  if (action !== "approve" || !CHILD_GRANTS.includes(grant)) return c.json({ error: "invalid action" }, 400);
+
+  // Approvals are confirmed with the app-wide child lock PIN, so the child
+  // can't approve their own request from an unattended parent screen. Wrong
+  // attempts count against the child profile's lockout.
+  if (isChildLockEnabled()) {
+    if (!isSixDigitPin(pin) || !(await verifyChildLockPin(pin))) {
+      registerChildLockFailure(request.user_id);
+      return c.json({ error: "invalid PIN", pin_locked: isPinLocked(request.user_id) }, 401);
+    }
+    clearChildLockFailures(request.user_id);
+  }
+  applyGrant(request.user_id, grant as ChildGrant, request.video_id);
+  db.prepare(
+    "UPDATE child_time_requests SET status = 'approved', grant_type = ?, resolved_at = datetime('now') WHERE id = ?"
+  ).run(grant, reqId);
+  log.info("child.time_granted", { user_id: request.user_id, grant });
+  return c.json({ ok: true });
+});
+
+// Clear a child profile's failed-PIN lockout (primary only).
+api.post("/profiles/:id/unlock-child", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+  const id = Number(c.req.param("id"));
+  if (!isChildUser(id)) return c.json({ error: "not a child profile" }, 400);
+  unlockChildProfile(id);
+  log.info("child.pin_unlocked", { id });
+  return c.json({ ok: true });
 });
 
 // ---------- built-in plugins ----------
@@ -539,6 +679,8 @@ api.post("/plugins/:id/reset", async (c) => {
 
 api.get("/discovery/recommendations", async (c) => {
   const uid = currentUserId(c);
+  // Discovery mixes in external videos — off for restricted child profiles.
+  if (childLocalOnly(uid)) return c.json({ enabled: false, recommendations: [] });
   const data = c.req.query("refresh") === "1"
     ? await refreshDiscoveryNow(uid)
     : await discoveryRecommendations(uid);
@@ -563,6 +705,7 @@ api.post("/discovery/recommendations/:id/dismiss", (c) => {
 
 api.get("/live", (c) => {
   const uid = currentUserId(c);
+  if (childHidesLive(uid)) return c.json({ videos: [] });
   const rows = db
     .prepare(`${videoSelect(uid)} WHERE v.live_status IN ('live','upcoming') AND ${followedExists(uid)} ORDER BY v.live_status = 'live' DESC, v.published_at DESC`)
     .all() as VideoRow[];
@@ -631,8 +774,16 @@ api.delete("/external/:id", (c) => {
 });
 
 api.get("/videos/:id/info", async (c) => {
+  const uid = currentUserId(c);
+  // Restricted child profiles may only open videos already in the library.
+  if (childLocalOnly(uid) && !videoExistsStmt.get(c.req.param("id"))) {
+    return c.json({ error: "restricted" }, 403);
+  }
   try {
     const info = await fetchVideoInfo(c.req.param("id"));
+    if (childHidesLive(uid) && info.liveStatus !== "none") {
+      return c.json({ error: "live streams are disabled for this profile" }, 403);
+    }
     // Channel avatar + the channel's recent uploads (for the "related" panel).
     const [about, feed] = await Promise.all([
       fetchChannelAbout(info.channelId).catch(() => null),
@@ -652,13 +803,13 @@ api.get("/videos/:id/info", async (c) => {
     const insertVideo = db.prepare(`
       INSERT OR IGNORE INTO videos
         (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, external)
-      VALUES (?, ?, ?, ?, ?, ?, 'none', 'inbox', ?, ?, 1)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?, 1)
     `);
 
     // Insert the watched video (no-op if already in DB as a real video)
     const inserted = insertVideo.run(
       info.videoId, info.channelId, info.title, info.description,
-      info.thumbnail, info.publishedAt, info.viewCount, info.duration
+      info.thumbnail, info.publishedAt, info.liveStatus, info.viewCount, info.duration
     );
     if (info.duration) {
       db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL")
@@ -671,7 +822,7 @@ api.get("/videos/:id/info", async (c) => {
         for (const v of videos) {
           insertVideo.run(
             v.videoId, info.channelId, v.title, v.description,
-            v.thumbnail, v.publishedAt, v.views, null
+            v.thumbnail, v.publishedAt, "none", v.views, null
           );
         }
       });
@@ -725,6 +876,9 @@ api.get("/videos/:id", (c) => {
     .prepare(`${videoSelect(uid)} WHERE v.video_id = ?`)
     .get(c.req.param("id")) as VideoRow | null;
   if (!row) return c.json({ error: "not found" }, 404);
+  if (childHidesLive(uid) && (row.live_status === "live" || row.live_status === "upcoming")) {
+    return c.json({ error: "live streams are disabled for this profile" }, 403);
+  }
   const [video] = attachTags(uid, [row]);
 
   // Collect all tag IDs for this video (direct + via channel)
@@ -901,6 +1055,7 @@ api.put("/videos/:id/progress", async (c) => {
     `INSERT INTO user_videos (user_id, video_id, watch_position, watch_duration) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET watch_position = excluded.watch_position, watch_duration = excluded.watch_duration`
   ).run(uid, id, position, duration);
+  recordWatchTick(uid, id);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
@@ -992,6 +1147,8 @@ api.get("/channels", (c) => {
 });
 
 api.post("/channels", async (c) => {
+  // A child may subscribe only after a parent unlocked settings for this browser.
+  if (isChildUser(currentUserId(c)) && !hasChildLockSession(c)) return c.json({ error: "settings locked" }, 423);
   const uid = currentUserId(c);
   const { url } = await c.req.json();
   if (!url) return c.json({ error: "url required" }, 400);
@@ -1447,6 +1604,7 @@ api.get("/playlists/:id/videos", async (c) => {
 
 api.post("/channels/import", async (c) => {
   const uid = currentUserId(c);
+  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.parseBody();
   const file = body.file;
   if (!(file instanceof File)) return c.json({ error: "file required" }, 400);
@@ -1722,10 +1880,12 @@ interface UserRow {
   password_hash: string | null;
   oidc_subject: string | null;
   proxy_match: string | null;
+  is_child: number;
 }
 
 function serializeProfile(u: UserRow, activeId: number) {
   const method = authMethod();
+  const status = u.is_child === 1 ? childStatus(u.id) : null;
   return {
     id: u.id,
     name: u.name,
@@ -1735,6 +1895,18 @@ function serializeProfile(u: UserRow, activeId: number) {
     has_pin: method === "none" ? Boolean(u.pin_hash) : false,
     active: u.id === activeId,
     is_primary: u.id === primaryUserId(),
+    is_child: u.is_child === 1,
+    pin_locked: u.is_child === 1 && (isPinLocked(u.id) || isParentLocked(u.id)),
+    child_config: u.is_child === 1 ? {
+      limit_minutes: parseInt(getUserSetting(u.id, "child_limit_minutes") ?? "0", 10) || 0,
+      local_only: getUserSetting(u.id, "child_local_only") === "1",
+      hide_shorts: getUserSetting(u.id, "child_hide_shorts") === "1",
+      hide_live: getUserSetting(u.id, "child_hide_live") === "1",
+    } : null,
+    child_status: status ? {
+      remaining_seconds: status.remaining_seconds,
+      unlimited_today: status.unlimited_today,
+    } : null,
     can_switch: canSwitchProfiles(),
   };
 }
@@ -1774,8 +1946,33 @@ api.patch("/profiles/:id", async (c) => {
   if (body.avatar_color !== undefined) {
     db.prepare("UPDATE users SET avatar_color = ? WHERE id = ?").run(String(body.avatar_color), id);
   }
+  // is_child: admin-only, so a child profile can never unmark itself. The
+  // primary profile is the household admin and cannot be a child profile.
+  if (body.is_child !== undefined) {
+    if (!isAdmin(c)) return c.json({ error: "only the primary profile can change this" }, 403);
+    if (id === primaryUserId()) return c.json({ error: "the primary profile cannot be a child profile" }, 400);
+    db.prepare("UPDATE users SET is_child = ? WHERE id = ?").run(body.is_child ? 1 : 0, id);
+    // Restricted content is the safe default for a fresh child profile.
+    if (body.is_child && getUserSetting(id, "child_local_only") == null) {
+      setUserSetting(id, "child_local_only", "1");
+    }
+    log.info("profile.child_flag", { id, is_child: Boolean(body.is_child) });
+  }
+  // Child time limit & restrictions: admin-only, stored in the child's settings.
+  if (body.child_config !== undefined) {
+    if (!isAdmin(c)) return c.json({ error: "only the primary profile can change this" }, 403);
+    const cc = body.child_config ?? {};
+    if (cc.limit_minutes !== undefined) {
+      const minutes = Math.max(0, Math.min(24 * 60, parseInt(cc.limit_minutes, 10) || 0));
+      setUserSetting(id, "child_limit_minutes", String(minutes));
+    }
+    if (cc.local_only !== undefined) setUserSetting(id, "child_local_only", cc.local_only ? "1" : "0");
+    if (cc.hide_shorts !== undefined) setUserSetting(id, "child_hide_shorts", cc.hide_shorts ? "1" : "0");
+    if (cc.hide_live !== undefined) setUserSetting(id, "child_hide_live", cc.hide_live ? "1" : "0");
+  }
   // pin: "" / null clears it, a 6-digit string sets it. PIN is owner-only — not
-  // even the primary profile can change or remove someone else's PIN.
+  // even the primary profile can change or remove someone else's PIN. (Child
+  // boundaries are gated by the app-wide child lock PIN, not this one.)
   if (body.pin !== undefined) {
     if (currentUserId(c) !== id) return c.json({ error: "only the profile owner can change its PIN" }, 403);
     if (body.pin === "" || body.pin === null) {
@@ -1870,9 +2067,20 @@ api.post("/profiles/switch", async (c) => {
   if (!canSwitchProfiles()) {
     return c.json({ requires_relogin: true, logout_url: methodLogoutUrl() });
   }
-  const { id, pin } = await c.req.json().catch(() => ({}));
+  const { id, pin, child_lock_pin } = await c.req.json().catch(() => ({}));
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(id)) as UserRow | null;
   if (!user) return c.json({ error: "not found" }, 404);
+  // Leaving a child profile always requires the app-wide child lock PIN (the
+  // profile's own PIN only gates entering it, like on any other profile).
+  // Three wrong attempts lock the child profile.
+  const current = db.prepare("SELECT * FROM users WHERE id = ?").get(currentUserId(c)) as UserRow | null;
+  if (current && current.id !== user.id && current.is_child === 1 && isChildLockEnabled()) {
+    if (!isSixDigitPin(child_lock_pin) || !(await verifyChildLockPin(child_lock_pin))) {
+      registerChildLockFailure(current.id);
+      return c.json({ error: "invalid PIN", pin_locked: isPinLocked(current.id) }, 401);
+    }
+    clearChildLockFailures(current.id);
+  }
   // PINs only gate switching under the 'none' method; other methods replace them.
   if (authMethod() === "none" && user.pin_hash) {
     if (!isSixDigitPin(pin) || !(await Bun.password.verify(pin, user.pin_hash))) {

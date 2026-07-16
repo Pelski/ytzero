@@ -5,6 +5,7 @@ import { Clock, Eye, Inbox, RefreshCw } from "lucide-react";
 import { api, type Bucket, type Channel, type SearchResult, type Tag, type Video } from "../api";
 import { formatPublishedAgo, useI18n } from "../i18n";
 import { img } from "../img";
+import ChildTimeRequestBanner from "../components/ChildTimeRequestBanner";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
@@ -85,9 +86,11 @@ function useHScroll() {
 export default function FeedPage({
   onPlay,
   showToast,
+  hideExternalSearch = false,
 }: {
   onPlay: (v: Video) => void;
   showToast: (m: string) => void;
+  hideExternalSearch?: boolean;
 }) {
   const { t, locale, language } = useI18n();
   const [params] = useSearchParams();
@@ -181,13 +184,13 @@ export default function FeedPage({
   useEffect(() => subscribe("top-channels-changed", loadTopChannelsSetting), [loadTopChannelsSetting]);
 
   useEffect(() => {
-    if (!q) { setYtResults([]); return; }
+    if (!q || hideExternalSearch) { setYtResults([]); return; }
     setYtLoading(true);
     api.youtubeSearch(q)
       .then((r) => setYtResults(r.results))
       .catch(() => setYtResults([]))
       .finally(() => setYtLoading(false));
-  }, [q]);
+  }, [q, hideExternalSearch]);
 
   // Infinite scroll
   useEffect(() => {
@@ -275,6 +278,7 @@ export default function FeedPage({
 
   return (
     <>
+      <ChildTimeRequestBanner />
       <div className="toolbar" ref={hScrollWrapRef}>
         <TagFilterBar
           tags={tags}
@@ -406,7 +410,7 @@ export default function FeedPage({
         </>
       )}
 
-      {q && (
+      {q && !hideExternalSearch && (
         <div className="yt-results-section">
           <div className="time-section-header">
             <span>{t("youtubeResults")}</span>

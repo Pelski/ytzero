@@ -40,13 +40,13 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **Built for triage** — schedule videos for later, archive the ones you will not watch, and come back on your terms.
 - **Organized watching** — use tags, inherited channel tags, rules, and local playlists to shape your own feed.
 - **Real playback controls** — theater view, captions, quality, display settings, and optional SponsorBlock support.
-- **Works for households** — profiles, authentication modes, and child lock make one install usable by more than one person.
+- **Works for households** — profiles, authentication modes, child profiles with watch-time limits, and child lock make one install usable by more than one person.
 
 ## Features
 
 - **Subscription inbox** — all new videos from followed channels in one feed.
 - **Channel import** — add channels manually, import OPML, or import `subscriptions.csv` from Google Takeout.
-- **Live and upcoming streams** — dedicated live view with automatic status refresh.
+- **Live and upcoming streams** — dedicated live view with automatic status refresh, plus a per-profile option to keep live and Upcoming entries out of the main feed.
 - **Watch later buckets** — schedule videos for Today, Tonight, Tomorrow, Tomorrow evening, or Weekend.
 - **Archive flow** — reject videos, restore them later, and keep the main feed clean.
 - **History and progress** — record watched videos and resume partially watched ones.
@@ -54,7 +54,8 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **User playlists** — local playlists with icons, manual additions, and rules.
 - **Profiles** — multiple isolated profiles on one install, each with its own state.
 - **Authentication** — none, shared login, per-profile login, OIDC, or proxy headers, with password and passkey support.
-- **Child lock** — PIN-protect settings for shared or kid-friendly setups.
+- **Child lock** — PIN-protect household settings while leaving each profile's own tags and playlists editable.
+- **Child profiles** — daily watch-time limits, parent-approved extensions, subscribed-content-only mode, optional Shorts/live blocking, reduced settings access, and a parent activity panel with immediate stop/unlock controls.
 - **Shorts tab & player** — a followed-channels-only Shorts feed and a full-screen vertical player.
 - **SponsorBlock** — optionally skip sponsored segments, intros, outros, and more.
 - **Playback and display controls** — theater view, captions, quality, and display customization.

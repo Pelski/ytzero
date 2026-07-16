@@ -618,6 +618,7 @@ export interface VideoInfo {
   viewCount: number | null;
   publishedAt: string | null;
   duration: string | null;
+  liveStatus: "none" | "live" | "upcoming";
 }
 
 const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
@@ -632,6 +633,13 @@ function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
   const duration = Number.isFinite(lengthSec) && lengthSec > 0
     ? `${Math.floor(lengthSec / 60)}:${String(lengthSec % 60).padStart(2, "0")}`
     : null;
+  const scheduledStart = pr?.playabilityStatus?.liveStreamability?.liveStreamabilityRenderer
+    ?.offlineSlate?.liveStreamOfflineSlateRenderer?.scheduledStartTime;
+  const liveStatus: VideoInfo["liveStatus"] = vd.isLive === true
+    ? "live"
+    : scheduledStart || pr?.playabilityStatus?.status === "LIVE_STREAM_OFFLINE"
+      ? "upcoming"
+      : "none";
 
   return {
     videoId: vd.videoId,
@@ -644,6 +652,7 @@ function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
     viewCount: parseInt(vd.viewCount ?? "", 10) || null,
     publishedAt: mf?.publishDate ?? null,
     duration,
+    liveStatus,
   };
 }
 

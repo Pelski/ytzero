@@ -20,7 +20,7 @@ The app is designed around a few primary workflows:
 
 - **Subscription inbox** — all new videos from followed channels in one feed.
 - **Channel import** — add channels manually, import OPML, or import `subscriptions.csv` from Google Takeout. See [Importing Subscriptions](Importing-Subscriptions).
-- **Live and upcoming streams** — dedicated live view with automatic status refresh.
+- **Live and upcoming streams** — dedicated live view with automatic status refresh. Each profile can optionally hide live and Upcoming entries from the main feed while keeping them in the Live tab.
 - **Watch later buckets** — schedule videos for Today, Tonight, Tomorrow, Tomorrow evening, or Weekend.
 - **Archive flow** — reject videos, restore them later, and keep the main feed clean.
 - **Watch history and progress** — record watched videos and resume partially watched videos.
@@ -31,7 +31,9 @@ The app is designed around a few primary workflows:
 - **User playlists** — create local playlists, choose icons, add videos manually, and populate playlists with rules.
 - **Profiles** — multiple isolated profiles on one install. See [Profiles](Profiles).
 - **Authentication** — None, shared login, per-profile login, OIDC, or proxy headers, with password and passkey support. See [Authentication](Authentication).
-- **Child lock** — protect settings with a 6-digit PIN. See [Child Lock](Child-Lock).
+- **Child lock** — protect household settings with a 6-digit PIN while allowing every profile to manage its own tags and playlists. Children can add channels only during an unlocked settings session. See [Child Lock](Child-Lock).
+- **Child profiles** — daily watch-time limits, parent-approved extensions, subscribed-content-only mode, optional Shorts and live-stream blocking, reduced settings tabs, and hidden app-provided YouTube links. See [Child Lock](Child-Lock#child-profiles).
+- **Child activity panel** — adult profiles can see what children are watching, check remaining time, open the video locally, stop watching immediately, and unlock a child profile.
 - **Channel pages** — browse regular videos, Shorts, public playlists, channel metadata, and channel-specific tags.
 - **Theater view** — distraction-light player layout for watching.
 - **Internationalization** — English, Polish, and German UI, with saved user preference.

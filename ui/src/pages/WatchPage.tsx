@@ -152,6 +152,7 @@ export default function WatchPage() {
   const [related, setRelated] = useState<Video[]>([]);
   const [copyKey, setCopyKey] = useState(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [isChildProfile, setIsChildProfile] = useState(false);
   const [descOpen, setDescOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
@@ -189,6 +190,7 @@ export default function WatchPage() {
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
     api.config().then((r) => setAppUrl(r.app_url)).catch(() => {});
+    api.childStatus().then((status) => setIsChildProfile(status.is_child)).catch(() => {});
   }, []);
 
   // Effective playback rate: per-channel override, else the global default.
@@ -278,7 +280,7 @@ export default function WatchPage() {
         }
       })
       .catch((e: Error) => {
-        if (e.message === "not found" || e.message.startsWith("HTTP 4")) {
+        if (e.message === "not found" || e.message === "HTTP 404") {
           setVideoMissing(true);
           api.videoInfo(id)
             .then((r) => {
@@ -376,6 +378,7 @@ export default function WatchPage() {
           const playerDuration = p.getDuration() as number;
           if (!position || !playerDuration) return;
           progressRef.current = { position, duration: playerDuration };
+          if (p.getPlayerState?.() !== 1) return;
           api.saveProgress(id, position, playerDuration).catch(() => {});
           if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
@@ -637,15 +640,17 @@ export default function WatchPage() {
                 </div>
               </div>
             </div>
-            <a
-              className="btn"
-              href={`https://www.youtube.com/watch?v=${videoInfo.videoId}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink size={15} />
-              YouTube
-            </a>
+            {!isChildProfile && (
+              <a
+                className="btn"
+                href={`https://www.youtube.com/watch?v=${videoInfo.videoId}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink size={15} />
+                YouTube
+              </a>
+            )}
           </div>
         )}
         {videoMissing && videoInfo && (
@@ -813,15 +818,17 @@ export default function WatchPage() {
                 <span key={copyKey} className="copy-toast">{t("copied")}</span>
               )}
             </div>
-            <a
-              className="btn"
-              href={`https://www.youtube.com/watch?v=${video.video_id}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink size={15} />
-              YouTube
-            </a>
+            {!isChildProfile && (
+              <a
+                className="btn"
+                href={`https://www.youtube.com/watch?v=${video.video_id}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink size={15} />
+                YouTube
+              </a>
+            )}
           </div>
         </div>}
         {video && (video.live_status === "live" || video.tags.length > 0) && (
