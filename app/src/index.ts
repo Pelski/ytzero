@@ -3,6 +3,7 @@ import { serveStatic } from "hono/bun";
 import { api } from "./routes";
 import { getSetting } from "./db";
 import { startScheduler } from "./refresher";
+import { startDownloader } from "./downloader";
 import { log } from "./logger";
 
 const app = new Hono();
@@ -39,6 +40,7 @@ app.use("/*", serveStatic({ root: uiDir }));
 app.get("*", serveStatic({ path: `${uiDir}/index.html` }));
 
 startScheduler();
+startDownloader();
 
 const port = Number(process.env.PORT ?? 3001);
 const idleTimeout = Number(process.env.IDLE_TIMEOUT_SECONDS ?? 120);

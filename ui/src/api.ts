@@ -39,6 +39,8 @@ export interface Video {
   channel_title: string;
   channel_thumbnail: string | null;
   channel_subscriber_count: string | null;
+  download_status?: DownloadStatus | null;
+  download_progress?: number | null;
   tags: Tag[];
   history_id?: number;
   watched_at?: string;
@@ -138,6 +140,7 @@ export interface AppSettings {
   player_cc_lang: string;
   player_quality: string;
   player_speed: string;
+  auto_fullscreen_landscape?: string;
   grid_size: string;
   child_lock_enabled: string;
   app_name: string;
@@ -179,14 +182,18 @@ export interface PluginManifest {
   enabled: boolean;
 }
 
+export type PluginSettingValue = number | string;
+
 export interface PluginSettingDef {
   key: string;
   label: string;
   description: string;
-  min: number;
-  max: number;
-  step: number;
-  defaultValue: number;
+  type: "slider" | "select" | "toggle";
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: { value: string; label: string }[];
+  defaultValue: PluginSettingValue;
 }
 
 export interface PluginTermState {
@@ -196,8 +203,47 @@ export interface PluginTermState {
 
 export interface PluginSettingsResponse {
   definitions: PluginSettingDef[];
-  settings: Record<string, number>;
+  settings: Record<string, PluginSettingValue>;
   terms?: PluginTermState;
+}
+
+export type DownloadStatus = "queued" | "downloading" | "done" | "error";
+
+export interface DownloadItem {
+  video_id: string;
+  status: DownloadStatus;
+  source: "manual" | "scheduled" | "feed";
+  quality: string | null;
+  size_bytes: number | null;
+  error: string | null;
+  attempts: number;
+  pinned: number;
+  created_at: string;
+  finished_at: string | null;
+  title: string;
+  thumbnail: string;
+  duration: string | null;
+  is_short: number | null;
+  published_at: string | null;
+  channel_id: string;
+  channel_title: string;
+}
+
+export interface DownloadsResponse {
+  enabled: boolean;
+  ytdlp_version: string | null;
+  stats: { files: number; bytes: number; queued: number; cap_bytes: number };
+  active: { video_id: string; percent: number; total_bytes: number | null; speed: string | null } | null;
+  downloads: DownloadItem[];
+}
+
+export interface VideoDownload {
+  video_id: string;
+  status: DownloadStatus;
+  quality: string | null;
+  size_bytes: number | null;
+  error: string | null;
+  pinned: number;
 }
 
 export type DiscoveryRecommendation =
@@ -270,6 +316,7 @@ export interface ChildConfig {
   local_only: boolean;
   hide_shorts: boolean;
   hide_live: boolean;
+  downloads_only: boolean;
 }
 
 export interface ChildStatus {
@@ -284,6 +331,7 @@ export interface ChildStatus {
   local_only: boolean;
   hide_shorts: boolean;
   hide_live: boolean;
+  downloads_only: boolean;
   has_pending_request: boolean;
 }
 
@@ -418,10 +466,20 @@ export const api = {
     http<{ plugins: PluginManifest[] }>(`/plugins/${id}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
   pluginSettings: (id: string) =>
     http<PluginSettingsResponse>(`/plugins/${id}/settings`),
-  updatePluginSettings: (id: string, patch: Record<string, number> | { blockedTerms: string[] }) =>
+  updatePluginSettings: (id: string, patch: Record<string, PluginSettingValue> | { blockedTerms: string[] }) =>
     http<PluginSettingsResponse>(`/plugins/${id}/settings`, { method: "PUT", body: JSON.stringify(patch) }),
   resetPlugin: (id: string) =>
     http<PluginSettingsResponse>(`/plugins/${id}/reset`, { method: "POST", body: "{}" }),
+  downloads: () => http<DownloadsResponse>("/downloads"),
+  requestDownload: (id: string, priority = false) =>
+    http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download`, { method: "POST", body: JSON.stringify({ priority }) }),
+  videoDownload: (id: string) =>
+    http<{ download: VideoDownload | null; progress: { percent: number; total_bytes: number | null; speed: string | null } | null }>(`/videos/${id}/download`),
+  removeDownload: (id: string) =>
+    http<{ ok: true }>(`/videos/${id}/download`, { method: "DELETE" }),
+  pinDownload: (id: string, pinned: boolean) =>
+    http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download/pin`, { method: "PUT", body: JSON.stringify({ pinned }) }),
+  streamUrl: (id: string) => `/api/videos/${id}/stream`,
   discoveryRecommendations: (refresh = false) => http<{ enabled: boolean; recommendations: DiscoveryRecommendation[] }>(`/discovery/recommendations${refresh ? "?refresh=1" : ""}`),
   dismissDiscoveryRecommendation: (id: string) =>
     http<{ ok: true }>(`/discovery/recommendations/${id}/dismiss`, { method: "POST", body: "{}" }),

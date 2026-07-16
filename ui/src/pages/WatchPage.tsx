@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { emit, emitToast } from "../events";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Archive,
+  ArrowDownToLine,
   BookmarkPlus,
   CalendarDays,
   Check,
@@ -12,6 +13,9 @@ import {
   ExternalLink,
   Eye,
   Gauge,
+  HardDrive,
+  LoaderCircle,
+  MonitorPlay,
   Pause,
   Play,
   Share2,
@@ -23,6 +27,8 @@ import {
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n, type I18nKey } from "../i18n";
 import TagChip from "../components/TagChip";
+import LocalPlayer from "../components/LocalPlayer";
+import Popconfirm from "../components/Popconfirm";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
 import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
 import { VideoThumbnail } from "../components/VideoThumbnail";
@@ -169,6 +175,16 @@ export default function WatchPage() {
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
   const [speed, setSpeed] = useState("1");
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [downloadsEnabled, setDownloadsEnabled] = useState(false);
+  // "auto" plays the local file when one exists; "youtube" forces the iframe.
+  const [playerSource, setPlayerSource] = useState<"auto" | "youtube">("auto");
+  // watch_source_mode = "ask"/"download": what the viewer decided for THIS video.
+  const [sourceChoice, setSourceChoice] = useState<"undecided" | "youtube" | "wait">("undecided");
+  const [waitProgress, setWaitProgress] = useState<{ percent: number; speed: string | null } | null>(null);
+  const [waitError, setWaitError] = useState<string | null>(null);
+  const [childDownloadsOnly, setChildDownloadsOnly] = useState(false);
+  // "Opening a video" mode from the YT-DLP plugin's global settings.
+  const [pluginWatchMode, setPluginWatchMode] = useState("youtube");
   // Path to the next playlist video, read by the player's onStateChange when a
   // video ends. A ref keeps the player effect free of playlist dependencies.
   const nextInPlaylistRef = useRef<string | null>(null);
@@ -180,6 +196,9 @@ export default function WatchPage() {
   const speedRef = useRef("1");
   const likeButtonRef = useRef<HTMLButtonElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
+  // Container the YT iframe is injected into; separate from playerWrapRef so
+  // the manual DOM cleanup never touches the React-rendered LocalPlayer.
+  const ytWrapRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const archivedRef = useRef(false);
   const progressRef = useRef<{ position: number; duration: number } | null>(null);
@@ -190,8 +209,35 @@ export default function WatchPage() {
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
     api.config().then((r) => setAppUrl(r.app_url)).catch(() => {});
-    api.childStatus().then((status) => setIsChildProfile(status.is_child)).catch(() => {});
+    api.childStatus().then((status) => {
+      setIsChildProfile(status.is_child);
+      setChildDownloadsOnly(status.is_child && status.downloads_only);
+    }).catch(() => {});
+    api.plugins()
+      .then((r) => {
+        const enabled = r.plugins.some((p) => p.id === "downloads" && p.enabled);
+        setDownloadsEnabled(enabled);
+        if (enabled) {
+          api.pluginSettings("downloads")
+            .then((s) => setPluginWatchMode(String(s.settings.watch_source_mode ?? "youtube")))
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const downloadStatus = video?.download_status ?? null;
+  // Which surface fills the player area. Children never get a choice: with
+  // downloads_only they are locked to local files, otherwise plain YouTube.
+  const watchMode = downloadsEnabled && !isChildProfile ? pluginWatchMode : "youtube";
+  type PlayerKind = "local" | "youtube" | "blocked" | "choice" | "waiting";
+  let playerKind: PlayerKind = "youtube";
+  if (video && downloadStatus === "done" && playerSource === "auto") playerKind = "local";
+  else if (video && childDownloadsOnly) playerKind = "blocked";
+  else if (video && sourceChoice === "wait") playerKind = "waiting";
+  else if (video && watchMode === "download" && sourceChoice !== "youtube") playerKind = "waiting";
+  else if (video && watchMode === "ask" && sourceChoice === "undecided") playerKind = "choice";
+  const usingLocal = playerKind === "local";
 
   // Effective playback rate: per-channel override, else the global default.
   // Kept in a ref so the player effect can read it without re-creating the player.
@@ -263,6 +309,10 @@ export default function WatchPage() {
     setVideo(null);
     setVideoMissing(false);
     setVideoInfo(null);
+    setPlayerSource("auto");
+    setSourceChoice("undecided");
+    setWaitProgress(null);
+    setWaitError(null);
     archivedRef.current = false;
     window.scrollTo(0, 0);
     api
@@ -301,18 +351,78 @@ export default function WatchPage() {
     api.watch(id).catch(() => {});
   }, [id]);
 
-  // Create YT.Player and poll progress every 5 s
+  // When a video finishes: record completion, advance the playlist if any.
+  const handleEnded = useCallback(() => {
+    if (!id) return;
+    api.complete(id).catch(() => {});
+    if (nextInPlaylistRef.current) navigate(nextInPlaylistRef.current);
+  }, [id, navigate]);
+  const handleEndedRef = useRef(handleEnded);
+  useEffect(() => { handleEndedRef.current = handleEnded; }, [handleEnded]);
+
+  // Create the player (YT iframe or the ref populated by LocalPlayer) and poll
+  // progress every second. The poll runs against the shared YT-shaped player
+  // API, so progress saving, auto-archive and SponsorBlock work for both.
   useEffect(() => {
     if (!id || (!video && !videoMissing)) return;
 
-    const wrap = playerWrapRef.current;
-    if (!wrap) return;
     const canAutoArchive = video ? (video.live_status !== "live" && video.live_status !== "upcoming") : false;
 
     const startSeconds =
       video?.watch_position && video?.watch_duration && video.watch_duration > 0 &&
       video.watch_position / video.watch_duration < 0.9
         ? Math.floor(video.watch_position) : 0;
+
+    const poll = () => {
+      const p = playerRef.current;
+      if (!p?.getCurrentTime) return;
+      try {
+        const position = p.getCurrentTime() as number;
+        const playerDuration = p.getDuration() as number;
+        if (!position || !playerDuration) return;
+        progressRef.current = { position, duration: playerDuration };
+        if (p.getPlayerState?.() !== 1) return;
+        api.saveProgress(id, position, playerDuration).catch(() => {});
+        if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
+          archivedRef.current = true;
+          api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
+          api.complete(id).catch(() => {});
+          api.archiveVideo(id).catch(() => {});
+        }
+        if (!sbPausedRef.current) {
+          for (const seg of sbSegmentsRef.current) {
+            if (disabledSegsRef.current.has(seg.UUID)) continue;
+            if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
+              p.seekTo(seg.segment[1], true);
+              break;
+            }
+          }
+        }
+      } catch {}
+    };
+
+    const saveOnExit = () => {
+      if (progressRef.current && !archivedRef.current) {
+        const { position, duration } = progressRef.current;
+        api.saveProgress(id, position, duration).catch(() => {});
+        progressRef.current = null;
+      }
+    };
+
+    if (playerKind === "local") {
+      // LocalPlayer renders the <video> itself and fills playerRef via its ref.
+      const pollInterval = setInterval(poll, 1_000);
+      return () => {
+        clearInterval(pollInterval);
+        saveOnExit();
+      };
+    }
+
+    // Decision/waiting/blocked panels have no player to drive.
+    if (playerKind !== "youtube") return;
+
+    const wrap = ytWrapRef.current;
+    if (!wrap) return;
 
     const playerVars: Record<string, any> = {
       autoplay: 1,
@@ -359,61 +469,46 @@ export default function WatchPage() {
               speedApplied = true;
               applySpeed(e.target);
             }
-            // 0 === ended: advance to the next playlist video when in a playlist.
-            if (e?.data === 0 && nextInPlaylistRef.current) {
-              api.complete(id).catch(() => {});
-              navigate(nextInPlaylistRef.current);
-            } else if (e?.data === 0) {
-              api.complete(id).catch(() => {});
-            }
+            // 0 === ended
+            if (e?.data === 0) handleEndedRef.current();
           },
         },
       });
 
-      pollInterval = setInterval(() => {
-        const p = playerRef.current;
-        if (!p?.getCurrentTime) return;
-        try {
-          const position = p.getCurrentTime() as number;
-          const playerDuration = p.getDuration() as number;
-          if (!position || !playerDuration) return;
-          progressRef.current = { position, duration: playerDuration };
-          if (p.getPlayerState?.() !== 1) return;
-          api.saveProgress(id, position, playerDuration).catch(() => {});
-          if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
-            archivedRef.current = true;
-            api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
-            api.complete(id).catch(() => {});
-            api.archiveVideo(id).catch(() => {});
-          }
-          if (!sbPausedRef.current) {
-            for (const seg of sbSegmentsRef.current) {
-              if (disabledSegsRef.current.has(seg.UUID)) continue;
-              if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
-                p.seekTo(seg.segment[1], true);
-                break;
-              }
-            }
-          }
-        } catch {}
-      }, 1_000);
+      pollInterval = setInterval(poll, 1_000);
     });
 
     return () => {
       destroyed = true;
       clearInterval(pollInterval);
-      if (progressRef.current && !archivedRef.current) {
-        const { position, duration } = progressRef.current;
-        api.saveProgress(id, position, duration).catch(() => {});
-        progressRef.current = null;
-      }
+      saveOnExit();
       if (playerRef.current) {
         try { playerRef.current.destroy(); } catch {}
         playerRef.current = null;
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing]);
+  }, [id, video?.video_id, videoMissing, playerKind]);
+
+  // Waiting panel: make sure the download is queued with top priority, then
+  // track its progress until the file is ready (the local player takes over)
+  // or the download fails.
+  useEffect(() => {
+    if (playerKind !== "waiting" || !id) return;
+    let cancelled = false;
+    setWaitError(null);
+    api.requestDownload(id, true).catch(() => {});
+    const timer = setInterval(() => {
+      api.videoDownload(id).then((r) => {
+        if (cancelled) return;
+        setWaitProgress(r.progress ? { percent: r.progress.percent, speed: r.progress.speed } : null);
+        const status = r.download?.status ?? null;
+        if (status === "error") setWaitError(r.download?.error ?? "error");
+        setVideo((prev) => prev && prev.download_status !== status ? { ...prev, download_status: status } : prev);
+      }).catch(() => {});
+    }, 1_500);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [playerKind, id]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -489,6 +584,37 @@ export default function WatchPage() {
   // Unmount: clean cinema mode without overriding the user's saved sidebar state.
   useEffect(() => restoreSidebarVisibility, []);
 
+  // Mobile: rotating to landscape enters player fullscreen (opt-in setting).
+  // Chrome for Android allows requestFullscreen() from an orientation-change
+  // handler; iPhones lack element fullscreen, so fall back to the <video>
+  // element's webkitEnterFullscreen (local player only).
+  useEffect(() => {
+    if (settings?.auto_fullscreen_landscape !== "1") return;
+    if (!window.matchMedia("(pointer: coarse)").matches) return;
+    const onOrientation = () => {
+      const landscape = window.matchMedia("(orientation: landscape)").matches;
+      const el = playerWrapRef.current;
+      if (!el) return;
+      if (landscape && !document.fullscreenElement) {
+        if (el.requestFullscreen) {
+          el.requestFullscreen().catch(() => {});
+        } else {
+          const vid = el.querySelector("video") as any;
+          try { vid?.webkitEnterFullscreen?.(); } catch {}
+        }
+      } else if (!landscape && document.fullscreenElement) {
+        document.exitFullscreen?.().catch(() => {});
+      }
+    };
+    const orientation: any = (screen as any).orientation;
+    orientation?.addEventListener?.("change", onOrientation);
+    window.addEventListener("orientationchange", onOrientation);
+    return () => {
+      orientation?.removeEventListener?.("change", onOrientation);
+      window.removeEventListener("orientationchange", onOrientation);
+    };
+  }, [settings?.auto_fullscreen_landscape]);
+
   // Keyboard shortcuts: T = cinema, F = fullscreen
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -509,11 +635,38 @@ export default function WatchPage() {
     if (!id) return;
     const t = setInterval(() => {
       api.video(id).then((r) => {
-        setVideo((prev) => prev ? { ...prev, views: r.video.views, likes: r.video.likes } : prev);
+        setVideo((prev) => prev ? { ...prev, views: r.video.views, likes: r.video.likes, download_status: r.video.download_status } : prev);
       }).catch(() => {});
     }, 30_000);
     return () => clearInterval(t);
   }, [id]);
+
+  // While this video is being fetched by the downloader, poll faster so the
+  // download button reflects reality without a reload.
+  useEffect(() => {
+    if (!id || (downloadStatus !== "queued" && downloadStatus !== "downloading")) return;
+    const t = setInterval(() => {
+      api.video(id).then((r) => {
+        setVideo((prev) => prev ? { ...prev, download_status: r.video.download_status } : prev);
+      }).catch(() => {});
+    }, 5_000);
+    return () => clearInterval(t);
+  }, [id, downloadStatus]);
+
+  const requestDownload = () => {
+    if (!video) return;
+    setVideo((prev) => prev ? { ...prev, download_status: "queued" } : prev);
+    api.requestDownload(video.video_id).catch(() => {
+      setVideo((prev) => prev ? { ...prev, download_status: null } : prev);
+    });
+  };
+
+  const cancelOrRemoveDownload = () => {
+    if (!video) return;
+    setPlayerSource("auto");
+    setVideo((prev) => prev ? { ...prev, download_status: null } : prev);
+    api.removeDownload(video.video_id).catch(() => {});
+  };
 
   useEffect(() => {
     const title = (video?.title ?? videoInfo?.title ?? "").trim();
@@ -623,7 +776,87 @@ export default function WatchPage() {
             />
           )}
           <div className="watch-player-shell">
-            <div ref={playerWrapRef} className="watch-player" />
+            <div ref={playerWrapRef} className={`watch-player${usingLocal ? " watch-player--local" : ""}`}>
+              {playerKind === "local" && video ? (
+                <LocalPlayer
+                  key={`${video.video_id}-local`}
+                  ref={playerRef}
+                  src={api.streamUrl(video.video_id)}
+                  poster={img(video.thumbnail)}
+                  startSeconds={
+                    progressRef.current?.position
+                      ?? (video.watch_position && video.watch_duration && video.watch_duration > 0 &&
+                          video.watch_position / video.watch_duration < 0.9
+                        ? Math.floor(video.watch_position) : 0)
+                  }
+                  playbackRate={Number(speed)}
+                  title={video.title}
+                  channelTitle={video.channel_title}
+                  artworkUrl={img(video.thumbnail)}
+                  chapters={chapters}
+                  sbSegments={sbSegments}
+                  onEnded={handleEnded}
+                />
+              ) : playerKind === "youtube" ? (
+                <div ref={ytWrapRef} className="watch-player-yt" />
+              ) : video && (
+                <div className="wp-panel" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
+                  <div className="wp-panel-scrim" />
+                  {playerKind === "blocked" && (
+                    <div className="wp-panel-content">
+                      <ArrowDownToLine size={34} />
+                      <h3>{t("watchChildDownloadsOnly")}</h3>
+                      {(downloadStatus === "queued" || downloadStatus === "downloading") && (
+                        <p className="wp-panel-sub">
+                          <LoaderCircle className="spin" size={14} />{" "}
+                          {downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {playerKind === "choice" && (
+                    <div className="wp-panel-content">
+                      <h3>{t("watchChoiceTitle")}</h3>
+                      <div className="wp-choice-buttons">
+                        <button className="btn primary" onClick={() => setSourceChoice("wait")}>
+                          <ArrowDownToLine size={15} /> {t("watchChoiceWait")}
+                        </button>
+                        <button className="btn" onClick={() => setSourceChoice("youtube")}>
+                          <MonitorPlay size={15} /> {t("watchChoiceYouTube")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {playerKind === "waiting" && (
+                    <div className="wp-panel-content">
+                      {waitError ? (
+                        <>
+                          <h3>{t("downloadError")}</h3>
+                          <p className="wp-panel-sub wp-panel-error">{waitError}</p>
+                        </>
+                      ) : (
+                        <>
+                          <LoaderCircle className="spin" size={30} />
+                          <h3>{t("watchWaitingTitle")}</h3>
+                          <div className="wp-wait-bar">
+                            <div className="wp-wait-fill" style={{ width: `${waitProgress?.percent ?? 0}%` }} />
+                          </div>
+                          <p className="wp-panel-sub">
+                            {waitProgress
+                              ? `${Math.floor(waitProgress.percent)}%${waitProgress.speed ? ` · ${waitProgress.speed}` : ""}`
+                              : t("downloadQueued")}
+                          </p>
+                          <p className="wp-panel-hint">{t("watchWaitingHint")}</p>
+                        </>
+                      )}
+                      <button className="btn" onClick={() => setSourceChoice("youtube")}>
+                        <MonitorPlay size={15} /> {t("watchChoiceYouTube")}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         {(video ?? videoInfo) && (
@@ -797,6 +1030,41 @@ export default function WatchPage() {
                 </div>
               )}
             </div>
+            {downloadStatus === "done" && !childDownloadsOnly && (
+              <button
+                className="btn"
+                title={t("playbackSource")}
+                onClick={() => setPlayerSource(usingLocal ? "youtube" : "auto")}
+              >
+                {usingLocal ? <HardDrive size={15} /> : <MonitorPlay size={15} />}
+                {usingLocal ? t("playerLocal") : "YouTube"}
+              </button>
+            )}
+            {downloadsEnabled && !isChildProfile && (
+              downloadStatus === "done" ? (
+                <Popconfirm message={t("downloadRemoveConfirm")} onConfirm={cancelOrRemoveDownload}>
+                  <button className="btn icon-only active dl-done" title={t("downloadRemove")}>
+                    <ArrowDownToLine />
+                  </button>
+                </Popconfirm>
+              ) : downloadStatus === "queued" || downloadStatus === "downloading" ? (
+                <button
+                  className="btn icon-only"
+                  title={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}
+                  onClick={cancelOrRemoveDownload}
+                >
+                  <LoaderCircle className="spin" />
+                </button>
+              ) : (
+                <button
+                  className="btn icon-only"
+                  title={downloadStatus === "error" ? t("downloadRetry") : t("download")}
+                  onClick={requestDownload}
+                >
+                  <ArrowDownToLine />
+                </button>
+              )
+            )}
             {video.status !== "archived" ? (
               <button className="btn icon-only" title={t("reject")} onClick={() => api.archiveVideo(video.video_id).then(reload)}>
                 <Archive />

@@ -16,14 +16,15 @@ import {
   searchYouTube,
 } from "./youtube";
 import { getCachedImage } from "./imgcache";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel } from "./refresher";
 import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
-import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
+import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
+import { activeDownloadProgress, downloadStats, enqueueDownload, getDownload, listDownloads, prioritizeDownload, removeDownload, setDownloadPinned, ytdlpStatus } from "./downloader";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import {
   authMethod,
@@ -300,6 +301,9 @@ function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => st
 
 function attachTags(uid: number, videos: VideoRow[]) {
   if (videos.length === 0) return [];
+  // Live percentage for the one video the downloader is fetching right now,
+  // so lists can paint a download progress bar without a dedicated request.
+  const dlProgress = activeDownloadProgress();
   const ids = videos.map((v) => v.video_id);
   const ph = ids.map(() => "?").join(",");
   // Tags are per profile: only surface tags owned by the active user.
@@ -325,7 +329,10 @@ function attachTags(uid: number, videos: VideoRow[]) {
     const inherited = channelTags
       .filter((t) => t.channel_id === v.channel_id && !own.some((o) => o.id === t.id))
       .map((t) => ({ id: t.id, name: t.name, color: t.color, filter_only: t.filter_only, source: "channel" }));
-    return { ...v, tags: [...own, ...inherited] };
+    const download_progress = (v as any).download_status === "downloading" && dlProgress?.video_id === v.video_id
+      ? dlProgress.percent
+      : null;
+    return { ...v, download_progress, tags: [...own, ...inherited] };
   });
 }
 
@@ -366,6 +373,7 @@ function videoSelect(uid: number) {
          v.is_short, v.views, v.likes, uv.liked, uv.watched,
          v.duration, uv.watch_position, uv.watch_duration, v.external,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
+         (SELECT d.status FROM downloads d WHERE d.video_id = v.video_id AND d.status != 'deleted') AS download_status,
          c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id
   LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}`;
@@ -675,6 +683,86 @@ api.post("/plugins/:id/reset", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
   }
+});
+
+// ---------- downloads plugin ----------
+
+api.get("/downloads", async (c) => {
+  return c.json({
+    enabled: pluginEnabled("downloads"),
+    ytdlp_version: await ytdlpStatus(),
+    stats: downloadStats(),
+    active: activeDownloadProgress(),
+    downloads: listDownloads(),
+  });
+});
+
+api.post("/videos/:id/download", async (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  const id = c.req.param("id");
+  const body = await c.req.json().catch(() => ({} as { priority?: boolean }));
+  if (body.priority) prioritizeDownload(id);
+  else enqueueDownload(id, "manual");
+  return c.json({ ok: true, download: getDownload(id) });
+});
+
+// Download state for one video, with live progress while it's the active job.
+api.get("/videos/:id/download", (c) => {
+  const id = c.req.param("id");
+  const download = getDownload(id);
+  const progress = activeDownloadProgress();
+  return c.json({
+    download,
+    progress: download?.status === "downloading" && progress?.video_id === id ? progress : null,
+  });
+});
+
+api.delete("/videos/:id/download", (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  removeDownload(c.req.param("id"));
+  return c.json({ ok: true });
+});
+
+api.put("/videos/:id/download/pin", async (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  const { pinned } = await c.req.json() as { pinned?: boolean };
+  setDownloadPinned(c.req.param("id"), !!pinned);
+  return c.json({ ok: true, download: getDownload(c.req.param("id")) });
+});
+
+// Serves the downloaded file to the <video> element. Range support is what
+// makes seeking work, so it's handled explicitly.
+api.get("/videos/:id/stream", (c) => {
+  const row = getDownload(c.req.param("id"));
+  if (!row || row.status !== "done" || !row.path || !existsSync(row.path)) {
+    return c.json({ error: "not downloaded" }, 404);
+  }
+  const size = statSync(row.path).size;
+  const contentType = row.path.endsWith(".webm") ? "video/webm" : "video/mp4";
+  const file = Bun.file(row.path);
+  const range = c.req.header("range");
+  if (range) {
+    const m = range.match(/bytes=(\d*)-(\d*)/);
+    let start = m?.[1] ? Number(m[1]) : 0;
+    let end = m?.[2] ? Number(m[2]) : size - 1;
+    if (!Number.isFinite(start) || start >= size) {
+      return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+    }
+    end = Math.min(end, size - 1);
+    return new Response(file.slice(start, end + 1), {
+      status: 206,
+      headers: {
+        "Content-Type": contentType,
+        "Content-Range": `bytes ${start}-${end}/${size}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(end - start + 1),
+      },
+    });
+  }
+  return new Response(file, {
+    headers: { "Content-Type": contentType, "Accept-Ranges": "bytes", "Content-Length": String(size) },
+  });
 });
 
 api.get("/discovery/recommendations", async (c) => {
@@ -1902,6 +1990,7 @@ function serializeProfile(u: UserRow, activeId: number) {
       local_only: getUserSetting(u.id, "child_local_only") === "1",
       hide_shorts: getUserSetting(u.id, "child_hide_shorts") === "1",
       hide_live: getUserSetting(u.id, "child_hide_live") === "1",
+      downloads_only: getUserSetting(u.id, "child_downloads_only") === "1",
     } : null,
     child_status: status ? {
       remaining_seconds: status.remaining_seconds,
@@ -1969,6 +2058,7 @@ api.patch("/profiles/:id", async (c) => {
     if (cc.local_only !== undefined) setUserSetting(id, "child_local_only", cc.local_only ? "1" : "0");
     if (cc.hide_shorts !== undefined) setUserSetting(id, "child_hide_shorts", cc.hide_shorts ? "1" : "0");
     if (cc.hide_live !== undefined) setUserSetting(id, "child_hide_live", cc.hide_live ? "1" : "0");
+    if (cc.downloads_only !== undefined) setUserSetting(id, "child_downloads_only", cc.downloads_only ? "1" : "0");
   }
   // pin: "" / null clears it, a 6-digit string sets it. PIN is owner-only — not
   // even the primary profile can change or remove someone else's PIN. (Child

@@ -98,6 +98,28 @@ CREATE TABLE IF NOT EXISTS plugin_state (
   PRIMARY KEY (plugin_id, user_id, key)
 );
 
+-- Local copies of videos fetched with yt-dlp (downloads plugin). Files are
+-- global — one copy serves every profile; retention is handled by the
+-- downloader's cleanup loop, not per user.
+CREATE TABLE IF NOT EXISTS downloads (
+  video_id    TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE,
+  -- queued | downloading | done | error
+  status      TEXT NOT NULL DEFAULT 'queued',
+  -- manual (user asked) | scheduled (watch-later bucket) | feed (fresh upload)
+  source      TEXT NOT NULL DEFAULT 'manual',
+  quality     TEXT,
+  path        TEXT,
+  size_bytes  INTEGER,
+  error       TEXT,
+  attempts    INTEGER NOT NULL DEFAULT 0,
+  -- pinned downloads are never auto-deleted by retention/storage cleanup
+  pinned      INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  started_at  TEXT,
+  finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+
 CREATE TABLE IF NOT EXISTS recommendation_feedback (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   video_id   TEXT NOT NULL,
@@ -336,6 +358,9 @@ try { db.exec("ALTER TABLE channels ADD COLUMN about_fetched_at TEXT"); } catch 
 try { db.exec("ALTER TABLE channels ADD COLUMN playlists_json TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN playlists_fetched_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_json TEXT"); } catch {}
+// Priority downloads (viewer is actively waiting) jump the queue and may
+// preempt the running job.
+try { db.exec("ALTER TABLE downloads ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
 db.exec("UPDATE videos SET bucket = 'today' WHERE bucket = 'morning';");
 db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
@@ -348,6 +373,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_cc_lang: "en",
   player_quality: "auto",
   player_speed: "1",
+  // Mobile: rotating to landscape on the watch page enters fullscreen.
+  auto_fullscreen_landscape: "0",
   grid_size: "sm",
   child_lock_enabled: "0",
   child_lock_pin_hash: "",

@@ -120,6 +120,7 @@ export interface ChildStatus {
   local_only: boolean;
   hide_shorts: boolean;
   hide_live: boolean;
+  downloads_only: boolean;
   has_pending_request: boolean;
 }
 
@@ -128,7 +129,8 @@ export function childStatus(userId: number): ChildStatus {
     return {
       is_child: false, limit_seconds: null, used_seconds: 0, extra_seconds: 0,
       unlimited_today: false, remaining_seconds: null, locked: false, lock_reason: null,
-      local_only: false, hide_shorts: false, hide_live: false, has_pending_request: false,
+      local_only: false, hide_shorts: false, hide_live: false, downloads_only: false,
+      has_pending_request: false,
     };
   }
   const limit = childLimitSeconds(userId);
@@ -156,8 +158,14 @@ export function childStatus(userId: number): ChildStatus {
     local_only: getUserSetting(userId, "child_local_only") === "1",
     hide_shorts: getUserSetting(userId, "child_hide_shorts") === "1",
     hide_live: getUserSetting(userId, "child_hide_live") === "1",
+    downloads_only: getUserSetting(userId, "child_downloads_only") === "1",
     has_pending_request: Boolean(pending),
   };
+}
+
+/** Child profile restricted to locally downloaded files (no YouTube playback). */
+export function childDownloadsOnly(userId: number): boolean {
+  return isChildUser(userId) && getUserSetting(userId, "child_downloads_only") === "1";
 }
 
 export function childLocalOnly(userId: number): boolean {

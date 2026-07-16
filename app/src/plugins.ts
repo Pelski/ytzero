@@ -1,6 +1,7 @@
-import { db } from "./db";
+import { db, getSetting, setSetting } from "./db";
 import { fetchChannelAbout, fetchVideoInfo, searchYouTube, type SearchResult, type VideoInfo } from "./youtube";
 import { buildKeywordPlan, tokenizeDiscoveryText, type KeywordSeed } from "./discoveryKeywords";
+import { DL_DEFAULTS, resetDownloadsState } from "./downloader";
 
 export interface PluginManifest {
   id: string;
@@ -10,29 +11,46 @@ export interface PluginManifest {
   route: string;
   icon: string;
   permissions: string[];
+  // "user" (default): settings live per profile in plugin_settings.
+  // "global": settings are app-wide, stored in the settings table — used by
+  // plugins that manage shared resources (e.g. one downloads directory).
+  settingsScope?: "user" | "global";
 }
 
 type PluginLanguage = "en" | "pl" | "de";
 type LocalizedText = Record<PluginLanguage, string>;
 
+export type PluginSettingType = "slider" | "select" | "toggle";
+
+export interface PluginSettingOption {
+  value: string;
+  label: string;
+}
+
 export interface PluginSettingDef {
   key: string;
   label: string;
   description: string;
-  min: number;
-  max: number;
-  step: number;
-  defaultValue: number;
+  type: PluginSettingType;
+  min?: number;
+  max?: number;
+  step?: number;
+  options?: PluginSettingOption[];
+  defaultValue: number | string;
 }
+
+export type PluginSettingValue = number | string;
 
 export interface PluginTermState {
   lastTerms: string[];
   blockedTerms: string[];
 }
 
-type PluginSettingSource = Omit<PluginSettingDef, "label" | "description"> & {
+type PluginSettingSource = Omit<PluginSettingDef, "label" | "description" | "type" | "options"> & {
   label: LocalizedText;
   description: LocalizedText;
+  type?: PluginSettingType;
+  options?: { value: string; label: LocalizedText }[];
 };
 
 const DISCOVERY_SETTINGS: PluginSettingSource[] = [
@@ -57,6 +75,109 @@ const DISCOVERY_SETTINGS: PluginSettingSource[] = [
   { key: "high_pick_count", label: { en: "Top matches after variety", pl: "Najlepsze po miksie", de: "Beste Treffer nach dem Mix" }, description: { en: "How many strongest matches should follow the first mixed items.", pl: "Ile najmocniejszych dopasowań ma iść po pierwszych wymieszanych pozycjach.", de: "Wie viele stärkste Treffer nach den gemischten Einträgen folgen." }, min: 0, max: 20, step: 1, defaultValue: 6 },
 ];
 
+const DOWNLOADS_SETTINGS: PluginSettingSource[] = [
+  {
+    key: "quality",
+    type: "select",
+    label: { en: "Video quality", pl: "Jakość wideo", de: "Videoqualität" },
+    description: { en: "Maximum resolution to download. Prefers h264 so files play everywhere.", pl: "Maksymalna pobierana rozdzielczość. Preferuje h264, żeby pliki działały wszędzie.", de: "Maximale Auflösung beim Herunterladen. Bevorzugt h264 für maximale Kompatibilität." },
+    options: [
+      { value: "best", label: { en: "Best available", pl: "Najlepsza dostępna", de: "Beste verfügbare" } },
+      { value: "1440", label: { en: "1440p", pl: "1440p", de: "1440p" } },
+      { value: "1080", label: { en: "1080p", pl: "1080p", de: "1080p" } },
+      { value: "720", label: { en: "720p", pl: "720p", de: "720p" } },
+      { value: "480", label: { en: "480p", pl: "480p", de: "480p" } },
+    ],
+    defaultValue: DL_DEFAULTS.quality,
+  },
+  {
+    key: "watch_source_mode",
+    type: "select",
+    label: { en: "Opening a video", pl: "Wejście na film", de: "Video öffnen" },
+    description: { en: "What happens when you open a video that isn't downloaded yet.", pl: "Co ma się dziać, gdy otwierasz film, który nie jest jeszcze pobrany.", de: "Was passiert, wenn du ein noch nicht heruntergeladenes Video öffnest." },
+    options: [
+      { value: "youtube", label: { en: "Play from YouTube", pl: "Odtwarzaj z YouTube", de: "Von YouTube abspielen" } },
+      { value: "ask", label: { en: "Ask every time", pl: "Daj wybór", de: "Jedes Mal fragen" } },
+      { value: "download", label: { en: "Always wait for the download", pl: "Zawsze czekaj na pobranie", de: "Immer auf den Download warten" } },
+    ],
+    defaultValue: DL_DEFAULTS.watch_source_mode,
+  },
+  {
+    key: "thumb_progress",
+    type: "toggle",
+    label: { en: "Progress bar on thumbnails", pl: "Pasek pobierania na miniaturkach", de: "Fortschrittsbalken auf Vorschaubildern" },
+    description: { en: "Shows a thin download progress bar on top of video thumbnails.", pl: "Pokazuje cienki pasek postępu pobierania na górze miniaturek.", de: "Zeigt einen dünnen Download-Fortschrittsbalken oben auf Vorschaubildern." },
+    defaultValue: DL_DEFAULTS.thumb_progress,
+  },
+  {
+    key: "download_scheduled",
+    type: "toggle",
+    label: { en: "Download scheduled videos", pl: "Pobieraj zaplanowane", de: "Geplante Videos laden" },
+    description: { en: "Videos placed on a watch-later bucket are fetched automatically.", pl: "Filmy dodane do „Do obejrzenia” pobierają się automatycznie.", de: "Videos auf einem Später-ansehen-Slot werden automatisch geladen." },
+    defaultValue: DL_DEFAULTS.download_scheduled,
+  },
+  {
+    key: "download_feed",
+    type: "toggle",
+    label: { en: "Download new uploads", pl: "Pobieraj nowe z subskrypcji", de: "Neue Uploads laden" },
+    description: { en: "Fresh videos from followed channels are fetched as they appear.", pl: "Świeże filmy z obserwowanych kanałów pobierają się od razu po publikacji.", de: "Frische Videos abonnierter Kanäle werden direkt nach Erscheinen geladen." },
+    defaultValue: DL_DEFAULTS.download_feed,
+  },
+  {
+    key: "feed_max_age_hours",
+    type: "slider",
+    label: { en: "New upload window (hours)", pl: "Okno nowości (godziny)", de: "Zeitfenster für Neues (Stunden)" },
+    description: { en: "Only uploads younger than this are auto-downloaded from the feed.", pl: "Z feedu pobierają się tylko filmy młodsze niż tyle godzin.", de: "Nur Uploads, die jünger sind, werden automatisch geladen." },
+    min: 6, max: 168, step: 6,
+    defaultValue: DL_DEFAULTS.feed_max_age_hours,
+  },
+  {
+    key: "download_shorts",
+    type: "toggle",
+    label: { en: "Include Shorts", pl: "Pobieraj Shorts", de: "Shorts einschließen" },
+    description: { en: "Also auto-download Shorts from the feed. Scheduled Shorts download regardless.", pl: "Pobieraj też Shorts z feedu. Zaplanowane Shorts pobierają się niezależnie od tego.", de: "Auch Shorts aus dem Feed laden. Geplante Shorts werden unabhängig davon geladen." },
+    defaultValue: DL_DEFAULTS.download_shorts,
+  },
+  {
+    key: "retention_days",
+    type: "slider",
+    label: { en: "Keep files for (days)", pl: "Przechowuj pliki (dni)", de: "Dateien behalten (Tage)" },
+    description: { en: "Downloads are removed this many days after they finished.", pl: "Pobrane pliki są usuwane po tylu dniach od pobrania.", de: "Downloads werden so viele Tage nach Abschluss entfernt." },
+    min: 1, max: 90, step: 1,
+    defaultValue: DL_DEFAULTS.retention_days,
+  },
+  {
+    key: "delete_watched",
+    type: "toggle",
+    label: { en: "Remove after watching", pl: "Usuwaj obejrzane", de: "Nach dem Ansehen entfernen" },
+    description: { en: "Once watched, the file is removed after a grace period.", pl: "Po obejrzeniu plik znika po okresie karencji.", de: "Nach dem Ansehen wird die Datei nach einer Schonfrist entfernt." },
+    defaultValue: DL_DEFAULTS.delete_watched,
+  },
+  {
+    key: "delete_watched_hours",
+    type: "slider",
+    label: { en: "Watched grace period (hours)", pl: "Karencja po obejrzeniu (godziny)", de: "Schonfrist nach dem Ansehen (Stunden)" },
+    description: { en: "How long a watched file sticks around before removal.", pl: "Ile godzin obejrzany plik czeka, zanim zostanie usunięty.", de: "Wie lange eine angesehene Datei vor der Entfernung erhalten bleibt." },
+    min: 1, max: 168, step: 1,
+    defaultValue: DL_DEFAULTS.delete_watched_hours,
+  },
+  {
+    key: "keep_liked",
+    type: "toggle",
+    label: { en: "Protect liked videos", pl: "Chroń polubione", de: "Favorisierte schützen" },
+    description: { en: "Liked videos are never auto-removed by retention or the storage cap.", pl: "Polubione filmy nigdy nie są usuwane automatycznie — ani przez retencję, ani przez limit dysku.", de: "Favorisierte Videos werden nie automatisch entfernt — weder durch Aufbewahrung noch durch das Speicherlimit." },
+    defaultValue: DL_DEFAULTS.keep_liked,
+  },
+  {
+    key: "max_storage_gb",
+    type: "slider",
+    label: { en: "Storage cap (GB)", pl: "Limit dysku (GB)", de: "Speicherlimit (GB)" },
+    description: { en: "Above this the oldest unprotected downloads are removed first.", pl: "Po przekroczeniu najstarsze niechronione pliki usuwane są w pierwszej kolejności.", de: "Darüber werden die ältesten ungeschützten Downloads zuerst entfernt." },
+    min: 1, max: 500, step: 1,
+    defaultValue: DL_DEFAULTS.max_storage_gb,
+  },
+];
+
 export const PLUGINS: PluginManifest[] = [
   {
     id: "discovery",
@@ -66,6 +187,16 @@ export const PLUGINS: PluginManifest[] = [
     route: "/discovery",
     icon: "Sparkles",
     permissions: ["read:library", "read:history", "network:video-search"],
+  },
+  {
+    id: "downloads",
+    name: "YT-DLP Integration",
+    version: "0.1.0",
+    description: "Downloads videos with yt-dlp for smooth local playback, with retention and storage limits.",
+    route: "/downloads",
+    icon: "Download",
+    permissions: ["read:library", "network:video-download", "storage:local-files"],
+    settingsScope: "global",
   },
 ];
 
@@ -81,6 +212,19 @@ const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: LocalizedT
       "read:library": { en: "reads your local library", pl: "czyta lokalną bibliotekę", de: "liest deine lokale Bibliothek" },
       "read:history": { en: "uses your watch history", pl: "używa historii oglądania", de: "nutzt deinen Verlauf" },
       "network:video-search": { en: "can search for new video ideas", pl: "może szukać nowych propozycji", de: "kann nach neuen Videovorschlägen suchen" },
+    },
+  },
+  downloads: {
+    name: { en: "YT-DLP Integration", pl: "Integracja YT-DLP", de: "YT-DLP-Integration" },
+    description: {
+      en: "Downloads videos with yt-dlp for smooth local playback, with retention and storage limits.",
+      pl: "Pobiera filmy przez yt-dlp do płynnego lokalnego odtwarzania, z retencją i limitem miejsca.",
+      de: "Lädt Videos mit yt-dlp für flüssige lokale Wiedergabe herunter, mit Aufbewahrung und Speicherlimit.",
+    },
+    permissions: {
+      "read:library": { en: "reads your local library", pl: "czyta lokalną bibliotekę", de: "liest deine lokale Bibliothek" },
+      "network:video-download": { en: "downloads videos from YouTube", pl: "pobiera filmy z YouTube", de: "lädt Videos von YouTube herunter" },
+      "storage:local-files": { en: "stores video files on disk", pl: "zapisuje pliki wideo na dysku", de: "speichert Videodateien auf der Festplatte" },
     },
   },
 };
@@ -102,8 +246,10 @@ function text(value: LocalizedText, language: string | null | undefined) {
 function localizeSetting(def: PluginSettingSource, language: string | null | undefined): PluginSettingDef {
   return {
     ...def,
+    type: def.type ?? "slider",
     label: text(def.label, language),
     description: text(def.description, language),
+    options: def.options?.map((option) => ({ value: option.value, label: text(option.label, language) })),
   };
 }
 
@@ -140,21 +286,43 @@ export function setPluginEnabled(id: string, enabled: boolean) {
   ).run(id, enabled ? 1 : 0, manifest.version);
 }
 
-function settingDefs(pluginId: string) {
+function settingDefs(pluginId: string): PluginSettingSource[] {
   if (pluginId === "discovery") return DISCOVERY_SETTINGS;
+  if (pluginId === "downloads") return DOWNLOADS_SETTINGS;
   return [];
 }
 
+// Coerce a stored/incoming raw value to something valid for the definition;
+// anything unparseable falls back to the default.
+function normalizeSettingValue(raw: string | null | undefined, def: PluginSettingSource): PluginSettingValue {
+  const type = def.type ?? "slider";
+  if (type === "select") {
+    return def.options?.some((option) => option.value === raw) ? (raw as string) : (def.defaultValue as string);
+  }
+  const n = Number(raw);
+  const value = raw != null && Number.isFinite(n) ? n : Number(def.defaultValue);
+  if (type === "toggle") return value === 1 ? 1 : 0;
+  return clampSetting(value, def);
+}
+
 export function getPluginSettings(uid: number, pluginId: string, language?: string | null) {
+  const manifest = PLUGINS.find((p) => p.id === pluginId);
+  if (!manifest) throw new Error("plugin not found");
   const defs = settingDefs(pluginId);
-  if (!PLUGINS.some((p) => p.id === pluginId)) throw new Error("plugin not found");
-  const rows = db.prepare("SELECT key, value FROM plugin_settings WHERE plugin_id = ? AND user_id = ?")
-    .all(pluginId, uid) as { key: string; value: string }[];
-  const values = new Map(rows.map((r) => [r.key, Number(r.value)]));
-  const settings: Record<string, number> = {};
+  const values = new Map<string, string>();
+  if (manifest.settingsScope === "global") {
+    for (const def of defs) {
+      const raw = getSetting(`plugin_${pluginId}_${def.key}`);
+      if (raw != null) values.set(def.key, raw);
+    }
+  } else {
+    const rows = db.prepare("SELECT key, value FROM plugin_settings WHERE plugin_id = ? AND user_id = ?")
+      .all(pluginId, uid) as { key: string; value: string }[];
+    for (const row of rows) values.set(row.key, row.value);
+  }
+  const settings: Record<string, PluginSettingValue> = {};
   for (const def of defs) {
-    const raw = values.get(def.key);
-    settings[def.key] = clampSetting(Number.isFinite(raw) ? raw! : def.defaultValue, def);
+    settings[def.key] = normalizeSettingValue(values.get(def.key), def);
   }
   return {
     definitions: defs.map((def) => localizeSetting(def, language)),
@@ -164,18 +332,22 @@ export function getPluginSettings(uid: number, pluginId: string, language?: stri
 }
 
 export function setPluginSettings(uid: number, pluginId: string, patch: Record<string, unknown>, language?: string | null) {
+  const manifest = PLUGINS.find((p) => p.id === pluginId);
+  if (!manifest) throw new Error("plugin not found");
   const defs = settingDefs(pluginId);
-  if (!PLUGINS.some((p) => p.id === pluginId)) throw new Error("plugin not found");
   const byKey = new Map(defs.map((d) => [d.key, d]));
   const tx = db.transaction(() => {
     for (const [key, value] of Object.entries(patch)) {
       const def = byKey.get(key);
       if (!def) continue;
-      const n = Number(value);
-      if (!Number.isFinite(n)) continue;
-      db.prepare(
-        "INSERT INTO plugin_settings (plugin_id, user_id, key, value) VALUES (?, ?, ?, ?) ON CONFLICT(plugin_id, user_id, key) DO UPDATE SET value = excluded.value"
-      ).run(pluginId, uid, key, String(clampSetting(n, def)));
+      const normalized = normalizeSettingValue(value == null ? null : String(value), def);
+      if (manifest.settingsScope === "global") {
+        setSetting(`plugin_${pluginId}_${key}`, String(normalized));
+      } else {
+        db.prepare(
+          "INSERT INTO plugin_settings (plugin_id, user_id, key, value) VALUES (?, ?, ?, ?) ON CONFLICT(plugin_id, user_id, key) DO UPDATE SET value = excluded.value"
+        ).run(pluginId, uid, key, String(normalized));
+      }
     }
   });
   tx();
@@ -191,6 +363,10 @@ export function setPluginSettings(uid: number, pluginId: string, patch: Record<s
 
 export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
   if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
+  if (pluginId === "downloads") {
+    resetDownloadsState();
+    return getPluginSettings(uid, pluginId, language);
+  }
   if (pluginId === "discovery") {
     const timer = discoveryRefreshTimers.get(uid);
     if (timer) {
@@ -228,7 +404,8 @@ export async function resetPluginState(uid: number, pluginId: string, language?:
 }
 
 function discoverySettings(uid: number) {
-  return getPluginSettings(uid, "discovery").settings;
+  // Discovery definitions are all sliders, so the values are numbers.
+  return getPluginSettings(uid, "discovery").settings as Record<string, number>;
 }
 
 function discoveryTermState(uid: number): PluginTermState {
@@ -265,8 +442,9 @@ function setDiscoveryBlockedTerms(uid: number, value: unknown) {
 }
 
 function clampSetting(value: number, def: Pick<PluginSettingDef, "min" | "max" | "step">) {
-  const stepped = Math.round(value / def.step) * def.step;
-  return Math.min(def.max, Math.max(def.min, stepped));
+  const step = def.step ?? 1;
+  const stepped = Math.round(value / step) * step;
+  return Math.min(def.max ?? Infinity, Math.max(def.min ?? -Infinity, stepped));
 }
 
 export interface DiscoveryRecommendation {

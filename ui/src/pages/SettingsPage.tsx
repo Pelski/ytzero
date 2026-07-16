@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
-import { Camera, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronUp, Clock, Download, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppLogs, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
@@ -708,7 +708,7 @@ function ChildProfileSettings({ profile, onSaved, showToast }: {
   showToast: (m: string) => void;
 }) {
   const { t } = useI18n();
-  const cfg = profile.child_config ?? { limit_minutes: 0, local_only: true, hide_shorts: false, hide_live: false };
+  const cfg = profile.child_config ?? { limit_minutes: 0, local_only: true, hide_shorts: false, hide_live: false, downloads_only: false };
   const [minutes, setMinutes] = useState(cfg.limit_minutes > 0 ? String(cfg.limit_minutes) : "60");
   const [childLockEnabled, setChildLockEnabled] = useState(true);
 
@@ -796,6 +796,19 @@ function ChildProfileSettings({ profile, onSaved, showToast }: {
           role="switch"
           aria-checked={cfg.hide_live}
           onClick={() => save({ hide_live: !cfg.hide_live })}
+        />
+      </div>
+
+      <div className="switch-row">
+        <div>
+          <div className="switch-label">{t("childDownloadsOnly")}</div>
+          <div className="switch-sub">{t("childDownloadsOnlyHint")}</div>
+        </div>
+        <button
+          className={`switch${cfg.downloads_only ? " on" : ""}`}
+          role="switch"
+          aria-checked={cfg.downloads_only}
+          onClick={() => save({ downloads_only: !cfg.downloads_only })}
         />
       </div>
 
@@ -1033,6 +1046,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playerCc, setPlayerCc] = useState(false);
   const [playerQuality, setPlayerQuality] = useState("auto");
   const [playerSpeed, setPlayerSpeed] = useState("1");
+  const [autoFullscreen, setAutoFullscreen] = useState(false);
   const [sbEnabled, setSbEnabled] = useState(false);
   const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
   const [childLock, setChildLock] = useState<ChildLockStatus>({ enabled: false, locked: false });
@@ -1168,6 +1182,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setPlayerCc(r.settings.player_cc === "1");
         setPlayerQuality(r.settings.player_quality);
         setPlayerSpeed(r.settings.player_speed ?? "1");
+        setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
         setSbEnabled(r.settings.sponsorblock_enabled === "1");
         try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
         setChildLock(cl.child_lock);
@@ -1189,7 +1204,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     }
   };
 
-  const updatePluginSetting = async (pluginId: string, key: string, value: number) => {
+  const updatePluginSetting = async (pluginId: string, key: string, value: number | string) => {
     setPluginSettings((current) => {
       const currentPlugin = current[pluginId];
       if (!currentPlugin) return current;
@@ -1204,6 +1219,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     try {
       const next = await api.updatePluginSettings(pluginId, { [key]: value });
       setPluginSettings((current) => ({ ...current, [pluginId]: next }));
+      emit("plugins-changed");
     } catch (e) {
       loadPlugins();
       showToast(e instanceof Error ? e.message : String(e));
@@ -2220,6 +2236,23 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </select>
           </div>
 
+          <div className="switch-row">
+            <div>
+              <div className="switch-label">{t("autoFullscreenLandscape")}</div>
+              <div className="switch-sub">{t("autoFullscreenLandscapeHint")}</div>
+            </div>
+            <button
+              className={`switch${autoFullscreen ? " on" : ""}`}
+              role="switch"
+              aria-checked={autoFullscreen}
+              onClick={() => {
+                const next = !autoFullscreen;
+                setAutoFullscreen(next);
+                savePlayer({ auto_fullscreen_landscape: next ? "1" : "0" });
+              }}
+            />
+          </div>
+
           <hr className="section-divider" />
 
           <div className="switch-row">
@@ -2329,8 +2362,23 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 keys: ["external_adjustment", "outside_base_points", "outside_exact_match_points", "outside_partial_match_points"],
               },
             ];
-            const sections = plugin.id === "discovery"
-              ? discoverySections.map((section) => ({
+            const downloadsSections = [
+              {
+                id: "downloading",
+                title: t("pluginSectionDownloading"),
+                description: t("pluginSectionDownloadingHint"),
+                keys: ["quality", "watch_source_mode", "thumb_progress", "download_scheduled", "download_feed", "feed_max_age_hours", "download_shorts"],
+              },
+              {
+                id: "retention",
+                title: t("pluginSectionRetention"),
+                description: t("pluginSectionRetentionHint"),
+                keys: ["retention_days", "delete_watched", "delete_watched_hours", "keep_liked", "max_storage_gb"],
+              },
+            ];
+            const sectionKeys = plugin.id === "discovery" ? discoverySections : plugin.id === "downloads" ? downloadsSections : null;
+            const sections = sectionKeys
+              ? sectionKeys.map((section) => ({
                   ...section,
                   definitions: section.keys.flatMap((key) => config.definitions.filter((def) => def.key === key)),
                 })).filter((section) => section.definitions.length > 0)
@@ -2345,7 +2393,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 <div className="plugin-modal" role="dialog" aria-modal="true" aria-labelledby="plugin-settings-title" onMouseDown={(e) => e.stopPropagation()}>
                   <div className="plugin-modal-hero">
                     <div className="plugin-modal-icon" aria-hidden="true">
-                      {plugin.icon === "Sparkles" ? <Sparkles /> : <Plug />}
+                      {plugin.icon === "Sparkles" ? <Sparkles /> : plugin.icon === "Download" ? <Download /> : <Plug />}
                     </div>
                     <div className="plugin-modal-identity">
                       <div className="plugin-modal-eyebrow">{t("pluginDetailsLabel")}</div>
@@ -2389,10 +2437,37 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                                   <span className="switch-label">{def.label}</span>
                                   <span className="switch-sub">{def.description}</span>
                                 </div>
-                                <div className="plugin-slider-control">
-                                  <input type="range" min={def.min} max={def.max} step={def.step} value={value} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
-                                  <input type="number" min={def.min} max={def.max} step={def.step} value={value} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
-                                </div>
+                                {def.type === "toggle" ? (
+                                  <button
+                                    type="button"
+                                    className={`switch ${Number(value) === 1 ? "on" : ""}`}
+                                    role="switch"
+                                    aria-checked={Number(value) === 1}
+                                    onClick={(e) => {
+                                      // preventDefault stops the wrapping <label> from re-dispatching
+                                      // a second synthetic click that would toggle right back.
+                                      e.preventDefault();
+                                      updatePluginSetting(plugin.id, def.key, Number(value) === 1 ? 0 : 1);
+                                    }}
+                                  >
+                                    <span />
+                                  </button>
+                                ) : def.type === "select" ? (
+                                  <select
+                                    className="plugin-select"
+                                    value={String(value)}
+                                    onChange={(e) => updatePluginSetting(plugin.id, def.key, e.target.value)}
+                                  >
+                                    {def.options?.map((option) => (
+                                      <option key={option.value} value={option.value}>{option.label}</option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <div className="plugin-slider-control">
+                                    <input type="range" min={def.min} max={def.max} step={def.step} value={Number(value)} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
+                                    <input type="number" min={def.min} max={def.max} step={def.step} value={Number(value)} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
+                                  </div>
+                                )}
                               </label>
                             );
                           })}

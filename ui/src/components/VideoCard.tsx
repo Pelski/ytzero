@@ -1,5 +1,6 @@
 import {
   Archive,
+  ArrowDownToLine,
   CalendarCheck,
   CalendarX,
   Eye,
@@ -330,6 +331,9 @@ export default function VideoCard({
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}
+          {video.download_status === "done" && (
+            <span className="thumb-dl-badge" title={t("downloaded")}><ArrowDownToLine size={11} /></span>
+          )}
           {video.live_status === "live" && (
             <span className="live-badge">
               <span className="pulse" /> {t("liveBadge")}
@@ -345,6 +349,16 @@ export default function VideoCard({
               <div
                 className="progress-bar-fill"
                 style={{ width: `${Math.min(100, (video.watch_position / video.watch_duration) * 100)}%` }}
+              />
+            </div>
+          )}
+          {(video.download_status === "downloading" || video.download_status === "queued") && (
+            <div className="dl-progress-top" title={video.download_status === "queued" ? t("downloadQueued") : t("downloading")}>
+              <div
+                className={`dl-progress-top-fill${video.download_status === "queued" ? " queued" : ""}`}
+                style={video.download_status === "downloading"
+                  ? { width: `${Math.min(100, Math.max(3, video.download_progress ?? 0))}%` }
+                  : undefined}
               />
             </div>
           )}

@@ -18,11 +18,15 @@ import WatchPage from "./pages/WatchPage";
 import ChannelPage from "./pages/ChannelPage";
 import UserPlaylistPage from "./pages/UserPlaylistPage";
 import ShortsPage from "./pages/ShortsPage";
+import DownloadsPage from "./pages/DownloadsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import LikedPage from "./pages/LikedPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
+
+// Routes owned by plugins — visible in the sidebar only while enabled.
+const PLUGIN_ROUTES = ["/discovery", "/downloads"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
@@ -308,7 +312,19 @@ function AppShell() {
 
   const loadPlugins = useCallback(() => {
     api.plugins()
-      .then((r) => setEnabledPluginRoutes(new Set(r.plugins.filter((p) => p.enabled).map((p) => p.route))))
+      .then((r) => {
+        setEnabledPluginRoutes(new Set(r.plugins.filter((p) => p.enabled).map((p) => p.route)));
+        // Thumbnail download-progress bars are toggled by a plugin setting;
+        // a root attribute lets CSS hide them without prop-drilling.
+        const downloads = r.plugins.find((p) => p.id === "downloads");
+        if (downloads?.enabled) {
+          api.pluginSettings("downloads")
+            .then((s) => { document.documentElement.dataset.dlThumbProgress = String(s.settings.thumb_progress ?? 1); })
+            .catch(() => {});
+        } else {
+          document.documentElement.dataset.dlThumbProgress = "0";
+        }
+      })
       .catch(() => setEnabledPluginRoutes(new Set()));
   }, []);
 
@@ -316,7 +332,9 @@ function AppShell() {
   useEffect(() => subscribe("plugins-changed", loadPlugins), [loadPlugins]);
   useEffect(() => {
     if (!enabledPluginRoutes) return;
-    if (location.pathname === "/discovery" && !enabledPluginRoutes.has("/discovery")) navigate("/", { replace: true });
+    if (PLUGIN_ROUTES.includes(location.pathname) && !enabledPluginRoutes.has(location.pathname)) {
+      navigate("/", { replace: true });
+    }
   }, [enabledPluginRoutes, location.pathname, navigate]);
 
   useEffect(() => {
@@ -378,11 +396,12 @@ function AppShell() {
   }, [childStatus?.hide_live, location.pathname, navigate]);
 
   const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(navConfig);
-  const pluginRouteVisible = (to: string) => to !== "/discovery" || enabledPluginRoutes?.has(to);
+  const pluginRouteVisible = (to: string) => !PLUGIN_ROUTES.includes(to) || enabledPluginRoutes?.has(to);
   const childRouteVisible = (to: string) =>
     !(childStatus?.hide_shorts && to === "/shorts")
     && !(childStatus?.hide_live && to === "/live")
-    && !(childStatus?.local_only && to === "/discovery");
+    && !(childStatus?.local_only && to === "/discovery")
+    && !(childStatus?.is_child && to === "/downloads");
   const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
   const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
 
@@ -432,6 +451,7 @@ function AppShell() {
               <Route path="/subscriptions" element={<SubscriptionsPage />} />
               <Route path="/playlists/:id" element={<UserPlaylistPage onPlay={play} />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
+              <Route path="/downloads" element={<DownloadsPage />} />
               <Route path="/liked" element={<LikedPage onPlay={play} />} />
               <Route path="/history" element={<HistoryPage onPlay={play} />} />
               <Route path="/archive" element={<ArchivePage onPlay={play} />} />
