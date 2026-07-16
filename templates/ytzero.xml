@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>ytzero</Name>
+  <Name>YT Zero</Name>
   <Repository>ghcr.io/pelski/ytzero:latest</Repository>
   <Registry>https://github.com/Pelski/ytzero/pkgs/container/ytzero</Registry>
   <Network>bridge</Network>
@@ -17,7 +17,7 @@
   <ReadMe>https://raw.githubusercontent.com/Pelski/ytzero/main/README.md</ReadMe>
 
   <Category>MediaApp:Video Tools:Utilities</Category>
-  <ExtraSearchTerms>YouTube subscriptions inbox RSS offline yt-dlp</ExtraSearchTerms>
+  <ExtraSearchTerms>YouTube subscriptions inbox RSS offline yt-dlp Degoogle</ExtraSearchTerms>
   <Requires>Internet access is required to fetch channel feeds, metadata and videos. Persistent storage is required for /data.</Requires>
   <Changes>Initial Community Apps template.</Changes>
   <Date>2026-07-16</Date>
