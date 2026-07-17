@@ -1,19 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Search, Users } from "lucide-react";
 import { api, type Channel } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
+import TagFilterBar from "../components/TagFilterBar";
 import { TableSkeleton } from "../components/LoadingState";
+import ChannelSearchPicker from "../components/ChannelSearchPicker";
 
 export default function SubscriptionsPage() {
   const { t } = useI18n();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
+  const [selectedTags, setSelectedTags] = useState<number[]>(() => {
+    try { return JSON.parse(sessionStorage.getItem("subscriptionTags") ?? "[]"); } catch { return []; }
+  });
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
     api
       .channels()
       .then((r) => setChannels(r.channels.filter((ch) => ch.followed !== 0)))
@@ -21,15 +27,36 @@ export default function SubscriptionsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const tags = useMemo(() => {
+    const unique = new Map<number, Channel["tags"][number]>();
+    for (const channel of channels) {
+      for (const tag of channel.tags) unique.set(tag.id, tag);
+    }
+    return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [channels]);
+
   const filteredChannels = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return channels;
     return channels.filter((ch) => {
       const title = (ch.title || "").toLowerCase();
       const id = ch.channel_id.toLowerCase();
-      return title.includes(q) || id.includes(q);
+      const matchesQuery = !q || title.includes(q) || id.includes(q);
+      const matchesTags = selectedTags.length === 0 || ch.tags.some((tag) => selectedTags.includes(tag.id));
+      return matchesQuery && matchesTags;
     });
-  }, [channels, query]);
+  }, [channels, query, selectedTags]);
+
+  const toggleTag = (id: number) => {
+    setSelectedTags((current) => {
+      const next = current.includes(id) ? current.filter((tagId) => tagId !== id) : [...current, id];
+      sessionStorage.setItem("subscriptionTags", JSON.stringify(next));
+      return next;
+    });
+  };
 
   return (
     <>
@@ -38,6 +65,7 @@ export default function SubscriptionsPage() {
           <h1 className="page-title">{t("subscriptions")}</h1>
           <p className="page-hint">{t("followedChannelsCount", { n: channels.length })}</p>
         </div>
+        <ChannelSearchPicker onAdded={load} />
       </div>
 
       <div className="subs-toolbar">
@@ -49,12 +77,19 @@ export default function SubscriptionsPage() {
         />
       </div>
 
+      <TagFilterBar
+        tags={tags}
+        selected={selectedTags}
+        onToggle={toggleTag}
+        onClearAll={() => { setSelectedTags([]); sessionStorage.removeItem("subscriptionTags"); }}
+      />
+
       {loading ? (
         <TableSkeleton rows={8} columns={3} />
       ) : filteredChannels.length === 0 ? (
         <div className="empty-state">
           <Users />
-          <div>{query ? t("noMatchingChannels") : t("subscriptionsEmpty")}</div>
+          <div>{query || selectedTags.length > 0 ? t("noMatchingChannels") : t("subscriptionsEmpty")}</div>
         </div>
       ) : (
         <div className="subs-grid">

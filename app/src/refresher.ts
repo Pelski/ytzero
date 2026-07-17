@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -199,28 +199,42 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
 }
 
 export async function refreshLiveStatus(channelId: string) {
-  const live = await fetchLiveInfo(channelId);
+  const primaryLive = await fetchLiveInfo(channelId);
+  // /channel/:id/live resolves to one primary stream even when a channel has
+  // many concurrent streams. The /streams cards expose every LIVE badge.
+  const streamLives = primaryLive
+    ? (await fetchChannelStreams(channelId).catch(() => [])).filter((stream) => stream.isLive)
+    : [];
+  const active = streamLives.length > 0
+    ? streamLives.map((stream) => ({ ...stream, status: "live" as const }))
+    : primaryLive
+      ? [{ ...primaryLive, status: primaryLive.isLiveNow ? "live" as const : "upcoming" as const }]
+      : [];
+  const activeIds = active.map((stream) => stream.videoId);
 
-  // Anything previously live/upcoming on this channel that is no longer the
-  // current livestream becomes was_live / none.
+  // Anything previously live/upcoming on this channel that is no longer in
+  // the active set becomes was_live / none.
+  const inactiveSql = activeIds.length > 0
+    ? ` AND video_id NOT IN (${activeIds.map(() => "?").join(",")})`
+    : "";
   db.prepare(
     `UPDATE videos SET live_status = CASE live_status WHEN 'live' THEN 'was_live' ELSE 'none' END
-     WHERE channel_id = ? AND live_status IN ('live', 'upcoming') AND video_id != ?`
-  ).run(channelId, live?.videoId ?? "");
+     WHERE channel_id = ? AND live_status IN ('live', 'upcoming')${inactiveSql}`
+  ).run(channelId, ...activeIds);
 
-  if (!live) return;
-  const status = live.isLiveNow ? "live" : live.isUpcoming ? "upcoming" : "was_live";
-  const existing = videoExists.get(live.videoId);
-  if (existing) {
-    db.prepare("UPDATE videos SET live_status = ? WHERE video_id = ?").run(status, live.videoId);
-  } else {
-    db.prepare(
-      `INSERT INTO videos (video_id, channel_id, title, thumbnail, published_at, live_status)
-       VALUES (?, ?, ?, ?, datetime('now'), ?)`
-    ).run(live.videoId, channelId, live.title, live.thumbnail, status);
-    applyAutoTags(live.videoId, live.title, "");
-    applyPlaylistRulesToVideo(live.videoId);
-    log.info("live.video_added", { channelId, videoId: live.videoId, status, title: live.title });
+  for (const live of active) {
+    const existing = videoExists.get(live.videoId);
+    if (existing) {
+      db.prepare("UPDATE videos SET live_status = ? WHERE video_id = ?").run(live.status, live.videoId);
+    } else {
+      db.prepare(
+        `INSERT INTO videos (video_id, channel_id, title, thumbnail, published_at, live_status)
+         VALUES (?, ?, ?, ?, datetime('now'), ?)`
+      ).run(live.videoId, channelId, live.title, live.thumbnail, live.status);
+      applyAutoTags(live.videoId, live.title, "");
+      applyPlaylistRulesToVideo(live.videoId);
+      log.info("live.video_added", { channelId, videoId: live.videoId, status: live.status, title: live.title });
+    }
   }
 }
 
@@ -238,10 +252,14 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
     log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   });
 
-  const [feed, scraped] = await Promise.all([
+  const [feed, scraped, streams] = await Promise.all([
     fetchChannelFeed(channelId).catch(() => ({ videos: [], channelTitle: "", channelId })),
     fetchChannelVideos(channelId),
+    fetchChannelStreams(channelId),
   ]);
+  // A stream can occasionally also be listed in /videos. Keep one copy while
+  // retaining the dedicated /streams results that are otherwise invisible.
+  const scrapedVideos = [...new Map([...scraped, ...streams].map((v) => [v.videoId, v])).values()];
 
   const feedMap = new Map(feed.videos.map((v) => [v.videoId, v]));
   const insertOrUpdate = db.prepare(`
@@ -253,6 +271,9 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
       views = COALESCE(excluded.views, views),
       duration = COALESCE(excluded.duration, duration)
   `);
+  const markArchivedStream = db.prepare(
+    "UPDATE videos SET live_status = 'was_live' WHERE video_id = ? AND live_status = 'none'"
+  );
 
   const inheritChannelTags = db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
@@ -261,7 +282,7 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
   let added = 0;
   const seen = new Set<string>();
 
-  for (const v of scraped) {
+  for (const v of scrapedVideos) {
     seen.add(v.videoId);
     const isNew = !videoExists.get(v.videoId);
     const rss = feedMap.get(v.videoId);
@@ -275,6 +296,10 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
       rss?.likes ?? null,
       v.duration || null,
     );
+    if (v.isStream) {
+      if (v.isLive) db.prepare("UPDATE videos SET live_status = 'live' WHERE video_id = ?").run(v.videoId);
+      else markArchivedStream.run(v.videoId);
+    }
     if (isNew) {
       applyAutoTags(v.videoId, rss?.title ?? v.title, rss?.description ?? "");
       applyFilterRules(v.videoId, channelId, rss?.title ?? v.title, rss?.description ?? "");
@@ -324,8 +349,11 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
     log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   }
 
+  // Mark a just-synced current stream immediately, rather than waiting for
+  // the periodic live-status refresh before it can appear on the channel page.
+  await refreshLiveStatus(channelId);
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
-  log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
+  log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, streams: streams.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
   return { added };
 }
 

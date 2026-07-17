@@ -141,6 +141,7 @@ export interface AppSettings {
   player_cc_lang: string;
   player_quality: string;
   player_speed: string;
+  keyboard_seek_seconds: string;
   auto_fullscreen_landscape?: string;
   grid_size: string;
   child_lock_enabled: string;
@@ -573,6 +574,7 @@ export const api = {
   removeExternal: (id: string) => http<{ deleted: number }>(`/external/${id}`, { method: "DELETE" }),
   logs: (limit = 300) => http<AppLogs>(`/logs?limit=${limit}`),
   live: () => http<{ videos: Video[] }>("/live"),
+  channelLive: (id: string) => http<{ videos: Video[] }>(`/channels/${id}/live`),
   video: (id: string) => http<{ video: Video; related: Video[] }>(`/videos/${id}`),
   watchlist: () => http<{ videos: Video[] }>("/watchlist"),
   archive: (page = 0) => http<{ videos: Video[] }>(`/archive?page=${page}`),

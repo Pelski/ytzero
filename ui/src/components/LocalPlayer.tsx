@@ -48,6 +48,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   cinemaMode?: boolean;
   onToggleCinema?: () => void;
   onEnded?: () => void;
+  keyboardSeekSeconds?: number;
+  onShortcut?: (kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed", seconds?: number) => void;
 }>(function LocalPlayer({
   src,
   poster,
@@ -62,6 +64,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   cinemaMode = false,
   onToggleCinema,
   onEnded,
+  keyboardSeekSeconds = 5,
+  onShortcut,
 }, ref) {
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -69,6 +73,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   const barRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const endedRef = useRef(false);
+  const spaceHoldTimerRef = useRef<number | null>(null);
+  const spaceHoldActiveRef = useRef(false);
 
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(true);
@@ -191,8 +197,20 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (e.repeat || spaceHoldTimerRef.current != null || spaceHoldActiveRef.current) return;
+        spaceHoldTimerRef.current = window.setTimeout(() => {
+          spaceHoldTimerRef.current = null;
+          const v = videoRef.current;
+          if (!v) return;
+          spaceHoldActiveRef.current = true;
+          v.playbackRate = 2;
+          onShortcut?.("speed");
+        }, 220);
+        return;
+      }
       switch (e.key) {
-        case " ":
         case "k":
         case "K":
           e.preventDefault();
@@ -200,8 +218,22 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           break;
         case "j": case "J": seekBy(-10); break;
         case "l": case "L": seekBy(10); break;
-        case "ArrowLeft": e.preventDefault(); seekBy(-5); break;
-        case "ArrowRight": e.preventDefault(); seekBy(5); break;
+        case "ArrowLeft": e.preventDefault(); seekBy(-keyboardSeekSeconds); onShortcut?.("back", keyboardSeekSeconds); break;
+        case "ArrowRight": e.preventDefault(); seekBy(keyboardSeekSeconds); onShortcut?.("forward", keyboardSeekSeconds); break;
+        case "ArrowUp":
+          e.preventDefault();
+          setVolume((current) => {
+            const next = Math.min(1, current + 0.05);
+            if (next > 0) setMuted(false);
+            return next;
+          });
+          onShortcut?.("volumeUp");
+          break;
+        case "ArrowDown":
+          e.preventDefault();
+          setVolume((current) => Math.max(0, current - 0.05));
+          onShortcut?.("volumeDown");
+          break;
         case "m": case "M": setMuted((m) => !m); break;
         default: {
           if (/^[0-9]$/.test(e.key)) {
@@ -211,9 +243,30 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         }
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
+      e.preventDefault();
+      if (spaceHoldTimerRef.current != null) {
+        window.clearTimeout(spaceHoldTimerRef.current);
+        spaceHoldTimerRef.current = null;
+        togglePlay();
+      } else if (spaceHoldActiveRef.current) {
+        spaceHoldActiveRef.current = false;
+        const v = videoRef.current;
+        if (v) v.playbackRate = playbackRate;
+      }
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [togglePlay, seekBy]);
+    document.addEventListener("keyup", onKeyUp);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keyup", onKeyUp);
+      if (spaceHoldTimerRef.current != null) window.clearTimeout(spaceHoldTimerRef.current);
+      spaceHoldTimerRef.current = null;
+      spaceHoldActiveRef.current = false;
+    };
+  }, [togglePlay, seekBy, playbackRate, keyboardSeekSeconds]);
 
   // Media Session: system-level controls (keyboard media keys, lock screen).
   useEffect(() => {

@@ -364,16 +364,19 @@ async function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: stri
 
 async function runDownload(videoId: string, s: DlSettings) {
   const height = s.quality === "best" ? null : Number(s.quality);
-  // Prefer h264+aac so the merged mp4 plays natively in every browser; the
-  // height cap comes first so quality selection still wins within the cap.
-  const sort = height ? `res:${height},vcodec:h264,acodec:m4a` : "vcodec:h264,acodec:m4a";
+  // Explicitly pick the best separate video and audio streams. Sorting by
+  // codec (H.264 + M4A) made a lower-resolution progressive format win over
+  // a higher-resolution stream, even when the user selected "Best".
+  const format = height
+    ? `bestvideo*[height<=${height}]+bestaudio/best[height<=${height}]`
+    : "bestvideo*+bestaudio/best";
   const args = [
     `https://www.youtube.com/watch?v=${videoId}`,
     "--no-playlist",
     "--newline",
     "--no-warnings",
     "--no-mtime",
-    "-S", sort,
+    "-f", format,
     "--merge-output-format", "mp4",
     "-o", join(DOWNLOADS_DIR, `${videoId}.%(ext)s`),
   ];

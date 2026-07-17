@@ -389,6 +389,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_cc_lang: "en",
   player_quality: "auto",
   player_speed: "1",
+  keyboard_seek_seconds: "5",
   // Mobile: rotating to landscape on the watch page enters fullscreen.
   auto_fullscreen_landscape: "0",
   grid_size: "sm",

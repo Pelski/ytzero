@@ -96,6 +96,7 @@ export default function VideoCard({
   const [swiping, setSwiping] = useState(false);
   const [committedDir, setCommittedDir] = useState<"left" | "right" | null>(null);
   const [committedFeedback, setCommittedFeedback] = useState<CardFeedback | null>(null);
+  const publishedTime = formatTimeAgo(video.published_at, language);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
@@ -457,10 +458,10 @@ export default function VideoCard({
               {video.title}
             </Link>
             <div className="v-channel-meta">
-              <Link to={`/channel/${video.channel_id}`} className="v-channel">
+              <Link to={`/channel/${video.channel_id}`} className={`v-channel${publishedTime ? "" : " no-date"}`}>
                 {video.channel_title}
               </Link>
-              <span className="v-time">{formatTimeAgo(video.published_at, language)}</span>
+              {publishedTime && <span className="v-time">{publishedTime}</span>}
             </div>
           </div>
         </div>

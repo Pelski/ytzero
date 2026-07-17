@@ -8,6 +8,7 @@ import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
 import TagChip from "../components/TagChip";
+import ChannelSearchPicker from "../components/ChannelSearchPicker";
 import Tooltip from "../components/Tooltip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
@@ -1046,6 +1047,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playerCc, setPlayerCc] = useState(false);
   const [playerQuality, setPlayerQuality] = useState("auto");
   const [playerSpeed, setPlayerSpeed] = useState("1");
+  const [keyboardSeekSeconds, setKeyboardSeekSeconds] = useState("5");
   const [autoFullscreen, setAutoFullscreen] = useState(false);
   const [sbEnabled, setSbEnabled] = useState(false);
   const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
@@ -1182,6 +1184,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setPlayerCc(r.settings.player_cc === "1");
         setPlayerQuality(r.settings.player_quality);
         setPlayerSpeed(r.settings.player_speed ?? "1");
+        setKeyboardSeekSeconds(r.settings.keyboard_seek_seconds ?? "5");
         setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
         setSbEnabled(r.settings.sponsorblock_enabled === "1");
         try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
@@ -1698,6 +1701,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   {addingChannel ? <LoaderCircle className="spin" /> : <Plus />}
                   {addingChannel ? t("addingChannel") : t("addChannel")}
                 </button>
+                <ChannelSearchPicker onAdded={(name) => {
+                  showToast(t("channelAdded", { name }));
+                  load();
+                }} />
                 <button className="btn" onClick={() => fileRef.current?.click()} disabled={addingChannel}>
                   <FolderUp /> {t("importOpmlCsv")}
                 </button>
@@ -2031,7 +2038,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       )}
 
       {!isSettingsLocked && tab === "display" && (
-        <section className="settings-section">
+        <div className="settings-display-groups">
+          <section className="settings-section settings-display-group">
+            <h2>{t("displayAppearance")}</h2>
           {isPrimary ? (
             <>
               <div className="settings-select-row">
@@ -2070,7 +2079,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           ) : (
             <p className="page-hint">{t("primaryOnlyHint")}</p>
           )}
+          </section>
 
+          <section className="settings-section settings-display-group">
+            <h2>{t("displayFeed")}</h2>
           <div className="switch-row">
             <div>
               <div className="switch-label">{t("showShorts")}</div>
@@ -2137,23 +2149,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             />
           </div>
 
-          <div className="switch-row">
-            <div>
-              <div className="switch-label">{t("forceCaptions")}</div>
-              <div className="switch-sub">{t("forceCaptionsHint")}</div>
-            </div>
-            <button
-              className={`switch${playerCc ? " on" : ""}`}
-              role="switch"
-              aria-checked={playerCc}
-              onClick={() => {
-                const next = !playerCc;
-                setPlayerCc(next);
-                savePlayer({ player_cc: next ? "1" : "0" });
-              }}
-            />
-          </div>
+          </section>
 
+          <section className="settings-section settings-display-group">
+            <h2>{t("displayLanguage")}</h2>
           <div className="settings-select-row">
             <label className="switch-label" htmlFor="ui-language">{t("uiLanguage")}</label>
             <select
@@ -2170,7 +2169,26 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               ))}
             </select>
           </div>
+          </section>
 
+          <section className="settings-section settings-display-group">
+            <h2>{t("displayPlayback")}</h2>
+          <div className="switch-row">
+            <div>
+              <div className="switch-label">{t("forceCaptions")}</div>
+              <div className="switch-sub">{t("forceCaptionsHint")}</div>
+            </div>
+            <button
+              className={`switch${playerCc ? " on" : ""}`}
+              role="switch"
+              aria-checked={playerCc}
+              onClick={() => {
+                const next = !playerCc;
+                setPlayerCc(next);
+                savePlayer({ player_cc: next ? "1" : "0" });
+              }}
+            />
+          </div>
           <div className="settings-select-row">
             <label className="switch-label" htmlFor="player-language">{t("playerLanguage")}</label>
             <select
@@ -2236,6 +2254,26 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </select>
           </div>
 
+          <div className="settings-select-row">
+            <div>
+              <label className="switch-label" htmlFor="keyboard-seek-seconds">{t("keyboardSeekSeconds")}</label>
+              <div className="switch-sub">{t("keyboardSeekSecondsHint")}</div>
+            </div>
+            <select
+              id="keyboard-seek-seconds"
+              className="select"
+              value={keyboardSeekSeconds}
+              onChange={(e) => {
+                setKeyboardSeekSeconds(e.target.value);
+                savePlayer({ keyboard_seek_seconds: e.target.value });
+              }}
+            >
+              {[3, 5, 10, 15, 30].map((seconds) => (
+                <option key={seconds} value={seconds}>{`${seconds} s`}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="switch-row">
             <div>
               <div className="switch-label">{t("autoFullscreenLandscape")}</div>
@@ -2253,9 +2291,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               }}
             />
           </div>
+          </section>
 
-          <hr className="section-divider" />
-
+          <section className="settings-section settings-display-group">
+            <h2>{t("displayEnhancements")}</h2>
           <div className="switch-row">
             <div>
               <div className="switch-label">SponsorBlock</div>
@@ -2289,9 +2328,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               })}
             </div>
           )}
+          </section>
 
-          <hr className="section-divider" />
-
+          <section className="settings-section settings-display-group">
+            <h2>{t("displayNavigation")}</h2>
           <div className="sidebar-order-head">
             <div>
               <div className="switch-label">{t("sidebarOrderTitle")}</div>
@@ -2302,7 +2342,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </Popconfirm>
           </div>
           <SidebarNavEditor value={navConfig} onChange={persistNavConfig} />
-        </section>
+          </section>
+        </div>
       )}
 
       {!isSettingsLocked && tab === "plugins" && (

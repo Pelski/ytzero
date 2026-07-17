@@ -13,18 +13,22 @@ import {
   Clapperboard,
   EllipsisVertical,
   ExternalLink,
+  FastForward,
   Eye,
   Gauge,
   LoaderCircle,
   MonitorPlay,
   Pause,
   Play,
+  Rewind,
   Share2,
   SkipForward,
   Square,
   ThumbsUp,
   Trash2,
   Undo2,
+  Volume1,
+  Volume2,
 } from "lucide-react";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { compactNumber, formatTimeAgo, formatViewsCount, useI18n, type I18nKey } from "../i18n";
@@ -199,6 +203,7 @@ export default function WatchPage() {
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
   const [speed, setSpeed] = useState("1");
+  const [shortcutFeedback, setShortcutFeedback] = useState<{ kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed"; id: number; seconds?: number } | null>(null);
   // "auto" plays the local file when one exists; "youtube" forces the iframe.
   const [playerSource, setPlayerSource] = useState<"auto" | "youtube">("auto");
   // watch_source_mode = "ask"/"download": what the viewer decided for THIS video.
@@ -216,6 +221,9 @@ export default function WatchPage() {
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
+  const spaceHoldTimerRef = useRef<number | null>(null);
+  const spaceHoldActiveRef = useRef(false);
+  const shortcutFeedbackTimerRef = useRef<number | null>(null);
   const likeButtonRef = useRef<HTMLButtonElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
   // Container the YT iframe is injected into; separate from playerWrapRef so
@@ -228,6 +236,12 @@ export default function WatchPage() {
   const sbPausedRef = useRef(false);
   const disabledSegsRef = useRef<Set<string>>(new Set());
   const recordedSbSegsRef = useRef<Set<string>>(new Set());
+
+  const showShortcutFeedback = useCallback((kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed", seconds?: number) => {
+    if (shortcutFeedbackTimerRef.current) window.clearTimeout(shortcutFeedbackTimerRef.current);
+    setShortcutFeedback({ kind, id: Date.now(), seconds });
+    shortcutFeedbackTimerRef.current = window.setTimeout(() => setShortcutFeedback(null), 520);
+  }, []);
 
   useEffect(() => {
     if (!scheduleOpen && !playlistOpen && !speedOpen) return;
@@ -287,6 +301,7 @@ export default function WatchPage() {
     watchMode,
   });
   const usingLocal = playerKind === "local";
+  const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
 
   const requestYouTubePlayback = useCallback(() => {
     setYoutubeAutoplayBlocked(false);
@@ -712,6 +727,79 @@ export default function WatchPage() {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  // The YouTube iframe only receives its built-in shortcuts after it has been
+  // focused. Mirror the essential playback keys at the page level so they
+  // work immediately after playback starts; LocalPlayer owns these itself.
+  useEffect(() => {
+    if (playerKind !== "youtube") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
+      const player = playerRef.current;
+      if (!player) return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        if (e.repeat || spaceHoldTimerRef.current != null || spaceHoldActiveRef.current) return;
+        spaceHoldTimerRef.current = window.setTimeout(() => {
+          spaceHoldTimerRef.current = null;
+          const activePlayer = playerRef.current;
+          if (!activePlayer) return;
+          spaceHoldActiveRef.current = true;
+          activePlayer.setPlaybackRate?.(2);
+          showShortcutFeedback("speed");
+        }, 220);
+        return;
+      }
+
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        const current = player.getCurrentTime?.();
+        const duration = player.getDuration?.();
+        if (!Number.isFinite(current) || !Number.isFinite(duration)) return;
+        e.preventDefault();
+        const delta = e.key === "ArrowLeft" ? -keyboardSeekSeconds : keyboardSeekSeconds;
+        const next = Math.min(Math.max(0, current + delta), duration);
+        player.seekTo?.(next, true);
+        showShortcutFeedback(e.key === "ArrowLeft" ? "back" : "forward", keyboardSeekSeconds);
+        return;
+      }
+
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const volume = player.getVolume?.();
+        if (!Number.isFinite(volume)) return;
+        e.preventDefault();
+        const next = Math.min(100, Math.max(0, volume + (e.key === "ArrowUp" ? 5 : -5)));
+        player.setVolume?.(next);
+        if (next > 0) player.unMute?.();
+        showShortcutFeedback(e.key === "ArrowUp" ? "volumeUp" : "volumeDown");
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
+      e.preventDefault();
+      if (spaceHoldTimerRef.current != null) {
+        window.clearTimeout(spaceHoldTimerRef.current);
+        spaceHoldTimerRef.current = null;
+        const player = playerRef.current;
+        if (player?.getPlayerState?.() === 1) player.pauseVideo?.();
+        else player?.playVideo?.();
+      } else if (spaceHoldActiveRef.current) {
+        spaceHoldActiveRef.current = false;
+        playerRef.current?.setPlaybackRate?.(Number(speedRef.current));
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("keyup", onKeyUp);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keyup", onKeyUp);
+      if (spaceHoldTimerRef.current != null) window.clearTimeout(spaceHoldTimerRef.current);
+      spaceHoldTimerRef.current = null;
+      spaceHoldActiveRef.current = false;
+    };
+  }, [playerKind, showShortcutFeedback, keyboardSeekSeconds]);
+
   // Refresh views + likes in the background every 30 s while watching
   useEffect(() => {
     if (!id) return;
@@ -888,6 +976,8 @@ export default function WatchPage() {
                   cinemaMode={cinemaMode}
                   onToggleCinema={() => setCinemaMode((mode) => !mode)}
                   onEnded={handleEnded}
+                  keyboardSeekSeconds={keyboardSeekSeconds}
+                  onShortcut={showShortcutFeedback}
                 />
               ) : playerKind === "youtube" ? (
                 <div ref={ytWrapRef} className="watch-player-yt" />
@@ -953,6 +1043,16 @@ export default function WatchPage() {
                   )}
                 </div>
               )}
+              {shortcutFeedback && (() => {
+                const Icon = shortcutFeedback.kind === "back" ? Rewind
+                  : shortcutFeedback.kind === "forward" ? FastForward
+                    : shortcutFeedback.kind === "volumeUp" ? Volume2
+                      : shortcutFeedback.kind === "volumeDown" ? Volume1 : Gauge;
+                const label = shortcutFeedback.kind === "back" ? `−${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
+                  : shortcutFeedback.kind === "forward" ? `+${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
+                    : shortcutFeedback.kind === "speed" ? "2×" : "";
+                return <div key={shortcutFeedback.id} className="shortcut-feedback"><Icon size={19} />{label && <span>{label}</span>}</div>;
+              })()}
               {playerKind === "youtube" && youtubeAutoplayBlocked && (
                 <div className="wp-autoplay-blocked">
                   <button className="btn primary" onClick={requestYouTubePlayback}>

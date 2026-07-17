@@ -868,6 +868,17 @@ api.get("/live", (c) => {
   return c.json({ videos: attachTags(uid, rows) });
 });
 
+// Unlike the global Live page, a channel page can be opened before the channel
+// is followed, so this intentionally does not require a subscription.
+api.get("/channels/:id/live", (c) => {
+  const uid = currentUserId(c);
+  if (childHidesLive(uid)) return c.json({ videos: [] });
+  const rows = db
+    .prepare(`${videoSelect(uid)} WHERE v.channel_id = ? AND v.live_status = 'live' ORDER BY v.published_at DESC`)
+    .all(c.req.param("id")) as VideoRow[];
+  return c.json({ videos: attachTags(uid, rows) });
+});
+
 api.get("/watchlist", (c) => {
   const uid = currentUserId(c);
   const rows = db

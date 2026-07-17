@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Check, ExternalLink, Gauge, ListVideo, Plus, RefreshCw, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
+import { Check, ExternalLink, Gauge, ListVideo, Plus, Radio, RefreshCw, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
 import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import Tooltip from "../components/Tooltip";
@@ -31,6 +31,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
   const [about, setAbout] = useState<ChannelAbout | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [liveStreams, setLiveStreams] = useState<Video[]>([]);
   const [videosLoading, setVideosLoading] = useState(true);
   const [playlists, setPlaylists] = useState<PlaylistInfo[] | null>(null);
   const [descOpen, setDescOpen] = useState(false);
@@ -57,6 +58,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     if (!id) return;
     setAbout(null);
     setVideos([]);
+    setLiveStreams([]);
     setVideosLoading(true);
     setPage(0);
     setHasMore(true);
@@ -82,6 +84,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       .then((r) => { setVideos(r.videos); setHasMore(r.videos.length === CHANNEL_PAGE_SIZE); })
       .catch(console.error)
       .finally(() => setVideosLoading(false));
+    api.channelLive(id).then((r) => setLiveStreams(r.videos)).catch(console.error);
     api.channelPlaylists(id).then((r) => setPlaylists(r.playlists)).catch(() => setPlaylists([]));
     api.tags().then((r) => setAllTags(r.tags)).catch(console.error);
   }, [id]);
@@ -208,6 +211,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       const r = await api.syncChannel(id);
       setSyncMsg(r.added > 0 ? formatAddedVideos(r.added, language) : t("noNewVideos"));
       loadAbout();
+      api.channelLive(id).then((live) => setLiveStreams(live.videos)).catch(console.error);
       if (r.added > 0) {
         reload();
       }
@@ -408,6 +412,17 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           <TagChip key={t.id} tag={t} onRemove={() => removeTag(t)} />
         ))}
       </div>
+
+      {liveStreams.length > 0 && (
+        <section className="channel-live-section">
+          <div className="section-title channel-live-title"><Radio size={17} /> LIVE</div>
+          <div className="video-grid channel-live-row">
+            {liveStreams.map((v) => (
+              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} showChannelAvatar={false} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="chip-bar" style={{ marginBottom: 22 }}>
         <button className={`chip${tab === "videos" ? " active" : ""}`} onClick={() => setTab("videos")}>

@@ -212,6 +212,8 @@ Licensed under the **GNU Affero General Public License v3.0 only** (`AGPL-3.0-on
 
 Thanks to [Green-Kite](https://github.com/Green-Kite) for help with the German language support and updating the wiki.
 
+Thanks to [baldemar-wuda](https://github.com/baldemar-wuda) for extensive testing, great suggestions, and finding bugs.
+
 ## Development note
 
 AI-assisted coding tools have been used selectively to support development tasks such as code exploration, prototyping, and review. Project direction, architectural decisions, validation, and responsibility for the final code remain with the maintainers.

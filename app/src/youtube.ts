@@ -522,19 +522,24 @@ export interface ScrapedVideo {
   thumbnail: string;
   duration: string;
   viewCount: number | null;
+  isStream?: boolean;
+  isLive?: boolean;
 }
 
 /**
- * Scrape the channel's /videos tab to get more video IDs than the RSS feed.
- * Returns up to ~30 recent videos with basic metadata (no description/published_at).
+ * Scrape a channel tab to get more video IDs than the RSS feed. YouTube keeps
+ * completed livestreams in a separate /streams tab, rather than /videos.
+ * Each tab returns up to ~30 recent entries with basic metadata.
  */
-export async function fetchChannelVideos(channelId: string): Promise<ScrapedVideo[]> {
-  const res = await fetch(`https://www.youtube.com/channel/${channelId}/videos`, { headers: FETCH_HEADERS });
+async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams"): Promise<ScrapedVideo[]> {
+  const res = await fetch(`https://www.youtube.com/channel/${channelId}/${tab}`, { headers: FETCH_HEADERS });
   if (!res.ok) return [];
   const data = extractInitialData(await res.text());
   const out: ScrapedVideo[] = [];
+  const seen = new Set<string>();
   for (const r of deepCollect(data, "videoRenderer")) {
-    if (!r?.videoId) continue;
+    if (!r?.videoId || seen.has(r.videoId)) continue;
+    seen.add(r.videoId);
     const viewStr =
       r?.viewCountText?.simpleText ?? r?.viewCountText?.runs?.[0]?.text ?? "";
     const viewNum = parseInt(viewStr.replace(/\D/g, ""), 10);
@@ -548,7 +553,41 @@ export async function fetchChannelVideos(channelId: string): Promise<ScrapedVide
       viewCount: Number.isFinite(viewNum) && viewNum > 0 ? viewNum : null,
     });
   }
+
+  // Current YouTube channel pages use richItemRenderer / lockupViewModel
+  // cards instead of videoRenderer. This is notably used by /streams, so
+  // without it completed streams are silently skipped.
+  for (const vm of deepCollect(data, "lockupViewModel")) {
+    const videoId = deepCollect(vm, "watchEndpoint")[0]?.videoId;
+    if (!videoId || seen.has(videoId)) continue;
+    const title = vm?.metadata?.lockupMetadataViewModel?.title?.content;
+    if (!title) continue;
+    seen.add(videoId);
+    const badges = deepCollect(vm, "thumbnailBadgeViewModel")
+      .map((badge: any) => badge?.text)
+      .filter((text: any): text is string => typeof text === "string");
+    out.push({
+      videoId,
+      title: decodeHtmlEntities(title),
+      thumbnail:
+        vm?.contentImage?.thumbnailViewModel?.image?.sources?.at(-1)?.url ??
+        `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      duration: badges.find((text) => /^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) ?? "",
+      viewCount: null,
+      isLive: badges.includes("LIVE"),
+    });
+  }
   return out;
+}
+
+/** Scrape the channel's ordinary uploads tab. */
+export async function fetchChannelVideos(channelId: string): Promise<ScrapedVideo[]> {
+  return fetchChannelTabVideos(channelId, "videos");
+}
+
+/** Scrape the channel's current and archived livestreams tab. */
+export async function fetchChannelStreams(channelId: string): Promise<ScrapedVideo[]> {
+  return (await fetchChannelTabVideos(channelId, "streams")).map((video) => ({ ...video, isStream: true }));
 }
 
 export interface SearchResult {
