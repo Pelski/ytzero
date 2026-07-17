@@ -230,6 +230,10 @@ export async function refreshLiveStatus(channelId: string) {
  */
 export async function syncChannel(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
+  // A channel page can be opened directly from a YouTube link, before it has
+  // been followed or otherwise saved locally. Create an external row first so
+  // the video inserts below always have their required parent channel.
+  ensureChannel.run(channelId, "", `https://www.youtube.com/channel/${channelId}`);
   await refreshChannelMetadata(channelId, true).catch((e) => {
     log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   });

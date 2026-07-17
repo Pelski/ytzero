@@ -182,6 +182,10 @@ Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)*
 - **[How It Works](https://github.com/Pelski/ytzero/wiki/How-It-Works)** — what is fetched and stored.
 - **[Development](https://github.com/Pelski/ytzero/wiki/Development)** — tech stack and repository layout.
 
+## Browser extension
+
+Use [YTZero Redirect](https://github.com/pekempy/YTZero-Redirect), a Firefox and Chrome extension by [@pekempy](https://github.com/pekempy). Set your YT Zero address once, then YouTube video, Shorts, playlist, channel, and handle URLs automatically take you to the matching page in your self-hosted YT Zero instance — with no telemetry or data collection.
+
 ## Tech stack
 
 | Layer | Stack |

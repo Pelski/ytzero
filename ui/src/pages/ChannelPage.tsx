@@ -34,7 +34,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [videosLoading, setVideosLoading] = useState(true);
   const [playlists, setPlaylists] = useState<PlaylistInfo[] | null>(null);
   const [descOpen, setDescOpen] = useState(false);
-  const [followed, setFollowed] = useState(true);
+  const [followed, setFollowed] = useState(false);
   const [unfollowPending, setUnfollowPending] = useState(false);
   const [channelSpeed, setChannelSpeed] = useState("");
   const [speedOpen, setSpeedOpen] = useState(false);
@@ -68,7 +68,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setSearchParams({ tab: "videos" }, { replace: true });
     }
     prevIdRef.current = id;
-    setFollowed(true);
+    setFollowed(false);
     setChannelSpeed("");
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
