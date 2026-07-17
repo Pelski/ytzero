@@ -813,6 +813,25 @@ api.get("/videos/:id/stream", (c) => {
   });
 });
 
+// Download a locally saved video as a file rather than streaming it in the
+// player. Kept separate from /stream so local playback retains range support.
+api.get("/videos/:id/file", (c) => {
+  const row = getDownload(c.req.param("id"));
+  if (!row || row.status !== "done" || !row.path || !existsSync(row.path)) {
+    return c.json({ error: "not downloaded" }, 404);
+  }
+  const title = (db.prepare("SELECT title FROM videos WHERE video_id = ?").get(c.req.param("id")) as { title: string } | null)?.title
+    ?? c.req.param("id");
+  const extension = row.path.endsWith(".webm") ? "webm" : "mp4";
+  const filename = `${title.replace(/[\\/:*?\"<>|]/g, "_")}.${extension}`;
+  return new Response(Bun.file(row.path), {
+    headers: {
+      "Content-Type": extension === "webm" ? "video/webm" : "video/mp4",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    },
+  });
+});
+
 api.get("/discovery/recommendations", async (c) => {
   const uid = currentUserId(c);
   // Discovery mixes in external videos — off for restricted child profiles.

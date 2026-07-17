@@ -1200,13 +1200,6 @@ export default function WatchPage() {
                       <button className="more-item-wide" onClick={openPlaylistMenu}>
                         <BookmarkPlus /> {t("addToPlaylist")}
                       </button>
-                      {downloadsEnabled && !isChildProfile && downloadStatus === "done" && (
-                        <Popconfirm message={t("downloadRemoveConfirm")} onConfirm={cancelOrRemoveDownload}>
-                          <button className="more-item-always">
-                            <Trash2 /> {t("downloadRemove")}
-                          </button>
-                        </Popconfirm>
-                      )}
                       {video.status !== "archived" ? (
                         <button className="more-item-always" onClick={() => { api.archiveVideo(video.video_id).then(reload); setMoreOpen(false); }}>
                           <Archive /> {t("rejectVideo")}
@@ -1215,6 +1208,20 @@ export default function WatchPage() {
                         <button className="more-item-always" onClick={() => { api.restore(video.video_id).then(reload); setMoreOpen(false); }}>
                           <Undo2 /> {t("restoreRejectedVideo")}
                         </button>
+                      )}
+                      {downloadsEnabled && !isChildProfile && downloadStatus === "done" && (
+                        <div className="more-menu-section">
+                          <div className="more-menu-divider" />
+                          <div className="more-menu-section-label">{t("downloadedVideo")}</div>
+                          <a className="more-item-always" href={api.downloadFileUrl(video.video_id)} onClick={() => setMoreOpen(false)}>
+                            <ArrowDownToLine /> {t("downloadFileToDevice")}
+                          </a>
+                          <Popconfirm message={t("removeLocalCopyConfirm")} onConfirm={cancelOrRemoveDownload}>
+                            <button className="more-item-always">
+                              <Trash2 /> {t("removeLocalCopy")}
+                            </button>
+                          </Popconfirm>
+                        </div>
                       )}
                     </>
                   )}

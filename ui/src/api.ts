@@ -562,6 +562,7 @@ export const api = {
   pinDownload: (id: string, pinned: boolean) =>
     http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download/pin`, { method: "PUT", body: JSON.stringify({ pinned }) }),
   streamUrl: (id: string) => `/api/videos/${id}/stream`,
+  downloadFileUrl: (id: string) => `/api/videos/${id}/file`,
   discoveryRecommendations: (refresh = false) => http<{ enabled: boolean; recommendations: DiscoveryRecommendation[] }>(`/discovery/recommendations${refresh ? "?refresh=1" : ""}`),
   dismissDiscoveryRecommendation: (id: string) =>
     http<{ ok: true }>(`/discovery/recommendations/${id}/dismiss`, { method: "POST", body: "{}" }),
