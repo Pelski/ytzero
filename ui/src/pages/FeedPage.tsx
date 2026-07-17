@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
 import { Link, useSearchParams } from "react-router-dom";
 import { Clock, Eye, Inbox, RefreshCw } from "lucide-react";
-import { api, type Bucket, type Channel, type SearchResult, type Tag, type Video } from "../api";
+import { api, type Bucket, type Channel, type ChannelSearchResult, type SearchResult, type Tag, type Video } from "../api";
 import { formatPublishedAgo, useI18n } from "../i18n";
 import { img } from "../img";
 import ChildTimeRequestBanner from "../components/ChildTimeRequestBanner";
@@ -99,6 +99,7 @@ export default function FeedPage({
   const [queued, setQueued] = useState<Video[]>([]);
   const [inProgress, setInProgress] = useState<Video[]>([]);
   const [ytResults, setYtResults] = useState<SearchResult[]>([]);
+  const [ytChannels, setYtChannels] = useState<ChannelSearchResult[]>([]);
   const [ytLoading, setYtLoading] = useState(false);
   const [searchExpanded, setSearchExpanded] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -184,11 +185,11 @@ export default function FeedPage({
   useEffect(() => subscribe("top-channels-changed", loadTopChannelsSetting), [loadTopChannelsSetting]);
 
   useEffect(() => {
-    if (!q || hideExternalSearch) { setYtResults([]); return; }
+    if (!q || hideExternalSearch) { setYtResults([]); setYtChannels([]); return; }
     setYtLoading(true);
     api.youtubeSearch(q)
-      .then((r) => setYtResults(r.results))
-      .catch(() => setYtResults([]))
+      .then((r) => { setYtResults(r.results); setYtChannels(r.channels); })
+      .catch(() => { setYtResults([]); setYtChannels([]); })
       .finally(() => setYtLoading(false));
   }, [q, hideExternalSearch]);
 
@@ -412,6 +413,30 @@ export default function FeedPage({
 
       {q && !hideExternalSearch && (
         <div className="yt-results-section">
+          {ytChannels.length > 0 && (
+            <>
+              <div className="time-section-header"><span>{t("channels")}</span></div>
+              <div className="yt-results-list yt-channel-results-list">
+                {ytChannels.map((channel) => (
+                  <Link key={channel.channelId} className="yt-result-row" to={`/channel/${channel.channelId}`}>
+                    {channel.thumbnail ? (
+                      <img className="yt-search-channel-avatar" src={img(channel.thumbnail)} alt="" loading="lazy" draggable={false} />
+                    ) : <div className="yt-search-channel-avatar" />}
+                    <div className="yt-result-info">
+                      <div className="yt-result-title">{channel.title}</div>
+                      <div className="yt-result-meta">
+                        {[
+                          channel.handle,
+                          channel.subscriberCount && `${channel.subscriberCount} ${t("subscribers")}`,
+                          channel.videoCount,
+                        ].filter(Boolean).join(" · ")}
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
           <div className="time-section-header">
             <span>{t("youtubeResults")}</span>
           </div>

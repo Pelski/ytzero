@@ -616,8 +616,8 @@ async function externalRecommendations(uid: number, limit: number, settings: Rec
   const seen = new Set<string>();
   for (const query of queries) {
     const queryTerms = new Set(tokenizeDiscoveryText(query));
-    const results = await searchYouTube(query).catch(() => []);
-    for (const result of results) {
+    const search = await searchYouTube(query).catch(() => ({ results: [], channels: [] }));
+    for (const result of search.results) {
       if (seen.has(result.videoId)) continue;
       if (db.prepare("SELECT 1 FROM recommendation_feedback WHERE user_id = ? AND video_id = ? AND action = 'dismiss'").get(uid, result.videoId)) continue;
       seen.add(result.videoId);

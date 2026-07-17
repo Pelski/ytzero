@@ -562,6 +562,15 @@ export interface SearchResult {
   published: PublishedAgo | null;
 }
 
+export interface ChannelSearchResult {
+  channelId: string;
+  title: string;
+  thumbnail: string;
+  handle: string;
+  subscriberCount: string;
+  videoCount: string;
+}
+
 export interface PublishedAgo {
   value: number;
   unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year";
@@ -575,10 +584,10 @@ function parsePublishedTimeText(text: string | undefined): PublishedAgo | null {
   return { value: parseInt(m[1], 10), unit: m[2] as PublishedAgo["unit"] };
 }
 
-const searchCache = new Map<string, { at: number; data: SearchResult[] }>();
+const searchCache = new Map<string, { at: number; data: { results: SearchResult[]; channels: ChannelSearchResult[] } }>();
 const SEARCH_TTL = 5 * 60_000;
 
-export async function searchYouTube(query: string): Promise<SearchResult[]> {
+export async function searchYouTube(query: string): Promise<{ results: SearchResult[]; channels: ChannelSearchResult[] }> {
   const cached = searchCache.get(query);
   if (cached && Date.now() - cached.at < SEARCH_TTL) return cached.data;
 
@@ -603,7 +612,22 @@ export async function searchYouTube(query: string): Promise<SearchResult[]> {
       published: parsePublishedTimeText(r.publishedTimeText?.simpleText),
     });
   }
-  const result = out.slice(0, 20);
+  const channels: ChannelSearchResult[] = [];
+  for (const r of deepCollect(data, "channelRenderer")) {
+    if (!r?.channelId) continue;
+    const metadata = [r.shortBylineText, r.subscriberCountText, r.videoCountText]
+      .map((value) => String(value?.simpleText ?? value?.runs?.map((part: any) => part.text).join("") ?? ""));
+    const rawThumbnail = r.thumbnail?.thumbnails?.at(-1)?.url ?? "";
+    channels.push({
+      channelId: r.channelId,
+      title: decodeHtmlEntities(r.title?.simpleText ?? r.title?.runs?.[0]?.text ?? ""),
+      thumbnail: rawThumbnail.startsWith("//") ? `https:${rawThumbnail}` : rawThumbnail,
+      handle: metadata.find((text) => text.startsWith("@")) ?? "",
+      subscriberCount: cleanSubscriberCount(metadata.find(isSubscriberText) ?? ""),
+      videoCount: metadata.find(isVideoCountText) ?? "",
+    });
+  }
+  const result = { results: out.slice(0, 20), channels: channels.slice(0, 10) };
   searchCache.set(query, { at: Date.now(), data: result });
   return result;
 }

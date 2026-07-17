@@ -166,6 +166,15 @@ export interface SearchResult {
   watched: number;
 }
 
+export interface ChannelSearchResult {
+  channelId: string;
+  title: string;
+  thumbnail: string;
+  handle: string;
+  subscriberCount: string;
+  videoCount: string;
+}
+
 export interface PublishedAgo {
   value: number;
   unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year";
@@ -533,7 +542,7 @@ export const api = {
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },
   inProgress: () => http<{ videos: Video[] }>("/in-progress"),
-  youtubeSearch: (q: string) => http<{ results: SearchResult[] }>(`/search/youtube?q=${encodeURIComponent(q)}`),
+  youtubeSearch: (q: string) => http<{ results: SearchResult[]; channels: ChannelSearchResult[] }>(`/search/youtube?q=${encodeURIComponent(q)}`),
   plugins: () => http<{ plugins: PluginManifest[] }>("/plugins"),
   updatePlugin: (id: string, enabled: boolean) =>
     http<{ plugins: PluginManifest[] }>(`/plugins/${id}`, { method: "PUT", body: JSON.stringify({ enabled }) }),

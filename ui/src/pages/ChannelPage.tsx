@@ -430,7 +430,14 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         (videosLoading ? (
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
-          <div className="empty-state">{t("channelVideosEmpty")}</div>
+          <div className="empty-state">
+            <div>{t("channelVideosEmpty")}</div>
+            <div>{t("channelVideosEmptyHint")}</div>
+            <button className="btn primary" onClick={handleSync} disabled={syncing} style={{ marginTop: 12 }}>
+              <RefreshCw size={15} className={syncing ? "spin" : undefined} />
+              {syncing ? t("syncing") : t("syncChannelVideos")}
+            </button>
+          </div>
         ) : (
           <div className="video-grid">
             {regularVideos.map((v) => (

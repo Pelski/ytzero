@@ -966,6 +966,8 @@ body.cinema .topbar.topbar--solid {
 .yt-result-channel { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin-top: 2px; min-width: 0; }
 .yt-result-channel span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .yt-result-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--surface-2); }
+.yt-channel-results-list { margin-bottom: 22px; }
+.yt-search-channel-avatar { width: 72px; height: 72px; border-radius: 50%; object-fit: cover; flex-shrink: 0; background: var(--surface-2); }
 .discovery-section { margin-top: 24px; }
 .recommendation-card { position: relative; min-width: 0; }
 .recommendation-meta {
@@ -3704,6 +3706,7 @@ a.playlist-item { text-decoration: none; }
 
 .empty-state { text-align: center; color: var(--text-2); padding: 90px 20px; font-size: 14px; line-height: 1.6; }
 .empty-state svg { width: 40px; height: 40px; stroke-width: 1.4; color: var(--text-3); margin-bottom: 14px; }
+.empty-state .btn svg { width: 16px; height: 16px; stroke-width: 1.8; color: inherit; margin-bottom: 0; }
 
 .load-more { display: flex; justify-content: center; gap: 8px; margin-top: 28px; }
 

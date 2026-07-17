@@ -512,8 +512,11 @@ api.get("/search/youtube", async (c) => {
   const q = c.req.query("q");
   if (!q?.trim()) return c.json({ results: [] });
   try {
-    const results = await searchYouTube(q.trim());
-    return c.json({ results: attachWatchedState(uid, results, (result) => result.videoId) });
+    const search = await searchYouTube(q.trim());
+    return c.json({
+      results: attachWatchedState(uid, search.results, (result) => result.videoId),
+      channels: search.channels,
+    });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
