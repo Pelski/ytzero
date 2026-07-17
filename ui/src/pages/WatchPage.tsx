@@ -1143,25 +1143,6 @@ export default function WatchPage() {
             </div>
             </div>
             <div className="watch-action-group watch-action-group--utility">
-            {downloadsEnabled && !isChildProfile && downloadStatus !== "done" && (
-              downloadStatus === "queued" || downloadStatus === "downloading" ? (
-                <button
-                  className="btn icon-only"
-                  title={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}
-                  onClick={cancelOrRemoveDownload}
-                >
-                  <LoaderCircle className="spin" />
-                </button>
-              ) : (
-                <button
-                  className="btn icon-only"
-                  title={downloadStatus === "error" ? t("downloadRetry") : t("download")}
-                  onClick={requestDownload}
-                >
-                  <ArrowDownToLine />
-                </button>
-              )
-            )}
             <div className="share-btn-wrap">
               <button
                 className="btn icon-only"
@@ -1208,6 +1189,15 @@ export default function WatchPage() {
                         <button className="more-item-always" onClick={() => { api.restore(video.video_id).then(reload); setMoreOpen(false); }}>
                           <Undo2 /> {t("restoreRejectedVideo")}
                         </button>
+                      )}
+                      {downloadsEnabled && !isChildProfile && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
+                        <div className="more-menu-section">
+                          <div className="more-menu-divider" />
+                          <div className="more-menu-section-label">{t("localDownload")}</div>
+                          <button className="more-item-always" onClick={() => { requestDownload(); setMoreOpen(false); }}>
+                            <ArrowDownToLine /> {t("downloadLocally")}
+                          </button>
+                        </div>
                       )}
                       {downloadsEnabled && !isChildProfile && downloadStatus === "done" && (
                         <div className="more-menu-section">

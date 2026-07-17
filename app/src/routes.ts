@@ -302,6 +302,7 @@ function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => st
 
 function attachTags(uid: number, videos: VideoRow[]) {
   if (videos.length === 0) return [];
+  const downloadsEnabled = pluginEnabled("downloads") && !isChildUser(uid);
   // Live percentage for the one video the downloader is fetching right now,
   // so lists can paint a download progress bar without a dedicated request.
   const dlProgress = activeDownloadProgress();
@@ -333,7 +334,7 @@ function attachTags(uid: number, videos: VideoRow[]) {
     const download_progress = (v as any).download_status === "downloading" && dlProgress?.video_id === v.video_id
       ? dlProgress.percent
       : null;
-    return { ...v, download_progress, tags: [...own, ...inherited] };
+    return { ...v, downloads_enabled: downloadsEnabled, download_progress, tags: [...own, ...inherited] };
   });
 }
 

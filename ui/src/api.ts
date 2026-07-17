@@ -40,6 +40,7 @@ export interface Video {
   channel_thumbnail: string | null;
   channel_subscriber_count: string | null;
   download_status?: DownloadStatus | null;
+  downloads_enabled?: boolean;
   download_progress?: number | null;
   tags: Tag[];
   history_id?: number;

@@ -7,6 +7,7 @@ import {
   Heart,
   Trash2,
   Undo2,
+  X,
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent } from "react";
 import { useRef, useState } from "react";
@@ -90,6 +91,7 @@ export default function VideoCard({
   const [removed, setRemoved] = useState(false);
   const [actionProximity, setActionProximity] = useState(0);
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [downloadStatus, setDownloadStatus] = useState(video.download_status ?? null);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
   const [committedDir, setCommittedDir] = useState<"left" | "right" | null>(null);
@@ -135,6 +137,20 @@ export default function VideoCard({
 
   const markWatchedAndArchive = () =>
     api.complete(video.video_id).then(() => api.archiveVideo(video.video_id));
+
+  const requestLocalDownload = (e: MouseEvent) => {
+    e.stopPropagation();
+    setDownloadStatus("queued");
+    api.requestDownload(video.video_id)
+      .then((result) => setDownloadStatus(result.download?.status ?? "queued"))
+      .catch(() => setDownloadStatus(video.download_status ?? null));
+  };
+
+  const cancelLocalDownload = (e: MouseEvent) => {
+    e.stopPropagation();
+    setDownloadStatus(null);
+    api.removeDownload(video.video_id).catch(() => setDownloadStatus(video.download_status ?? null));
+  };
 
   const bind = useDrag(
     ({ active, movement: [mx], tap, cancel, last }) => {
@@ -331,7 +347,7 @@ export default function VideoCard({
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}
-          {video.download_status === "done" && (
+          {downloadStatus === "done" && (
             <span className="thumb-dl-badge" title={t("downloaded")}><ArrowDownToLine size={11} /></span>
           )}
           {video.live_status === "live" && (
@@ -352,11 +368,11 @@ export default function VideoCard({
               />
             </div>
           )}
-          {(video.download_status === "downloading" || video.download_status === "queued") && (
-            <div className="dl-progress-top" title={video.download_status === "queued" ? t("downloadQueued") : t("downloading")}>
+          {(downloadStatus === "downloading" || downloadStatus === "queued") && (
+            <div className="dl-progress-top" title={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}>
               <div
-                className={`dl-progress-top-fill${video.download_status === "queued" ? " queued" : ""}`}
-                style={video.download_status === "downloading"
+                className={`dl-progress-top-fill${downloadStatus === "queued" ? " queued" : ""}`}
+                style={downloadStatus === "downloading"
                   ? { width: `${Math.min(100, Math.max(3, video.download_progress ?? 0))}%` }
                   : undefined}
               />
@@ -377,6 +393,20 @@ export default function VideoCard({
                 )}
               />
               <div className="thumb-actions-row secondary">
+                {video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading") && (
+                  <Tooltip text={t("cancelDownload")}>
+                    <button className="action-btn" onClick={cancelLocalDownload}>
+                      <X />
+                    </button>
+                  </Tooltip>
+                )}
+                {video.downloads_enabled && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
+                  <Tooltip text={t("downloadLocally")}>
+                    <button className="action-btn" onClick={requestLocalDownload}>
+                      <ArrowDownToLine />
+                    </button>
+                  </Tooltip>
+                )}
                 {video.status !== "archived" && (
                   <Tooltip text={t("reject")}>
                     <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
