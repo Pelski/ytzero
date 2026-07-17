@@ -2,6 +2,7 @@ import { db, getSetting, setSetting } from "./db";
 import { fetchChannelAbout, fetchVideoInfo, searchYouTube, type SearchResult, type VideoInfo } from "./youtube";
 import { buildKeywordPlan, tokenizeDiscoveryText, type KeywordSeed } from "./discoveryKeywords";
 import { DL_DEFAULTS, resetDownloadsState } from "./downloader";
+import { SUBTITLE_LANGUAGES } from "./subtitleLanguages";
 
 export interface PluginManifest {
   id: string;
@@ -20,7 +21,7 @@ export interface PluginManifest {
 type PluginLanguage = "en" | "pl" | "de";
 type LocalizedText = Record<PluginLanguage, string>;
 
-export type PluginSettingType = "slider" | "select" | "toggle";
+export type PluginSettingType = "slider" | "select" | "toggle" | "text" | "multiselect";
 
 export interface PluginSettingOption {
   value: string;
@@ -101,6 +102,67 @@ const DOWNLOADS_SETTINGS: PluginSettingSource[] = [
       { value: "download", label: { en: "Always wait for the download", pl: "Zawsze czekaj na pobranie", de: "Immer auf den Download warten" } },
     ],
     defaultValue: DL_DEFAULTS.watch_source_mode,
+  },
+  {
+    key: "output_template",
+    type: "text",
+    label: { en: "Filename template", pl: "Szablon nazwy pliku", de: "Dateinamen-Vorlage" },
+    description: {
+      en: "Tokens: {channel} {title} {id} {date} {year} {month} {day} {channel_id}. \"/\" creates folders, the extension is added automatically, e.g. {channel}/{date} - {title} [{id}].",
+      pl: "Znaczniki: {channel} {title} {id} {date} {year} {month} {day} {channel_id}. „/” tworzy foldery, rozszerzenie dodaje się samo, np. {channel}/{date} - {title} [{id}].",
+      de: "Platzhalter: {channel} {title} {id} {date} {year} {month} {day} {channel_id}. „/“ erzeugt Ordner, die Endung wird automatisch angehängt, z. B. {channel}/{date} - {title} [{id}].",
+    },
+    defaultValue: DL_DEFAULTS.output_template,
+  },
+  {
+    key: "write_thumbnail",
+    type: "toggle",
+    label: { en: "Save thumbnail", pl: "Zapisuj miniaturkę", de: "Vorschaubild speichern" },
+    description: { en: "Stores the video thumbnail next to the file.", pl: "Zapisuje miniaturkę filmu obok pliku.", de: "Speichert das Vorschaubild neben der Datei." },
+    defaultValue: DL_DEFAULTS.write_thumbnail,
+  },
+  {
+    key: "embed_metadata",
+    type: "toggle",
+    label: { en: "Embed metadata", pl: "Osadzaj metadane", de: "Metadaten einbetten" },
+    description: { en: "Writes title, chapters and description into the video file.", pl: "Wpisuje tytuł, rozdziały i opis do pliku wideo.", de: "Schreibt Titel, Kapitel und Beschreibung in die Videodatei." },
+    defaultValue: DL_DEFAULTS.embed_metadata,
+  },
+  {
+    key: "write_info_json",
+    type: "toggle",
+    label: { en: "Save info.json", pl: "Zapisuj info.json", de: "info.json speichern" },
+    description: { en: "Stores yt-dlp's full metadata file next to the video.", pl: "Zapisuje pełny plik metadanych yt-dlp obok filmu.", de: "Speichert die vollständige yt-dlp-Metadatendatei neben dem Video." },
+    defaultValue: DL_DEFAULTS.write_info_json,
+  },
+  {
+    key: "write_nfo",
+    type: "toggle",
+    label: { en: "Save NFO file", pl: "Zapisuj plik NFO", de: "NFO-Datei speichern" },
+    description: { en: "Kodi/Jellyfin-style metadata (title, plot, channel, date).", pl: "Metadane w stylu Kodi/Jellyfin (tytuł, opis, kanał, data).", de: "Metadaten im Kodi/Jellyfin-Stil (Titel, Handlung, Kanal, Datum)." },
+    defaultValue: DL_DEFAULTS.write_nfo,
+  },
+  {
+    key: "write_subs",
+    type: "toggle",
+    label: { en: "Download subtitles", pl: "Pobieraj napisy", de: "Untertitel laden" },
+    description: { en: "Saves the video's subtitles next to the file.", pl: "Zapisuje napisy filmu obok pliku.", de: "Speichert die Untertitel des Videos neben der Datei." },
+    defaultValue: DL_DEFAULTS.write_subs,
+  },
+  {
+    key: "write_auto_subs",
+    type: "toggle",
+    label: { en: "Include auto-generated subtitles", pl: "Także napisy automatyczne", de: "Auch automatische Untertitel" },
+    description: { en: "Also downloads YouTube's auto-generated captions.", pl: "Pobiera też napisy generowane automatycznie przez YouTube.", de: "Lädt auch automatisch generierte YouTube-Untertitel." },
+    defaultValue: DL_DEFAULTS.write_auto_subs,
+  },
+  {
+    key: "sub_langs",
+    type: "multiselect",
+    label: { en: "Subtitle languages", pl: "Języki napisów", de: "Untertitelsprachen" },
+    description: { en: "Languages downloaded with every video (when subtitles are enabled).", pl: "Języki pobierane z każdym filmem (gdy napisy są włączone).", de: "Sprachen, die mit jedem Video geladen werden (wenn Untertitel aktiv sind)." },
+    options: SUBTITLE_LANGUAGES.map((lang) => ({ value: lang.code, label: { en: lang.label, pl: lang.label, de: lang.label } })),
+    defaultValue: DL_DEFAULTS.sub_langs,
   },
   {
     key: "thumb_progress",
@@ -299,6 +361,18 @@ function normalizeSettingValue(raw: string | null | undefined, def: PluginSettin
   if (type === "select") {
     return def.options?.some((option) => option.value === raw) ? (raw as string) : (def.defaultValue as string);
   }
+  if (type === "text") {
+    const value = typeof raw === "string" ? raw.trim() : "";
+    return value || (def.defaultValue as string);
+  }
+  if (type === "multiselect") {
+    // Stored as a comma-separated list of option values (yt-dlp friendly).
+    const valid = new Set((def.options ?? []).map((option) => option.value));
+    const picked = typeof raw === "string"
+      ? [...new Set(raw.split(",").map((item) => item.trim()).filter((item) => valid.has(item)))]
+      : [];
+    return picked.length > 0 ? picked.join(",") : (def.defaultValue as string);
+  }
   const n = Number(raw);
   const value = raw != null && Number.isFinite(n) ? n : Number(def.defaultValue);
   if (type === "toggle") return value === 1 ? 1 : 0;
@@ -467,7 +541,7 @@ function localRecommendations(uid: number, limit: number, settings: Record<strin
            v.is_short, v.views, v.likes, uv.liked, v.duration, uv.watch_position,
            uv.watch_duration, v.external,
            EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?) AS in_history,
-           c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count,
+           COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count,
            COALESCE(chw.watch_count, 0) AS channel_watch_count,
            COALESCE(taghit.tag_hits, 0) AS tag_hits,
            COALESCE(tagwatch.tag_watch_count, 0) AS tag_watch_count,
@@ -703,7 +777,7 @@ function selectVideo(uid: number, videoId: string) {
            v.is_short, v.views, v.likes, uv.liked,
            v.duration, uv.watch_position, uv.watch_duration, v.external,
            EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?) AS in_history,
-           c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
+           COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
     FROM videos v JOIN channels c ON c.channel_id = v.channel_id
     LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
     WHERE v.video_id = ?

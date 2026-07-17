@@ -1,4 +1,4 @@
-import { Check, Search, UserPlus, X } from "lucide-react";
+import { Check, Pencil, Search, UserPlus, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { api, type ChannelSearchResult } from "../api";
@@ -15,6 +15,9 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
   const [open, setOpen] = useState(false);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
+  // Row with the optional "follow under a custom name" input open.
+  const [namingId, setNamingId] = useState<string | null>(null);
+  const [customName, setCustomName] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -50,14 +53,16 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
     return () => window.clearTimeout(timer);
   }, [open, query]);
 
-  const addChannel = async (channel: ChannelSearchResult) => {
+  const addChannel = async (channel: ChannelSearchResult, name?: string) => {
     setAddingId(channel.channelId);
     setError("");
     try {
-      const result = await api.addChannel(`https://www.youtube.com/channel/${channel.channelId}`);
+      const result = await api.addChannel(`https://www.youtube.com/channel/${channel.channelId}`, name);
       emit("channels-changed");
-      onAdded?.(result.title || channel.title || channel.channelId);
+      onAdded?.(name || result.title || channel.title || channel.channelId);
       setFollowedIds((current) => new Set([...current, channel.channelId]));
+      setNamingId(null);
+      setCustomName("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : t("error"));
     } finally {
@@ -90,6 +95,7 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
               <div className="channel-search-results">
                 {results.map((channel) => {
                   const followed = followedIds.has(channel.channelId);
+                  const naming = namingId === channel.channelId;
                   return (
                     <div key={channel.channelId} className="channel-search-result">
                       {channel.thumbnail ? (
@@ -99,9 +105,40 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
                       )}
                       <div className="channel-search-result-copy">
                         <strong>{channel.title}</strong>
-                        <span>{[channel.handle, channel.subscriberCount].filter(Boolean).join(" · ")}</span>
+                        {naming ? (
+                          <input
+                            className="channel-search-custom-name"
+                            autoFocus
+                            value={customName}
+                            placeholder={t("customNameOptional")}
+                            onChange={(event) => setCustomName(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") addChannel(channel, customName.trim() || undefined);
+                              if (event.key === "Escape") { setNamingId(null); setCustomName(""); }
+                            }}
+                          />
+                        ) : (
+                          <span>{[channel.handle, channel.subscriberCount].filter(Boolean).join(" · ")}</span>
+                        )}
                       </div>
-                      <button className={`btn${followed ? " active" : " primary"}`} onClick={() => addChannel(channel)} disabled={addingId !== null || followed}>
+                      {!followed && (
+                        <button
+                          className="icon-btn"
+                          title={naming ? t("cancel") : t("followWithCustomName")}
+                          onClick={() => {
+                            setNamingId(naming ? null : channel.channelId);
+                            setCustomName("");
+                          }}
+                          disabled={addingId !== null}
+                        >
+                          {naming ? <X size={14} /> : <Pencil size={14} />}
+                        </button>
+                      )}
+                      <button
+                        className={`btn${followed ? " active" : " primary"}`}
+                        onClick={() => addChannel(channel, naming ? customName.trim() || undefined : undefined)}
+                        disabled={addingId !== null || followed}
+                      >
                         {followed ? <Check size={15} /> : <UserPlus size={15} />}
                         {addingId === channel.channelId ? t("addingChannel") : followed ? t("channelFollowed") : t("follow")}
                       </button>

@@ -165,6 +165,7 @@ export default function WatchPage() {
   const [related, setRelated] = useState<Video[]>([]);
   const [copyKey, setCopyKey] = useState(0);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
   const [playbackPolicy, setPlaybackPolicy] = useState<{
     ready: boolean;
     downloadsEnabled: boolean;
@@ -269,13 +270,18 @@ export default function WatchPage() {
         api.plugins().catch(() => ({ plugins: [] })),
       ]);
       const downloadsEnabled = plugins.plugins.some((p) => p.id === "downloads" && p.enabled);
+      const pluginSettings = await api.pluginSettings("downloads").catch(() => null);
+      const subtitleLanguages = String(pluginSettings?.settings.sub_langs ?? "")
+        .split(",")
+        .map((code) => code.trim())
+        .filter(Boolean);
       let pluginWatchMode: WatchSourceMode = "youtube";
       if (downloadsEnabled) {
-        const pluginSettings = await api.pluginSettings("downloads").catch(() => null);
         const configuredMode = pluginSettings?.settings.watch_source_mode;
         if (configuredMode === "ask" || configuredMode === "download") pluginWatchMode = configuredMode;
       }
       if (cancelled) return;
+      setDownloadSubtitleLanguages(subtitleLanguages);
       setPlaybackPolicy({
         ready: true,
         downloadsEnabled,
@@ -302,6 +308,17 @@ export default function WatchPage() {
   });
   const usingLocal = playerKind === "local";
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
+  const rawSubtitleSize = settings?.player_sub_size;
+  const subtitleSize = rawSubtitleSize === "small" ? 14
+    : rawSubtitleSize === "large" ? 26
+      : rawSubtitleSize === "medium" ? 19
+        : Math.min(48, Math.max(12, Number(rawSubtitleSize) || 19));
+
+  const changeSubtitleSize = useCallback((size: number) => {
+    const value = String(size);
+    setSettings((current) => current ? { ...current, player_sub_size: value } : current);
+    api.updateSettings({ player_sub_size: value }).catch(console.error);
+  }, []);
 
   const requestYouTubePlayback = useCallback(() => {
     setYoutubeAutoplayBlocked(false);
@@ -978,6 +995,16 @@ export default function WatchPage() {
                   onEnded={handleEnded}
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
+                  videoId={video.video_id}
+                  ccDefaultOn={settings?.player_cc === "1"}
+                  ccDefaultLang={settings?.player_cc_lang || settings?.player_hl || "en"}
+                  preferredSubtitleLanguages={[settings?.player_cc_lang || settings?.player_hl || "en", ...downloadSubtitleLanguages]}
+                  subtitleStyle={{
+                    size: subtitleSize,
+                    color: settings?.player_sub_color || "#ffffff",
+                    bg: Number(settings?.player_sub_bg ?? 75),
+                  }}
+                  onSubtitleSizeChange={changeSubtitleSize}
                 />
               ) : playerKind === "youtube" ? (
                 <div ref={ytWrapRef} className="watch-player-yt" />

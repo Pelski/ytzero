@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
-import { Camera, Check, ChevronDown, ChevronUp, Clock, Download, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronUp, Clock, Download, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppLogs, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
@@ -304,6 +304,53 @@ function RuleRow({ rule, tags, onSave, onRemove }: { rule: Rule; tags: Tag[]; on
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Chip multiselect for plugin settings storing a comma-separated value list. */
+function PluginMultiselect({ value, options, searchPlaceholder, onChange }: {
+  value: string;
+  options: { value: string; label: string }[];
+  searchPlaceholder: string;
+  onChange: (next: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const selected = useMemo(
+    () => new Set(String(value).split(",").map((item) => item.trim()).filter(Boolean)),
+    [value],
+  );
+  const q = query.trim().toLowerCase();
+  const visible = options.filter((option) =>
+    !q || option.label.toLowerCase().includes(q) || option.value.toLowerCase().includes(q));
+  const toggle = (code: string) => {
+    const next = new Set(selected);
+    if (next.has(code)) next.delete(code);
+    else next.add(code);
+    onChange(options.filter((option) => next.has(option.value)).map((option) => option.value).join(","));
+  };
+  return (
+    <div className="plugin-multiselect">
+      <input
+        type="text"
+        className="plugin-text-input"
+        placeholder={searchPlaceholder}
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      <div className="plugin-multiselect-chips">
+        {visible.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`plugin-term-chip${selected.has(option.value) ? " selected" : ""}`}
+            onClick={(e) => { e.preventDefault(); toggle(option.value); }}
+          >
+            {selected.has(option.value) && <Check size={12} />}
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -1016,6 +1063,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [loadingLogs, setLoadingLogs] = useState(false);
 
   const [channelUrl, setChannelUrl] = useState("");
+  const [channelCustomName, setChannelCustomName] = useState("");
+  const [renamingChannelId, setRenamingChannelId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [channelQuery, setChannelQuery] = useState("");
   const [tagName, setTagName] = useState("");
   const [tagColor, setTagColor] = useState("#3ea6ff");
@@ -1045,6 +1095,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const navSaveTimer = useRef<number | null>(null);
   const [playerHl, setPlayerHl] = useState("pl");
   const [playerCc, setPlayerCc] = useState(false);
+  const [subSize, setSubSize] = useState(19);
+  const [subColor, setSubColor] = useState("#ffffff");
+  const [subBg, setSubBg] = useState(75);
   const [playerQuality, setPlayerQuality] = useState("auto");
   const [playerSpeed, setPlayerSpeed] = useState("1");
   const [keyboardSeekSeconds, setKeyboardSeekSeconds] = useState("5");
@@ -1182,6 +1235,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setNavConfig(normalizeNav(navCfg));
         setPlayerHl(r.settings.player_hl);
         setPlayerCc(r.settings.player_cc === "1");
+        const rawSubSize = r.settings.player_sub_size;
+        const legacySubSize = rawSubSize === "small" ? 14 : rawSubSize === "large" ? 26 : rawSubSize === "medium" ? 19 : Number(rawSubSize);
+        setSubSize(Number.isFinite(legacySubSize) ? Math.min(48, Math.max(12, legacySubSize)) : 19);
+        setSubColor(r.settings.player_sub_color || "#ffffff");
+        setSubBg(Number.isFinite(Number(r.settings.player_sub_bg)) ? Number(r.settings.player_sub_bg) : 75);
         setPlayerQuality(r.settings.player_quality);
         setPlayerSpeed(r.settings.player_speed ?? "1");
         setKeyboardSeekSeconds(r.settings.keyboard_seek_seconds ?? "5");
@@ -1422,15 +1480,33 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     if (!channelUrl.trim() || addingChannel) return;
     setAddingChannel(true);
     try {
-      const r = await api.addChannel(channelUrl.trim());
-      showToast(t("channelAdded", { name: r.title || r.channel_id }));
+      const r = await api.addChannel(channelUrl.trim(), channelCustomName.trim() || undefined);
+      showToast(t("channelAdded", { name: channelCustomName.trim() || r.title || r.channel_id }));
       setChannelUrl("");
+      setChannelCustomName("");
       await load();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       showToast(message === "HTTP 500" ? t("addChannelNotFoundError") : `${t("error")}: ${message}`);
     } finally {
       setAddingChannel(false);
+    }
+  };
+
+  const startRenameChannel = (ch: Channel) => {
+    setRenamingChannelId(ch.channel_id);
+    setRenameValue(ch.custom_title ?? "");
+  };
+
+  // Empty input = revert to the original YouTube title (custom_title -> NULL).
+  const saveRenameChannel = async (id: string, value: string | null) => {
+    try {
+      await api.renameChannel(id, value);
+      setRenamingChannelId(null);
+      emit("channels-changed");
+      await load();
+    } catch (e) {
+      showToast(`${t("error")}: ${e instanceof Error ? e.message : e}`);
     }
   };
 
@@ -1697,6 +1773,15 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   onChange={(e) => setChannelUrl(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addChannel()}
                 />
+                <input
+                  type="text"
+                  style={{ width: 200 }}
+                  placeholder={t("customNameOptional")}
+                  value={channelCustomName}
+                  disabled={addingChannel}
+                  onChange={(e) => setChannelCustomName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addChannel()}
+                />
                 <button className="btn primary" onClick={addChannel} disabled={addingChannel || !channelUrl.trim()}>
                   {addingChannel ? <LoaderCircle className="spin" /> : <Plus />}
                   {addingChannel ? t("addingChannel") : t("addChannel")}
@@ -1746,9 +1831,46 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         )}
                       </td>
                       <td>
-                        <Link to={`/channel/${ch.channel_id}`} className="channel-name channel-name-link">
-                          {ch.title || ch.channel_id}
-                        </Link>
+                        {renamingChannelId === ch.channel_id ? (
+                          <div className="channel-rename-row">
+                            <input
+                              type="text"
+                              autoFocus
+                              value={renameValue}
+                              placeholder={ch.original_title || ch.channel_id}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveRenameChannel(ch.channel_id, renameValue.trim() || null);
+                                if (e.key === "Escape") setRenamingChannelId(null);
+                              }}
+                            />
+                            <button className="btn-ghost" title={t("save")} onClick={() => saveRenameChannel(ch.channel_id, renameValue.trim() || null)}>
+                              <Check size={14} />
+                            </button>
+                            {ch.custom_title && (
+                              <button className="btn-ghost" title={t("revertToOriginalName")} onClick={() => saveRenameChannel(ch.channel_id, null)}>
+                                <RotateCcw size={14} />
+                              </button>
+                            )}
+                            <button className="btn-ghost" title={t("cancel")} onClick={() => setRenamingChannelId(null)}>
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <span className="channel-name-wrap">
+                              <Link to={`/channel/${ch.channel_id}`} className="channel-name channel-name-link">
+                                {ch.title || ch.channel_id}
+                              </Link>
+                              <button className="btn-ghost channel-rename-btn" title={t("renameChannel")} onClick={() => startRenameChannel(ch)}>
+                                <Pencil size={12} />
+                              </button>
+                            </span>
+                            {ch.custom_title && (
+                              <div className="channel-original-name">{t("originalChannelName", { name: ch.original_title || ch.channel_id })}</div>
+                            )}
+                          </>
+                        )}
                         {ch.tags.length > 0 && (
                           <div className="ch-tags">
                             {ch.tags.map((t) => (
@@ -2210,6 +2332,57 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </select>
           </div>
 
+          <div className="sub-style-panel">
+            <div>
+              <div className="switch-label">{t("subtitleStyleTitle")}</div>
+              <div className="switch-sub">{t("subtitleStyleHint")}</div>
+            </div>
+            <div className="sub-style-controls">
+              <label className="sub-style-field">
+                <span>{t("subtitleSize")}</span>
+                <div className="sub-size-input">
+                  <input
+                    type="number"
+                    min={12}
+                    max={48}
+                    step={1}
+                    value={subSize}
+                    onChange={(e) => setSubSize(Math.min(48, Math.max(12, Number(e.target.value) || 12)))}
+                    onBlur={() => savePlayer({ player_sub_size: String(subSize) })}
+                  />
+                  <span>px</span>
+                </div>
+              </label>
+              <label className="sub-style-field">
+                <span>{t("subtitleColor")}</span>
+                <input
+                  type="color"
+                  value={subColor}
+                  onChange={(e) => setSubColor(e.target.value)}
+                  onBlur={(e) => savePlayer({ player_sub_color: e.target.value })}
+                />
+              </label>
+              <label className="sub-style-field sub-style-field--wide">
+                <span>{t("subtitleBackground")} ({subBg}%)</span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={subBg}
+                  style={{ background: `linear-gradient(to right, var(--accent) 0 ${subBg}%, var(--surface-3) ${subBg}% 100%)` }}
+                  onChange={(e) => setSubBg(Number(e.target.value))}
+                  onPointerUp={() => savePlayer({ player_sub_bg: String(subBg) })}
+                />
+              </label>
+            </div>
+            <div className="sub-style-preview">
+              <span style={{ color: subColor, background: `rgba(0, 0, 0, ${subBg / 100})`, fontSize: `${subSize}px` }}>
+                {t("subtitlePreviewLine")}
+              </span>
+            </div>
+          </div>
+
           <div className="settings-select-row">
             <div>
               <label className="switch-label" htmlFor="player-quality">{t("quality")}</label>
@@ -2412,6 +2585,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 keys: ["quality", "watch_source_mode", "thumb_progress", "download_scheduled", "download_feed", "feed_max_age_hours", "download_shorts"],
               },
               {
+                id: "files",
+                title: t("pluginSectionFiles"),
+                description: t("pluginSectionFilesHint"),
+                keys: ["output_template", "write_thumbnail", "embed_metadata", "write_info_json", "write_nfo", "write_subs", "write_auto_subs", "sub_langs"],
+              },
+              {
                 id: "retention",
                 title: t("pluginSectionRetention"),
                 description: t("pluginSectionRetentionHint"),
@@ -2474,7 +2653,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                           {section.definitions.map((def) => {
                             const value = config.settings[def.key] ?? def.defaultValue;
                             return (
-                              <label key={def.key} className="plugin-slider-row">
+                              <label key={def.key} className={`plugin-slider-row${def.type === "multiselect" ? " plugin-slider-row--stacked" : ""}`}>
                                 <div className="plugin-slider-copy">
                                   <span className="switch-label">{def.label}</span>
                                   <span className="switch-sub">{def.description}</span>
@@ -2494,6 +2673,27 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                                   >
                                     <span />
                                   </button>
+                                ) : def.type === "multiselect" ? (
+                                  <PluginMultiselect
+                                    value={String(value)}
+                                    options={def.options ?? []}
+                                    searchPlaceholder={t("searchLanguagePlaceholder")}
+                                    onChange={(next) => updatePluginSetting(plugin.id, def.key, next)}
+                                  />
+                                ) : def.type === "text" ? (
+                                  <input
+                                    type="text"
+                                    className="plugin-text-input"
+                                    defaultValue={String(value)}
+                                    // Commit on blur/Enter so typing doesn't fire a request per keystroke.
+                                    onBlur={(e) => {
+                                      const next = e.target.value.trim();
+                                      if (next !== String(value)) updatePluginSetting(plugin.id, def.key, next);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                    }}
+                                  />
                                 ) : def.type === "select" ? (
                                   <select
                                     className="plugin-select"

@@ -77,7 +77,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     SELECT w.user_id, w.video_id, w.day, w.hour, w.seconds,
            v.title AS video_title, v.thumbnail AS video_thumbnail,
            v.channel_id, v.is_short, v.live_status,
-           c.title AS channel_title, c.thumbnail AS channel_thumbnail
+           COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail
     FROM watch_time_log w
     JOIN videos v ON v.video_id = w.video_id
     JOIN channels c ON c.channel_id = v.channel_id

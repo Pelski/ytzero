@@ -24,7 +24,8 @@ import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./u
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
-import { activeDownloadProgress, downloadStats, enqueueDownload, getDownload, listDownloads, prioritizeDownload, removeDownload, setDownloadPinned, ytdlpStatus } from "./downloader";
+import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadStats, enqueueDownload, fetchSubtitles, getDownload, listDownloads, listSubtitleFiles, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
 import {
@@ -302,7 +303,11 @@ function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => st
 
 function attachTags(uid: number, videos: VideoRow[]) {
   if (videos.length === 0) return [];
-  const downloadsEnabled = pluginEnabled("downloads") && !isChildUser(uid);
+  // downloads_allowed: the profile may use downloads at all (not a child);
+  // downloads_enabled additionally requires the plugin to be turned on. The UI
+  // shows the download action for allowed-but-disabled and links to settings.
+  const downloadsAllowed = !isChildUser(uid);
+  const downloadsEnabled = pluginEnabled("downloads") && downloadsAllowed;
   // Live percentage for the one video the downloader is fetching right now,
   // so lists can paint a download progress bar without a dedicated request.
   const dlProgress = activeDownloadProgress();
@@ -334,7 +339,7 @@ function attachTags(uid: number, videos: VideoRow[]) {
     const download_progress = (v as any).download_status === "downloading" && dlProgress?.video_id === v.video_id
       ? dlProgress.percent
       : null;
-    return { ...v, downloads_enabled: downloadsEnabled, download_progress, tags: [...own, ...inherited] };
+    return { ...v, downloads_enabled: downloadsEnabled, downloads_allowed: downloadsAllowed, download_progress, tags: [...own, ...inherited] };
   });
 }
 
@@ -376,7 +381,7 @@ function videoSelect(uid: number) {
          v.duration, uv.watch_position, uv.watch_duration, v.external,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
          (SELECT d.status FROM downloads d WHERE d.video_id = v.video_id AND d.status != 'deleted') AS download_status,
-         c.title AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
+         COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id
   LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}`;
 }
@@ -535,7 +540,7 @@ api.get("/child/now-watching", (c) => {
     const row = db.prepare(
       `SELECT u.id AS user_id, u.name, u.avatar, u.avatar_color,
               v.video_id, v.title, v.thumbnail, v.channel_id,
-              ch.title AS channel_title, ch.thumbnail AS channel_thumbnail
+              COALESCE(ch.custom_title, ch.title) AS channel_title, ch.thumbnail AS channel_thumbnail
        FROM users u JOIN videos v ON v.video_id = ?
        JOIN channels ch ON ch.channel_id = v.channel_id
        WHERE u.id = ? AND u.is_child = 1`
@@ -812,6 +817,46 @@ api.get("/videos/:id/stream", (c) => {
   return new Response(file, {
     headers: { "Content-Type": contentType, "Accept-Ranges": "bytes", "Content-Length": String(size) },
   });
+});
+
+// ---------- subtitles for the local player ----------
+
+function subtitleList(videoId: string) {
+  return listSubtitleFiles(videoId).map((s) => ({
+    lang: s.lang,
+    url: `/api/videos/${videoId}/subtitles/${encodeURIComponent(s.lang)}`,
+  }));
+}
+
+api.get("/videos/:id/subtitles", (c) => {
+  return c.json({ subtitles: subtitleList(c.req.param("id")) });
+});
+
+api.get("/videos/:id/subtitles/:lang", async (c) => {
+  const file = listSubtitleFiles(c.req.param("id")).find((s) => s.lang === c.req.param("lang"));
+  if (!file || !existsSync(file.path)) return c.json({ error: "not found" }, 404);
+  let text = await Bun.file(file.path).text();
+  if (file.ext === "srt") text = srtToVtt(text);
+  return new Response(text, {
+    headers: { "Content-Type": "text/vtt; charset=utf-8", "Cache-Control": "no-store" },
+  });
+});
+
+// Viewer picked a language that wasn't downloaded with the video: fetch just
+// the subtitles (no video re-download) and hand back the refreshed list.
+api.post("/videos/:id/subtitles", async (c) => {
+  const uid = currentUserId(c);
+  if (childLocalOnly(uid)) return c.json({ error: "restricted" }, 403);
+  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  const id = c.req.param("id");
+  const { lang } = await c.req.json().catch(() => ({}));
+  if (typeof lang !== "string" || !SUBTITLE_LANGUAGE_CODES.has(lang)) {
+    return c.json({ error: "invalid language" }, 400);
+  }
+  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  const ok = await fetchSubtitles(id, lang);
+  const subtitles = subtitleList(id);
+  return c.json({ ok, downloaded: subtitles.some((s) => s.lang === lang), subtitles });
 });
 
 // Download a locally saved video as a file rather than streaming it in the
@@ -1153,6 +1198,8 @@ api.post("/videos/:id/archive", (c) => {
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'archived')
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'archived', bucket = NULL, show_from = NULL`
   ).run(uid, id);
+  // Rejecting a video also stops a pending auto download nobody else waits for.
+  cancelAutoDownloadIfUnwanted(id);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
@@ -1272,7 +1319,7 @@ api.get("/history", (c) => {
               v.video_id, v.channel_id, v.title, v.description, v.duration,
               v.thumbnail, v.published_at, v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket,
               uv.watch_position, uv.watch_duration, uv.watched,
-              c.title AS channel_title, c.thumbnail AS channel_thumbnail
+              COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail
        FROM history h JOIN videos v ON v.video_id = h.video_id
        JOIN channels c ON c.channel_id = v.channel_id
        LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
@@ -1293,12 +1340,24 @@ api.delete("/history/:id", (c) => {
 
 // ---------- channels ----------
 
+// The effective display name is the user-set custom title when present; the
+// original YouTube title stays in `title` (exposed as original_title) so the
+// custom name can always be reverted.
+function serializeChannel(ch: any) {
+  return {
+    ...ch,
+    title: ch.custom_title || ch.title,
+    original_title: ch.title,
+    custom_title: ch.custom_title ?? null,
+  };
+}
+
 api.get("/channels", (c) => {
   const uid = currentUserId(c);
   const channels = db.prepare(
     `SELECT ch.* FROM channels ch
      JOIN user_channels uc ON uc.channel_id = ch.channel_id AND uc.user_id = ? AND uc.followed = 1
-     WHERE ch.external = 0 ORDER BY ch.title COLLATE NOCASE`
+     WHERE ch.external = 0 ORDER BY COALESCE(ch.custom_title, ch.title) COLLATE NOCASE`
   ).all(uid) as any[];
   const tags = db
     .prepare(
@@ -1307,7 +1366,7 @@ api.get("/channels", (c) => {
     .all(uid) as any[];
   return c.json({
     channels: channels.map((ch) => ({
-      ...ch,
+      ...serializeChannel(ch),
       tags: tags.filter((t) => t.channel_id === ch.channel_id).map((t) => ({ id: t.id, name: t.name, color: t.color })),
     })),
   });
@@ -1317,7 +1376,7 @@ api.post("/channels", async (c) => {
   // A child may subscribe only after a parent unlocked settings for this browser.
   if (isChildUser(currentUserId(c)) && !hasChildLockSession(c)) return c.json({ error: "settings locked" }, 423);
   const uid = currentUserId(c);
-  const { url } = await c.req.json();
+  const { url, custom_name } = await c.req.json();
   if (!url) return c.json({ error: "url required" }, 400);
   const info = await resolveChannelId(url);
   const inserted = db.prepare(
@@ -1329,6 +1388,8 @@ api.post("/channels", async (c) => {
      ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = 1`
   ).run(uid, info.channelId);
   db.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(info.channelId);
+  const customTitle = typeof custom_name === "string" ? custom_name.trim() : "";
+  if (customTitle) db.prepare("UPDATE channels SET custom_title = ? WHERE channel_id = ?").run(customTitle, info.channelId);
   log.info("channel.added", { channelId: info.channelId, title: info.title, inserted: inserted.changes > 0, userId: uid });
   refreshChannel(info.channelId)
     .then(() => refreshLiveStatus(info.channelId))
@@ -1360,6 +1421,21 @@ api.delete("/channels/:id", (c) => {
   const uid = currentUserId(c);
   db.prepare("DELETE FROM user_channels WHERE user_id = ? AND channel_id = ?").run(uid, c.req.param("id"));
   return c.json({ ok: true });
+});
+
+// Set or clear the channel's custom display name. Empty / null reverts to the
+// original YouTube title (kept untouched in `title`).
+api.put("/channels/:id/name", async (c) => {
+  const channelId = c.req.param("id");
+  if (!db.prepare("SELECT 1 FROM channels WHERE channel_id = ?").get(channelId)) {
+    return c.json({ error: "not found" }, 404);
+  }
+  const { custom_title } = await c.req.json().catch(() => ({}));
+  const value = typeof custom_title === "string" && custom_title.trim() ? custom_title.trim() : null;
+  db.prepare("UPDATE channels SET custom_title = ? WHERE channel_id = ?").run(value, channelId);
+  log.info("channel.renamed", { channelId, custom_title: value });
+  const ch = db.prepare("SELECT * FROM channels WHERE channel_id = ?").get(channelId) as any;
+  return c.json({ ok: true, channel: serializeChannel(ch) });
 });
 
 api.post("/channels/:id/tags", async (c) => {
@@ -1440,6 +1516,11 @@ api.get("/channels/:id/about", async (c) => {
     "SELECT COUNT(*) AS total, COALESCE(SUM(is_short = 1), 0) AS shorts FROM videos WHERE channel_id = ?"
   ).get(channelId) as { total: number; shorts: number };
   const counts = { videos: row.total - row.shorts, shorts: row.shorts };
+  // The channel page header shows the custom name too; the scraped about
+  // payload keeps the original underneath.
+  const customTitle = (db.prepare("SELECT custom_title FROM channels WHERE channel_id = ?").get(channelId) as { custom_title: string | null } | null)?.custom_title ?? null;
+  const withCustomTitle = <T extends { title: string }>(about: T): T =>
+    customTitle ? { ...about, title: customTitle } : about;
 
   // Serve the cached about from the DB; only touch YouTube when it's missing
   // or stale (and then in the background, so the page never waits on it).
@@ -1454,9 +1535,9 @@ api.get("/channels/:id/about", async (c) => {
     try {
       const cachedAbout = JSON.parse(cachedRow.about_json) as Partial<ChannelAbout>;
       if (!("subscriberCount" in cachedAbout)) {
-        return c.json({ ...(await refreshChannelAbout(channelId)), counts });
+        return c.json({ ...withCustomTitle(await refreshChannelAbout(channelId)), counts });
       }
-      return c.json({ ...normalizeCachedChannelAbout(cachedAbout as ChannelAbout), counts });
+      return c.json({ ...withCustomTitle(normalizeCachedChannelAbout(cachedAbout as ChannelAbout)), counts });
     } catch {
       // corrupted cache — fall through to a fresh fetch
     }
@@ -1464,7 +1545,7 @@ api.get("/channels/:id/about", async (c) => {
 
   // No usable cache: fetch synchronously this once, then it's served from DB.
   try {
-    return c.json({ ...(await refreshChannelAbout(channelId)), counts });
+    return c.json({ ...withCustomTitle(await refreshChannelAbout(channelId)), counts });
   } catch (e) {
     // YouTube can rate-limit (429) or change layout — fall back to the basic
     // columns so the page still shows avatar/title/subs instead of breaking.
@@ -1474,7 +1555,7 @@ api.get("/channels/:id/about", async (c) => {
     log.warn("channel.about.fallback", { channelId, error: e instanceof Error ? e.message : String(e) });
     return c.json({
       channelId,
-      title: ch.title ?? "",
+      title: customTitle || ch.title || "",
       description: "",
       avatar: ch.thumbnail ?? "",
       banner: "",
@@ -1548,15 +1629,15 @@ api.get("/channels/unfollowed", (c) => {
   const channels = db.prepare(
     `SELECT ch.* FROM channels ch
      JOIN user_channels uc ON uc.channel_id = ch.channel_id AND uc.user_id = ? AND uc.followed = 0
-     WHERE ch.external = 0 ORDER BY ch.title COLLATE NOCASE`
+     WHERE ch.external = 0 ORDER BY COALESCE(ch.custom_title, ch.title) COLLATE NOCASE`
   ).all(uid) as any[];
-  return c.json({ channels });
+  return c.json({ channels: channels.map(serializeChannel) });
 });
 
 api.get("/channels/top", (c) => {
   const uid = currentUserId(c);
   const rows = db.prepare(`
-    SELECT c.channel_id, c.title, c.thumbnail, c.subscriber_count,
+    SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail, c.subscriber_count,
            COUNT(h.id) AS watch_count,
            CAST(EXISTS(
              SELECT 1 FROM videos v WHERE v.channel_id = c.channel_id AND v.live_status = 'live'
@@ -1579,7 +1660,7 @@ api.get("/channels/recent", (c) => {
     ? ""
     : "AND COALESCE(is_short, 0) = 0";
   const rows = db.prepare(`
-    SELECT c.channel_id, c.title, c.thumbnail,
+    SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail,
            (SELECT thumbnail FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY published_at DESC LIMIT 1) AS latest_thumbnail,
            (SELECT video_id FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY published_at DESC LIMIT 1) AS latest_video_id
     FROM channels c
@@ -1604,7 +1685,7 @@ api.get("/channels/:id", (c) => {
     .all(uid, c.req.param("id")) as any[];
   // followed reflects the active profile (null row = not subscribed).
   const sub = db.prepare("SELECT followed, playback_speed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null } | null;
-  return c.json({ channel: { ...ch, followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, tags } });
+  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, tags } });
 });
 
 api.post("/channels/:id/sync", async (c) => {
@@ -1892,7 +1973,7 @@ api.delete("/rules/:id", (c) => {
 api.get("/filter-rules", (c) => {
   const uid = currentUserId(c);
   const rules = db.prepare(
-    `SELECT fr.*, c.title AS channel_title FROM filter_rules fr
+    `SELECT fr.*, COALESCE(c.custom_title, c.title) AS channel_title FROM filter_rules fr
      LEFT JOIN channels c ON c.channel_id = fr.channel_id WHERE fr.user_id = ? ORDER BY fr.id`
   ).all(uid);
   return c.json({ rules });
@@ -1919,7 +2000,7 @@ api.patch("/filter-rules/:id", async (c) => {
   if (field !== undefined) db.prepare("UPDATE filter_rules SET field = ? WHERE id = ?").run(field, id);
   if (action !== undefined) db.prepare("UPDATE filter_rules SET action = ? WHERE id = ?").run(action, id);
   if (channel_id !== undefined) db.prepare("UPDATE filter_rules SET channel_id = ? WHERE id = ?").run(channel_id || null, id);
-  const rule = db.prepare("SELECT fr.*, c.title AS channel_title FROM filter_rules fr LEFT JOIN channels c ON c.channel_id = fr.channel_id WHERE fr.id = ?").get(id);
+  const rule = db.prepare("SELECT fr.*, COALESCE(c.custom_title, c.title) AS channel_title FROM filter_rules fr LEFT JOIN channels c ON c.channel_id = fr.channel_id WHERE fr.id = ?").get(id);
   return c.json({ rule });
 });
 

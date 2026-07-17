@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent } from "react";
 import { useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Video } from "../api";
 import { emit } from "../events";
@@ -87,6 +87,7 @@ export default function VideoCard({
   showWatchProgress?: boolean;
 }) {
   const { t, language } = useI18n();
+  const navigate = useNavigate();
   const [fading, setFading] = useState(false);
   const [removed, setRemoved] = useState(false);
   const [actionProximity, setActionProximity] = useState(0);
@@ -141,6 +142,11 @@ export default function VideoCard({
 
   const requestLocalDownload = (e: MouseEvent) => {
     e.stopPropagation();
+    // Plugin off: send the user to the plugin settings instead of failing.
+    if (!video.downloads_enabled) {
+      navigate("/settings?tab=plugins");
+      return;
+    }
     setDownloadStatus("queued");
     api.requestDownload(video.video_id)
       .then((result) => setDownloadStatus(result.download?.status ?? "queued"))
@@ -401,8 +407,8 @@ export default function VideoCard({
                     </button>
                   </Tooltip>
                 )}
-                {video.downloads_enabled && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
-                  <Tooltip text={t("downloadLocally")}>
+                {(video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
+                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")}>
                     <button className="action-btn" onClick={requestLocalDownload}>
                       <ArrowDownToLine />
                     </button>

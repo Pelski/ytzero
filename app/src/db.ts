@@ -377,6 +377,12 @@ try { db.exec("ALTER TABLE videos ADD COLUMN chapters_json TEXT"); } catch {}
 // Priority downloads (viewer is actively waiting) jump the queue and may
 // preempt the running job.
 try { db.exec("ALTER TABLE downloads ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"); } catch {}
+// User-chosen display name; NULL falls back to the original `title` (which the
+// refresher keeps in sync with YouTube, so reverting is always possible).
+try { db.exec("ALTER TABLE channels ADD COLUMN custom_title TEXT"); } catch {}
+// Relative output path (no extension) rendered from the downloads plugin's
+// filename template; sidecar files (nfo/thumbnail/subs) share this base.
+try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
 db.exec("UPDATE videos SET bucket = 'today' WHERE bucket = 'morning';");
 db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
@@ -387,6 +393,10 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_hl: "en",
   player_cc: "0",
   player_cc_lang: "en",
+  // Subtitle appearance in the local player (per profile), in pixels.
+  player_sub_size: "19",
+  player_sub_color: "#ffffff",
+  player_sub_bg: "75",
   player_quality: "auto",
   player_speed: "1",
   keyboard_seek_seconds: "5",

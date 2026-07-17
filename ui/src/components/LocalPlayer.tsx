@@ -1,9 +1,11 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import { Clapperboard, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
-import type { SponsorSegment, VideoChapter } from "../api";
-import { SB_CATEGORIES } from "../api";
+import type { SponsorSegment, VideoChapter, VideoSubtitle } from "../api";
+import { api, SB_CATEGORIES } from "../api";
+import { subtitleLanguageLabel } from "../subtitleLanguages";
 import { useI18n } from "../i18n";
+import SubtitlePicker from "./SubtitlePicker";
 
 const VOLUME_KEY = "localPlayerVolume";
 const MUTED_KEY = "localPlayerMuted";
@@ -23,6 +25,12 @@ export interface LocalPlayerHandle {
   pauseVideo: () => void;
   playVideo: () => void;
   destroy: () => void;
+}
+
+export interface SubtitleStyle {
+  size: number;
+  color: string; // css color
+  bg: number; // background opacity 0-100
 }
 
 function fmtTime(s: number): string {
@@ -50,6 +58,12 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   onEnded?: () => void;
   keyboardSeekSeconds?: number;
   onShortcut?: (kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed", seconds?: number) => void;
+  videoId?: string;
+  ccDefaultOn?: boolean;
+  ccDefaultLang?: string;
+  preferredSubtitleLanguages?: string[];
+  subtitleStyle?: SubtitleStyle;
+  onSubtitleSizeChange?: (size: number) => void;
 }>(function LocalPlayer({
   src,
   poster,
@@ -66,6 +80,12 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   onEnded,
   keyboardSeekSeconds = 5,
   onShortcut,
+  videoId,
+  ccDefaultOn = false,
+  ccDefaultLang,
+  preferredSubtitleLanguages = [],
+  subtitleStyle,
+  onSubtitleSizeChange,
 }, ref) {
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -90,6 +110,105 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   const [scrubbing, setScrubbing] = useState(false);
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // ---------- subtitles ----------
+  const trackRef = useRef<HTMLTrackElement>(null);
+  const [subs, setSubs] = useState<VideoSubtitle[]>([]);
+  const [subLang, setSubLang] = useState<string | null>(null);
+  const [subLoading, setSubLoading] = useState<string | null>(null);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [cueLines, setCueLines] = useState<string[]>([]);
+
+  // Available subtitle files; honour the global "always captions" preference,
+  // quietly fetching the preferred language when it isn't on disk yet.
+  useEffect(() => {
+    if (!videoId) return;
+    let cancelled = false;
+    api.videoSubtitles(videoId).then((r) => {
+      if (cancelled) return;
+      setSubs(r.subtitles);
+      if (!ccDefaultOn || !ccDefaultLang) return;
+      if (r.subtitles.some((s) => s.lang === ccDefaultLang)) {
+        setSubLang(ccDefaultLang);
+      } else {
+        api.downloadSubtitle(videoId, ccDefaultLang).then((res) => {
+          if (cancelled) return;
+          setSubs(res.subtitles);
+          if (res.downloaded) setSubLang(ccDefaultLang);
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
+
+  // Picking a language that isn't downloaded: pause, fetch just the subtitles,
+  // then resume right where the viewer was.
+  const pickSubLang = useCallback(async (lang: string | null) => {
+    setSubError(null);
+    if (!lang) { setSubLang(null); return; }
+    if (subs.some((s) => s.lang === lang)) { setSubLang(lang); return; }
+    if (!videoId) return;
+    const v = videoRef.current;
+    const wasPlaying = Boolean(v && !v.paused && !v.ended);
+    v?.pause();
+    setSubLoading(lang);
+    try {
+      const r = await api.downloadSubtitle(videoId, lang);
+      setSubs(r.subtitles);
+      if (r.downloaded) setSubLang(lang);
+      else setSubError(lang);
+    } catch {
+      setSubError(lang);
+    } finally {
+      setSubLoading(null);
+      if (wasPlaying) v?.play().catch(() => {});
+    }
+  }, [subs, videoId]);
+
+  // The browser parses the WebVTT track (mode "hidden"); we render active cues
+  // ourselves so the user's subtitle style applies reliably everywhere.
+  useEffect(() => {
+    const trackEl = trackRef.current;
+    if (!trackEl || !subLang) { setCueLines([]); return; }
+    const track = trackEl.track;
+    track.mode = "hidden";
+    const onCue = () => {
+      const lines: string[] = [];
+      for (const cue of Array.from(track.activeCues ?? []) as VTTCue[]) {
+        const text = cue.getCueAsHTML?.().textContent ?? cue.text ?? "";
+        for (const line of text.split("\n")) {
+          const trimmed = line.trim();
+          if (trimmed) lines.push(trimmed);
+        }
+      }
+      // Auto-generated captions repeat the previous line in the next cue.
+      setCueLines([...new Set(lines)]);
+    };
+    track.addEventListener("cuechange", onCue);
+    onCue();
+    return () => {
+      track.removeEventListener("cuechange", onCue);
+      track.mode = "disabled";
+      setCueLines([]);
+    };
+  }, [subLang, subs]);
+
+  const activeSub = subLang ? subs.find((s) => s.lang === subLang) ?? null : null;
+  const subStyle: SubtitleStyle = subtitleStyle ?? { size: 19, color: "#ffffff", bg: 75 };
+  const subBg = `rgba(0, 0, 0, ${Math.min(100, Math.max(0, subStyle.bg)) / 100})`;
+  const toggleSubtitles = useCallback(() => {
+    if (subLang) {
+      void pickSubLang(null);
+      return;
+    }
+    const preferred = subs.find((sub) => sub.lang === ccDefaultLang)?.lang ?? subs[0]?.lang ?? ccDefaultLang ?? null;
+    if (preferred) void pickSubLang(preferred);
+  }, [ccDefaultLang, pickSubLang, subLang, subs]);
+  const changeSubtitleSize = (direction: -1 | 1) => {
+    const next = Math.min(48, Math.max(12, subStyle.size + direction * 2));
+    if (next !== subStyle.size) onSubtitleSizeChange?.(next);
+  };
 
   const showControls = useCallback(() => {
     setControlsVisible(true);
@@ -211,6 +330,21 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         return;
       }
       switch (e.key) {
+        case "+":
+        case "=":
+          e.preventDefault();
+          changeSubtitleSize(1);
+          break;
+        case "-":
+        case "_":
+          e.preventDefault();
+          changeSubtitleSize(-1);
+          break;
+        case "c":
+        case "C":
+          e.preventDefault();
+          if (!e.repeat) toggleSubtitles();
+          break;
         case "k":
         case "K":
           e.preventDefault();
@@ -266,7 +400,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [togglePlay, seekBy, playbackRate, keyboardSeekSeconds]);
+  }, [togglePlay, seekBy, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId]);
 
   // Media Session: system-level controls (keyboard media keys, lock screen).
   useEffect(() => {
@@ -388,7 +522,29 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           setControlsVisible(true);
           onEnded?.();
         }}
-      />
+      >
+        {activeSub && (
+          <track
+            key={activeSub.lang}
+            ref={trackRef}
+            kind="subtitles"
+            src={activeSub.url}
+            srcLang={activeSub.lang}
+            label={subtitleLanguageLabel(activeSub.lang)}
+            default
+          />
+        )}
+      </video>
+
+      {subLang && cueLines.length > 0 && (
+        <div
+          className={`lp-subtitles${controlsVisible || !playing ? " raised" : ""}`}
+          style={{ color: subStyle.color, fontSize: `${subStyle.size * (isFullscreen ? 1.5 : 1)}px`, "--lp-sub-bg": subBg } as CSSProperties}
+          aria-live="off"
+        >
+          {cueLines.map((line, i) => <span key={i}>{line}</span>)}
+        </div>
+      )}
 
       {buffering && (
         <div className="lp-spinner" aria-hidden="true"><LoaderCircle className="spin" size={42} /></div>
@@ -448,6 +604,16 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           </div>
           <span className="lp-time">{fmtTime(currentTime)} / {fmtTime(duration)}</span>
           <span className="lp-spacer" />
+          <SubtitlePicker
+            videoId={videoId}
+            subtitles={subs}
+            selectedLanguage={subLang}
+            preferredLanguages={preferredSubtitleLanguages}
+            loadingLanguage={subLoading}
+            errorLanguage={subError}
+            onSelect={pickSubLang}
+            onToggle={toggleSubtitles}
+          />
           {onToggleCinema && (
             <button
               className={`lp-btn${cinemaMode ? " active" : ""}`}

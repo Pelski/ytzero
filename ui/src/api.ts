@@ -41,6 +41,7 @@ export interface Video {
   channel_subscriber_count: string | null;
   download_status?: DownloadStatus | null;
   downloads_enabled?: boolean;
+  downloads_allowed?: boolean;
   download_progress?: number | null;
   tags: Tag[];
   history_id?: number;
@@ -50,6 +51,8 @@ export interface Video {
 export interface Channel {
   channel_id: string;
   title: string;
+  original_title?: string;
+  custom_title?: string | null;
   url: string;
   thumbnail: string;
   subscriber_count?: string | null;
@@ -139,6 +142,9 @@ export interface AppSettings {
   player_hl: string;
   player_cc: string;
   player_cc_lang: string;
+  player_sub_size: string;
+  player_sub_color: string;
+  player_sub_bg: string;
   player_quality: string;
   player_speed: string;
   keyboard_seek_seconds: string;
@@ -199,7 +205,7 @@ export interface PluginSettingDef {
   key: string;
   label: string;
   description: string;
-  type: "slider" | "select" | "toggle";
+  type: "slider" | "select" | "toggle" | "text" | "multiselect";
   min?: number;
   max?: number;
   step?: number;
@@ -216,6 +222,11 @@ export interface PluginSettingsResponse {
   definitions: PluginSettingDef[];
   settings: Record<string, PluginSettingValue>;
   terms?: PluginTermState;
+}
+
+export interface VideoSubtitle {
+  lang: string;
+  url: string;
 }
 
 export type DownloadStatus = "queued" | "downloading" | "done" | "error";
@@ -564,6 +575,9 @@ export const api = {
   pinDownload: (id: string, pinned: boolean) =>
     http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download/pin`, { method: "PUT", body: JSON.stringify({ pinned }) }),
   streamUrl: (id: string) => `/api/videos/${id}/stream`,
+  videoSubtitles: (id: string) => http<{ subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`),
+  downloadSubtitle: (id: string, lang: string) =>
+    http<{ ok: boolean; downloaded: boolean; subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`, { method: "POST", body: JSON.stringify({ lang }) }),
   downloadFileUrl: (id: string) => `/api/videos/${id}/file`,
   discoveryRecommendations: (refresh = false) => http<{ enabled: boolean; recommendations: DiscoveryRecommendation[] }>(`/discovery/recommendations${refresh ? "?refresh=1" : ""}`),
   dismissDiscoveryRecommendation: (id: string) =>
@@ -616,8 +630,10 @@ export const api = {
   recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number })[] }>("/channels/recent"),
   topChannels: () => http<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("/channels/top"),
   syncChannel: (id: string) => http<{ added: number }>(`/channels/${id}/sync`, { method: "POST" }),
-  addChannel: (url: string) =>
-    http<{ channel_id: string; title: string }>("/channels", { method: "POST", body: JSON.stringify({ url }) }),
+  addChannel: (url: string, customName?: string) =>
+    http<{ channel_id: string; title: string }>("/channels", { method: "POST", body: JSON.stringify({ url, custom_name: customName || undefined }) }),
+  renameChannel: (id: string, customTitle: string | null) =>
+    http<{ channel: Channel }>(`/channels/${id}/name`, { method: "PUT", body: JSON.stringify({ custom_title: customTitle }) }),
   removeChannel: (id: string) => http(`/channels/${id}`, { method: "DELETE" }),
   tagChannel: (id: string, tag_id: number) =>
     http(`/channels/${id}/tags`, { method: "POST", body: JSON.stringify({ tag_id }) }),
