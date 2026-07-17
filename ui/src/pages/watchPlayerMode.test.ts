@@ -3,6 +3,7 @@ import { resolvePlayerKind } from "./watchPlayerMode";
 
 const base = {
   hasVideo: true,
+  isLive: false,
   downloadStatus: null,
   playerSource: "auto" as const,
   playbackPolicyReady: true,
@@ -27,6 +28,10 @@ describe("resolvePlayerKind", () => {
 
   test("plays an existing local file without waiting for policy requests", () => {
     expect(resolvePlayerKind({ ...base, downloadStatus: "done", playbackPolicyReady: false })).toBe("local");
+  });
+
+  test("always uses YouTube for a live or upcoming stream", () => {
+    expect(resolvePlayerKind({ ...base, isLive: true, downloadStatus: "done", watchMode: "download" })).toBe("youtube");
   });
 
 });

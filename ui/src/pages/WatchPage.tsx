@@ -299,6 +299,7 @@ export default function WatchPage() {
   const watchMode = downloadsEnabled && !isChildProfile ? pluginWatchMode : "youtube";
   const playerKind = resolvePlayerKind({
     hasVideo: !!video,
+    isLive: video?.live_status === "live" || video?.live_status === "upcoming",
     downloadStatus,
     playerSource,
     playbackPolicyReady,
@@ -1317,7 +1318,7 @@ export default function WatchPage() {
                           <Undo2 /> {t("restoreRejectedVideo")}
                         </button>
                       )}
-                      {downloadsEnabled && !isChildProfile && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
+                      {downloadsEnabled && !isChildProfile && video.live_status !== "live" && video.live_status !== "upcoming" && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
                         <div className="more-menu-section">
                           <div className="more-menu-divider" />
                           <div className="more-menu-section-label">{t("localDownload")}</div>

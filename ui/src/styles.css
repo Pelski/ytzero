@@ -1341,8 +1341,9 @@ button.video-card:disabled { cursor: default; }
 .thumb-actions-zone:focus-within .thumb-actions {
   opacity: 1;
   transform: translateY(0) scale(1);
-  pointer-events: auto;
 }
+.thumb-actions button,
+.thumb-actions a { pointer-events: auto; }
 @media (hover: none) {
   .thumb-actions-peek {
     opacity: 0.92;

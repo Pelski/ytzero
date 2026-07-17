@@ -755,6 +755,11 @@ api.post("/videos/:id/download", async (c) => {
   if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
   const id = c.req.param("id");
+  const video = db.prepare("SELECT live_status FROM videos WHERE video_id = ?").get(id) as { live_status: string } | null;
+  if (!video) return c.json({ error: "not found" }, 404);
+  if (video.live_status === "live" || video.live_status === "upcoming") {
+    return c.json({ error: "live streams cannot be downloaded while they are active" }, 409);
+  }
   const body = await c.req.json().catch(() => ({} as { priority?: boolean }));
   if (body.priority) prioritizeDownload(id);
   else enqueueDownload(id, "manual");

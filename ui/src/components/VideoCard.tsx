@@ -97,6 +97,7 @@ export default function VideoCard({
   const [swiping, setSwiping] = useState(false);
   const [committedDir, setCommittedDir] = useState<"left" | "right" | null>(null);
   const [committedFeedback, setCommittedFeedback] = useState<CardFeedback | null>(null);
+  const canDownloadLocally = video.live_status !== "live" && video.live_status !== "upcoming";
   const publishedTime = formatTimeAgo(video.published_at, language);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
@@ -400,14 +401,14 @@ export default function VideoCard({
                 )}
               />
               <div className="thumb-actions-row secondary">
-                {video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading") && (
+                {canDownloadLocally && video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading") && (
                   <Tooltip text={t("cancelDownload")}>
                     <button className="action-btn" onClick={cancelLocalDownload}>
                       <X />
                     </button>
                   </Tooltip>
                 )}
-                {(video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
+                {canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
                   <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")}>
                     <button className="action-btn" onClick={requestLocalDownload}>
                       <ArrowDownToLine />

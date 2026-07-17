@@ -4,6 +4,7 @@ export type PlayerKind = "loading" | "local" | "youtube" | "blocked" | "choice" 
 
 export function resolvePlayerKind(input: {
   hasVideo: boolean;
+  isLive: boolean;
   downloadStatus: string | null;
   playerSource: "auto" | "youtube";
   playbackPolicyReady: boolean;
@@ -11,6 +12,9 @@ export function resolvePlayerKind(input: {
   sourceChoice: SourceChoice;
   watchMode: WatchSourceMode;
 }): PlayerKind {
+  // A stream is not a stable local file. Even if an old download row exists,
+  // always use YouTube while the broadcast is live or scheduled.
+  if (input.hasVideo && input.isLive) return "youtube";
   if (input.hasVideo && input.downloadStatus === "done" && input.playerSource === "auto") return "local";
   if (!input.playbackPolicyReady) return "loading";
   if (input.hasVideo && input.childDownloadsOnly) return "blocked";
