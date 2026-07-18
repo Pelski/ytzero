@@ -689,7 +689,18 @@ const VIDEO_INFO_TTL = 10 * 60_000;
 
 function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
   const vd = pr?.videoDetails;
-  if (!vd?.videoId) throw new Error("videoDetails missing");
+  if (!vd?.videoId) {
+    // Surface why YouTube withheld the video: a stripped player response with
+    // playabilityStatus LOGIN_REQUIRED + "confirm you're not a bot" means the
+    // server's egress IP is bot-flagged (VPN/WARP/datacenter), not a bug here.
+    const ps = pr?.playabilityStatus;
+    const reason = ps?.reason
+      ?? ps?.errorScreen?.playerErrorMessageRenderer?.reason?.simpleText;
+    const detail = pr == null
+      ? "no player response"
+      : [ps?.status, reason].filter(Boolean).join(": ") || "no playabilityStatus";
+    throw new Error(`videoDetails missing (${detail})`);
+  }
 
   const mf = pr?.microformat?.playerMicroformatRenderer;
   const lengthSec = parseInt(vd.lengthSeconds ?? "", 10);

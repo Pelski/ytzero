@@ -196,6 +196,7 @@ export const pl: Locale = {
     child: "Dziecko",
     logs: "Logi",
     logsHint: "Ostatnie logi aplikacji",
+    logsReportHint: "Zgłaszasz błąd? Dołącz do zgłoszenia wersję i commit:",
     logsEmpty: "Brak logów",
     logsShowing: "Pokazuję {count} linii, rozmiar pliku {size} bajtów",
     filters: "Filtry",

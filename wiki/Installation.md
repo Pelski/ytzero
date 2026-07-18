@@ -150,14 +150,18 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/Pelski/ytzero/main/scrip
 
 ## Unraid
 
-YT Zero ships a Community Applications template
+YT Zero is listed on Unraid Community Applications:
+**[YT-Zero on Community Apps](https://ca.unraid.net/apps/yt-zero-1ry69q20pcrx1i?q=YT-Zero)**.
+Install it from **Apps** by searching for “YT-Zero”, review the data path and
+port, then apply it.
+
+The listing is backed by the template in this repository
 ([`templates/ytzero.xml`](https://github.com/Pelski/ytzero/blob/main/templates/ytzero.xml))
 and repository metadata in `ca_profile.xml`, following Unraid's official
-Community Apps repository layout.
-Once it is listed, install it from **Apps** by searching for “YT Zero”. Until
-then, use either of these methods:
+Community Apps repository layout. If you prefer not to use Community Apps,
+either of these methods works too:
 
-### Manual container (recommended until the template is listed)
+### Manual container
 
 In **Docker → Add Container**, switch to advanced view if necessary and set:
 

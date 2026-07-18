@@ -194,6 +194,7 @@ export const de: Locale = {
     child: "Kindersicherung",
     logs: "Protokolle",
     logsHint: "Aktuelle Anwendungsprotokolle",
+    logsReportHint: "Fehler melden? Bitte Version und Commit angeben:",
     logsEmpty: "Noch keine Protokolleinträge",
     logsShowing: "Zeige {count} Zeilen, Dateigröße {size} Bytes",
     filters: "Filter",

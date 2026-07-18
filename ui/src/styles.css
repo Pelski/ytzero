@@ -3632,6 +3632,27 @@ a.playlist-item { text-decoration: none; }
     justify-content: space-between;
   }
 }
+.logs-build-alert {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font-size: 13px;
+}
+.logs-build-alert svg { flex-shrink: 0; color: var(--accent); }
+.logs-build-alert code {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  user-select: all;
+}
+
 .logs-meta {
   color: var(--text-2);
   font-size: 12px;

@@ -22,6 +22,7 @@ COPY app/src ./src
 COPY --from=ui-build /ui/dist ./public
 
 ARG YTZERO_VERSION=dev
+ARG YTZERO_COMMIT=unknown
 ENV PORT=3001 \
     IDLE_TIMEOUT_SECONDS=120 \
     DB_PATH=/data/db/ytzero.db \
@@ -31,7 +32,8 @@ ENV PORT=3001 \
     LOG_PATH=/data/logs/ytzero.log \
     YTDLP_AUTO_UPDATE=1 \
     UI_DIST=./public \
-    YTZERO_VERSION=${YTZERO_VERSION}
+    YTZERO_VERSION=${YTZERO_VERSION} \
+    YTZERO_COMMIT=${YTZERO_COMMIT}
 
 VOLUME /data
 EXPOSE 3001

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
-import { Camera, Check, ChevronDown, ChevronUp, Clock, Download, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronUp, Clock, Download, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppLogs, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
@@ -2890,6 +2890,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               {t("refresh")}
             </button>
           </div>
+          {logs && (
+            <div className="logs-build-alert">
+              <Info size={16} />
+              <span>{t("logsReportHint")}</span>
+              <code>{logs.version} ({logs.commit})</code>
+            </div>
+          )}
           {loadingLogs && !logs ? (
             <TableSkeleton rows={8} columns={1} />
           ) : !logs || logs.lines.length === 0 ? (

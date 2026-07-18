@@ -5,10 +5,7 @@ import { db, getSetting } from "./db";
 import { startScheduler } from "./refresher";
 import { startDownloader } from "./downloader";
 import { log } from "./logger";
-
-// Baked in by the Docker build and by scripts/install.sh; "dev" when running
-// straight from a checkout.
-const VERSION = process.env.YTZERO_VERSION || "dev";
+import { COMMIT, VERSION } from "./version";
 
 const app = new Hono();
 
@@ -20,9 +17,9 @@ app.get("/api/health", (c) => {
     db.query("SELECT 1").get();
   } catch (err) {
     log.error("health.db", { error: String(err) });
-    return c.json({ status: "error", version: VERSION }, 503);
+    return c.json({ status: "error", version: VERSION, commit: COMMIT }, 503);
   }
-  return c.json({ status: "ok", version: VERSION, uptime: Math.round(process.uptime()) });
+  return c.json({ status: "ok", version: VERSION, commit: COMMIT, uptime: Math.round(process.uptime()) });
 });
 
 app.route("/api", api);
@@ -62,4 +59,4 @@ startDownloader();
 const port = Number(process.env.PORT ?? 3001);
 const idleTimeout = Number(process.env.IDLE_TIMEOUT_SECONDS ?? 120);
 const server = Bun.serve({ port, idleTimeout, fetch: app.fetch });
-log.info("app.listen", { url: String(server.url), port, uiDir, idleTimeout });
+log.info("app.listen", { url: String(server.url), port, uiDir, idleTimeout, version: VERSION, commit: COMMIT });

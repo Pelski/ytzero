@@ -130,17 +130,19 @@ docker compose up -d
 
 ### Unraid
 
-The repository includes an official-layout Community Apps template. Once YT
-Zero is listed, find it by searching for **YT Zero** under **Apps**. Until then,
-load the bundled template from an Unraid terminal:
+YT Zero is available in Community Applications:
+**[YT-Zero on Unraid Community Apps](https://ca.unraid.net/apps/yt-zero-1ry69q20pcrx1i?q=YT-Zero)**.
+Open **Apps**, search for **YT-Zero**, install, review the
+`/mnt/user/appdata/ytzero` data path and port `3001`, then apply it.
+
+Alternatively, load the bundled template manually from an Unraid terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Pelski/ytzero/main/templates/ytzero.xml \
   -o /boot/config/plugins/dockerMan/templates-user/my-ytzero.xml
 ```
 
-Reload **Docker → Add Container**, select the `ytzero` template, review the
-`/mnt/user/appdata/ytzero` data path and port `3001`, then apply it.
+then reload **Docker → Add Container** and select the `ytzero` template.
 
 ### Proxmox VE
 

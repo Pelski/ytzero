@@ -195,6 +195,7 @@ export const en = {
     child: "Child",
     logs: "Logs",
     logsHint: "Recent application logs",
+    logsReportHint: "Reporting a bug? Include the version and commit:",
     logsEmpty: "No logs yet",
     logsShowing: "Showing {count} lines, file size {size} bytes",
     filters: "Filters",

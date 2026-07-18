@@ -23,6 +23,7 @@ import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
+import { COMMIT, VERSION } from "./version";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadStats, enqueueDownload, fetchSubtitles, getDownload, listDownloads, listSubtitleFiles, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
@@ -2686,5 +2687,5 @@ api.post("/refresh", async (c) => {
 
 api.get("/logs", (c) => {
   const limit = Math.min(1000, Math.max(1, Number(c.req.query("limit") ?? 300)));
-  return c.json(readRecentLogs(limit));
+  return c.json({ ...readRecentLogs(limit), version: VERSION, commit: COMMIT });
 });

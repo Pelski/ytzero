@@ -429,6 +429,8 @@ export interface AuthConfigUpdate {
 export interface AppLogs {
   size: number;
   lines: string[];
+  version: string;
+  commit: string;
 }
 
 export type Bucket = "today" | "tonight" | "tomorrow" | "tomorrow_evening" | "weekend";

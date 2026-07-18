@@ -402,9 +402,18 @@ export async function refreshAvatarsBatch() {
  * included once YouTube exposes their final length. Shorts are fine to fill —
  * the UI just hides the badge for them. Most-recent first so the active feed
  * fills before the tail.
+ *
+ * Failed fetches back off exponentially (15m, 30m, ... capped at 6h) so a
+ * host whose IP YouTube bot-flags doesn't retry the same videos every cron
+ * tick forever. The state is in-memory on purpose: a restart wipes it, giving
+ * every video a fresh chance without any schema bookkeeping.
  */
+const durationRetry = new Map<string, { attempts: number; nextAt: number }>();
+const DURATION_RETRY_BASE_MS = 15 * 60_000;
+const DURATION_RETRY_MAX_MS = 6 * 60 * 60_000;
 export async function refreshDurationsBatch(limit = 10) {
-  const rows = db
+  const now = Date.now();
+  const candidates = db
     .prepare(
       `SELECT video_id, live_status FROM videos
        WHERE duration IS NULL
@@ -413,7 +422,10 @@ export async function refreshDurationsBatch(limit = 10) {
        ORDER BY COALESCE(published_at, '1970-01-01') DESC
        LIMIT ?`
     )
-    .all(VIDEO_MAINTENANCE_CUTOFF, limit) as { video_id: string; live_status: string }[];
+    .all(VIDEO_MAINTENANCE_CUTOFF, limit * 3) as { video_id: string; live_status: string }[];
+  const rows = candidates
+    .filter((r) => (durationRetry.get(r.video_id)?.nextAt ?? 0) <= now)
+    .slice(0, limit);
   if (rows.length === 0) return;
 
   const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
@@ -428,6 +440,7 @@ export async function refreshDurationsBatch(limit = 10) {
     const { video_id, live_status } = rows[i];
     try {
       const info = await fetchVideoInfo(video_id);
+      durationRetry.delete(video_id);
       if (info.duration) {
         save.run(info.duration, video_id);
         filled++;
@@ -435,7 +448,15 @@ export async function refreshDurationsBatch(limit = 10) {
         markNone.run(video_id);
       }
     } catch (e) {
-      log.warn("video.duration_failed", { videoId: video_id, error: e instanceof Error ? e.message : String(e) });
+      const attempts = (durationRetry.get(video_id)?.attempts ?? 0) + 1;
+      const delayMs = Math.min(DURATION_RETRY_BASE_MS * 2 ** (attempts - 1), DURATION_RETRY_MAX_MS);
+      durationRetry.set(video_id, { attempts, nextAt: Date.now() + delayMs });
+      log.warn("video.duration_failed", {
+        videoId: video_id,
+        error: e instanceof Error ? e.message : String(e),
+        attempts,
+        retryInMin: Math.round(delayMs / 60_000),
+      });
     }
     if (i < rows.length - 1) await Bun.sleep(800);
   }
