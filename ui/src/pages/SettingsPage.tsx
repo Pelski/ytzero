@@ -354,6 +354,101 @@ function PluginMultiselect({ value, options, searchPlaceholder, onChange }: {
   );
 }
 
+function DownloadCookiesPanel() {
+  const { t } = useI18n();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [configured, setConfigured] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pastedCookies, setPastedCookies] = useState("");
+
+  useEffect(() => {
+    api.downloadCookies().then((result) => setConfigured(result.configured)).catch(() => setError(t("downloadCookiesStatusError")));
+  }, [t]);
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    setError("");
+    try {
+      const result = await api.uploadDownloadCookies(file);
+      setConfigured(result.configured);
+      setPastedCookies("");
+      setPasteOpen(false);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("error"));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const remove = async () => {
+    setError("");
+    try {
+      const result = await api.removeDownloadCookies();
+      setConfigured(result.configured);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : t("error"));
+    }
+  };
+
+  return (
+    <section className="plugin-config-section download-cookies-panel">
+      <div className="plugin-config-section-head">
+        <h3>{t("downloadCookiesTitle")}</h3>
+        <p>{t("downloadCookiesHint")}</p>
+      </div>
+      <div className="download-cookies-warning">
+        <Info size={16} />
+        <div>
+          <strong>{t("downloadCookiesWarningTitle")}</strong>
+          <span>{t("downloadCookiesWarning")} <a href="https://github.com/yt-dlp/yt-dlp/wiki/Extractors" target="_blank" rel="noreferrer">{t("downloadCookiesReadGuide")}</a></span>
+        </div>
+      </div>
+      <div className="download-cookies-actions">
+        <span className={`download-cookies-status${configured ? " configured" : ""}`}>{configured ? t("downloadCookiesConfigured") : t("downloadCookiesNotConfigured")}</span>
+        <input
+          ref={fileInputRef}
+          hidden
+          type="file"
+          accept=".txt,text/plain"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void upload(file);
+            event.target.value = "";
+          }}
+        />
+        <button className="btn" type="button" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
+          <FolderUp size={15} /> {uploading ? t("uploading") : t("downloadCookiesUpload")}
+        </button>
+        <button className="btn" type="button" disabled={uploading} onClick={() => setPasteOpen((open) => !open)}>
+          <FileText size={15} /> {t("downloadCookiesPaste")}
+        </button>
+        {configured && <button className="btn danger" type="button" onClick={() => void remove()}><Trash2 size={15} /> {t("downloadCookiesRemove")}</button>}
+      </div>
+      {pasteOpen && (
+        <div className="download-cookies-paste">
+          <textarea
+            autoFocus
+            value={pastedCookies}
+            placeholder={t("downloadCookiesPastePlaceholder")}
+            onChange={(event) => setPastedCookies(event.target.value)}
+          />
+          <div className="download-cookies-paste-actions">
+            <button className="btn primary" type="button" disabled={uploading || !pastedCookies.trim()} onClick={() => void upload(new File([pastedCookies], "cookies.txt", { type: "text/plain" }))}>
+              {t("downloadCookiesSave")}
+            </button>
+            <button className="btn" type="button" disabled={uploading} onClick={() => { setPasteOpen(false); setPastedCookies(""); }}>
+              {t("cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+      {error && <div className="plugin-config-error">{error}</div>}
+    </section>
+  );
+}
+
 function FilterRuleRow({ rule, channels, onSave, onRemove }: { rule: FilterRule; channels: Channel[]; onSave: (p: Parameters<typeof api.updateFilterRule>[1]) => Promise<void>; onRemove: () => void }) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
@@ -2716,6 +2811,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         </div>
                       </section>
                     ))}
+                    {plugin.id === "downloads" && <DownloadCookiesPanel />}
                   {config.terms && (
                     <section className="plugin-config-section plugin-terms-panel">
                       <div className="plugin-terms-head">

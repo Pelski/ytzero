@@ -25,7 +25,7 @@ import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
 import { COMMIT, VERSION } from "./version";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
-import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadStats, enqueueDownload, fetchSubtitles, getDownload, listDownloads, listSubtitleFiles, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, fetchSubtitles, getDownload, listDownloads, listSubtitleFiles, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
@@ -738,6 +738,27 @@ api.post("/plugins/:id/reset", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
   }
+});
+
+// yt-dlp accepts a Netscape-format cookie jar. Keep the secret in a private
+// server-side file rather than the settings table, which is returned to UI.
+api.get("/plugins/downloads/cookies", (c) => c.json({ configured: downloadCookiesConfigured() }));
+
+api.post("/plugins/downloads/cookies", async (c) => {
+  try {
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) return c.json({ error: "cookies.txt file required" }, 400);
+    saveDownloadCookies(await file.text());
+    return c.json({ configured: true });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+api.delete("/plugins/downloads/cookies", (c) => {
+  removeDownloadCookies();
+  return c.json({ configured: false });
 });
 
 // ---------- downloads plugin ----------
@@ -1589,6 +1610,15 @@ api.get("/channels/:id/playlists", async (c) => {
     .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null } | null;
 
   if (cached?.playlists_json) {
+    try {
+      const playlists = JSON.parse(cached.playlists_json);
+      // Pre-pagination cache entries commonly contain exactly YouTube's first
+      // page of 30 cards. Upgrade them synchronously so this request already
+      // shows the missing playlists instead of waiting up to three days.
+      if (Array.isArray(playlists) && playlists.length === 30) {
+        return c.json({ playlists: await refreshChannelPlaylists(channelId) });
+      }
+    } catch { /* corrupted cache — fall through to a fresh fetch */ }
     if (ageMs(cached.playlists_fetched_at) > PLAYLISTS_DB_TTL) {
       refreshChannelPlaylists(channelId).catch((e) =>
         log.warn("channel.playlists.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
@@ -1608,11 +1638,35 @@ api.get("/channels/:id/playlists", async (c) => {
 api.put("/channels/:id/follow", async (c) => {
   const uid = currentUserId(c);
   const { followed } = await c.req.json<{ followed: boolean }>();
+  const channelId = c.req.param("id");
+  const existing = db.prepare("SELECT 1 FROM channels WHERE channel_id = ?").get(channelId);
+
+  // A channel reached through YouTube search may not have any local videos yet,
+  // so it has no `channels` row. Create that parent row before writing the
+  // profile subscription relation; otherwise SQLite correctly rejects the FK.
+  if (followed && !existing) {
+    try {
+      const info = await resolveChannelId(channelId);
+      if (info.channelId !== channelId) return c.json({ error: "channel id mismatch" }, 400);
+      db.prepare(
+        "INSERT OR IGNORE INTO channels (channel_id, title, url, thumbnail) VALUES (?, ?, ?, ?)"
+      ).run(channelId, info.title, `https://www.youtube.com/channel/${channelId}`, info.thumbnail);
+      refreshChannel(channelId)
+        .then(() => refreshLiveStatus(channelId))
+        .catch((error) => log.error("channel.initial_refresh_failed", { channelId, error: error instanceof Error ? error.message : String(error) }));
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    }
+  }
+
+  // Unfollowing a channel that has since disappeared locally is already the
+  // desired state, and avoids inserting a relation with no parent channel.
+  if (!followed && !existing) return c.json({ ok: true });
   db.prepare(
     `INSERT INTO user_channels (user_id, channel_id, followed) VALUES (?, ?, ?)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = excluded.followed`
-  ).run(uid, c.req.param("id"), followed ? 1 : 0);
-  if (followed) db.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(c.req.param("id"));
+  ).run(uid, channelId, followed ? 1 : 0);
+  if (followed) db.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(channelId);
   return c.json({ ok: true });
 });
 

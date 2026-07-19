@@ -567,6 +567,13 @@ export const api = {
     http<PluginSettingsResponse>(`/plugins/${id}/settings`, { method: "PUT", body: JSON.stringify(patch) }),
   resetPlugin: (id: string) =>
     http<PluginSettingsResponse>(`/plugins/${id}/reset`, { method: "POST", body: "{}" }),
+  downloadCookies: () => http<{ configured: boolean }>("/plugins/downloads/cookies"),
+  uploadDownloadCookies: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return http<{ configured: boolean }>("/plugins/downloads/cookies", { method: "POST", body: fd });
+  },
+  removeDownloadCookies: () => http<{ configured: boolean }>("/plugins/downloads/cookies", { method: "DELETE" }),
   downloads: () => http<DownloadsResponse>("/downloads"),
   requestDownload: (id: string, priority = false) =>
     http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download`, { method: "POST", body: JSON.stringify({ priority }) }),

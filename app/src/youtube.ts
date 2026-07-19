@@ -381,20 +381,10 @@ export interface PlaylistInfo {
   videoCount: string;
 }
 
-const playlistCache = new Map<string, { at: number; data: PlaylistInfo[] }>();
+const playlistCache = new Map<string, { at: number; data: PlaylistInfo[]; complete: boolean }>();
+const MAX_PLAYLIST_CONTINUATION_PAGES = 50;
 
-export async function fetchChannelPlaylists(channelId: string): Promise<PlaylistInfo[]> {
-  const cached = playlistCache.get(channelId);
-  if (cached && Date.now() - cached.at < ABOUT_TTL) return cached.data;
-
-  const res = await fetch(`https://www.youtube.com/channel/${channelId}/playlists`, {
-    headers: FETCH_HEADERS,
-  });
-  if (!res.ok) throw new Error(`playlists fetch failed (${res.status})`);
-  const data = extractInitialData(await res.text());
-  const out: PlaylistInfo[] = [];
-  const seen = new Set<string>();
-
+function collectChannelPlaylists(data: any, out: PlaylistInfo[], seen: Set<string>) {
   // Legacy markup.
   for (const r of deepCollect(data, "gridPlaylistRenderer")) {
     if (!r?.playlistId || seen.has(r.playlistId)) continue;
@@ -421,7 +411,68 @@ export async function fetchChannelPlaylists(channelId: string): Promise<Playlist
       videoCount: badges[0] ?? "",
     });
   }
-  playlistCache.set(channelId, { at: Date.now(), data: out });
+}
+
+function playlistContinuationToken(data: any): string | null {
+  for (const renderer of deepCollect(data, "continuationItemRenderer")) {
+    const token = renderer?.continuationEndpoint?.continuationCommand?.token;
+    if (typeof token === "string" && token) return token;
+  }
+  return null;
+}
+
+function innertubePlaylistConfig(html: string): { apiKey: string; clientVersion: string } | null {
+  const apiKey = html.match(/"INNERTUBE_API_KEY":"([^"]+)"/)?.[1];
+  const clientVersion = html.match(/"INNERTUBE_CONTEXT_CLIENT_VERSION":"([^"]+)"/)?.[1];
+  return apiKey && clientVersion ? { apiKey, clientVersion } : null;
+}
+
+async function fetchPlaylistContinuation(token: string, config: { apiKey: string; clientVersion: string }) {
+  const res = await fetch(`https://www.youtube.com/youtubei/v1/browse?prettyPrint=false&key=${encodeURIComponent(config.apiKey)}`, {
+    method: "POST",
+    headers: { ...FETCH_HEADERS, "Content-Type": "application/json", Origin: "https://www.youtube.com" },
+    body: JSON.stringify({
+      context: { client: { clientName: "WEB", clientVersion: config.clientVersion, hl: "en", gl: "US" } },
+      continuation: token,
+    }),
+  });
+  if (!res.ok) throw new Error(`playlist continuation fetch failed (${res.status})`);
+  return res.json();
+}
+
+export async function fetchChannelPlaylists(channelId: string): Promise<PlaylistInfo[]> {
+  const cached = playlistCache.get(channelId);
+  // Older versions cached only YouTube's first page (~30 cards). Re-fetch that
+  // boundary case once so it is upgraded to a complete paginated result.
+  if (cached && cached.complete && Date.now() - cached.at < ABOUT_TTL) return cached.data;
+
+  const res = await fetch(`https://www.youtube.com/channel/${channelId}/playlists`, {
+    headers: FETCH_HEADERS,
+  });
+  if (!res.ok) throw new Error(`playlists fetch failed (${res.status})`);
+  const html = await res.text();
+  const data = extractInitialData(html);
+  const out: PlaylistInfo[] = [];
+  const seen = new Set<string>();
+  collectChannelPlaylists(data, out, seen);
+
+  // Channel pages render only the first ~30 playlists. Follow the browse API
+  // continuation tokens so a channel's remaining playlists are not invisible.
+  const config = innertubePlaylistConfig(html);
+  let token = playlistContinuationToken(data);
+  for (let page = 0; config && token && page < MAX_PLAYLIST_CONTINUATION_PAGES; page++) {
+    const previousToken = token;
+    try {
+      const continuation = await fetchPlaylistContinuation(token, config);
+      collectChannelPlaylists(continuation, out, seen);
+      token = playlistContinuationToken(continuation);
+      if (token === previousToken) break;
+    } catch {
+      // Keep the already-collected pages usable if YouTube throttles a later one.
+      break;
+    }
+  }
+  playlistCache.set(channelId, { at: Date.now(), data: out, complete: true });
   return out;
 }
 

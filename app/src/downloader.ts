@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { db, getSetting } from "./db";
 import { log } from "./logger";
@@ -7,6 +7,8 @@ import { log } from "./logger";
 // profile. Retention below is the only thing that removes them.
 const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR ?? resolve(import.meta.dir, "../../data/downloads");
 mkdirSync(DOWNLOADS_DIR, { recursive: true });
+const DOWNLOAD_COOKIES_FILE = resolve(import.meta.dir, "../../data/yt-dlp-cookies.txt");
+const MAX_COOKIES_BYTES = 4 * 1024 * 1024;
 
 const YTDLP = process.env.YTDLP_PATH ?? "yt-dlp";
 const MAX_ATTEMPTS = 3;
@@ -55,6 +57,31 @@ export function dlSettings(): DlSettings {
     out[key] = typeof def === "number" ? (Number.isFinite(Number(raw)) ? Number(raw) : def) : raw;
   }
   return out as DlSettings;
+}
+
+/** Cookie jar is deliberately stored outside the settings database, so it is
+ * never returned by a settings API response or rendered back into the UI. */
+export function downloadCookiesConfigured() {
+  return existsSync(DOWNLOAD_COOKIES_FILE);
+}
+
+export function saveDownloadCookies(contents: string) {
+  if (!contents.trim()) throw new Error("cookies file is empty");
+  if (new TextEncoder().encode(contents).byteLength > MAX_COOKIES_BYTES) {
+    throw new Error("cookies file is too large");
+  }
+  const normalized = contents.replace(/^\uFEFF/, "");
+  if (!/^# (?:HTTP|Netscape) Cookie File/m.test(normalized)) {
+    throw new Error("cookies must be in Netscape cookies.txt format");
+  }
+  const temporary = `${DOWNLOAD_COOKIES_FILE}.tmp`;
+  writeFileSync(temporary, normalized, { mode: 0o600 });
+  renameSync(temporary, DOWNLOAD_COOKIES_FILE);
+  try { chmodSync(DOWNLOAD_COOKIES_FILE, 0o600); } catch { /* unsupported on some hosts */ }
+}
+
+export function removeDownloadCookies() {
+  if (existsSync(DOWNLOAD_COOKIES_FILE)) unlinkSync(DOWNLOAD_COOKIES_FILE);
 }
 
 function dlEnabled(): boolean {
@@ -243,6 +270,7 @@ export async function fetchSubtitles(videoId: string, lang: string): Promise<boo
     "--sub-langs", lang,
     "-o", join(DOWNLOADS_DIR, `${base}.%(ext)s`),
   ];
+  if (downloadCookiesConfigured()) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
   try {
     const proc = Bun.spawn([YTDLP, ...args], { stdout: "ignore", stderr: "ignore" });
     const timer = setTimeout(() => { try { proc.kill(); } catch {} }, 60_000);

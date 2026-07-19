@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -16,6 +16,14 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Keep the document language correct before React loads. Chrome uses this
+      // attribute to decide whether to offer translation.
+      const uiLanguage = localStorage.getItem("language");
+      if (uiLanguage === "en" || uiLanguage === "pl" || uiLanguage === "de") {
+        document.documentElement.lang = uiLanguage;
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
