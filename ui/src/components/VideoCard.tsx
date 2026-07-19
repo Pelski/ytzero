@@ -71,6 +71,7 @@ export default function VideoCard({
   onChanged,
   showRestore,
   showChannelAvatar = true,
+  searchResultLayout = false,
   onRemoveFromPlaylist,
   isWatched,
   isLiked,
@@ -81,12 +82,13 @@ export default function VideoCard({
   onChanged: (videoId?: string) => void;
   showRestore?: boolean;
   showChannelAvatar?: boolean;
+  searchResultLayout?: boolean;
   onRemoveFromPlaylist?: (videoId: string) => Promise<unknown>;
   isWatched?: boolean;
   isLiked?: boolean;
   showWatchProgress?: boolean;
 }) {
-  const { t, language } = useI18n();
+  const { t, language, locale } = useI18n();
   const navigate = useNavigate();
   const [fading, setFading] = useState(false);
   const [removed, setRemoved] = useState(false);
@@ -320,7 +322,7 @@ export default function VideoCard({
       <div
         ref={cardRef}
         {...bind()}
-        className={`video-card${watched ? " video-card--watched" : ""}`}
+        className={`video-card${watched ? " video-card--watched" : ""}${searchResultLayout ? " video-card--search-result" : ""}`}
         style={{
           transform: `translateX(${swipeX}px) ${cardTilt} ${cardFadeScale}`,
           transition: cardTransition,
@@ -448,30 +450,55 @@ export default function VideoCard({
           </div>
         </div>
 
-        <div className="card-body">
-          {showChannelAvatar && (
-            <Link to={`/channel/${video.channel_id}`} className="card-avatar-link">
-              {video.channel_thumbnail ? (
-                <img className="card-ch-avatar" src={img(video.channel_thumbnail)} alt="" draggable={false} />
-              ) : (
-                <div className="card-ch-avatar card-ch-avatar-fallback">
-                  {video.channel_title.charAt(0).toUpperCase()}
-                </div>
+        {searchResultLayout ? (
+          <div className="card-body">
+            <Link to={videoHref} className="v-title" onClick={playFromLink}>{video.title}</Link>
+            {(video.views != null || publishedTime) && (
+              <div className="v-search-meta">
+                {video.views != null && `${video.views.toLocaleString(locale)} ${t("views")}`}
+                {video.views != null && publishedTime && " · "}
+                {publishedTime}
+              </div>
+            )}
+            <div className="v-search-channel">
+              {showChannelAvatar && (
+                <Link to={`/channel/${video.channel_id}`} className="card-avatar-link">
+                  {video.channel_thumbnail ? (
+                    <img className="card-ch-avatar" src={img(video.channel_thumbnail)} alt="" draggable={false} />
+                  ) : (
+                    <div className="card-ch-avatar card-ch-avatar-fallback">{video.channel_title.charAt(0).toUpperCase()}</div>
+                  )}
+                </Link>
               )}
-            </Link>
-          )}
-          <div className="card-info">
-            <Link to={videoHref} className="v-title" onClick={playFromLink}>
-              {video.title}
-            </Link>
-            <div className="v-channel-meta">
-              <Link to={`/channel/${video.channel_id}`} className={`v-channel${publishedTime ? "" : " no-date"}`}>
-                {video.channel_title}
-              </Link>
-              {publishedTime && <span className="v-time">{publishedTime}</span>}
+              <Link to={`/channel/${video.channel_id}`} className="v-channel">{video.channel_title}</Link>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="card-body">
+            {showChannelAvatar && (
+              <Link to={`/channel/${video.channel_id}`} className="card-avatar-link">
+                {video.channel_thumbnail ? (
+                  <img className="card-ch-avatar" src={img(video.channel_thumbnail)} alt="" draggable={false} />
+                ) : (
+                  <div className="card-ch-avatar card-ch-avatar-fallback">
+                    {video.channel_title.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </Link>
+            )}
+            <div className="card-info">
+              <Link to={videoHref} className="v-title" onClick={playFromLink}>
+                {video.title}
+              </Link>
+              <div className="v-channel-meta">
+                <Link to={`/channel/${video.channel_id}`} className={`v-channel${publishedTime ? "" : " no-date"}`}>
+                  {video.channel_title}
+                </Link>
+                {publishedTime && <span className="v-time">{publishedTime}</span>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

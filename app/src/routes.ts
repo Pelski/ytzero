@@ -1382,7 +1382,10 @@ function serializeChannel(ch: any) {
 api.get("/channels", (c) => {
   const uid = currentUserId(c);
   const channels = db.prepare(
-    `SELECT ch.* FROM channels ch
+    `SELECT ch.*, uc.added_at AS subscribed_at,
+       (SELECT MAX(v.published_at) FROM videos v WHERE v.channel_id = ch.channel_id) AS latest_video_at,
+       (SELECT COUNT(*) FROM videos v WHERE v.channel_id = ch.channel_id) AS video_count
+     FROM channels ch
      JOIN user_channels uc ON uc.channel_id = ch.channel_id AND uc.user_id = ? AND uc.followed = 1
      WHERE ch.external = 0 ORDER BY COALESCE(ch.custom_title, ch.title) COLLATE NOCASE`
   ).all(uid) as any[];
@@ -1394,6 +1397,17 @@ api.get("/channels", (c) => {
   return c.json({
     channels: channels.map((ch) => ({
       ...serializeChannel(ch),
+      ...(() => {
+        try {
+          const about = JSON.parse(ch.about_json ?? "{}") as { handle?: unknown; description?: unknown };
+          return {
+            handle: typeof about.handle === "string" ? about.handle : "",
+            description: typeof about.description === "string" ? about.description : "",
+          };
+        } catch {
+          return { handle: "", description: "" };
+        }
+      })(),
       tags: tags.filter((t) => t.channel_id === ch.channel_id).map((t) => ({ id: t.id, name: t.name, color: t.color })),
     })),
   });

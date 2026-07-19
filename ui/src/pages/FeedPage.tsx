@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Clock, Eye, Inbox, RefreshCw } from "lucide-react";
-import { api, type Bucket, type Channel, type ChannelSearchResult, type SearchResult, type Tag, type Video } from "../api";
-import { formatPublishedAgo, useI18n } from "../i18n";
+import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
+import { useI18n } from "../i18n";
 import { img } from "../img";
 import ChildTimeRequestBanner from "../components/ChildTimeRequestBanner";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
-import { VideoThumbnail } from "../components/VideoThumbnail";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
 
@@ -86,22 +85,14 @@ function useHScroll() {
 export default function FeedPage({
   onPlay,
   showToast,
-  hideExternalSearch = false,
 }: {
   onPlay: (v: Video) => void;
   showToast: (m: string) => void;
-  hideExternalSearch?: boolean;
 }) {
-  const { t, locale, language } = useI18n();
-  const [params] = useSearchParams();
-  const q = params.get("q") ?? "";
+  const { t } = useI18n();
   const [videos, setVideos] = useState<Video[]>([]);
   const [queued, setQueued] = useState<Video[]>([]);
   const [inProgress, setInProgress] = useState<Video[]>([]);
-  const [ytResults, setYtResults] = useState<SearchResult[]>([]);
-  const [ytChannels, setYtChannels] = useState<ChannelSearchResult[]>([]);
-  const [ytLoading, setYtLoading] = useState(false);
-  const [searchExpanded, setSearchExpanded] = useState(false);
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTags, setSelectedTags] = useState<number[]>(() => {
     try { return JSON.parse(sessionStorage.getItem("feedTags") ?? "[]"); } catch { return []; }
@@ -137,20 +128,18 @@ export default function FeedPage({
     return () => ro.disconnect();
   }, [gridSize]);
 
-  useEffect(() => { setPage(0); setSearchExpanded(false); }, [q]);
-
   const load = useCallback(async (requestedPage = page) => {
     if (requestedPage === 0) setLoading(true);
     else setLoadingMore(true);
     try {
-      const feed = await api.feed({ tags: selectedTags, q, page: requestedPage, show_all: showAll });
+      const feed = await api.feed({ tags: selectedTags, page: requestedPage, show_all: showAll });
       setVideos((prev) => (requestedPage === 0 ? feed.videos : [...prev, ...feed.videos]));
       setHasMore(feed.videos.length === 40);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedTags, q, page, showAll]);
+  }, [selectedTags, page, showAll]);
 
   useEffect(() => {
     load().catch(console.error);
@@ -183,15 +172,6 @@ export default function FeedPage({
   useEffect(() => subscribe("tags-changed", loadTags), [loadTags]);
   useEffect(() => subscribe("queue-changed", loadQueued), [loadQueued]);
   useEffect(() => subscribe("top-channels-changed", loadTopChannelsSetting), [loadTopChannelsSetting]);
-
-  useEffect(() => {
-    if (!q || hideExternalSearch) { setYtResults([]); setYtChannels([]); return; }
-    setYtLoading(true);
-    api.youtubeSearch(q)
-      .then((r) => { setYtResults(r.results); setYtChannels(r.channels); })
-      .catch(() => { setYtResults([]); setYtChannels([]); })
-      .finally(() => setYtLoading(false));
-  }, [q, hideExternalSearch]);
 
   // Infinite scroll
   useEffect(() => {
@@ -316,15 +296,9 @@ export default function FeedPage({
         </div>
       </div>
 
-      {q && (
-        <p className="search-info">
-          {t("searchResultsFor")} <b>{q}</b>
-        </p>
-      )}
+      {showTopChannels && <ChannelAvatarRow />}
 
-      {!q && showTopChannels && <ChannelAvatarRow />}
-
-      {inProgress.length > 0 && !q && (
+      {inProgress.length > 0 && (
         <div className="continue-watching-section">
           <div className="time-section-header">
             <Clock size={16} />
@@ -342,7 +316,7 @@ export default function FeedPage({
         </div>
       )}
 
-      {dueQueuedVideos.length > 0 && !q && selectedTags.length === 0 && (
+      {dueQueuedVideos.length > 0 && selectedTags.length === 0 && (
         <div className="time-section">
           <div className="time-section-header">
             <Clock size={16} />
@@ -362,37 +336,14 @@ export default function FeedPage({
       )}
 
       {loading && videos.length === 0 ? (
-        <VideoGridSkeleton gridSize={q ? "sm" : gridSize} />
+        <VideoGridSkeleton gridSize={gridSize} />
       ) : videos.length === 0 ? (
         <div className="empty-state">
           <Inbox />
           <div>
-            {q
-              ? t("noSearchResults")
-              : t("noVideos")}
+            {t("noVideos")}
           </div>
         </div>
-      ) : q ? (
-        <>
-          <div className="video-grid video-grid--sm">
-            {(searchExpanded ? videos : videos.slice(0, 8)).map((v) => (
-              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={removeFromFeed} />
-            ))}
-          </div>
-          {loadingMore && <VideoGridSkeleton count={4} gridSize="sm" />}
-          {videos.length > 8 && (
-            <div className="load-more">
-              <button className="btn" onClick={() => setSearchExpanded((e) => !e)}>
-                {searchExpanded ? t("showLess") : `${t("showMore")} (${videos.length - 8})`}
-              </button>
-              {hasMore && !loadingMore && searchExpanded && (
-                <button ref={loadMoreRef} className="btn secondary" onClick={() => setPage((p) => p + 1)}>
-                  {t("loadMore")}
-                </button>
-              )}
-            </div>
-          )}
-        </>
       ) : (
         <>
           <div className={`video-grid video-grid--${gridSize}`}>
@@ -411,70 +362,6 @@ export default function FeedPage({
         </>
       )}
 
-      {q && !hideExternalSearch && (
-        <div className="yt-results-section">
-          {ytChannels.length > 0 && (
-            <>
-              <div className="time-section-header"><span>{t("channels")}</span></div>
-              <div className="yt-results-list yt-channel-results-list">
-                {ytChannels.map((channel) => (
-                  <Link key={channel.channelId} className="yt-result-row" to={`/channel/${channel.channelId}`}>
-                    {channel.thumbnail ? (
-                      <img className="yt-search-channel-avatar" src={img(channel.thumbnail)} alt="" loading="lazy" draggable={false} />
-                    ) : <div className="yt-search-channel-avatar" />}
-                    <div className="yt-result-info">
-                      <div className="yt-result-title">{channel.title}</div>
-                      <div className="yt-result-meta">
-                        {[
-                          channel.handle,
-                          channel.subscriberCount && `${channel.subscriberCount} ${t("subscribers")}`,
-                          channel.videoCount,
-                        ].filter(Boolean).join(" · ")}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </>
-          )}
-          <div className="time-section-header">
-            <span>{t("youtubeResults")}</span>
-          </div>
-          {ytLoading ? (
-            <VideoGridSkeleton count={4} gridSize="sm" />
-          ) : ytResults.length === 0 ? null : (
-            <div className="yt-results-list">
-              {ytResults.map((r) => (
-                <Link
-                  key={r.videoId}
-                  className="yt-result-row"
-                  to={`/watch/${r.videoId}`}
-                >
-                  <VideoThumbnail src={r.thumbnail} watched={r.watched === 1} variant="search" loading="lazy">
-                    {r.duration && <span className="yt-result-dur">{r.duration}</span>}
-                  </VideoThumbnail>
-                  <div className="yt-result-info">
-                    <div className="yt-result-title">{r.title}</div>
-                    {(r.viewCount != null || r.published) && (
-                      <div className="yt-result-meta">
-                        {r.viewCount != null && `${r.viewCount.toLocaleString(locale)} ${t("views")}`}
-                        {r.viewCount != null && r.published && " · "}
-                        {r.published && formatPublishedAgo(r.published, language)}
-                      </div>
-                    )}
-                    <div className="yt-result-channel">
-                      {r.channelAvatar && (
-                        <img className="yt-result-avatar" src={img(r.channelAvatar)} alt="" loading="lazy" draggable={false} />
-                      )}
-                      <span>{r.channelTitle}</span>
-                    </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </>
   );
 }

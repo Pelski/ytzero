@@ -56,8 +56,13 @@ export interface Channel {
   url: string;
   thumbnail: string;
   subscriber_count?: string | null;
+  handle?: string;
+  description?: string;
   followed?: number;
   playback_speed?: string | null;
+  subscribed_at?: string | null;
+  latest_video_at?: string | null;
+  video_count?: number;
   tags: Tag[];
 }
 

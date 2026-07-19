@@ -8,6 +8,7 @@ import LoginPage from "./pages/LoginPage";
 import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
 import { img } from "./img";
 import FeedPage from "./pages/FeedPage";
+import SearchPage from "./pages/SearchPage";
 import DiscoveryPage from "./pages/DiscoveryPage";
 import LivePage from "./pages/LivePage";
 import WatchlistPage from "./pages/WatchlistPage";
@@ -204,7 +205,7 @@ function TopBar({ appName, appIconColor }: { appName: string; appIconColor: stri
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    navigate(q.trim() ? `/?q=${encodeURIComponent(q.trim())}` : "/");
+    navigate(q.trim() ? `/search?q=${encodeURIComponent(q.trim())}` : "/");
   };
 
   return (
@@ -454,7 +455,8 @@ function AppShell() {
         <main className="main">
           <div className="content">
             <Routes>
-              <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} hideExternalSearch={childStatus?.local_only ?? false} />} />
+              <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} />} />
+              <Route path="/search" element={<SearchPage onPlay={play} hideExternalSearch={childStatus?.local_only ?? false} />} />
               <Route path="/discovery" element={<DiscoveryPage onPlay={play} />} />
               <Route path="/shorts" element={<ShortsPage />} />
               <Route path="/shorts/:videoId" element={<ShortsPage />} />
