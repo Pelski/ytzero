@@ -1,4 +1,4 @@
-name: Release
+name: Publish Release
 
 # Pushing a vX.Y.Z tag creates a GitHub Release with a list of commits
 # made since the previous tag, plus a tarball with a prebuilt UI that
@@ -15,18 +15,18 @@ permissions:
 
 jobs:
   release:
-    name: Create GitHub release
+    name: Build and publish the release assets
     runs-on: ubuntu-latest
     steps:
-      - name: Check out source
+      - name: Check out the release source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Set up Bun
+      - name: Set up the Bun runtime
         uses: oven-sh/setup-bun@v2
 
-      - name: Build ui
+      - name: Build the production web client
         run: |
           set -euo pipefail
           cd ui
@@ -35,7 +35,7 @@ jobs:
 
       # Same layout as the Docker image: src/, package.json and the built UI in
       # public/, so both runtimes start with the identical command.
-      - name: Assemble release tarball
+      - name: Package the release archive
         shell: bash
         run: |
           set -euo pipefail
@@ -82,7 +82,7 @@ jobs:
             fi
           } > release-notes.md
 
-      - name: Create release
+      - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

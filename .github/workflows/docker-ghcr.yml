@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Publish Container Image
 
 on:
   push:
@@ -23,7 +23,7 @@ env:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }}
+    name: Build the Linux image for ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -37,31 +37,31 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Resolve platform slug
+      - name: Prepare the platform artifact name
         run: echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
         env:
           platform: ${{ matrix.platform }}
 
-      - name: Check out source
+      - name: Check out the repository
         uses: actions/checkout@v7
 
-      - name: Generate image labels
+      - name: Generate OCI image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
 
-      - name: Set up Docker Buildx
+      - name: Set up the Docker Buildx builder
         uses: docker/setup-buildx-action@v4
 
-      - name: Authenticate with GHCR
+      - name: Sign in to the GitHub Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push image digest
+      - name: Build and publish the platform image
         id: build
         uses: docker/build-push-action@v7
         with:
@@ -77,13 +77,13 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
 
-      - name: Save digest to disk
+      - name: Store the platform image digest
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
-      - name: Upload digest artifact
+      - name: Upload the platform image digest
         uses: actions/upload-artifact@v7
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
@@ -92,21 +92,21 @@ jobs:
           retention-days: 1
 
   merge:
-    name: Merge and publish manifest
+    name: Publish the multi-platform image
     runs-on: ubuntu-latest
     needs: build
     permissions:
       contents: read
       packages: write
     steps:
-      - name: Download digest artifacts
+      - name: Download platform image digests
         uses: actions/download-artifact@v8
         with:
           path: /tmp/digests
           pattern: digests-*
           merge-multiple: true
 
-      - name: Generate image tags
+      - name: Generate the final image tags
         id: meta
         uses: docker/metadata-action@v6
         with:
@@ -120,19 +120,19 @@ jobs:
             type=semver,pattern={{major}}
             type=sha,prefix=sha-
 
-      - name: Authenticate with GHCR
+      - name: Sign in to the GitHub Container Registry
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Assemble multi-arch manifest
+      - name: Create the multi-platform image manifest
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Verify published manifest
+      - name: Verify the published image manifest
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}

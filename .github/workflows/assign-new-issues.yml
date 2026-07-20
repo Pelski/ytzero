@@ -1,4 +1,4 @@
-name: Process new issues
+name: Triage Newly Opened Issues
 
 # Assign every newly opened issue to the maintainer so it appears immediately
 # in their GitHub issue inbox. Existing issues are intentionally untouched.
@@ -11,9 +11,10 @@ permissions:
 
 jobs:
   assign:
+    name: Assign and triage the issue
     runs-on: ubuntu-latest
     steps:
-      - name: Assign to owner
+      - name: Assign the issue to @Pelski
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
@@ -21,7 +22,7 @@ jobs:
           "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/assignees"
           -f 'assignees[]=Pelski'
 
-      - name: Add matching labels
+      - name: Apply labels from the issue content
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}

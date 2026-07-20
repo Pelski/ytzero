@@ -1,4 +1,4 @@
-name: CI
+name: Validate a Working Branch
 
 # Ręczny build dla branchy roboczych — sprawdza, czy typy się zgadzają
 # i czy UI się buduje. Na main tego nie odpalamy (tam działa docker-ghcr).
@@ -10,31 +10,31 @@ permissions:
 
 jobs:
   build:
-    name: Typecheck and build
+    name: Validate the application and web client
     runs-on: ubuntu-latest
     if: github.ref != 'refs/heads/main'
     steps:
-      - name: Check out source
+      - name: Check out the repository
         uses: actions/checkout@v7
 
-      - name: Set up Bun
+      - name: Set up the Bun runtime
         uses: oven-sh/setup-bun@v2
 
-      - name: Install app dependencies
+      - name: Install server dependencies
         working-directory: app
         run: bun install --frozen-lockfile
 
-      - name: Install ui dependencies
+      - name: Install web client dependencies
         working-directory: ui
         run: bun install --frozen-lockfile
 
-      - name: Typecheck app
+      - name: Check server types
         working-directory: app
         run: bun x tsc --noEmit
 
-      - name: Typecheck ui
+      - name: Check web client types
         working-directory: ui
         run: bun x tsc --noEmit
 
-      - name: Build ui
+      - name: Build the web client
         run: bun run build

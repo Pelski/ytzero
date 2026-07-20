@@ -1,4 +1,4 @@
-name: Publish Wiki
+name: Publish Documentation Wiki
 
 on:
   push:
@@ -19,12 +19,13 @@ concurrency:
 
 jobs:
   publish:
+    name: Synchronize the documentation wiki
     runs-on: ubuntu-latest
     steps:
-      - name: Check out source
+      - name: Check out the documentation source
         uses: actions/checkout@v7
 
-      - name: Sync wiki/ to the wiki repo
+      - name: Synchronize pages with the GitHub wiki
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
