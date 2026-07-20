@@ -1,0 +1,87 @@
+name: Process new issues
+
+# Assign every newly opened issue to the maintainer so it appears immediately
+# in their GitHub issue inbox. Existing issues are intentionally untouched.
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign to owner
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api --method POST
+          "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/assignees"
+          -f 'assignees[]=Pelski'
+
+      - name: Add matching labels
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          # Read user-controlled text from the event file, rather than
+          # interpolating it into shell source.
+          title="$(jq -r '.issue.title // ""' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]')"
+          text="$(jq -r '(.issue.title // "") + "\n" + (.issue.body // "")' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]')"
+          labels=()
+
+          matches() {
+            grep -Eiq "$1" <<<"$text"
+          }
+
+          add_label() {
+            local label="$1"
+            for current in "${labels[@]}"; do
+              [[ "$current" == "$label" ]] && return
+            done
+            labels+=("$label")
+          }
+
+          # Explicit prefixes take priority over fuzzy wording in the body.
+          # They cover the `Bug:` and `feat:` convention already used here.
+          case "$title" in
+            bug:*|fix:*) add_label "bug" ;;
+            feat:*|feature:*) add_label "enhancement" ;;
+            question:*) add_label "question" ;;
+            docs:*|doc:*|documentation:*) add_label "documentation" ;;
+            roadmap:*) add_label "roadmap" ;;
+          esac
+
+          if matches '(^|[^a-z])(bug|broken|regression|error|fail(ed|ure)?|not working|does not work|doesn.t work|cannot|can.t|missing|unexpected)'; then
+            add_label "bug"
+          fi
+
+          if matches '(^|[^a-z])(feat(ure)?|enhancement|feature request|would be nice|please add|add support|add (an )?option|allow|improvement|implement)'; then
+            add_label "enhancement"
+          fi
+
+          if matches '(^|[^a-z])(how (do|to)|is it possible|can (i|you|we)|question:|what is|why (does|is))'; then
+            add_label "question"
+          fi
+
+          if matches '(^|[^a-z])(readme|documentation|docs|wiki|manual)([^a-z]|$)'; then
+            add_label "documentation"
+          fi
+
+          if matches 'yt[- ]dlp|cookies\.txt|cookies from browser|sign in to confirm[^[:cntrl:]]*bot'; then
+            add_label "yt-dlp"
+          fi
+
+          if matches '(^|[^a-z])(roadmap|future plans?|planned for the future)([^a-z]|$)'; then
+            add_label "roadmap"
+          fi
+
+          for label in "${labels[@]}"; do
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/labels" \
+              -f "labels[]=${label}" >/dev/null
+          done
