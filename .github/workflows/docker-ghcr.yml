@@ -4,6 +4,15 @@ on:
   push:
     branches:
       - main
+    # A README, wiki page or issue-workflow change cannot affect the image.
+    # Tag pushes intentionally bypass this filter: every release must publish
+    # an image for that exact source snapshot.
+    paths:
+      - "app/**"
+      - "ui/**"
+      - "Dockerfile"
+      - ".dockerignore"
+      - ".github/workflows/docker-ghcr.yml"
     tags:
       - "v*.*.*"
   workflow_dispatch:
