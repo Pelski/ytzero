@@ -1186,9 +1186,13 @@ api.get("/videos/:id", (c) => {
     ).all(...seen, need() * 2) as VideoRow[]);
   }
 
-  // Active profile's per-channel playback speed override (NULL = use global).
-  const speedRow = db.prepare("SELECT playback_speed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, row.channel_id) as { playback_speed: string | null } | null;
-  (video as any).channel_playback_speed = speedRow?.playback_speed ?? null;
+  // Active profile's channel-level player overrides (NULL = use global).
+  const channelPlayerRow = db.prepare(
+    "SELECT playback_speed, caption_mode, caption_language FROM user_channels WHERE user_id = ? AND channel_id = ?"
+  ).get(uid, row.channel_id) as { playback_speed: string | null; caption_mode: string | null; caption_language: string | null } | null;
+  (video as any).channel_playback_speed = channelPlayerRow?.playback_speed ?? null;
+  (video as any).channel_caption_mode = channelPlayerRow?.caption_mode ?? null;
+  (video as any).channel_caption_language = channelPlayerRow?.caption_language ?? null;
 
   return c.json({ video, related: attachTags(uid, related) });
 });
@@ -1697,6 +1701,39 @@ api.put("/channels/:id/speed", async (c) => {
   return c.json({ ok: true });
 });
 
+// Per-profile caption override. A channel can inherit the profile default,
+// explicitly disable captions, or force one YouTube caption language.
+api.put("/channels/:id/captions", async (c) => {
+  const { mode, language } = await c.req.json<{ mode: unknown; language?: unknown }>();
+  if (mode !== null && mode !== "off" && mode !== "language") {
+    return c.json({ error: "mode must be null, off, or language" }, 400);
+  }
+  const captionLanguage = mode === "language" && typeof language === "string" && SUBTITLE_LANGUAGE_CODES.has(language)
+    ? language
+    : null;
+  if (mode === "language" && !captionLanguage) return c.json({ error: "valid caption language required" }, 400);
+  db.prepare(
+    `INSERT INTO user_channels (user_id, channel_id, caption_mode, caption_language) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, channel_id) DO UPDATE SET caption_mode = excluded.caption_mode, caption_language = excluded.caption_language`
+  ).run(currentUserId(c), c.req.param("id"), mode, captionLanguage);
+  return c.json({ ok: true, mode, language: captionLanguage });
+});
+
+// Downloads are shared between profiles, therefore this is intentionally a
+// channel-level setting rather than a user_channels preference. Zero disables
+// the threshold.
+api.put("/channels/:id/download-min-duration", async (c) => {
+  const { seconds } = await c.req.json<{ seconds: unknown }>();
+  if (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > 24 * 60 * 60) {
+    return c.json({ error: "seconds must be an integer between 0 and 86400" }, 400);
+  }
+  const value = seconds as number;
+  const result = db.prepare("UPDATE channels SET auto_download_min_duration = ? WHERE channel_id = ?")
+    .run(value, c.req.param("id"));
+  if (result.changes === 0) return c.json({ error: "not found" }, 404);
+  return c.json({ ok: true, seconds: value });
+});
+
 // Literal paths before parameterised /channels/:id to avoid shadowing
 api.get("/channels/unfollowed", (c) => {
   const uid = currentUserId(c);
@@ -1758,8 +1795,8 @@ api.get("/channels/:id", (c) => {
     )
     .all(uid, c.req.param("id")) as any[];
   // followed reflects the active profile (null row = not subscribed).
-  const sub = db.prepare("SELECT followed, playback_speed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null } | null;
-  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, tags } });
+  const sub = db.prepare("SELECT followed, playback_speed, caption_mode, caption_language FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null } | null;
+  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, tags } });
 });
 
 api.post("/channels/:id/sync", async (c) => {

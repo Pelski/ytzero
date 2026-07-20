@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribe } from "../events";
 import { Link } from "react-router-dom";
-import { Clock, Eye, Inbox, RefreshCw } from "lucide-react";
+import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { img } from "../img";
@@ -12,6 +12,35 @@ import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
+
+function FeedOnboarding() {
+  const { t } = useI18n();
+  return (
+    <section className="feed-onboarding">
+      <div className="feed-onboarding-icon"><Inbox /></div>
+      <div className="feed-onboarding-copy">
+        <span className="feed-onboarding-eyebrow">YT Zero</span>
+        <h1>{t("feedOnboardingTitle")}</h1>
+        <p>{t("feedOnboardingDescription")}</p>
+      </div>
+      <div className="feed-onboarding-actions">
+        <Link className="btn primary" to="/subscriptions">
+          <Plus size={16} /> {t("feedOnboardingAddChannels")}
+        </Link>
+        <Link className="btn" to="/settings?tab=channels">
+          <Upload size={16} /> {t("feedOnboardingImportSubscriptions")}
+        </Link>
+      </div>
+      <div className="feed-onboarding-steps" aria-label={t("feedOnboardingHowItWorks")}>
+        <div><span className="feed-onboarding-step-number">1</span><p>{t("feedOnboardingStepOne")}</p></div>
+        <ArrowRight aria-hidden="true" />
+        <div><span className="feed-onboarding-step-number">2</span><p>{t("feedOnboardingStepTwo")}</p></div>
+        <ArrowRight aria-hidden="true" />
+        <div><span className="feed-onboarding-step-number">3</span><p>{t("feedOnboardingStepThree")}</p></div>
+      </div>
+    </section>
+  );
+}
 
 function ChannelAvatarRow() {
   const [channels, setChannels] = useState<TopChannel[]>([]);
@@ -105,6 +134,7 @@ export default function FeedPage({
   const [refreshing, setRefreshing] = useState(false);
   const [gridSize, setGridSize] = useState<GridSize>(readGridSize);
   const [showTopChannels, setShowTopChannels] = useState(true);
+  const [hasSubscriptions, setHasSubscriptions] = useState<boolean | null>(null);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const inProgressScroll = useHScroll();
   const queuedScroll = useHScroll();
@@ -162,6 +192,15 @@ export default function FeedPage({
     loadQueued();
     loadInProgress();
   }, [loadTags, loadQueued, loadInProgress]);
+
+  const loadSubscriptionState = useCallback(() => {
+    api.channels().then((r) => setHasSubscriptions(r.channels.some((channel) => channel.followed !== 0))).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadSubscriptionState();
+    return subscribe("channels-changed", loadSubscriptionState);
+  }, [loadSubscriptionState]);
 
   const loadTopChannelsSetting = useCallback(() => {
     api.settings().then((r) => setShowTopChannels(r.settings.show_top_channels !== "0")).catch(() => {});
@@ -256,6 +295,15 @@ export default function FeedPage({
       if (bucketDiff !== 0) return bucketDiff;
       return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
     });
+
+  if (!loading && hasSubscriptions === false) {
+    return (
+      <>
+        <ChildTimeRequestBanner />
+        <FeedOnboarding />
+      </>
+    );
+  }
 
   return (
     <>

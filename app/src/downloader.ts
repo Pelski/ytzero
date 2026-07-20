@@ -410,6 +410,19 @@ export function resetDownloadsState() {
 
 // ---------- auto-enqueue policies ----------
 
+function parseDurationSeconds(duration: string | null): number | null {
+  if (!duration) return null;
+  const parts = duration.trim().split(":");
+  if (parts.length < 2 || parts.length > 3) return null;
+  const values = parts.map(Number);
+  if (values.some((value) => !Number.isInteger(value) || value < 0)) return null;
+  // A duration such as 99:10 is valid (99 minutes), while middle segments of
+  // hour-based durations must still be conventional minutes/seconds. Seconds
+  // are always conventional.
+  if (values.at(-1)! >= 60 || (values.length === 3 && values[1] >= 60)) return null;
+  return values.reduce((total, value) => total * 60 + value, 0);
+}
+
 function autoEnqueue(s: DlSettings) {
   if (s.download_scheduled === 1) {
     // Anything any profile put on a watch-later bucket and hasn't watched yet.
@@ -437,7 +450,9 @@ function autoEnqueue(s: DlSettings) {
   if (s.download_feed === 1) {
     const shortsFilter = s.download_shorts === 1 ? "" : "AND COALESCE(v.is_short, 0) = 0";
     const rows = db.prepare(`
-      SELECT v.video_id FROM videos v
+      SELECT v.video_id, v.duration, COALESCE(c.auto_download_min_duration, 0) AS min_duration
+      FROM videos v
+      JOIN channels c ON c.channel_id = v.channel_id
       WHERE v.live_status = 'none' AND v.external = 0
         ${shortsFilter}
         AND v.published_at >= datetime('now', ?)
@@ -445,9 +460,16 @@ function autoEnqueue(s: DlSettings) {
         AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.video_id = v.video_id)
         AND NOT EXISTS (SELECT 1 FROM user_videos uv WHERE uv.video_id = v.video_id AND (uv.watched = 1 OR uv.status = 'archived'))
       ORDER BY v.published_at DESC
-      LIMIT 50
-    `).all(`-${s.feed_max_age_hours} hours`) as { video_id: string }[];
-    for (const { video_id } of rows) enqueueDownload(video_id, "feed");
+      LIMIT 250
+    `).all(`-${s.feed_max_age_hours} hours`) as { video_id: string; duration: string | null; min_duration: number }[];
+    let enqueued = 0;
+    for (const { video_id, duration, min_duration } of rows) {
+      // With a threshold, an unknown duration cannot safely be included. It
+      // will be considered by a later pass once the metadata refresher fills it.
+      if (min_duration > 0 && (parseDurationSeconds(duration) ?? -1) < min_duration) continue;
+      enqueueDownload(video_id, "feed");
+      if (++enqueued >= 50) break;
+    }
   }
 }
 

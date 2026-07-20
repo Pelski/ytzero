@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Check, ExternalLink, Gauge, ListVideo, Plus, Radio, RefreshCw, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
+import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Gauge, ListVideo, Plus, Radio, RefreshCw, SlidersHorizontal, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
 import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import Tooltip from "../components/Tooltip";
@@ -9,11 +9,13 @@ import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { emit } from "../events";
 import { formatAddedVideos, formatVideoCount as formatI18nVideoCount, useI18n, type Language } from "../i18n";
+import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
 
 type Tab = "videos" | "shorts" | "playlists";
 
 // Matches the server's default /feed page size.
 const CHANNEL_PAGE_SIZE = 40;
+const AUTO_DOWNLOAD_MIN_DURATIONS = [0, 60, 5 * 60, 10 * 60, 20 * 60, 30 * 60, 45 * 60, 60 * 60];
 
 function formatVideoCount(n: string | number, language: Language): string {
   const num = Number(String(n).replace(/\D/g, ""));
@@ -38,7 +40,11 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [followed, setFollowed] = useState(false);
   const [unfollowPending, setUnfollowPending] = useState(false);
   const [channelSpeed, setChannelSpeed] = useState("");
-  const [speedOpen, setSpeedOpen] = useState(false);
+  const [autoDownloadMinDuration, setAutoDownloadMinDuration] = useState(0);
+  const [captionMode, setCaptionMode] = useState<"off" | "language" | null>(null);
+  const [captionLanguage, setCaptionLanguage] = useState<string | null>(null);
+  const [technicalOpen, setTechnicalOpen] = useState(false);
+  const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "downloads">("root");
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
@@ -50,7 +56,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const tagMenuRef = useRef<HTMLDivElement>(null);
-  const speedMenuRef = useRef<HTMLDivElement>(null);
+  const technicalMenuRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | undefined>(undefined);
 
@@ -72,12 +78,18 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     prevIdRef.current = id;
     setFollowed(false);
     setChannelSpeed("");
+    setAutoDownloadMinDuration(0);
+    setCaptionMode(null);
+    setCaptionLanguage(null);
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
     api.channel(id).then((r) => {
       setChannelTags(r.channel.tags);
       setFollowed(r.channel.followed !== 0);
       setChannelSpeed(r.channel.playback_speed ?? "");
+      setAutoDownloadMinDuration(r.channel.auto_download_min_duration ?? 0);
+      setCaptionMode(r.channel.caption_mode ?? null);
+      setCaptionLanguage(r.channel.caption_language ?? null);
     }).catch(console.error);
     api
       .feed({ channel: id, status: "all", shorts: true, page: 0 })
@@ -127,19 +139,55 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   }, [tagMenuOpen]);
 
   useEffect(() => {
-    if (!speedOpen) return;
+    if (!technicalOpen) return;
     const close = (e: MouseEvent) => {
-      if (!speedMenuRef.current?.contains(e.target as Node)) setSpeedOpen(false);
+      if (!technicalMenuRef.current?.contains(e.target as Node)) setTechnicalOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [speedOpen]);
+  }, [technicalOpen]);
+
+  useEffect(() => {
+    if (!technicalOpen) setTechnicalView("root");
+  }, [technicalOpen]);
 
   // Set (or clear, with null) this channel's playback-speed override.
   const changeSpeed = (v: string | null) => {
     setChannelSpeed(v ?? "");
-    setSpeedOpen(false);
     if (id) api.setChannelSpeed(id, v).catch(console.error);
+  };
+
+  const changeAutoDownloadMinDuration = (seconds: number) => {
+    if (!id) return;
+    const previous = autoDownloadMinDuration;
+    setAutoDownloadMinDuration(seconds);
+    api.setChannelDownloadMinDuration(id, seconds).catch((error) => {
+      setAutoDownloadMinDuration(previous);
+      console.error(error);
+    });
+  };
+
+  const autoDownloadLabel = autoDownloadMinDuration > 0
+    ? `≥ ${autoDownloadMinDuration / 60} min`
+    : t("autoDownloadOff");
+
+  const captionsLabel = captionMode === "off"
+    ? t("captionsOff")
+    : captionMode === "language" && captionLanguage
+      ? subtitleLanguageLabel(captionLanguage)
+      : t("channelSettingDefault");
+
+  const changeCaptions = (mode: "off" | "language" | null, language?: string) => {
+    if (!id) return;
+    const previousMode = captionMode;
+    const previousLanguage = captionLanguage;
+    setCaptionMode(mode);
+    setCaptionLanguage(mode === "language" ? language ?? null : null);
+    api.setChannelCaptions(id, mode, language).catch((error) => {
+      setCaptionMode(previousMode);
+      setCaptionLanguage(previousLanguage);
+      console.error(error);
+    });
   };
 
   const reload = () => {
@@ -313,33 +361,82 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             {followed ? <UserMinus size={15} /> : <UserPlus size={15} />}
             {followed ? t("unfollow") : t("follow")}
           </button>
-          <div className="dropdown" ref={speedMenuRef}>
+          <div className="dropdown" ref={technicalMenuRef}>
             <button
-              className={`btn${channelSpeed ? " active" : ""}`}
-              onClick={() => setSpeedOpen((o) => !o)}
-              title={t("playbackSpeed")}
+              className={`btn icon-only${technicalOpen ? " active" : ""}`}
+              onClick={() => setTechnicalOpen((open) => !open)}
+              title={t("channelTechnicalSettings")}
+              aria-label={t("channelTechnicalSettings")}
+              aria-expanded={technicalOpen}
             >
-              <Gauge size={15} /> {channelSpeed ? `${channelSpeed}×` : t("speedDefault")}
+              <SlidersHorizontal size={16} />
             </button>
-            {speedOpen && (
-              <div className="dropdown-menu speed-menu">
-                {PLAYBACK_SPEEDS.map((s) => (
-                  <button
-                    key={s}
-                    className={channelSpeed === s ? "is-selected" : undefined}
-                    onClick={() => changeSpeed(s)}
-                  >
-                    {s === "1" ? "1×" : `${s}×`}
-                    {channelSpeed === s && <span className="dropdown-menu-status"><Check size={14} /></span>}
-                  </button>
-                ))}
-                <button
-                  className={!channelSpeed ? "is-selected" : undefined}
-                  onClick={() => changeSpeed(null)}
-                >
-                  {t("speedDefault")}
-                  {!channelSpeed && <span className="dropdown-menu-status"><Check size={14} /></span>}
-                </button>
+            {technicalOpen && (
+              <div className="dropdown-menu more-menu channel-technical-menu">
+                {technicalView === "root" && (
+                  <>
+                    <div className="more-menu-section-label">{t("channelPlayback")}</div>
+                    <button className="channel-technical-item" onClick={() => setTechnicalView("speed")}>
+                      <Gauge /> <span>{t("channelSpeed")}</span><span className="dropdown-menu-status">{channelSpeed ? `${channelSpeed}×` : t("channelSettingDefault")}</span><ChevronRight />
+                    </button>
+                    <button className="channel-technical-item" onClick={() => setTechnicalView("captions")}>
+                      <Captions /> <span>{t("subtitles")}</span><span className="dropdown-menu-status">{captionsLabel}</span><ChevronRight />
+                    </button>
+                    <div className="more-menu-divider" />
+                    <div className="more-menu-section-label">{t("channelDownloads")}</div>
+                    <button className="channel-technical-item" onClick={() => setTechnicalView("downloads")}>
+                      <Download /> <span>{t("autoDownloadMinimum")}</span><span className="dropdown-menu-status">{autoDownloadLabel}</span><ChevronRight />
+                    </button>
+                  </>
+                )}
+                {technicalView === "speed" && (
+                  <>
+                    <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("channelSpeed")}</div>
+                    {PLAYBACK_SPEEDS.map((speed) => (
+                      <button key={speed} className={channelSpeed === speed ? "is-selected" : undefined} onClick={() => changeSpeed(speed)}>
+                        {speed === "1" ? "1×" : `${speed}×`}
+                        {channelSpeed === speed && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                      </button>
+                    ))}
+                    <button className={!channelSpeed ? "is-selected" : undefined} onClick={() => changeSpeed(null)}>
+                      {t("channelSettingDefault")}
+                      {!channelSpeed && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    </button>
+                  </>
+                )}
+                {technicalView === "captions" && (
+                  <>
+                    <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("subtitles")}</div>
+                    <div className="channel-technical-scroll">
+                      <button className={captionMode == null ? "is-selected" : undefined} onClick={() => changeCaptions(null)}>
+                        {t("channelSettingDefault")}
+                        {captionMode == null && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                      </button>
+                      <button className={captionMode === "off" ? "is-selected" : undefined} onClick={() => changeCaptions("off")}>
+                        {t("captionsOff")}
+                        {captionMode === "off" && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                      </button>
+                      <div className="lp-sub-separator" />
+                      {SUBTITLE_LANGUAGES.map((language) => (
+                        <button key={language.code} className={captionMode === "language" && captionLanguage === language.code ? "is-selected" : undefined} onClick={() => changeCaptions("language", language.code)}>
+                          {language.label}
+                          {captionMode === "language" && captionLanguage === language.code && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {technicalView === "downloads" && (
+                  <>
+                    <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("autoDownloadMinimum")}</div>
+                    {AUTO_DOWNLOAD_MIN_DURATIONS.map((seconds) => (
+                      <button key={seconds} className={autoDownloadMinDuration === seconds ? "is-selected" : undefined} onClick={() => changeAutoDownloadMinDuration(seconds)}>
+                        {seconds === 0 ? t("autoDownloadOff") : `≥ ${seconds / 60} min`}
+                        {autoDownloadMinDuration === seconds && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                      </button>
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </div>

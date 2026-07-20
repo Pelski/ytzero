@@ -2800,6 +2800,29 @@ body.cinema .watch-layout.theater .watch-row .btn.active {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.channel-technical-menu { min-width: 270px; }
+.channel-technical-item {
+  gap: 9px;
+}
+.channel-technical-item > span:first-of-type {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-technical-item > .dropdown-menu-status {
+  margin-left: auto;
+  max-width: 95px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 400;
+}
+.channel-technical-item > svg:last-child { width: 15px; height: 15px; color: var(--text-3); }
+.channel-technical-scroll { max-height: min(52vh, 390px); overflow-y: auto; }
+.channel-technical-scroll .lp-sub-separator { margin: 5px 8px; }
 
 .channel-tags-row {
   display: flex;
@@ -4011,6 +4034,59 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .empty-state svg { width: 40px; height: 40px; stroke-width: 1.4; color: var(--text-3); margin-bottom: 14px; }
 .empty-state .btn svg { width: 16px; height: 16px; stroke-width: 1.8; color: inherit; margin-bottom: 0; }
 
+.feed-onboarding {
+  width: min(680px, 100%);
+  min-height: 440px;
+  margin: clamp(28px, 8vh, 92px) auto 0;
+  padding: clamp(28px, 5vw, 52px);
+  border: 1px solid var(--surface-3);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 47%),
+    var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.feed-onboarding-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  color: var(--accent);
+}
+.feed-onboarding-icon svg { width: 25px; height: 25px; stroke-width: 1.65; }
+.feed-onboarding-copy { max-width: 470px; margin-top: 20px; }
+.feed-onboarding-eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.feed-onboarding-copy h1 { margin: 8px 0 9px; font-size: clamp(23px, 3vw, 30px); line-height: 1.15; letter-spacing: -.025em; }
+.feed-onboarding-copy p { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.55; }
+.feed-onboarding-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 25px; }
+.feed-onboarding-actions .btn { min-height: 38px; }
+.feed-onboarding-steps {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 40px;
+  color: var(--text-2);
+}
+.feed-onboarding-steps > div { display: flex; align-items: center; gap: 7px; }
+.feed-onboarding-step-number { width: 20px; height: 20px; flex: 0 0 20px; display: grid; place-items: center; padding: 0 0 1px; border-radius: 50%; background: var(--surface-3); color: var(--text); font-size: 11px; font-weight: 700; line-height: 1; }
+.feed-onboarding-steps p { margin: 0; font-size: 12px; white-space: nowrap; }
+.feed-onboarding-steps > svg { width: 14px; height: 14px; color: var(--text-3); }
+@media (max-width: 560px) {
+  .feed-onboarding { min-height: 0; margin-top: 24px; padding: 32px 22px; }
+  .feed-onboarding-actions { width: 100%; flex-direction: column; }
+  .feed-onboarding-actions .btn { justify-content: center; }
+  .feed-onboarding-steps { align-items: flex-start; flex-direction: column; gap: 10px; padding: 28px 0 0 10px; }
+  .feed-onboarding-steps > svg { display: none; }
+}
+
 .load-more { display: flex; justify-content: center; gap: 8px; margin-top: 28px; }
 
 /* ---------- subscriptions page ---------- */
@@ -4049,23 +4125,9 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   background-color: var(--surface);
   padding-left: 12px;
 }
-.subs-tag-filter-trigger {
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 12px;
-  border: 1px solid var(--surface-3);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  white-space: nowrap;
-}
-.subs-tag-filter-trigger:hover, .subs-tag-filter-trigger.active { background: var(--surface-2); }
 @media (max-width: 560px) {
   .subs-toolbar { align-items: stretch; flex-direction: column; }
   .subs-sort { max-width: none; width: 100%; }
-  .subs-tag-filter-trigger { width: 100%; justify-content: center; }
 }
 .subs-grid {
   display: grid;
@@ -4091,8 +4153,7 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 }
 .subs-card-main { min-width: 0; flex: 1; display: flex; align-items: center; gap: 13px; color: inherit; text-decoration: none; }
 .subs-card-tags-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.subs-card-tag-picker { flex-shrink: 0; opacity: 0; transform: scale(0.92); transition: opacity 0.15s ease, transform 0.15s ease; }
-.subs-card:hover .subs-card-tag-picker, .subs-card:focus-within .subs-card-tag-picker { opacity: 1; transform: scale(1); }
+.subs-card-tag-picker { flex-shrink: 0; }
 .subs-card-tag-picker .btn-ghost { width: 28px; height: 28px; justify-content: center; padding: 0; border-radius: 9px; }
 .subs-card-tags-scroll { position: relative; flex: 1; min-width: 0; }
 .subs-card-tags-scroll::before, .subs-card-tags-scroll::after { content: ""; position: absolute; top: 0; bottom: 0; z-index: 2; width: 22px; pointer-events: none; opacity: 0; transition: opacity 0.18s ease; }

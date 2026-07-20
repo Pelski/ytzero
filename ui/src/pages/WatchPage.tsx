@@ -316,6 +316,14 @@ export default function WatchPage() {
     : rawSubtitleSize === "large" ? 26
       : rawSubtitleSize === "medium" ? 19
         : Math.min(48, Math.max(12, Number(rawSubtitleSize) || 19));
+  // A channel can either inherit the profile preference, explicitly turn
+  // captions off, or force one language. These values apply to both players.
+  const channelCaptionsOff = video?.channel_caption_mode === "off";
+  const channelCaptionLanguage = video?.channel_caption_mode === "language"
+    ? video.channel_caption_language
+    : null;
+  const captionsDefaultOn = !channelCaptionsOff && (Boolean(channelCaptionLanguage) || settings?.player_cc === "1");
+  const captionsDefaultLang = channelCaptionLanguage || settings?.player_cc_lang || settings?.player_hl || "en";
 
   const changeSubtitleSize = useCallback((size: number) => {
     const value = String(size);
@@ -547,9 +555,13 @@ export default function WatchPage() {
     };
     if (startSeconds > 10) playerVars.start = startSeconds;
     if (settings?.player_hl) playerVars.hl = settings.player_hl;
-    if (settings?.player_cc === "1") {
+    if (captionsDefaultOn) {
       playerVars.cc_load_policy = 1;
-      if (settings.player_cc_lang) playerVars.cc_lang_pref = settings.player_cc_lang;
+      playerVars.cc_lang_pref = captionsDefaultLang;
+    } else if (channelCaptionsOff) {
+      // Do not merely omit cc_load_policy: the embedded player can otherwise
+      // restore a caption track from the browser's YouTube preference.
+      playerVars.cc_load_policy = 0;
     }
     if (settings?.player_quality && settings.player_quality !== "auto") playerVars.vq = settings.player_quality;
 
@@ -579,6 +591,9 @@ export default function WatchPage() {
           onReady: (e: any) => {
             if (destroyed) return;
             applySpeed(e.target);
+            if (channelCaptionsOff) {
+              try { e.target.unloadModule?.("captions"); } catch {}
+            }
             requestYouTubePlayback();
           },
           onAutoplayBlocked: () => {
@@ -612,7 +627,7 @@ export default function WatchPage() {
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing, playerKind, requestYouTubePlayback]);
+  }, [id, video?.video_id, videoMissing, playerKind, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
@@ -1007,9 +1022,9 @@ export default function WatchPage() {
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
                   videoId={video.video_id}
-                  ccDefaultOn={settings?.player_cc === "1"}
-                  ccDefaultLang={settings?.player_cc_lang || settings?.player_hl || "en"}
-                  preferredSubtitleLanguages={[settings?.player_cc_lang || settings?.player_hl || "en", ...downloadSubtitleLanguages]}
+                  ccDefaultOn={captionsDefaultOn}
+                  ccDefaultLang={captionsDefaultLang}
+                  preferredSubtitleLanguages={[captionsDefaultLang, ...downloadSubtitleLanguages]}
                   subtitleStyle={{
                     size: subtitleSize,
                     color: settings?.player_sub_color || "#ffffff",

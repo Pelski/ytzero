@@ -199,6 +199,10 @@ CREATE TABLE IF NOT EXISTS user_channels (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   channel_id TEXT    NOT NULL REFERENCES channels(channel_id) ON DELETE CASCADE,
   followed   INTEGER NOT NULL DEFAULT 1,
+  -- NULL inherits the profile-wide player caption preference; "off" disables
+  -- captions for this channel and "language" forces caption_language.
+  caption_mode TEXT,
+  caption_language TEXT,
   added_at   TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (user_id, channel_id)
 );
@@ -351,6 +355,8 @@ for (const col of ["is_short INTEGER", "views INTEGER", "likes INTEGER"]) {
 try { db.exec("ALTER TABLE channels ADD COLUMN followed INTEGER NOT NULL DEFAULT 1"); } catch {}
 // Per-profile per-channel playback speed override (NULL = inherit player_speed).
 try { db.exec("ALTER TABLE user_channels ADD COLUMN playback_speed TEXT"); } catch {}
+try { db.exec("ALTER TABLE user_channels ADD COLUMN caption_mode TEXT"); } catch {}
+try { db.exec("ALTER TABLE user_channels ADD COLUMN caption_language TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN duration TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_position REAL"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
@@ -380,6 +386,9 @@ try { db.exec("ALTER TABLE downloads ADD COLUMN priority INTEGER NOT NULL DEFAUL
 // User-chosen display name; NULL falls back to the original `title` (which the
 // refresher keeps in sync with YouTube, so reverting is always possible).
 try { db.exec("ALTER TABLE channels ADD COLUMN custom_title TEXT"); } catch {}
+// Global downloads serve every profile, so the per-channel automatic-download
+// threshold lives on the shared channel rather than a profile association.
+try { db.exec("ALTER TABLE channels ADD COLUMN auto_download_min_duration INTEGER NOT NULL DEFAULT 0"); } catch {}
 // Relative output path (no extension) rendered from the downloads plugin's
 // filename template; sidecar files (nfo/thumbnail/subs) share this base.
 try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}

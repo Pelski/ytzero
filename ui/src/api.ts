@@ -32,6 +32,8 @@ export interface Video {
   watch_position: number | null;
   watch_duration: number | null;
   channel_playback_speed?: string | null;
+  channel_caption_mode?: "off" | "language" | null;
+  channel_caption_language?: string | null;
   in_history: number;
   external?: number;
   liked: number | null;
@@ -60,6 +62,9 @@ export interface Channel {
   description?: string;
   followed?: number;
   playback_speed?: string | null;
+  caption_mode?: "off" | "language" | null;
+  caption_language?: string | null;
+  auto_download_min_duration?: number;
   subscribed_at?: string | null;
   latest_video_at?: string | null;
   video_count?: number;
@@ -703,6 +708,10 @@ export const api = {
     http(`/channels/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
   setChannelSpeed: (id: string, speed: string | null) =>
     http(`/channels/${id}/speed`, { method: "PUT", body: JSON.stringify({ speed }) }),
+  setChannelCaptions: (id: string, mode: "off" | "language" | null, language?: string) =>
+    http(`/channels/${id}/captions`, { method: "PUT", body: JSON.stringify({ mode, language }) }),
+  setChannelDownloadMinDuration: (id: string, seconds: number) =>
+    http(`/channels/${id}/download-min-duration`, { method: "PUT", body: JSON.stringify({ seconds }) }),
   unfollowedChannels: () => http<{ channels: Channel[] }>("/channels/unfollowed"),
 
   channelAbout: (id: string) => http<ChannelAbout>(`/channels/${id}/about`),

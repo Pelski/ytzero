@@ -8,7 +8,6 @@ import TagChip from "../components/TagChip";
 import TagFilterBar from "../components/TagFilterBar";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
-import SubscriptionTagFilter from "../components/SubscriptionTagFilter";
 
 type SubscriptionSort = "name-asc" | "name-desc" | "latest-video" | "subscribed-recent" | "subscribers-desc" | "videos-desc";
 
@@ -119,7 +118,6 @@ export default function SubscriptionsPage() {
   const [selectedTags, setSelectedTags] = useState<number[]>(() => {
     try { return JSON.parse(sessionStorage.getItem("subscriptionTags") ?? "[]"); } catch { return []; }
   });
-  const [includeUntagged, setIncludeUntagged] = useState(() => sessionStorage.getItem("subscriptionUntagged") === "1");
 
   const load = useCallback(() => {
     setLoading(true);
@@ -142,9 +140,7 @@ export default function SubscriptionsPage() {
       const title = (ch.title || "").toLowerCase();
       const id = ch.channel_id.toLowerCase();
       const matchesQuery = !q || title.includes(q) || id.includes(q);
-      const matchesTags = (selectedTags.length === 0 && !includeUntagged)
-        || ch.tags.some((tag) => selectedTags.includes(tag.id))
-        || (includeUntagged && ch.tags.length === 0);
+      const matchesTags = selectedTags.length === 0 || ch.tags.some((tag) => selectedTags.includes(tag.id));
       return matchesQuery && matchesTags;
     });
     return filtered.sort((a, b) => {
@@ -155,15 +151,7 @@ export default function SubscriptionsPage() {
       if (sort === "videos-desc") return (b.video_count ?? 0) - (a.video_count ?? 0) || (a.title || "").localeCompare(b.title || "");
       return (a.title || a.channel_id).localeCompare(b.title || b.channel_id);
     });
-  }, [channels, includeUntagged, query, selectedTags, sort]);
-
-  const applyTagFilters = (nextTags: number[], nextIncludeUntagged: boolean) => {
-    setSelectedTags(nextTags);
-    setIncludeUntagged(nextIncludeUntagged);
-    sessionStorage.setItem("subscriptionTags", JSON.stringify(nextTags));
-    if (nextIncludeUntagged) sessionStorage.setItem("subscriptionUntagged", "1");
-    else sessionStorage.removeItem("subscriptionUntagged");
-  };
+  }, [channels, query, selectedTags, sort]);
 
   const toggleTag = (id: number) => {
     setSelectedTags((current) => {
@@ -173,7 +161,10 @@ export default function SubscriptionsPage() {
     });
   };
 
-  const clearTagFilters = () => applyTagFilters([], false);
+  const clearTagFilters = () => {
+    setSelectedTags([]);
+    sessionStorage.setItem("subscriptionTags", "[]");
+  };
 
   const applyChannelTags = (channel: Channel, nextTags: Tag[]) => {
     const previousIds = new Set(channel.tags.map((tag) => tag.id));
@@ -221,10 +212,6 @@ export default function SubscriptionsPage() {
           <option value="subscribers-desc">{t("subscriptionSortSubscribers")}</option>
           <option value="videos-desc">{t("subscriptionSortVideos")}</option>
         </select>
-        <SubscriptionTagFilter
-          active={includeUntagged}
-          onChange={(active) => applyTagFilters(selectedTags, active)}
-        />
       </div>
 
       <TagFilterBar
@@ -239,7 +226,7 @@ export default function SubscriptionsPage() {
       ) : filteredChannels.length === 0 ? (
         <div className="empty-state">
           <Users />
-          <div>{query || selectedTags.length > 0 || includeUntagged ? t("noMatchingChannels") : t("subscriptionsEmpty")}</div>
+          <div>{query || selectedTags.length > 0 ? t("noMatchingChannels") : t("subscriptionsEmpty")}</div>
         </div>
       ) : (
         <div className="subs-grid">
