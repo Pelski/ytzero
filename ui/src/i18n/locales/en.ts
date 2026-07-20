@@ -311,6 +311,8 @@ export const en = {
     hideLiveFromFeedHint: "Hides live and upcoming streams, including old scheduled streams that never started. They remain available in the Live tab.",
     cinemaMode: "Theater",
     cinema: "Theater",
+    youtubeReferrerErrorTitle: "Your browser blocked YouTube's player identification",
+    youtubeReferrerErrorHint: "Check its privacy or referrer settings, then reload this page.",
     watchLater: "Watch later",
     addToPlaylist: "Add to playlist",
     moreActions: "More",

@@ -2258,6 +2258,10 @@ button.video-card:disabled { cursor: default; }
 }
 .wp-panel-error { color: #ff6b76; max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
 .wp-panel-hint { margin: 0; font-size: 12px; color: var(--text-3); }
+.youtube-referrer-alert { display: flex; gap: 9px; margin-top: 12px; padding: 10px 11px; border-radius: 9px; background: rgba(244, 178, 64, 0.1); color: #efc778; font-size: 12px; line-height: 1.45; }
+.youtube-referrer-alert > svg { flex: 0 0 auto; margin-top: 1px; }
+.youtube-referrer-alert strong, .youtube-referrer-alert span { display: block; }
+.youtube-referrer-alert strong { margin-bottom: 2px; color: #f5d68d; }
 .wp-choice-buttons { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
 .wp-wait-bar {
   width: min(320px, 70vw);

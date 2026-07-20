@@ -4,6 +4,7 @@ import { emit, emitToast } from "../events";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   Archive,
+  AlertTriangle,
   ArrowDownToLine,
   BookmarkPlus,
   CalendarDays,
@@ -212,6 +213,7 @@ export default function WatchPage() {
   const [waitProgress, setWaitProgress] = useState<{ percent: number; speed: string | null } | null>(null);
   const [waitError, setWaitError] = useState<string | null>(null);
   const [youtubeAutoplayBlocked, setYoutubeAutoplayBlocked] = useState(false);
+  const [youtubeError, setYoutubeError] = useState<number | null>(null);
   // Path to the next playlist video, read by the player's onStateChange when a
   // video ends. A ref keeps the player effect free of playlist dependencies.
   const nextInPlaylistRef = useRef<string | null>(null);
@@ -340,6 +342,10 @@ export default function WatchPage() {
     setYoutubeAutoplayBlocked(false);
     setSourceChoice("youtube");
   }, []);
+
+  useEffect(() => {
+    setYoutubeError(null);
+  }, [id, playerKind]);
 
   // Effective playback rate: per-channel override, else the global default.
   // Kept in a ref so the player effect can read it without re-creating the player.
@@ -586,6 +592,9 @@ export default function WatchPage() {
             }
             // 0 === ended
             if (e?.data === 0) handleEndedRef.current();
+          },
+          onError: (e: any) => {
+            if (!destroyed) setYoutubeError(Number(e?.data) || null);
           },
         },
       });
@@ -1092,6 +1101,15 @@ export default function WatchPage() {
             </div>
           </div>
         </div>
+        {playerKind === "youtube" && youtubeError === 153 && (
+          <div className="youtube-referrer-alert" role="alert">
+            <AlertTriangle size={17} />
+            <div>
+              <strong>{t("youtubeReferrerErrorTitle")}</strong>
+              <span>{t("youtubeReferrerErrorHint")}</span>
+            </div>
+          </div>
+        )}
         {(video ?? videoInfo) && (
           <h1 className="watch-title">{video?.title ?? videoInfo?.title}</h1>
         )}

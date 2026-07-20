@@ -312,6 +312,8 @@ export const pl: Locale = {
     hideLiveFromFeedHint: "Ukrywa aktywne i zaplanowane transmisje, także stare transmisje, które nigdy się nie rozpoczęły. Nadal będą dostępne w zakładce Na żywo.",
     cinemaMode: "Tryb kinowy",
     cinema: "Tryb kinowy",
+    youtubeReferrerErrorTitle: "Przeglądarka blokuje identyfikację odtwarzacza YouTube",
+    youtubeReferrerErrorHint: "Sprawdź ustawienia prywatności lub nagłówka Referer, a następnie odśwież stronę.",
     watchLater: "Obejrzyj później",
     addToPlaylist: "Dodaj do playlisty",
     moreActions: "Więcej",

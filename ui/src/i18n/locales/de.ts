@@ -310,6 +310,8 @@ export const de: Locale = {
     hideLiveFromFeedHint: "Blendet laufende und geplante Streams aus, auch alte Streams, die nie gestartet wurden. Sie bleiben im Tab Live verfügbar.",
     cinemaMode: "Theater",
     cinema: "Theater",
+    youtubeReferrerErrorTitle: "Dein Browser blockiert die Identifizierung des YouTube-Players",
+    youtubeReferrerErrorHint: "Prüfe die Datenschutz- oder Referer-Einstellungen und lade diese Seite neu.",
     watchLater: "Später ansehen",
     addToPlaylist: "Zur Playlist hinzufügen",
     moreActions: "Mehr",
