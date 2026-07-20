@@ -71,7 +71,7 @@ export function saveDownloadCookies(contents: string) {
     throw new Error("cookies file is too large");
   }
   const normalized = contents.replace(/^\uFEFF/, "");
-  if (!/^# (?:HTTP|Netscape) Cookie File/m.test(normalized)) {
+  if (!/^# (?:(?:Netscape )?HTTP Cookie File|Netscape Cookie File)\b/m.test(normalized)) {
     throw new Error("cookies must be in Netscape cookies.txt format");
   }
   const temporary = `${DOWNLOAD_COOKIES_FILE}.tmp`;

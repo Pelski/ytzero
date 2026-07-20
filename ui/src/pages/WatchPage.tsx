@@ -329,6 +329,7 @@ export default function WatchPage() {
       if (iframe) {
         const permissions = new Set((iframe.getAttribute("allow") ?? "").split(";").map((v) => v.trim()).filter(Boolean));
         permissions.add("autoplay");
+        permissions.add("picture-in-picture");
         iframe.setAttribute("allow", [...permissions].join("; "));
       }
       p?.playVideo?.();
