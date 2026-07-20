@@ -1,9 +1,6 @@
 ---
 name: Bug report
 about: Report something that is not working as expected
-title: "Bug: "
-labels: bug
-assignees: Pelski
 ---
 
 ## What happened?
@@ -27,7 +24,7 @@ Please remove passwords, cookies, tokens, and other sensitive data first.
 
 ## Environment
 
-- YT Zero version:
+- YT Zero version (Settings → Advanced → Logs):
 - Installation method (Docker, native, other):
 - Browser and version:
 - Operating system:
