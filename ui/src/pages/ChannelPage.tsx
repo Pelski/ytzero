@@ -40,7 +40,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [followed, setFollowed] = useState(false);
   const [unfollowPending, setUnfollowPending] = useState(false);
   const [channelSpeed, setChannelSpeed] = useState("");
-  const [autoDownloadMinDuration, setAutoDownloadMinDuration] = useState(0);
+  const [autoDownloadMinDuration, setAutoDownloadMinDuration] = useState<number | null>(null);
+  const [downloadsEnabled, setDownloadsEnabled] = useState(false);
   const [captionMode, setCaptionMode] = useState<"off" | "language" | null>(null);
   const [captionLanguage, setCaptionLanguage] = useState<string | null>(null);
   const [technicalOpen, setTechnicalOpen] = useState(false);
@@ -78,7 +79,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     prevIdRef.current = id;
     setFollowed(false);
     setChannelSpeed("");
-    setAutoDownloadMinDuration(0);
+    setAutoDownloadMinDuration(null);
     setCaptionMode(null);
     setCaptionLanguage(null);
     window.scrollTo(0, 0);
@@ -87,7 +88,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setChannelTags(r.channel.tags);
       setFollowed(r.channel.followed !== 0);
       setChannelSpeed(r.channel.playback_speed ?? "");
-      setAutoDownloadMinDuration(r.channel.auto_download_min_duration ?? 0);
+      setAutoDownloadMinDuration(r.channel.auto_download_min_duration_override ?? null);
       setCaptionMode(r.channel.caption_mode ?? null);
       setCaptionLanguage(r.channel.caption_language ?? null);
     }).catch(console.error);
@@ -99,6 +100,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     api.channelLive(id).then((r) => setLiveStreams(r.videos)).catch(console.error);
     api.channelPlaylists(id).then((r) => setPlaylists(r.playlists)).catch(() => setPlaylists([]));
     api.tags().then((r) => setAllTags(r.tags)).catch(console.error);
+    api.plugins().then((r) => setDownloadsEnabled(r.plugins.some((plugin) => plugin.id === "downloads" && plugin.enabled))).catch(console.error);
   }, [id]);
 
   // Append subsequent pages as the user scrolls. Page 0 is handled by the
@@ -157,7 +159,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     if (id) api.setChannelSpeed(id, v).catch(console.error);
   };
 
-  const changeAutoDownloadMinDuration = (seconds: number) => {
+  const changeAutoDownloadMinDuration = (seconds: number | null) => {
     if (!id) return;
     const previous = autoDownloadMinDuration;
     setAutoDownloadMinDuration(seconds);
@@ -167,7 +169,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     });
   };
 
-  const autoDownloadLabel = autoDownloadMinDuration > 0
+  const autoDownloadLabel = autoDownloadMinDuration == null
+    ? t("channelSettingDefault")
+    : autoDownloadMinDuration > 0
     ? `≥ ${autoDownloadMinDuration / 60} min`
     : t("autoDownloadOff");
 
@@ -382,11 +386,13 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     <button className="channel-technical-item" onClick={() => setTechnicalView("captions")}>
                       <Captions /> <span>{t("subtitles")}</span><span className="dropdown-menu-status">{captionsLabel}</span><ChevronRight />
                     </button>
-                    <div className="more-menu-divider" />
-                    <div className="more-menu-section-label">{t("channelDownloads")}</div>
-                    <button className="channel-technical-item" onClick={() => setTechnicalView("downloads")}>
-                      <Download /> <span>{t("autoDownloadMinimum")}</span><span className="dropdown-menu-status">{autoDownloadLabel}</span><ChevronRight />
-                    </button>
+                    {downloadsEnabled && <>
+                      <div className="more-menu-divider" />
+                      <div className="more-menu-section-label">{t("channelDownloads")}</div>
+                      <button className="channel-technical-item" onClick={() => setTechnicalView("downloads")}>
+                        <Download /> <span>{t("autoDownloadMinimum")}</span><span className="dropdown-menu-status">{autoDownloadLabel}</span><ChevronRight />
+                      </button>
+                    </>}
                   </>
                 )}
                 {technicalView === "speed" && (
@@ -429,6 +435,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                 {technicalView === "downloads" && (
                   <>
                     <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("autoDownloadMinimum")}</div>
+                    <button className={autoDownloadMinDuration == null ? "is-selected" : undefined} onClick={() => changeAutoDownloadMinDuration(null)}>
+                      {t("channelSettingDefault")}
+                      {autoDownloadMinDuration == null && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    </button>
                     {AUTO_DOWNLOAD_MIN_DURATIONS.map((seconds) => (
                       <button key={seconds} className={autoDownloadMinDuration === seconds ? "is-selected" : undefined} onClick={() => changeAutoDownloadMinDuration(seconds)}>
                         {seconds === 0 ? t("autoDownloadOff") : `≥ ${seconds / 60} min`}

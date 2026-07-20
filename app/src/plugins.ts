@@ -194,6 +194,14 @@ const DOWNLOADS_SETTINGS: PluginSettingSource[] = [
     defaultValue: DL_DEFAULTS.feed_max_age_hours,
   },
   {
+    key: "feed_min_duration_minutes",
+    type: "slider",
+    label: { en: "Minimum length for new uploads (minutes)", pl: "Minimalna długość nowych filmów (minuty)", de: "Mindestlänge neuer Uploads (Minuten)" },
+    description: { en: "Skips shorter videos when automatically downloading new uploads. Set to 0 to disable the global threshold; a channel can override it.", pl: "Pomija krótsze filmy przy automatycznym pobieraniu nowych materiałów. Ustaw 0, aby wyłączyć globalny próg; kanał może go nadpisać.", de: "Überspringt kürzere Videos beim automatischen Herunterladen neuer Uploads. Bei 0 ist der globale Schwellenwert aus; Kanäle können ihn überschreiben." },
+    min: 0, max: 60, step: 1,
+    defaultValue: DL_DEFAULTS.feed_min_duration_minutes,
+  },
+  {
     key: "download_shorts",
     type: "toggle",
     label: { en: "Include Shorts", pl: "Pobieraj Shorts", de: "Shorts einschließen" },

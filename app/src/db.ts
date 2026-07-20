@@ -389,6 +389,13 @@ try { db.exec("ALTER TABLE channels ADD COLUMN custom_title TEXT"); } catch {}
 // Global downloads serve every profile, so the per-channel automatic-download
 // threshold lives on the shared channel rather than a profile association.
 try { db.exec("ALTER TABLE channels ADD COLUMN auto_download_min_duration INTEGER NOT NULL DEFAULT 0"); } catch {}
+// NULL inherits the downloads plugin's global threshold; 0 is an explicit
+// per-channel opt-out. Preserve any non-zero threshold saved before overrides
+// were introduced, while allowing channels at the old default (0) to inherit.
+try {
+  db.exec("ALTER TABLE channels ADD COLUMN auto_download_min_duration_override INTEGER");
+  db.exec("UPDATE channels SET auto_download_min_duration_override = auto_download_min_duration WHERE auto_download_min_duration > 0");
+} catch {}
 // Relative output path (no extension) rendered from the downloads plugin's
 // filename template; sidecar files (nfo/thumbnail/subs) share this base.
 try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}

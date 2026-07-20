@@ -2677,7 +2677,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 id: "downloading",
                 title: t("pluginSectionDownloading"),
                 description: t("pluginSectionDownloadingHint"),
-                keys: ["quality", "watch_source_mode", "thumb_progress", "download_scheduled", "download_feed", "feed_max_age_hours", "download_shorts"],
+                keys: ["quality", "watch_source_mode", "thumb_progress", "download_scheduled", "download_feed", "feed_max_age_hours", "feed_min_duration_minutes", "download_shorts"],
               },
               {
                 id: "files",

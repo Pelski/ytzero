@@ -39,6 +39,7 @@ export const DL_DEFAULTS = {
   download_scheduled: 1,
   download_feed: 0,
   feed_max_age_hours: 48,
+  feed_min_duration_minutes: 0,
   download_shorts: 0,
   retention_days: 14,
   delete_watched: 1,
@@ -450,7 +451,8 @@ function autoEnqueue(s: DlSettings) {
   if (s.download_feed === 1) {
     const shortsFilter = s.download_shorts === 1 ? "" : "AND COALESCE(v.is_short, 0) = 0";
     const rows = db.prepare(`
-      SELECT v.video_id, v.duration, COALESCE(c.auto_download_min_duration, 0) AS min_duration
+      SELECT v.video_id, v.duration,
+             COALESCE(c.auto_download_min_duration_override, ?) AS min_duration
       FROM videos v
       JOIN channels c ON c.channel_id = v.channel_id
       WHERE v.live_status = 'none' AND v.external = 0
@@ -461,7 +463,7 @@ function autoEnqueue(s: DlSettings) {
         AND NOT EXISTS (SELECT 1 FROM user_videos uv WHERE uv.video_id = v.video_id AND (uv.watched = 1 OR uv.status = 'archived'))
       ORDER BY v.published_at DESC
       LIMIT 250
-    `).all(`-${s.feed_max_age_hours} hours`) as { video_id: string; duration: string | null; min_duration: number }[];
+    `).all(s.feed_min_duration_minutes * 60, `-${s.feed_max_age_hours} hours`) as { video_id: string; duration: string | null; min_duration: number }[];
     let enqueued = 0;
     for (const { video_id, duration, min_duration } of rows) {
       // With a threshold, an unknown duration cannot safely be included. It

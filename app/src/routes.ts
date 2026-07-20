@@ -1724,11 +1724,11 @@ api.put("/channels/:id/captions", async (c) => {
 // the threshold.
 api.put("/channels/:id/download-min-duration", async (c) => {
   const { seconds } = await c.req.json<{ seconds: unknown }>();
-  if (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > 24 * 60 * 60) {
-    return c.json({ error: "seconds must be an integer between 0 and 86400" }, 400);
+  if (seconds !== null && (!Number.isInteger(seconds) || (seconds as number) < 0 || (seconds as number) > 24 * 60 * 60)) {
+    return c.json({ error: "seconds must be null or an integer between 0 and 86400" }, 400);
   }
-  const value = seconds as number;
-  const result = db.prepare("UPDATE channels SET auto_download_min_duration = ? WHERE channel_id = ?")
+  const value = seconds === null ? null : seconds as number;
+  const result = db.prepare("UPDATE channels SET auto_download_min_duration_override = ? WHERE channel_id = ?")
     .run(value, c.req.param("id"));
   if (result.changes === 0) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true, seconds: value });
