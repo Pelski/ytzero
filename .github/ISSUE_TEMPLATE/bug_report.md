@@ -1,6 +1,9 @@
 ---
 name: Bug report
 about: Report something that is not working as expected
+title: "bug: "
+labels: bug
+assignees: Pelski
 ---
 
 ## What happened?
