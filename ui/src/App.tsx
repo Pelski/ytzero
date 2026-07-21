@@ -31,11 +31,11 @@ import { applyVideoCardSize } from "./videoCardSize";
 // Routes owned by plugins — visible in the sidebar only while enabled.
 const PLUGIN_ROUTES = ["/discovery", "/downloads"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
-import { VideoThumbnail } from "./components/VideoThumbnail";
+import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
 import { Badge, Toast } from "./components/ui";
 
-type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number };
+type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
 function SidebarSubscriptions() {
   const { t } = useI18n();
@@ -80,7 +80,7 @@ function SidebarSubscriptions() {
             </Link>
             {ch.latest_thumbnail && ch.latest_video_id && (
               <Link to={`/watch/${ch.latest_video_id}`} className="sidebar-sub-video" aria-label={ch.title}>
-                <VideoThumbnail src={img(ch.latest_thumbnail)} watched={ch.watched === 1} variant="sidebar" />
+                <VideoThumbnail src={img(ch.latest_thumbnail)} watched={ch.watched === 1} progress={watchProgress(ch.watch_position, ch.watch_duration)} variant="sidebar" />
               </Link>
             )}
           </div>

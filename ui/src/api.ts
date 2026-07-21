@@ -122,6 +122,20 @@ export interface PlaylistInfo {
   videoCount: string;
 }
 
+export interface VideoChannelPlaylist extends PlaylistInfo {
+  channelId: string;
+  channelTitle: string;
+}
+
+export interface VideoCreator {
+  channelId: string;
+  title: string;
+  avatar: string;
+  subscriberCount: string;
+  handle: string;
+  isOwner: boolean;
+}
+
 export interface PlaylistVideo {
   videoId: string;
   title: string;
@@ -130,6 +144,8 @@ export interface PlaylistVideo {
   duration: string;
   index: number;
   watched: number;
+  watch_position: number | null;
+  watch_duration: number | null;
 }
 
 export interface UserPlaylist {
@@ -186,6 +202,8 @@ export interface SearchResult {
   viewCount: number | null;
   published: PublishedAgo | null;
   watched: number;
+  watch_position: number | null;
+  watch_duration: number | null;
 }
 
 export interface ChannelSearchResult {
@@ -650,7 +668,7 @@ export const api = {
 
   channels: () => http<{ channels: Channel[] }>("/channels"),
   channel: (id: string) => http<{ channel: Channel }>(`/channels/${id}`),
-  recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number })[] }>("/channels/recent"),
+  recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null })[] }>("/channels/recent"),
   topChannels: () => http<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("/channels/top"),
   syncChannel: (id: string) => http<{ added: number }>(`/channels/${id}/sync`, { method: "POST" }),
   addChannel: (url: string, customName?: string) =>
@@ -747,6 +765,10 @@ export const api = {
     http<{ matched: number }>(`/playlists/${id}/rules/apply`, { method: "POST" }),
 
   chapters: (videoId: string) => http<{ chapters: VideoChapter[] }>(`/videos/${videoId}/chapters`),
+  videoPlaylists: (videoId: string) =>
+    http<{ playlists: VideoChannelPlaylist[] }>(`/videos/${videoId}/playlists`),
+  videoCreators: (videoId: string) =>
+    http<{ creators: VideoCreator[] }>(`/videos/${videoId}/creators`),
 
   profiles: () => http<{ profiles: Profile[]; active_id: number }>("/profiles"),
   createProfile: (p: { name: string; avatar_color?: string; pin?: string }) =>

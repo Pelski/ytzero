@@ -17,7 +17,7 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
-import { VideoThumbnail } from "../components/VideoThumbnail";
+import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
 import { Alert, Badge, Button, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, SectionHeader, Select, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 
@@ -2748,7 +2748,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                       {ch.videos.map((v) => (
                         <div key={v.video_id} className="external-video-row">
                           <Link to={`/watch/${v.video_id}`} className="external-thumb-link" aria-label={v.title} title={v.title}>
-                            <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="external" loading="lazy" />
+                            <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="external" loading="lazy" />
                           </Link>
                           <Link to={`/watch/${v.video_id}`} className="external-title-cell" title={v.title}>
                             {v.title}

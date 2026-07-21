@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hasMembersOnlyBadge, parsePublishedTimeText, relativePublishedAt } from "./youtube";
+import { hasMembersOnlyBadge, parsePublishedTimeText, parseVideoCreatorsFromInitialData, relativePublishedAt } from "./youtube";
 
 describe("YouTube publication metadata", () => {
   test("parses relative publication labels returned by supported locales", () => {
@@ -19,5 +19,65 @@ describe("YouTube publication metadata", () => {
     expect(hasMembersOnlyBadge({ badgeViewModel: { badgeStyle: "BADGE_MEMBERS_ONLY" } })).toBe(true);
     expect(hasMembersOnlyBadge({ metadataBadgeRenderer: { style: "BADGE_STYLE_TYPE_MEMBERS_ONLY" } })).toBe(true);
     expect(hasMembersOnlyBadge({ thumbnailBadgeViewModel: { text: "21:00" } })).toBe(false);
+  });
+
+  test("parses an arbitrary number of native video collaborators", () => {
+    const creator = (channelId: string, title: string) => ({
+      listItemViewModel: {
+        title: { content: title, commandRuns: [{ onTap: { innertubeCommand: { browseEndpoint: { browseId: channelId } } } }] },
+        subtitle: { content: `@${title.toLowerCase()} • 10 subscribers` },
+        leadingAccessory: { avatarViewModel: { image: { sources: [{ url: `${channelId}.jpg` }] } } },
+      },
+    });
+    const data = {
+      videoAttributionViewModel: {
+        attributedTitle: {
+          content: "Owner, Guest and Third",
+        },
+        onTap: { innertubeCommand: { showDialogCommand: { panelLoadingStrategy: { inlineContent: { dialogViewModel: {
+          customContent: { listViewModel: { listItems: [
+            creator("UCOWNER0000000000000000", "Owner"),
+            creator("UCGUEST0000000000000000", "Guest"),
+            creator("UCTHIRD0000000000000000", "Third"),
+          ] } },
+        } } } } } },
+      },
+    };
+
+    expect(parseVideoCreatorsFromInitialData(data, "UCOWNER0000000000000000")).toEqual([
+      { channelId: "UCOWNER0000000000000000", title: "Owner", avatar: "UCOWNER0000000000000000.jpg", handle: "@owner", isOwner: true },
+      { channelId: "UCGUEST0000000000000000", title: "Guest", avatar: "UCGUEST0000000000000000.jpg", handle: "@guest", isOwner: false },
+      { channelId: "UCTHIRD0000000000000000", title: "Third", avatar: "UCTHIRD0000000000000000.jpg", handle: "@third", isOwner: false },
+    ]);
+  });
+
+  test("does not mistake ordinary dialogs for collaborator attribution", () => {
+    const data = {
+      showDialogViewModel: {
+        customContent: { listViewModel: { listItems: [{
+          listItemViewModel: { title: { content: "Settings" } },
+        }] } },
+      },
+    };
+
+    expect(parseVideoCreatorsFromInitialData(data, "UCOWNER0000000000000000")).toEqual([]);
+  });
+
+  test("ignores a channel list that does not contain the video's owner", () => {
+    const creator = (channelId: string, title: string) => ({
+      listItemViewModel: {
+        title: { content: title, commandRuns: [{ onTap: { innertubeCommand: { browseEndpoint: { browseId: channelId } } } }] },
+      },
+    });
+    const data = {
+      dialogViewModel: {
+        customContent: { listViewModel: { listItems: [
+          creator("UCOTHER0000000000000000", "Other"),
+          creator("UCANOTHER00000000000000", "Another"),
+        ] } },
+      },
+    };
+
+    expect(parseVideoCreatorsFromInitialData(data, "UCOWNER0000000000000000")).toEqual([]);
   });
 });

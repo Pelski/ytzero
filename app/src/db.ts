@@ -39,6 +39,16 @@ CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
 CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 
+CREATE TABLE IF NOT EXISTS video_creators (
+  video_id   TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
+  channel_id TEXT NOT NULL REFERENCES channels(channel_id) ON DELETE CASCADE,
+  handle     TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  is_owner   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (video_id, channel_id)
+);
+CREATE INDEX IF NOT EXISTS idx_video_creators_video ON video_creators(video_id, sort_order);
+
 CREATE TABLE IF NOT EXISTS tags (
   id    INTEGER PRIMARY KEY AUTOINCREMENT,
   name  TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -170,6 +180,26 @@ CREATE TABLE IF NOT EXISTS user_playlist_rules (
   match_type  TEXT NOT NULL CHECK (match_type IN ('contains', 'regex')),
   field       TEXT NOT NULL CHECK (field IN ('title', 'description', 'both'))
 );
+
+-- Public YouTube playlists published by subscribed channels. Keeping the
+-- membership locally makes the watch-page widget instant and avoids a burst
+-- of YouTube requests every time a video is opened.
+CREATE TABLE IF NOT EXISTS channel_playlists (
+  playlist_id TEXT PRIMARY KEY,
+  channel_id  TEXT NOT NULL REFERENCES channels(channel_id) ON DELETE CASCADE,
+  title       TEXT NOT NULL DEFAULT '',
+  thumbnail   TEXT NOT NULL DEFAULT '',
+  video_count TEXT NOT NULL DEFAULT '',
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_channel_playlists_channel ON channel_playlists(channel_id);
+
+CREATE TABLE IF NOT EXISTS channel_playlist_videos (
+  playlist_id TEXT NOT NULL REFERENCES channel_playlists(playlist_id) ON DELETE CASCADE,
+  video_id    TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
+  PRIMARY KEY (playlist_id, video_id)
+);
+CREATE INDEX IF NOT EXISTS idx_channel_playlist_videos_video ON channel_playlist_videos(video_id);
 
 CREATE TABLE IF NOT EXISTS filter_rules (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -382,6 +412,10 @@ try { db.exec("ALTER TABLE channels ADD COLUMN about_fetched_at TEXT"); } catch 
 // instead of scraping YouTube on every request.
 try { db.exec("ALTER TABLE channels ADD COLUMN playlists_json TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN playlists_fetched_at TEXT"); } catch {}
+// Full channel scans are intentionally much slower than the regular RSS
+// refresh. Separate timestamps keep their round-robin scheduler independent.
+try { db.exec("ALTER TABLE channels ADD COLUMN full_sync_attempted_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN last_full_synced_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_json TEXT"); } catch {}
 // Priority downloads (viewer is actively waiting) jump the queue and may
 // preempt the running job.
@@ -403,6 +437,8 @@ try {
 // filename template; sidecar files (nfo/thumbnail/subs) share this base.
 try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE videos ADD COLUMN creators_fetched_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE video_creators ADD COLUMN handle TEXT NOT NULL DEFAULT ''"); } catch {}
 // Publication dates discovered only as relative channel-card labels are kept
 // distinct until the watch page can provide YouTube's exact publish date.
 try { db.exec("ALTER TABLE videos ADD COLUMN published_at_approximate INTEGER NOT NULL DEFAULT 0"); } catch {}

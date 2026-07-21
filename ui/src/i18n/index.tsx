@@ -111,6 +111,18 @@ export function formatVideoCount(n: number, language: Language): string {
   return locales[language].format.videoCount(n);
 }
 
+/** Normalize YouTube's localized/raw playlist counts (for example
+ * "7 videos" or "1.2K videos") before applying the app's own plural rules. */
+export function formatPlaylistVideoCount(value: string | number, language: Language): string {
+  if (typeof value === "number") return formatVideoCount(value, language);
+  const compact = value.trim().toUpperCase().match(/([\d.,]+)\s*([KMB])/);
+  const factor = compact?.[2] === "K" ? 1_000 : compact?.[2] === "M" ? 1_000_000 : compact?.[2] === "B" ? 1_000_000_000 : 1;
+  const count = compact
+    ? Math.round(Number(compact[1].replace(",", ".")) * factor)
+    : Number(value.replace(/\D/g, ""));
+  return count ? formatVideoCount(count, language) : value;
+}
+
 export function formatAddedVideos(n: number, language: Language): string {
   return locales[language].format.addedVideos(n);
 }

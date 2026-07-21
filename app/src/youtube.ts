@@ -804,6 +804,73 @@ export interface VideoInfo {
   liveStatus: "none" | "live" | "upcoming";
 }
 
+export interface VideoCreatorInfo {
+  channelId: string;
+  title: string;
+  avatar: string;
+  handle: string;
+  isOwner: boolean;
+}
+
+/** Parse YouTube's native multi-creator attribution dialog. This deliberately
+ * ignores @mentions in descriptions: only channels explicitly attached by
+ * YouTube count as collaborators. */
+export function parseVideoCreatorsFromInitialData(data: any, ownerChannelId: string): VideoCreatorInfo[] {
+  // `attributedTitle` and the dialog command are siblings in some watch-page
+  // payloads and nested in others. Scan dialogs directly instead of depending
+  // on that unstable wrapper shape.
+  const dialogs = [
+    ...deepCollect(data, "dialogViewModel"),
+    ...deepCollect(data, "showDialogViewModel"),
+  ];
+  for (const dialog of dialogs) {
+    const items = dialog?.customContent?.listViewModel?.listItems;
+    if (!Array.isArray(items) || items.length < 2) continue;
+
+    const creators: VideoCreatorInfo[] = [];
+    const seen = new Set<string>();
+    for (const item of items) {
+      const model = item?.listItemViewModel;
+      const title = model?.title?.content;
+      const channelId = deepCollect(model?.title, "browseEndpoint")[0]?.browseId
+        ?? deepCollect(model?.leadingAccessory, "browseEndpoint")[0]?.browseId;
+      if (typeof channelId !== "string" || !channelId.startsWith("UC") || seen.has(channelId) || typeof title !== "string" || !title) continue;
+      seen.add(channelId);
+      const sources = deepCollect(model?.leadingAccessory, "sources")
+        .flat()
+        .filter((source: any) => typeof source?.url === "string");
+      const subtitle = typeof model?.subtitle?.content === "string" ? model.subtitle.content : "";
+      const handleMatch = subtitle.match(/@([\p{L}\p{N}._-]+)/u);
+      creators.push({
+        channelId,
+        title: decodeHtmlEntities(title),
+        avatar: sources.at(-1)?.url ?? "",
+        handle: handleMatch ? `@${handleMatch[1]}` : "",
+        isOwner: channelId === ownerChannelId,
+      });
+    }
+    if (creators.length > 1 && (!ownerChannelId || creators.some((creator) => creator.isOwner))) {
+      if (!ownerChannelId) creators[0].isOwner = true;
+      return creators;
+    }
+  }
+  return [];
+}
+
+export function parseVideoCreatorsFromHtml(html: string): VideoCreatorInfo[] {
+  const player = extractVariable(html, "ytInitialPlayerResponse");
+  const ownerChannelId = player?.videoDetails?.channelId
+    ?? player?.microformat?.playerMicroformatRenderer?.externalChannelId
+    ?? "";
+  return parseVideoCreatorsFromInitialData(extractInitialData(html), ownerChannelId);
+}
+
+export async function fetchVideoCreators(videoId: string): Promise<VideoCreatorInfo[]> {
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: FETCH_HEADERS });
+  if (!res.ok) throw new Error(`YouTube creators fetch failed (${res.status})`);
+  return parseVideoCreatorsFromHtml(await res.text());
+}
+
 const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
 const VIDEO_INFO_TTL = 10 * 60_000;
 

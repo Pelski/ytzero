@@ -6,7 +6,7 @@ import { formatPublishedAgo, useI18n } from "../i18n";
 import { img } from "../img";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
-import { VideoThumbnail } from "../components/VideoThumbnail";
+import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { Button, EmptyState } from "../components/ui";
 
 function normalizeSearchText(value: string) {
@@ -153,7 +153,7 @@ export default function SearchPage({ onPlay, hideExternalSearch = false }: { onP
             <div className="yt-results-list">
               {ytResults.map((result) => (
                 <Link key={result.videoId} className="yt-result-row" to={`/watch/${result.videoId}`} title={result.title}>
-                  <VideoThumbnail src={result.thumbnail} watched={result.watched === 1} variant="search" loading="lazy">
+                  <VideoThumbnail src={result.thumbnail} watched={result.watched === 1} progress={watchProgress(result.watch_position, result.watch_duration)} variant="search" loading="lazy">
                     {result.duration && <span className="yt-result-dur">{result.duration}</span>}
                   </VideoThumbnail>
                   <div className="yt-result-info">

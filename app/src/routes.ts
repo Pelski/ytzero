@@ -9,6 +9,7 @@ import {
   fetchChannelVideosDurations,
   fetchPlaylistVideos,
   fetchVideoChapters,
+  fetchVideoCreators,
   fetchVideoInfo,
   parseOpml,
   parseTakeoutCsv,
@@ -29,6 +30,7 @@ import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesCo
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
+import { saveChannelPlaylists, videoPlaylistsForUser } from "./channelPlaylists";
 import {
   authMethod,
   hashPassword,
@@ -295,13 +297,22 @@ interface VideoRow {
 
 function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => string | null | undefined) {
   const ids = [...new Set(items.map(videoId).filter((id): id is string => !!id))];
-  if (ids.length === 0) return items.map((item) => ({ ...item, watched: 0 }));
+  if (ids.length === 0) return items.map((item) => ({ ...item, watched: 0, watch_position: null, watch_duration: null }));
   const placeholders = ids.map(() => "?").join(",");
   const rows = db.prepare(
-    `SELECT video_id FROM user_videos WHERE user_id = ? AND watched = 1 AND video_id IN (${placeholders})`
-  ).all(uid, ...ids) as { video_id: string }[];
-  const watched = new Set(rows.map((row) => row.video_id));
-  return items.map((item) => ({ ...item, watched: watched.has(videoId(item) ?? "") ? 1 : 0 }));
+    `SELECT video_id, watched, watch_position, watch_duration
+     FROM user_videos WHERE user_id = ? AND video_id IN (${placeholders})`
+  ).all(uid, ...ids) as { video_id: string; watched: number | null; watch_position: number | null; watch_duration: number | null }[];
+  const state = new Map(rows.map((row) => [row.video_id, row]));
+  return items.map((item) => {
+    const progress = state.get(videoId(item) ?? "");
+    return {
+      ...item,
+      watched: progress?.watched === 1 ? 1 : 0,
+      watch_position: progress?.watch_position ?? null,
+      watch_duration: progress?.watch_duration ?? null,
+    };
+  });
 }
 
 function attachTags(uid: number, videos: VideoRow[]) {
@@ -521,7 +532,6 @@ api.get("/in-progress", (c) => {
       AND uv.watch_position >= 3
       AND CAST(uv.watch_position AS REAL) / uv.watch_duration < 0.92
       AND COALESCE(uv.status, 'inbox') = 'inbox'
-      AND ${followedExists(uid)}
     ORDER BY lw.last_watched DESC
     LIMIT 20
   `).all() as VideoRow[];
@@ -1125,6 +1135,98 @@ api.get("/videos/:id/chapters", async (c) => {
   }
 });
 
+interface StoredVideoCreator {
+  channelId: string;
+  title: string;
+  avatar: string;
+  subscriberCount: string;
+  handle: string;
+  isOwner: boolean;
+}
+
+function storedVideoCreators(videoId: string): StoredVideoCreator[] {
+  return (db.prepare(`
+    SELECT vc.channel_id AS channelId,
+           COALESCE(NULLIF(c.custom_title, ''), c.title) AS title,
+           c.thumbnail AS avatar,
+           COALESCE(c.subscriber_count, '') AS subscriberCount,
+           COALESCE(vc.handle, '') AS handle,
+           vc.is_owner AS isOwner
+    FROM video_creators vc
+    JOIN channels c ON c.channel_id = vc.channel_id
+    WHERE vc.video_id = ?
+    ORDER BY vc.sort_order, vc.channel_id
+  `).all(videoId) as (Omit<StoredVideoCreator, "isOwner"> & { isOwner: number })[])
+    .map((creator) => ({ ...creator, isOwner: creator.isOwner === 1 }));
+}
+
+api.get("/videos/:id/creators", async (c) => {
+  const videoId = c.req.param("id");
+  const video = db.prepare(`
+    SELECT v.video_id, v.channel_id,
+           COALESCE(NULLIF(c.custom_title, ''), c.title) AS title,
+           c.thumbnail AS avatar,
+           COALESCE(c.subscriber_count, '') AS subscriberCount,
+           v.creators_fetched_at
+    FROM videos v JOIN channels c ON c.channel_id = v.channel_id
+    WHERE v.video_id = ?
+  `).get(videoId) as {
+    video_id: string;
+    channel_id: string;
+    title: string;
+    avatar: string;
+    subscriberCount: string;
+    creators_fetched_at: string | null;
+  } | null;
+  if (!video) return c.json({ error: "not found" }, 404);
+
+  const fallback: StoredVideoCreator = {
+    channelId: video.channel_id,
+    title: video.title,
+    avatar: video.avatar,
+    subscriberCount: video.subscriberCount,
+    handle: "",
+    isOwner: true,
+  };
+  const cached = storedVideoCreators(videoId);
+  const missingCollaboratorHandles = cached.length > 1 && cached.some((creator) => !creator.handle);
+  if (cached.length > 0 && !missingCollaboratorHandles && ageMs(video.creators_fetched_at) <= CREATORS_DB_TTL) {
+    return c.json({ creators: cached });
+  }
+
+  try {
+    const fetched = await fetchVideoCreators(videoId);
+    const creators = fetched.length > 1 ? fetched : [fallback];
+    db.transaction(() => {
+      db.prepare("DELETE FROM video_creators WHERE video_id = ?").run(videoId);
+      const ensureChannel = db.prepare(`
+        INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
+        VALUES (?, ?, ?, ?, 0, 1)
+        ON CONFLICT(channel_id) DO UPDATE SET
+          title = CASE WHEN channels.title = '' THEN excluded.title ELSE channels.title END,
+          thumbnail = CASE WHEN channels.thumbnail = '' THEN excluded.thumbnail ELSE channels.thumbnail END
+      `);
+      const addCreator = db.prepare(`
+        INSERT INTO video_creators (video_id, channel_id, handle, sort_order, is_owner) VALUES (?, ?, ?, ?, ?)
+      `);
+      creators.forEach((creator, index) => {
+        ensureChannel.run(
+          creator.channelId,
+          creator.title,
+          `https://www.youtube.com/channel/${creator.channelId}`,
+          creator.avatar,
+        );
+        addCreator.run(videoId, creator.channelId, creator.handle, index, creator.isOwner ? 1 : 0);
+      });
+      db.prepare("UPDATE videos SET creators_fetched_at = datetime('now') WHERE video_id = ?").run(videoId);
+    })();
+    return c.json({ creators: storedVideoCreators(videoId) });
+  } catch (error) {
+    log.warn("video.creators.fetch_failed", { videoId, error: error instanceof Error ? error.message : String(error) });
+    return c.json({ creators: cached.length > 0 ? cached : [fallback] });
+  }
+});
+
 api.get("/videos/:id", (c) => {
   const uid = currentUserId(c);
   const row = db
@@ -1151,7 +1253,7 @@ api.get("/videos/:id", (c) => {
 
   const fill = (rows: VideoRow[]) => {
     for (const r of rows) {
-      if (seen.has(r.video_id) || r.is_short === 1) continue;
+      if (seen.has(r.video_id) || r.is_short !== 0) continue;
       seen.add(r.video_id);
       related.push(r);
       if (related.length >= RELATED_TARGET) break;
@@ -1165,7 +1267,7 @@ api.get("/videos/:id", (c) => {
     const tagIds = tagRows.map((t) => t.tag_id);
     const ph = tagIds.map(() => "?").join(",");
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
+      `${videoSelect(uid)} WHERE v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
@@ -1175,7 +1277,7 @@ api.get("/videos/:id", (c) => {
   // Step 2 — same channel, fill what's missing
   if (need() > 0) {
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
+      `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(row.channel_id, row.video_id, need() * 2) as VideoRow[]);
   }
@@ -1186,7 +1288,7 @@ api.get("/videos/:id", (c) => {
     const ph = tagIds.map(() => "?").join(",");
     const seenPh = [...seen].map(() => "?").join(",");
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
+      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
@@ -1197,7 +1299,7 @@ api.get("/videos/:id", (c) => {
   if (need() > 0) {
     const seenPh = [...seen].map(() => "?").join(",");
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
+      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(...seen, need() * 2) as VideoRow[]);
   }
@@ -1539,6 +1641,7 @@ function ageMs(ts: string | null): number {
 const ABOUT_DB_TTL = 3 * 24 * 60 * 60_000;
 const PLAYLISTS_DB_TTL = 3 * 24 * 60 * 60_000;
 const CHAPTERS_DB_TTL = 7 * 24 * 60 * 60_000;
+const CREATORS_DB_TTL = 7 * 24 * 60 * 60_000;
 
 function persistChannelAbout(channelId: string, about: ChannelAbout) {
   db.prepare(
@@ -1634,6 +1737,7 @@ api.get("/channels/:id/about", async (c) => {
 
 async function refreshChannelPlaylists(channelId: string) {
   const playlists = await fetchChannelPlaylists(channelId);
+  saveChannelPlaylists(channelId, playlists);
   db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now') WHERE channel_id = ?")
     .run(JSON.stringify(playlists), channelId);
   return playlists;
@@ -1653,6 +1757,7 @@ api.get("/channels/:id/playlists", async (c) => {
       if (Array.isArray(playlists) && playlists.length === 30) {
         return c.json({ playlists: await refreshChannelPlaylists(channelId) });
       }
+      if (Array.isArray(playlists)) saveChannelPlaylists(channelId, playlists);
     } catch { /* corrupted cache — fall through to a fresh fetch */ }
     if (ageMs(cached.playlists_fetched_at) > PLAYLISTS_DB_TTL) {
       refreshChannelPlaylists(channelId).catch((e) =>
@@ -1991,6 +2096,10 @@ api.get("/playlists/:id/videos", async (c) => {
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
+});
+
+api.get("/videos/:id/playlists", (c) => {
+  return c.json({ playlists: videoPlaylistsForUser(currentUserId(c), c.req.param("id")) });
 });
 
 api.post("/channels/import", async (c) => {

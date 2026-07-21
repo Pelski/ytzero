@@ -22,15 +22,23 @@ const VARIANT_CLASSES: Record<VideoThumbnailVariant, { frame: string; image: str
   childWatching: { frame: "child-watching-thumb", image: "" },
 };
 
-function WatchedIndicator({ watched }: { watched: boolean }) {
-  if (!watched) return null;
+export function watchProgress(position: number | null | undefined, duration: number | null | undefined): number | null {
+  if (position == null || duration == null || duration <= 0 || position <= 0) return null;
+  return Math.min(1, Math.max(0, position / duration));
+}
+
+function PlaybackIndicator({ watched, progress }: { watched: boolean; progress?: number | null }) {
+  const normalizedProgress = watched ? 1 : progress == null ? null : Math.min(1, Math.max(0, progress));
+  if (normalizedProgress == null || normalizedProgress <= 0) return null;
   return (
     <>
-      <span className="watched-check-badge" aria-hidden="true">
-        <Check size={13} strokeWidth={3} />
-      </span>
+      {watched && (
+        <span className="watched-check-badge" aria-hidden="true">
+          <Check size={13} strokeWidth={3} />
+        </span>
+      )}
       <span className="watched-progress-bar" aria-hidden="true">
-        <span className="progress-bar-fill" />
+        <span className="progress-bar-fill" style={{ width: `${normalizedProgress * 100}%` }} />
       </span>
     </>
   );
@@ -39,6 +47,7 @@ function WatchedIndicator({ watched }: { watched: boolean }) {
 export function VideoThumbnail({
   src,
   watched,
+  progress,
   variant,
   alt = "",
   loading,
@@ -47,6 +56,7 @@ export function VideoThumbnail({
 }: {
   src: string;
   watched: boolean;
+  progress?: number | null;
   variant: VideoThumbnailVariant;
   alt?: string;
   loading?: "eager" | "lazy";
@@ -55,8 +65,9 @@ export function VideoThumbnail({
 }) {
   const classes = VARIANT_CLASSES[variant];
   const watchedClass = watched ? " watched-thumbnail--watched" : "";
+  const progressClass = watched || (progress != null && progress > 0) ? " watched-thumbnail--has-progress" : "";
   return (
-    <span className={`video-thumbnail watched-thumbnail ${classes.frame}${watchedClass}`}>
+    <span className={`video-thumbnail watched-thumbnail ${classes.frame}${watchedClass}${progressClass}`}>
       <img
         className={`video-thumbnail-image watched-thumbnail-image ${classes.image}`.trim()}
         src={src}
@@ -65,7 +76,7 @@ export function VideoThumbnail({
         draggable={draggable}
       />
       {children}
-      <WatchedIndicator watched={watched} />
+      <PlaybackIndicator watched={watched} progress={progress} />
     </span>
   );
 }

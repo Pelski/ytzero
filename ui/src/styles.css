@@ -977,10 +977,11 @@ body.cinema .topbar.topbar--solid {
 .ui-tabs-wrap--subtle { --ui-tabs-shadow-color: var(--surface); }
 .ui-tabs { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none; width: 100%; -ms-overflow-style: none; }
 .ui-tabs::-webkit-scrollbar { display: none; }
-.ui-tabs__tab, .ui-chip { align-items: center; background: var(--chip); border: 0; border-radius: 9px; color: var(--text); cursor: pointer; display: inline-flex; flex: 0 0 auto; font-size: 13px; font-weight: 600; gap: 7px; min-height: 34px; padding: 7px 12px; }
+.ui-tabs__tab, .ui-chip { align-items: center; background: var(--chip); border: 0; border-radius: 9px; color: var(--text); cursor: pointer; display: inline-flex; flex: 0 0 auto; font-size: 13px; font-weight: 600; gap: 7px; min-height: 34px; padding: 7px 12px; transition: background-color .14s ease, color .14s ease; }
 .ui-tabs__tab svg { height: 15px; width: 15px; }
 .ui-tabs__tab:hover, .ui-chip:hover { background: var(--chip-hover); }
 .ui-tabs__tab--active, .ui-chip--active { background: var(--text); color: var(--bg); }
+.ui-tabs__tab.ui-tabs__tab--active:hover, .ui-chip.ui-chip--active:hover { background: color-mix(in srgb, var(--text) 92%, var(--chip-hover)); color: var(--bg); }
 .ui-tabs__count { background: rgba(127,127,127,.18); border-radius: 999px; color: var(--text-2); font-size: 11px; padding: 1px 6px; }
 .ui-tabs__tab--active .ui-tabs__count { background: rgba(255,255,255,.2); color: inherit; }
 .ui-tabs--settings, .ui-tabs--subtle { border-bottom: 1px solid var(--surface-2); gap: 2px; }
@@ -1779,7 +1780,7 @@ button.video-card:disabled { cursor: default; }
   border-radius: 0 0 var(--radius) var(--radius);
   pointer-events: none;
 }
-.watched-progress-bar .progress-bar-fill { width: 100%; }
+.watched-progress-bar .progress-bar-fill { display: block; }
 .watched-check-badge {
   display: none;
   position: absolute;
@@ -1797,7 +1798,7 @@ button.video-card:disabled { cursor: default; }
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
-.watched-thumbnail--watched .watched-progress-bar {
+.watched-thumbnail--has-progress .watched-progress-bar {
   display: block;
 }
 :root[data-watched-style="dimmed"] .watched-thumbnail--watched .watched-thumbnail-image {
@@ -2828,6 +2829,109 @@ button.video-card:disabled { cursor: default; }
   object-fit: cover;
   flex-shrink: 0;
 }
+.video-creators-avatars {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.video-creators--multiple .video-creators-avatar-link + .video-creators-avatar-link,
+.video-creators-avatar-more { margin-left: -10px; }
+.video-creators-avatar-link {
+  display: flex;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+}
+.video-creators-avatar-placeholder {
+  display: block;
+  background: var(--surface-3);
+}
+.video-creators-avatar-more {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--surface-3);
+  box-shadow: 0 0 0 2px var(--bg);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+.video-creators-copy { min-width: 0; }
+.video-creators-copy .sub { display: block; }
+.video-creators-names {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.watch-channel .video-creators-names .name { display: inline; }
+.video-creators-trigger {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.video-creators-trigger:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+.ui-floating-popover__content.video-creators-popover {
+  width: min(310px, calc(100vw - 24px));
+  padding: 10px;
+}
+.video-creators-list {
+  display: flex;
+  max-height: min(300px, calc(100vh - 120px));
+  flex-direction: column;
+  gap: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.video-creators-list-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 5px 7px;
+  border-radius: 9px;
+  color: var(--text);
+  text-decoration: none;
+}
+.video-creators-list-item:hover { background: var(--surface-3); }
+.video-creators-list-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.video-creators-list-avatar {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.video-creators-list-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.video-creators-list-copy strong,
+.video-creators-list-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.video-creators-list-copy strong { font-size: 13.5px; }
+.video-creators-list-copy span { color: var(--text-2); font-size: 11.5px; }
 
 
 /* ---------- cinema / theater mode ---------- */
@@ -4988,17 +5092,22 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   white-space: nowrap;
 }
 
-/* Watch panels: chapters + SponsorBlock side by side (half and half). */
+/* Compact watch widgets flow like masonry: short panels can sit below one
+   another without inheriting the height of the neighbouring column. */
 .watch-panels {
-  display: flex;
-  gap: 14px;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: row dense;
+  grid-auto-rows: 1px;
+  align-items: start;
+  column-gap: 14px;
   margin-top: 14px;
 }
 .watch-panel {
-  flex: 1 1 0;
+  align-self: start;
+  width: 100%;
   min-width: 0;
-  margin-top: 0;
+  margin: 0;
 }
 .watch-panel .sb-segments-list {
   max-height: 320px;
@@ -5010,22 +5119,20 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   white-space: nowrap;
 }
 @media (max-width: 720px) {
-  .watch-panels { flex-direction: column; }
+  .watch-panels { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* SponsorBlock panel: compact status header and individually controlled segments. */
 .sb-segments--sponsor {
   background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
 }
 .sb-segments-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 52px;
-  padding: 10px 12px 9px 14px;
-  border-bottom: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
+  min-height: 39px;
+  padding: 6px 12px 2px 14px;
 }
 .sb-segments-heading {
   display: flex;
@@ -5043,6 +5150,77 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .sb-segments--sponsor .sb-segments-list {
   gap: 6px;
   padding: 8px;
+}
+.sb-segments--chapters .sb-segments-label {
+  padding: 0;
+  color: var(--text-2);
+}
+.sb-segments--chapters .sb-segments-list {
+  gap: 6px;
+  padding: 8px;
+}
+.sb-segments--chapters .sb-segment-row {
+  width: 100%;
+  min-height: 46px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.sb-segments--chapters .sb-segment-row + .sb-segment-row { border-top-color: transparent; }
+.sb-segments--chapters .sb-segment-row:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.sb-segments--chapters .sb-segment-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.sb-segments--playlists .sb-segments-label {
+  padding: 0;
+  color: var(--text-2);
+}
+.sb-segments--playlists .sb-segments-list {
+  gap: 6px;
+  padding: 8px;
+}
+.watch-playlist-membership-row {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+  color: inherit;
+  text-decoration: none;
+  transition: background 0.12s, border-color 0.12s;
+}
+.watch-playlist-membership-row:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.watch-playlist-membership-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.watch-playlist-membership-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.watch-playlist-membership-channel {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sb-segments--sponsor .sb-segment-row {
   display: grid;

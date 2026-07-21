@@ -9,7 +9,7 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { emit } from "../events";
-import { formatAddedVideos, formatVideoCount as formatI18nVideoCount, useI18n, type Language } from "../i18n";
+import { formatAddedVideos, formatPlaylistVideoCount, useI18n } from "../i18n";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
 import { Button, EmptyState, MenuSeparator, SectionHeader, Tabs } from "../components/ui";
 
@@ -18,12 +18,6 @@ type Tab = "videos" | "shorts" | "playlists";
 // Matches the server's default /feed page size.
 const CHANNEL_PAGE_SIZE = 40;
 const AUTO_DOWNLOAD_MIN_DURATIONS = [0, 60, 5 * 60, 10 * 60, 20 * 60, 30 * 60, 45 * 60, 60 * 60];
-
-function formatVideoCount(n: string | number, language: Language): string {
-  const num = Number(String(n).replace(/\D/g, ""));
-  if (!num) return String(n);
-  return formatI18nVideoCount(num, language);
-}
 
 export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t, language, locale } = useI18n();
@@ -609,7 +603,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     <div className="thumb" />
                   )}
                   {p.videoCount && (
-                    <span className="playlist-count">{formatVideoCount(p.videoCount, language)}</span>
+                    <span className="playlist-count">{formatPlaylistVideoCount(p.videoCount, language)}</span>
                   )}
                 </div>
                 <div className="card-body" style={{ flexDirection: "column", gap: 3 }}>

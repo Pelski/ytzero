@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { emit, emitToast } from "../events";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -31,18 +31,20 @@ import {
   Volume1,
   Volume2,
 } from "lucide-react";
-import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
-import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
+import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
 import LocalPlayer from "../components/LocalPlayer";
 import Popconfirm from "../components/Popconfirm";
 import PlaylistPicker from "../components/PlaylistPicker";
 import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
-import { VideoThumbnail } from "../components/VideoThumbnail";
+import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
 import { img } from "../img";
 import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
 import { Alert, Button, ButtonAnchor, Checkbox, MenuSeparator, Switch } from "../components/ui";
+import { WatchPanel } from "../components/WatchPanel";
+import VideoCreators from "../components/VideoCreators";
 
 let ytApiReady: Promise<void> | null = null;
 function loadYouTubeApi(): Promise<void> {
@@ -64,6 +66,7 @@ function loadYouTubeApi(): Promise<void> {
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const SIDEBAR_KEY = "sidebar_open";
+const DESCRIPTION_COLLAPSED_HEIGHT = 148;
 
 function restoreSidebarVisibility() {
   document.body.classList.remove("cinema");
@@ -120,13 +123,25 @@ function splitTrailingJunk(url: string): [string, string] {
   return [u, trailing];
 }
 
-function Linkify({ text, baseUrl }: { text: string; baseUrl: string }) {
+function MentionText({ text, channelHandles }: { text: string; channelHandles: Map<string, string> }) {
+  const parts = text.split(/(@[\p{L}\p{N}._-]+)/gu);
+  return parts.map((part, index) => {
+    const channelId = part.startsWith("@") ? channelHandles.get(part.toLocaleLowerCase()) : undefined;
+    return channelId ? (
+      <Link key={index} to={`/channel/${channelId}`} className="desc-link" onClick={(event) => event.stopPropagation()}>
+        {part}
+      </Link>
+    ) : part;
+  });
+}
+
+function Linkify({ text, baseUrl, channelHandles = new Map() }: { text: string; baseUrl: string; channelHandles?: Map<string, string> }) {
   const base = baseUrl || window.location.origin;
   const parts = text.split(/(https?:\/\/[^\s<>"]+)/g);
   return (
     <>
       {parts.map((p, i) => {
-        if (!/^https?:\/\//.test(p)) return p;
+        if (!/^https?:\/\//.test(p)) return <MentionText key={i} text={p} channelHandles={channelHandles} />;
         const [url, trailing] = splitTrailingJunk(p);
         const local = rewriteYouTubeUrl(url, base);
         return (
@@ -183,6 +198,7 @@ export default function WatchPage() {
     pluginWatchMode,
   } = playbackPolicy;
   const [descOpen, setDescOpen] = useState(false);
+  const [descExpandable, setDescExpandable] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
@@ -198,6 +214,13 @@ export default function WatchPage() {
   const [sbPaused, setSbPaused] = useState(false);
   const [disabledSegs, setDisabledSegs] = useState<Set<string>>(new Set());
   const [chapters, setChapters] = useState<VideoChapter[]>([]);
+  const [videoPlaylists, setVideoPlaylists] = useState<VideoChannelPlaylist[]>([]);
+  const [videoCreators, setVideoCreators] = useState<VideoCreator[]>([]);
+  const creatorHandles = new Map(
+    videoCreators
+      .filter((creator) => creator.handle)
+      .map((creator) => [creator.handle.toLocaleLowerCase(), creator.channelId]),
+  );
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
   const [speed, setSpeed] = useState("1");
   const [shortcutFeedback, setShortcutFeedback] = useState<{ kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed"; id: number; seconds?: number } | null>(null);
@@ -214,6 +237,8 @@ export default function WatchPage() {
   const nextInPlaylistRef = useRef<string | null>(null);
   const scheduleMenuRef = useRef<HTMLDivElement>(null);
   const playlistMenuRef = useRef<HTMLDivElement>(null);
+  const playlistItemsRef = useRef<HTMLDivElement>(null);
+  const activePlaylistItemRef = useRef<HTMLAnchorElement>(null);
   const speedMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const shareMenuRef = useRef<HTMLDivElement>(null);
@@ -225,6 +250,7 @@ export default function WatchPage() {
   const shortcutFeedbackTimerRef = useRef<number | null>(null);
   const likeButtonRef = useRef<HTMLButtonElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
+  const descriptionRef = useRef<HTMLDivElement>(null);
   // Container the YT iframe is injected into; separate from playerWrapRef so
   // the manual DOM cleanup never touches the React-rendered LocalPlayer.
   const ytWrapRef = useRef<HTMLDivElement>(null);
@@ -241,6 +267,19 @@ export default function WatchPage() {
     setShortcutFeedback({ kind, id: Date.now(), seconds });
     shortcutFeedbackTimerRef.current = window.setTimeout(() => setShortcutFeedback(null), 520);
   }, []);
+
+  useLayoutEffect(() => {
+    const element = descriptionRef.current;
+    if (!element) {
+      setDescExpandable(false);
+      return;
+    }
+    const measure = () => setDescExpandable(element.scrollHeight > DESCRIPTION_COLLAPSED_HEIGHT + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [video?.description, video?.views, video?.likes, video?.published_at, videoInfo?.description, videoInfo?.viewCount, videoInfo?.publishedAt, videoMissing, isChildProfile]);
 
   useEffect(() => {
     if (!scheduleOpen && !playlistOpen && !speedOpen && !shareOpen) return;
@@ -378,12 +417,25 @@ export default function WatchPage() {
   }, [id]);
 
   useEffect(() => {
+    setVideoCreators([]);
+    if (!video?.video_id) return;
+    let cancelled = false;
+    api.videoCreators(video.video_id)
+      .then((result) => { if (!cancelled) setVideoCreators(result.creators); })
+      .catch(() => { if (!cancelled) setVideoCreators([]); });
+    return () => { cancelled = true; };
+  }, [video?.video_id]);
+
+  useEffect(() => {
     setChapters([]);
+    setVideoPlaylists([]);
     if (!id) return;
     let cancelled = false;
-    api.chapters(id)
-      .then((r) => { if (!cancelled) setChapters(r.chapters); })
-      .catch(() => { if (!cancelled) setChapters([]); });
+    Promise.allSettled([api.chapters(id), api.videoPlaylists(id)]).then(([chapterResult, playlistResult]) => {
+      if (cancelled) return;
+      setChapters(chapterResult.status === "fulfilled" ? chapterResult.value.chapters : []);
+      setVideoPlaylists(playlistResult.status === "fulfilled" ? playlistResult.value.playlists : []);
+    });
     return () => { cancelled = true; };
   }, [id]);
 
@@ -397,6 +449,44 @@ export default function WatchPage() {
   }, [playlistId]);
 
   const playlistIndex = playlistId ? playlistVideos.findIndex((v) => v.videoId === id) : -1;
+
+  useEffect(() => {
+    const container = playlistItemsRef.current;
+    const activeItem = activePlaylistItemRef.current;
+    if (!playlistId || playlistIndex < 0 || !container || !activeItem) return;
+
+    let animationFrame = 0;
+    const startFrame = requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const itemRect = activeItem.getBoundingClientRect();
+      const start = container.scrollTop;
+      const unclampedTarget = start + itemRect.top - containerRect.top - (container.clientHeight - itemRect.height) / 2;
+      const target = Math.max(0, Math.min(container.scrollHeight - container.clientHeight, unclampedTarget));
+      const distance = target - start;
+
+      if (Math.abs(distance) < 1 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        container.scrollTop = target;
+        return;
+      }
+
+      const duration = 420;
+      const startedAt = performance.now();
+      const animate = (now: number) => {
+        const progress = Math.min(1, (now - startedAt) / duration);
+        const eased = progress < 0.5
+          ? 4 * progress * progress * progress
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        container.scrollTop = start + distance * eased;
+        if (progress < 1) animationFrame = requestAnimationFrame(animate);
+      };
+      animationFrame = requestAnimationFrame(animate);
+    });
+
+    return () => {
+      cancelAnimationFrame(startFrame);
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+    };
+  }, [id, playlistId, playlistIndex, playlistVideos.length]);
 
   // Keep the "next video" target in sync for the player's end-of-video handler.
   useEffect(() => {
@@ -1183,8 +1273,9 @@ export default function WatchPage() {
         )}
         {videoMissing && videoInfo && (
           <div
-            className={`watch-desc${descOpen ? "" : " clamped"}`}
-            onClick={() => !descOpen && setDescOpen(true)}
+            ref={descriptionRef}
+            className={`watch-desc${descExpandable && !descOpen ? " clamped" : ""}`}
+            onClick={() => descExpandable && !descOpen && setDescOpen(true)}
           >
             <div className="watch-desc-stats">
               {videoInfo.viewCount != null && (
@@ -1197,33 +1288,26 @@ export default function WatchPage() {
             {videoInfo.description && (
               <>
                 <div className="watch-desc-sep" />
-                <Linkify text={videoInfo.description} baseUrl={appUrl} />
+                <Linkify text={videoInfo.description} baseUrl={appUrl} channelHandles={creatorHandles} />
               </>
             )}
           </div>
         )}
-        {videoMissing && videoInfo?.description && (
+        {videoMissing && videoInfo?.description && descExpandable && (
           <button className="watch-desc-toggle" onClick={() => setDescOpen((o) => !o)}>
             {descOpen ? t("showLess") : t("showMore")}
           </button>
         )}
         {video && <div className="watch-row">
           <div className="watch-channel">
-            <div className="watch-channel-top">
-              {video.channel_thumbnail && (
-                <Link to={`/channel/${video.channel_id}`}>
-                  <img className="watch-ch-avatar" src={img(video.channel_thumbnail)} alt="" />
-                </Link>
-              )}
-              <div>
-                <Link to={`/channel/${video.channel_id}`} className="name channel-link">
-                  {video.channel_title}
-                </Link>
-                {video.channel_subscriber_count && (
-                  <div className="sub">{video.channel_subscriber_count} {t("subscribers")}</div>
-                )}
-              </div>
-            </div>
+            <VideoCreators creators={videoCreators.length > 0 ? videoCreators : [{
+              channelId: video.channel_id,
+              title: video.channel_title,
+              avatar: video.channel_thumbnail ?? "",
+              subscriberCount: video.channel_subscriber_count ?? "",
+              handle: "",
+              isOwner: true,
+            }]} />
           </div>
           <div className="watch-actions">
             <button
@@ -1452,8 +1536,9 @@ export default function WatchPage() {
         )}
         {video && (
           <div
-            className={`watch-desc${descOpen ? "" : " clamped"}`}
-            onClick={() => !descOpen && setDescOpen(true)}
+            ref={descriptionRef}
+            className={`watch-desc${descExpandable && !descOpen ? " clamped" : ""}`}
+            onClick={() => descExpandable && !descOpen && setDescOpen(true)}
           >
             <div className="watch-desc-stats">
               {video.views != null && (
@@ -1480,41 +1565,39 @@ export default function WatchPage() {
             {video.description && (
               <>
                 <div className="watch-desc-sep" />
-                <Linkify text={video.description} baseUrl={appUrl} />
+                <Linkify text={video.description} baseUrl={appUrl} channelHandles={creatorHandles} />
               </>
             )}
           </div>
         )}
-        {video?.description && (
+        {video?.description && descExpandable && (
           <button className="watch-desc-toggle" onClick={() => setDescOpen((o) => !o)}>
             {descOpen ? t("showLess") : t("showMore")}
           </button>
         )}
-        {(chapters.length > 0 || sbSegments.length > 0) && (
+        {(chapters.length > 0 || sbSegments.length > 0 || videoPlaylists.length > 0) && (
           <div className="watch-panels">
             {chapters.length > 0 && (
-              <div className="sb-segments watch-panel">
-                <span className="sb-segments-label">{t("chaptersTitle")}</span>
-                <div className="sb-segments-list">
-                  {chapters.map((ch) => (
-                    <div
-                      key={ch.start}
-                      className="sb-segment-row"
-                      onClick={() => playerRef.current?.seekTo(ch.start, true)}
-                    >
-                      <span className="sb-segment-name">{ch.title}</span>
-                      <span className="sb-time">{fmtTime(ch.start)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <WatchPanel title={t("chaptersTitle")} className="sb-segments--chapters" ariaLabel={t("chaptersTitle")}>
+                {chapters.map((ch) => (
+                  <button
+                    type="button"
+                    key={ch.start}
+                    className="sb-segment-row sb-chapter-row"
+                    onClick={() => playerRef.current?.seekTo(ch.start, true)}
+                  >
+                    <span className="sb-segment-name">{ch.title}</span>
+                    <span className="sb-time">{fmtTime(ch.start)}</span>
+                  </button>
+                ))}
+              </WatchPanel>
             )}
             {sbSegments.length > 0 && (
-              <section className={`sb-segments sb-segments--sponsor watch-panel${sbPaused ? " sb-paused" : ""}`} aria-label={t("sbSegmentsTitle")}>
-                <header className="sb-segments-head">
-                  <div className="sb-segments-heading">
-                    <span className="sb-segments-label">{t("sbSegmentsTitle").replace(/:$/, "")}</span>
-                  </div>
+              <WatchPanel
+                title={t("sbSegmentsTitle").replace(/:$/, "")}
+                className={`sb-segments--sponsor${sbPaused ? " sb-paused" : ""}`}
+                ariaLabel={t("sbSegmentsTitle")}
+                action={
                   <Button
                     size="sm"
                     variant={sbPaused ? "secondary" : "ghost"}
@@ -1525,42 +1608,67 @@ export default function WatchPage() {
                   >
                     {sbPaused ? t("sbResume") : t("sbPause")}
                   </Button>
-                </header>
-                <div className="sb-segments-list">
-                  {[...sbSegments].sort((a, b) => a.segment[0] - b.segment[0]).map((seg) => {
-                    const cat = SB_CATEGORIES.find((c) => c.id === seg.category);
-                    const off = disabledSegs.has(seg.UUID);
-                    return (
-                      <div
-                        key={seg.UUID}
-                        className={`sb-segment-row${off ? " disabled" : ""}`}
-                        style={{ "--sb-color": cat?.color ?? "#888" } as React.CSSProperties}
-                      >
-                        <button type="button" className="sb-segment-seek" onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}>
-                          <span className="sb-dot" aria-hidden="true" />
-                          <span className="sb-segment-name">{cat ? t(cat.labelKey) : seg.category}</span>
-                          <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
-                        </button>
-                        <span className="sb-seg-toggle">
-                          <Switch
-                            checked={!sbPaused && !off}
-                            disabled={sbPaused}
-                            ariaLabel={off ? t("sbSegEnable") : t("sbSegDisable")}
-                            onCheckedChange={() => {
-                              setDisabledSegs((prev) => {
-                                const next = new Set(prev);
-                                if (next.has(seg.UUID)) next.delete(seg.UUID);
-                                else next.add(seg.UUID);
-                                return next;
-                              });
-                            }}
-                          />
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+                }
+              >
+                {[...sbSegments].sort((a, b) => a.segment[0] - b.segment[0]).map((seg) => {
+                  const cat = SB_CATEGORIES.find((c) => c.id === seg.category);
+                  const off = disabledSegs.has(seg.UUID);
+                  return (
+                    <div
+                      key={seg.UUID}
+                      className={`sb-segment-row${off ? " disabled" : ""}`}
+                      style={{ "--sb-color": cat?.color ?? "#888" } as React.CSSProperties}
+                    >
+                      <button type="button" className="sb-segment-seek" onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}>
+                        <span className="sb-dot" aria-hidden="true" />
+                        <span className="sb-segment-name">{cat ? t(cat.labelKey) : seg.category}</span>
+                        <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
+                      </button>
+                      <span className="sb-seg-toggle">
+                        <Switch
+                          checked={!sbPaused && !off}
+                          disabled={sbPaused}
+                          ariaLabel={off ? t("sbSegEnable") : t("sbSegDisable")}
+                          onCheckedChange={() => {
+                            setDisabledSegs((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(seg.UUID)) next.delete(seg.UUID);
+                              else next.add(seg.UUID);
+                              return next;
+                            });
+                          }}
+                        />
+                      </span>
+                    </div>
+                  );
+                })}
+              </WatchPanel>
+            )}
+            {videoPlaylists.length > 0 && (
+              <WatchPanel title={t("videoPlaylistsTitle")} className="sb-segments--playlists" ariaLabel={t("videoPlaylistsTitle")}>
+                {videoPlaylists.map((playlist) => (
+                  <Link
+                    key={playlist.playlistId}
+                    className="watch-playlist-membership-row"
+                    to={`/watch/${id}/playlist/${playlist.playlistId}`}
+                  >
+                    <VideoThumbnail
+                      src={img(playlist.thumbnail)}
+                      watched={video?.watched === 1}
+                      progress={watchProgress(video?.watch_position, video?.watch_duration)}
+                      variant="playlist"
+                      loading="lazy"
+                    />
+                    <span className="watch-playlist-membership-copy">
+                      <span className="sb-segment-name">{playlist.title}</span>
+                      <span className="watch-playlist-membership-channel">{playlist.channelTitle}</span>
+                    </span>
+                    {playlist.videoCount && (
+                      <span className="sb-time">{formatPlaylistVideoCount(playlist.videoCount, language)}</span>
+                    )}
+                  </Link>
+                ))}
+              </WatchPanel>
             )}
           </div>
         )}
@@ -1575,16 +1683,17 @@ export default function WatchPage() {
                 {playlistIndex >= 0 ? playlistIndex + 1 : 1} / {playlistVideos.length}
               </span>
             </div>
-            <div className="playlist-items">
+            <div className="playlist-items" ref={playlistItemsRef}>
               {playlistVideos.map((v, i) => (
                 <Link
+                  ref={v.videoId === id ? activePlaylistItemRef : undefined}
                   key={v.videoId}
                   to={`/watch/${v.videoId}/playlist/${playlistId}`}
                   className={`playlist-item${v.videoId === id ? " active" : ""}`}
                   title={v.title}
                 >
                   <span className="playlist-item-num">{i + 1}</span>
-                  <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="playlist" loading="lazy">
+                  <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="playlist" loading="lazy">
                     {v.duration && <span className="playlist-item-dur">{v.duration}</span>}
                     {v.videoId === id && (
                       <span className="playlist-item-playing">
@@ -1602,11 +1711,11 @@ export default function WatchPage() {
           </div>
         )}
         <h2 className="related-title">{t("moreLikeThis")}</h2>
-        {related.filter((v) => v.is_short !== 1).map((v) => (
+        {related.filter((v) => v.is_short === 0).map((v) => (
           <div key={v.video_id} className="related-item">
             <div className="related-thumb-shell">
               <Link className="related-thumb-link" to={`/watch/${v.video_id}`} aria-label={v.title} title={v.title}>
-                <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="related" loading="lazy">
+                <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="related" loading="lazy">
                   {v.live_status === "live" && (
                     <span className="live-badge">
                       <span className="pulse" /> {t("liveBadge")}

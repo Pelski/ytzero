@@ -4,6 +4,7 @@ import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
 import { log } from "./logger";
+import { ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -122,6 +123,7 @@ export async function importPlaylistVideos(playlistId: string): Promise<{ added:
   if (!feed.channelId) return { added: 0, channelId: "" };
 
   ensureChannel.run(feed.channelId, feed.channelTitle, `https://www.youtube.com/channel/${feed.channelId}`);
+  ensureChannelPlaylist(playlistId, feed.channelId);
   const inheritChannelTags = db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );
@@ -142,6 +144,7 @@ export async function importPlaylistVideos(playlistId: string): Promise<{ added:
     }
   });
   importAll(feed.videos);
+  savePlaylistMemberships(playlistId, feed.videos.map((video) => video.videoId));
 
   if (added > 0) {
     backfillShorts(feed.videos.map((v) => v.videoId)).catch(() => {});
@@ -274,12 +277,15 @@ export async function refreshLiveStatus(channelId: string) {
  * Fetch the channel's /videos tab for more video IDs than the RSS feed provides (~30 vs 15).
  * Merges scraped data with RSS data (RSS has better quality: description + published_at).
  */
-export async function syncChannel(channelId: string): Promise<{ added: number }> {
+const channelSyncsInFlight = new Map<string, Promise<{ added: number }>>();
+
+async function runChannelSync(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
   // A channel page can be opened directly from a YouTube link, before it has
   // been followed or otherwise saved locally. Create an external row first so
   // the video inserts below always have their required parent channel.
   ensureChannel.run(channelId, "", `https://www.youtube.com/channel/${channelId}`);
+  db.prepare("UPDATE channels SET full_sync_attempted_at = datetime('now') WHERE channel_id = ?").run(channelId);
   await refreshChannelMetadata(channelId, true).catch((e) => {
     log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   });
@@ -381,7 +387,9 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
   // Throttled and capped to stay under YouTube's rate limiting (429).
   let playlistsScanned = 0;
   try {
-    const playlists = (await fetchChannelPlaylists(channelId)).slice(0, MAX_SYNC_PLAYLISTS);
+    const allPlaylists = await fetchChannelPlaylists(channelId);
+    saveChannelPlaylists(channelId, allPlaylists);
+    const playlists = allPlaylists.slice(0, MAX_SYNC_PLAYLISTS);
     for (let i = 0; i < playlists.length; i++) {
       try {
         const r = await importPlaylistVideos(playlists[i].playlistId);
@@ -402,9 +410,19 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
   // Mark a just-synced current stream immediately, rather than waiting for
   // the periodic live-status refresh before it can appear on the channel page.
   await refreshLiveStatus(channelId);
-  db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  db.prepare("UPDATE channels SET last_refreshed_at = datetime('now'), last_full_synced_at = datetime('now') WHERE channel_id = ?").run(channelId);
   log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, streams: streams.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
   return { added };
+}
+
+/** Full sync shared by the manual button and the background scheduler. Calls
+ * for the same channel coalesce instead of scraping YouTube twice in parallel. */
+export function syncChannel(channelId: string): Promise<{ added: number }> {
+  const current = channelSyncsInFlight.get(channelId);
+  if (current) return current;
+  const task = runChannelSync(channelId).finally(() => channelSyncsInFlight.delete(channelId));
+  channelSyncsInFlight.set(channelId, task);
+  return task;
 }
 
 /**
@@ -557,6 +575,56 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
 
 let liveRefreshing = false;
 
+let scheduledFullSyncRunning = false;
+
+/** Run the same deep scan as the channel-page button for one subscribed
+ * channel. Attempt time drives rotation so one broken channel cannot starve
+ * every channel after it. */
+export async function syncNextSubscribedChannel(): Promise<void> {
+  if (refreshing) {
+    log.info("channel.full_sync.skipped", { reason: "feed_refresh_in_progress" });
+    return;
+  }
+  if (scheduledFullSyncRunning) {
+    log.warn("channel.full_sync.skipped", { reason: "already_in_progress" });
+    return;
+  }
+  scheduledFullSyncRunning = true;
+  try {
+    const channel = db.prepare(`
+      SELECT c.channel_id
+      FROM channels c
+      WHERE c.external = 0
+        AND EXISTS (
+          SELECT 1 FROM user_channels uc
+          WHERE uc.channel_id = c.channel_id AND uc.followed = 1
+        )
+      ORDER BY COALESCE(c.full_sync_attempted_at, c.last_full_synced_at, '1970-01-01') ASC,
+               c.added_at ASC,
+               c.channel_id ASC
+      LIMIT 1
+    `).get() as { channel_id: string } | null;
+    if (!channel) {
+      log.info("channel.full_sync.skipped", { reason: "no_subscribed_channels" });
+      return;
+    }
+    const startedAt = Date.now();
+    log.info("channel.full_sync.start", { channelId: channel.channel_id });
+    try {
+      const result = await syncChannel(channel.channel_id);
+      log.info("channel.full_sync.complete", { channelId: channel.channel_id, added: result.added, ms: Date.now() - startedAt });
+    } catch (error) {
+      log.error("channel.full_sync.failed", {
+        channelId: channel.channel_id,
+        error: error instanceof Error ? error.message : String(error),
+        ms: Date.now() - startedAt,
+      });
+    }
+  } finally {
+    scheduledFullSyncRunning = false;
+  }
+}
+
 /**
  * Check live status for all followed channels. Runs on a short interval
  * independent of the full feed refresh. Channels currently live or upcoming
@@ -600,6 +668,15 @@ export function startScheduler() {
   setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
   setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), refreshIntervalMin * 60_000);
   log.info("scheduler.feed_refresh", { intervalMin: refreshIntervalMin, batchSize: 10 });
+
+  const fullSyncIntervalMin = positiveNumber(process.env.FULL_SYNC_INTERVAL_MINUTES, 15);
+  const runFullSync = () => {
+    syncNextSubscribedChannel()
+      .catch((e) => log.error("channel.full_sync.cron_failed", { error: e instanceof Error ? e.message : String(e) }))
+      .finally(() => setTimeout(runFullSync, fullSyncIntervalMin * 60_000));
+  };
+  setTimeout(runFullSync, 60_000);
+  log.info("scheduler.channel_full_sync", { intervalMin: fullSyncIntervalMin, batchSize: 1 });
 
   const liveIntervalMin = positiveNumber(process.env.LIVE_INTERVAL_MINUTES, 3);
   setTimeout(() => refreshAllLiveStatuses().catch((e) => log.error("live.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);

@@ -12,6 +12,7 @@ YT Zero is configured through environment variables. All of them are optional an
 | `AVATAR_DIR` | `./data/avatars` | Uploaded profile avatars. |
 | `LOG_PATH` | `./data/logs/ytzero.log` | Log file. Logs always also go to stdout; this file is what the in-app log viewer reads. |
 | `REFRESH_INTERVAL_MINUTES` | `5` | Followed-channel RSS refresh interval. |
+| `FULL_SYNC_INTERVAL_MINUTES` | `15` | Interval between full, rotating channel scans. One subscribed channel is scanned per run, using the same process as the manual channel sync button. |
 | `LIVE_INTERVAL_MINUTES` | `3` | Followed-channel live-status check interval. This does not refetch old video metadata. |
 | `DURATION_INTERVAL_MINUTES` | `3` | Interval for the background job that backfills missing video durations. |
 | `DURATION_BATCH_SIZE` | `20` | Videos processed per duration-backfill run. |

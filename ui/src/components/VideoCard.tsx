@@ -19,7 +19,7 @@ import { emit } from "../events";
 import { formatTimeAgo, useI18n } from "../i18n";
 import { img } from "../img";
 import Tooltip from "./Tooltip";
-import { VideoThumbnail } from "./VideoThumbnail";
+import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
 
 export { BUCKET_ICONS } from "./VideoScheduleActions";
@@ -358,6 +358,9 @@ export default function VideoCard({
               <VideoThumbnail
                 src={img(video.thumbnail)}
                 watched={watched}
+                progress={video.status !== "archived" || showWatchProgress
+                  ? watchProgress(video.watch_position, video.watch_duration)
+                  : null}
                 variant="card"
                 loading="lazy"
                 draggable={false}
@@ -379,14 +382,6 @@ export default function VideoCard({
           {video.is_short === 1 && video.live_status === "none" && <span className="short-badge">{t("shortBadge")}</span>}
           {video.duration && video.is_short !== 1 && (
             <span className="duration-badge">{formatVideoDuration(video.duration)}</span>
-          )}
-          {video.watch_position != null && video.watch_duration != null && video.watch_duration > 0 && (video.status !== "archived" || showWatchProgress) && (
-            <div className="progress-bar">
-              <div
-                className="progress-bar-fill"
-                style={{ width: `${Math.min(100, (video.watch_position / video.watch_duration) * 100)}%` }}
-              />
-            </div>
           )}
           {(downloadStatus === "downloading" || downloadStatus === "queued") && (
             <div className="dl-progress-top" title={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}>
