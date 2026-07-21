@@ -2953,10 +2953,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                     <div className="external-video-list">
                       {ch.videos.map((v) => (
                         <div key={v.video_id} className="external-video-row">
-                          <Link to={`/watch/${v.video_id}`} className="external-thumb-link" aria-label={v.title}>
+                          <Link to={`/watch/${v.video_id}`} className="external-thumb-link" aria-label={v.title} title={v.title}>
                             <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="external" loading="lazy" />
                           </Link>
-                          <Link to={`/watch/${v.video_id}`} className="external-title-cell">
+                          <Link to={`/watch/${v.video_id}`} className="external-title-cell" title={v.title}>
                             {v.title}
                           </Link>
                           <button

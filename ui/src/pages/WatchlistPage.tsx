@@ -86,11 +86,11 @@ export default function WatchlistPage() {
                 <div className="scheduled-list">
                   {items.map((v) => (
                     <article key={v.video_id} className="scheduled-item">
-                      <Link to={`/watch/${v.video_id}`} className="scheduled-thumb-link" aria-label={v.title}>
+                      <Link to={`/watch/${v.video_id}`} className="scheduled-thumb-link" aria-label={v.title} title={v.title}>
                         <VideoThumbnail src={v.thumbnail} watched={v.watched === 1} variant="scheduled" />
                       </Link>
                       <div className="scheduled-info">
-                        <Link to={`/watch/${v.video_id}`} className="scheduled-title">{v.title}</Link>
+                        <Link to={`/watch/${v.video_id}`} className="scheduled-title" title={v.title}>{v.title}</Link>
                         <div className="muted scheduled-channel">{v.channel_title}</div>
                       </div>
                       <div className="muted scheduled-date">

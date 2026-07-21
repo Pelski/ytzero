@@ -1649,6 +1649,7 @@ export default function WatchPage() {
                   key={v.videoId}
                   to={`/watch/${v.videoId}/playlist/${playlistId}`}
                   className={`playlist-item${v.videoId === id ? " active" : ""}`}
+                  title={v.title}
                 >
                   <span className="playlist-item-num">{i + 1}</span>
                   <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="playlist" loading="lazy">
@@ -1672,7 +1673,7 @@ export default function WatchPage() {
         {related.filter((v) => v.is_short !== 1).map((v) => (
           <div key={v.video_id} className="related-item">
             <div className="related-thumb-shell">
-              <Link className="related-thumb-link" to={`/watch/${v.video_id}`} aria-label={v.title}>
+              <Link className="related-thumb-link" to={`/watch/${v.video_id}`} aria-label={v.title} title={v.title}>
                 <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} variant="related" loading="lazy">
                   {v.live_status === "live" && (
                     <span className="live-badge">
@@ -1695,7 +1696,7 @@ export default function WatchPage() {
               />
             </div>
             <div className="related-item-info">
-              <Link className="r-title" to={`/watch/${v.video_id}`}>{v.title}</Link>
+              <Link className="r-title" to={`/watch/${v.video_id}`} title={v.title}>{v.title}</Link>
               <div className="r-meta">
                 {v.channel_title}
                 <br />

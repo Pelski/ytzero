@@ -87,12 +87,12 @@ export default function DownloadsPage() {
     const progress = data.active?.video_id === item.video_id ? data.active.percent : null;
     return (
       <div key={item.video_id} className={`dl-row dl-row--${item.status}`}>
-        <Link to={`/watch/${item.video_id}`} className="dl-thumb">
+        <Link to={`/watch/${item.video_id}`} className="dl-thumb" title={item.title}>
           <img src={img(item.thumbnail)} alt="" loading="lazy" />
           {item.duration && <span className="duration-badge">{formatVideoDuration(item.duration)}</span>}
         </Link>
         <div className="dl-info">
-          <Link to={`/watch/${item.video_id}`} className="dl-title">{item.title}</Link>
+          <Link to={`/watch/${item.video_id}`} className="dl-title" title={item.title}>{item.title}</Link>
           <div className="dl-meta">
             <Link to={`/channel/${item.channel_id}`} className="dl-channel">{item.channel_title}</Link>
             <span className={`dl-status dl-status--${item.status}`}>

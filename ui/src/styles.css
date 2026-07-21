@@ -547,6 +547,7 @@ body.cinema .topbar.topbar--solid {
 
 /* ---------- tooltip ---------- */
 .tooltip-wrap { position: relative; display: inline-flex; }
+.tooltip-wrap--block { display: block; }
 .tooltip-tip {
   position: absolute;
   white-space: nowrap;
@@ -562,6 +563,11 @@ body.cinema .topbar.topbar--solid {
   z-index: 200;
 }
 .tooltip-wrap:hover .tooltip-tip { opacity: 1; }
+.tooltip-wrap--delayed .tooltip-tip { transition-delay: 0ms; }
+.tooltip-wrap--delayed:hover .tooltip-tip { transition-delay: var(--tooltip-delay); }
+.tooltip-wrap--title .tooltip-tip { box-sizing: border-box; max-width: 100%; white-space: normal; width: max-content; }
+.video-card { container-type: inline-size; }
+.tooltip-wrap--card-title .tooltip-tip { max-width: calc(100cqw - 20px); }
 .tooltip-wrap--left .tooltip-tip  { right: calc(100% + 7px); top: 50%; transform: translateY(-50%) translateX(3px); }
 .tooltip-wrap--right .tooltip-tip { left: calc(100% + 7px);  top: 50%; transform: translateY(-50%) translateX(-3px); }
 .tooltip-wrap--top .tooltip-tip   { bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%) translateY(3px); }

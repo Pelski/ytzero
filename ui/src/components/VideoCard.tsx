@@ -339,21 +339,23 @@ export default function VideoCard({
           onPointerLeave={resetActionProximity}
           onMouseLeave={resetActionProximity}
         >
-          <Link
-            to={videoHref}
-            className="thumb-link"
-            onClick={playFromLink}
-            onDragStart={(e) => e.preventDefault()}
-            aria-label={video.title}
-          >
-            <VideoThumbnail
-              src={img(video.thumbnail)}
-              watched={watched}
-              variant="card"
-              loading="lazy"
-              draggable={false}
-            />
-          </Link>
+          <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+            <Link
+              to={videoHref}
+              className="thumb-link"
+              onClick={playFromLink}
+              onDragStart={(e) => e.preventDefault()}
+              aria-label={video.title}
+            >
+              <VideoThumbnail
+                src={img(video.thumbnail)}
+                watched={watched}
+                variant="card"
+                loading="lazy"
+                draggable={false}
+              />
+            </Link>
+          </Tooltip>
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}
@@ -452,7 +454,9 @@ export default function VideoCard({
 
         {searchResultLayout ? (
           <div className="card-body">
-            <Link to={videoHref} className="v-title" onClick={playFromLink}>{video.title}</Link>
+            <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+              <Link to={videoHref} className="v-title" onClick={playFromLink}>{video.title}</Link>
+            </Tooltip>
             {(video.views != null || publishedTime) && (
               <div className="v-search-meta">
                 {video.views != null && `${video.views.toLocaleString(locale)} ${t("views")}`}
@@ -487,9 +491,11 @@ export default function VideoCard({
               </Link>
             )}
             <div className="card-info">
-              <Link to={videoHref} className="v-title" onClick={playFromLink}>
-                {video.title}
-              </Link>
+              <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+                <Link to={videoHref} className="v-title" onClick={playFromLink}>
+                  {video.title}
+                </Link>
+              </Tooltip>
               <div className="v-channel-meta">
                 <Link to={`/channel/${video.channel_id}`} className={`v-channel${publishedTime ? "" : " no-date"}`}>
                   {video.channel_title}

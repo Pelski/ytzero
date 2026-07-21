@@ -65,15 +65,17 @@ export default function ShortCard({
 
   return (
     <div className={`short-card${isWatched ? " short-card--watched" : ""}${leaving ? " short-card--leaving" : ""}`}>
-      <Link to={videoHref} className="short-card-thumb" onClick={play} aria-label={video.title}>
-        <img
-          src={thumbSrc}
-          alt=""
-          loading="lazy"
-          draggable={false}
-          onError={() => { if (!portraitFailed) setPortraitFailed(true); }}
-        />
-      </Link>
+      <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title">
+        <Link to={videoHref} className="short-card-thumb" onClick={play} aria-label={video.title}>
+          <img
+            src={thumbSrc}
+            alt=""
+            loading="lazy"
+            draggable={false}
+            onError={() => { if (!portraitFailed) setPortraitFailed(true); }}
+          />
+        </Link>
+      </Tooltip>
 
       {isWatched && (
         <span className="short-card-watched-badge" aria-label={t("watched")}>
@@ -113,9 +115,11 @@ export default function ShortCard({
       </div>
 
       <div className="short-card-info">
-        <Link to={videoHref} className="short-card-title" onClick={play}>
-          {video.title}
-        </Link>
+        <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title">
+          <Link to={videoHref} className="short-card-title" onClick={play}>
+            {video.title}
+          </Link>
+        </Tooltip>
         <Link to={`/channel/${video.channel_id}`} className="short-card-channel">
           {video.channel_thumbnail && (
             <img src={img(video.channel_thumbnail)} alt="" draggable={false} />

@@ -153,7 +153,7 @@ export default function SearchPage({ onPlay, hideExternalSearch = false }: { onP
           {ytLoading ? <VideoGridSkeleton count={4} gridSize="sm" /> : ytResults.length === 0 ? null : (
             <div className="yt-results-list">
               {ytResults.map((result) => (
-                <Link key={result.videoId} className="yt-result-row" to={`/watch/${result.videoId}`}>
+                <Link key={result.videoId} className="yt-result-row" to={`/watch/${result.videoId}`} title={result.title}>
                   <VideoThumbnail src={result.thumbnail} watched={result.watched === 1} variant="search" loading="lazy">
                     {result.duration && <span className="yt-result-dur">{result.duration}</span>}
                   </VideoThumbnail>
