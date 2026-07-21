@@ -804,6 +804,8 @@ body.cinema .topbar.topbar--solid {
 .video-grid--sm,
 .video-grid--md,
 .video-grid--lg { grid-template-columns: repeat(auto-fill, minmax(var(--video-card-min, 248px), 1fr)); }
+.history-day-section + .history-day-section { margin-top: 32px; }
+.history-day-title { color: var(--text); font-size: 16px; margin: 0 0 14px; }
 .video-card-size-setting { align-items: center; border-top: 1px solid var(--surface-2); display: flex; gap: 20px; justify-content: space-between; padding: 14px 0; }
 .video-card-size-control { align-items: center; display: flex; gap: 10px; min-width: 230px; }
 .video-card-size-control input { accent-color: var(--accent); flex: 1; }
