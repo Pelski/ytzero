@@ -1,40 +1,30 @@
 name: Triage Newly Opened Issues
 
-# Assign every newly opened issue to the maintainer so it appears immediately
-# in their GitHub issue inbox. Existing issues are intentionally untouched.
+# Periodically triage open issues using the repository's scheduled workflow
+# permissions. Issues already owned by anyone are left completely alone.
 on:
-  issues:
-    types: [opened]
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
 
 permissions:
   issues: write
 
+concurrency:
+  group: triage-open-unassigned-issues
+  cancel-in-progress: false
+
 jobs:
   assign:
-    name: Assign and triage the issue
+    name: Assign and triage unassigned issues
     runs-on: ubuntu-latest
     steps:
-      - name: Assign the issue to @Pelski
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh api --method POST
-          "repos/${GITHUB_REPOSITORY}/issues/${{ github.event.issue.number }}/assignees"
-          -f 'assignees[]=Pelski'
-
-      - name: Apply labels from the issue content
+      - name: Assign and label open unassigned issues
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-
-          # Read user-controlled text from the event file, rather than
-          # interpolating it into shell source.
-          title="$(jq -r '.issue.title // ""' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]')"
-          text="$(jq -r '(.issue.title // "") + "\n" + (.issue.body // "")' "$GITHUB_EVENT_PATH" | tr '[:upper:]' '[:lower:]')"
-          labels=()
 
           matches() {
             grep -Eiq "$1" <<<"$text"
@@ -48,41 +38,81 @@ jobs:
             labels+=("$label")
           }
 
-          # Explicit prefixes take priority over fuzzy wording in the body.
-          # They cover the `Bug:` and `feat:` convention already used here.
-          case "$title" in
-            bug:*|fix:*) add_label "bug" ;;
-            feat:*|feature:*) add_label "enhancement" ;;
-            question:*) add_label "question" ;;
-            docs:*|doc:*|documentation:*) add_label "documentation" ;;
-            roadmap:*) add_label "roadmap" ;;
-          esac
+          triage_issue() {
+            local issue_number="$1"
+            local issue
 
-          if matches '(^|[^a-z])(bug|broken|regression|error|fail(ed|ure)?|not working|does not work|doesn.t work|cannot|can.t|missing|unexpected)'; then
-            add_label "bug"
-          fi
+            # Re-read the issue immediately before the first mutation. This is
+            # the guard that keeps assigned or meanwhile-closed issues intact.
+            issue="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_number}")"
+            if ! jq -e '
+              .state == "open"
+              and ((.assignees | length) == 0)
+              and (has("pull_request") | not)
+            ' <<<"$issue" >/dev/null; then
+              echo "Skipping #${issue_number}: no longer open and unassigned"
+              return
+            fi
 
-          if matches '(^|[^a-z])(feat(ure)?|enhancement|feature request|would be nice|please add|add support|add (an )?option|allow|improvement|implement)'; then
-            add_label "enhancement"
-          fi
+            title="$(jq -r '.title // ""' <<<"$issue" | tr '[:upper:]' '[:lower:]')"
+            text="$(jq -r '(.title // "") + "\n" + (.body // "")' <<<"$issue" | tr '[:upper:]' '[:lower:]')"
+            labels=()
 
-          if matches '(^|[^a-z])(how (do|to)|is it possible|can (i|you|we)|question:|what is|why (does|is))'; then
-            add_label "question"
-          fi
+            # Explicit prefixes take priority over fuzzy wording in the body.
+            case "$title" in
+              bug:*|fix:*) add_label "bug" ;;
+              feat:*|feature:*) add_label "enhancement" ;;
+              question:*) add_label "question" ;;
+              docs:*|doc:*|documentation:*) add_label "documentation" ;;
+              roadmap:*) add_label "roadmap" ;;
+            esac
 
-          if matches '(^|[^a-z])(readme|documentation|docs|wiki|manual)([^a-z]|$)'; then
-            add_label "documentation"
-          fi
+            if matches '(^|[^a-z])(bug|broken|regression|error|fail(ed|ure)?|not working|does not work|doesn.t work|cannot|can.t|missing|unexpected)'; then
+              add_label "bug"
+            fi
 
-          if matches 'yt[- ]dlp|cookies\.txt|cookies from browser|sign in to confirm[^[:cntrl:]]*bot'; then
-            add_label "yt-dlp"
-          fi
+            if matches '(^|[^a-z])(feat(ure)?|enhancement|feature request|would be nice|please add|add support|add (an )?option|allow|improvement|implement)'; then
+              add_label "enhancement"
+            fi
 
-          if matches '(^|[^a-z])(roadmap|future plans?|planned for the future)([^a-z]|$)'; then
-            add_label "roadmap"
-          fi
+            if matches '(^|[^a-z])(how (do|to)|is it possible|can (i|you|we)|question:|what is|why (does|is))'; then
+              add_label "question"
+            fi
 
-          for label in "${labels[@]}"; do
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/labels" \
-              -f "labels[]=${label}" >/dev/null
+            if matches '(^|[^a-z])(readme|documentation|docs|wiki|manual)([^a-z]|$)'; then
+              add_label "documentation"
+            fi
+
+            if matches 'yt[- ]dlp|cookies\.txt|cookies from browser|sign in to confirm[^[:cntrl:]]*bot'; then
+              add_label "yt-dlp"
+            fi
+
+            if matches '(^|[^a-z])(roadmap|future plans?|planned for the future)([^a-z]|$)'; then
+              add_label "roadmap"
+            fi
+
+            gh api --method POST \
+              "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/assignees" \
+              -f 'assignees[]=Pelski' >/dev/null
+
+            for label in "${labels[@]}"; do
+              gh api --method POST \
+                "repos/${GITHUB_REPOSITORY}/issues/${issue_number}/labels" \
+                -f "labels[]=${label}" >/dev/null
+            done
+
+            echo "Triaged #${issue_number} with ${#labels[@]} label(s)"
+          }
+
+          mapfile -t issue_numbers < <(
+            gh api --paginate \
+              "repos/${GITHUB_REPOSITORY}/issues?state=open&per_page=100" \
+              --jq '.[] | select(has("pull_request") | not) | select((.assignees | length) == 0) | .number'
+          )
+
+          echo "Found ${#issue_numbers[@]} open unassigned issue(s)"
+          for issue_number in "${issue_numbers[@]}"; do
+            if ! triage_issue "$issue_number"; then
+              echo "::warning::Failed to triage #${issue_number}; it will be retried on the next run"
+            fi
           done
