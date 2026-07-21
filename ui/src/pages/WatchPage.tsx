@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { emit, emitToast } from "../events";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   Archive,
   AlertTriangle,
@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   Clock,
   Clapperboard,
+  Copy,
   EllipsisVertical,
   ExternalLink,
   FastForward,
@@ -159,12 +160,15 @@ function Linkify({ text, baseUrl }: { text: string; baseUrl: string }) {
 export default function WatchPage() {
   const { t, bucketLabel, language, locale } = useI18n();
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
+  const location = useLocation();
   const navigate = useNavigate();
   const [video, setVideo] = useState<Video | null>(null);
   const [videoMissing, setVideoMissing] = useState(false);
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [related, setRelated] = useState<Video[]>([]);
   const [copyKey, setCopyKey] = useState(0);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareWithTimestamp, setShareWithTimestamp] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
   const [playbackPolicy, setPlaybackPolicy] = useState<{
@@ -221,6 +225,7 @@ export default function WatchPage() {
   const playlistMenuRef = useRef<HTMLDivElement>(null);
   const speedMenuRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
@@ -247,20 +252,22 @@ export default function WatchPage() {
   }, []);
 
   useEffect(() => {
-    if (!scheduleOpen && !playlistOpen && !speedOpen) return;
+    if (!scheduleOpen && !playlistOpen && !speedOpen && !shareOpen) return;
     const close = (e: MouseEvent) => {
       const target = e.target as Element;
       if (scheduleMenuRef.current?.contains(target)) return;
       if (playlistMenuRef.current?.contains(target)) return;
       if (speedMenuRef.current?.contains(target)) return;
+      if (shareMenuRef.current?.contains(target)) return;
       if (target.closest?.(".playlist-icon-popover")) return;
       setScheduleOpen(false);
       setPlaylistOpen(false);
       setSpeedOpen(false);
+      setShareOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [scheduleOpen, playlistOpen, speedOpen]);
+  }, [scheduleOpen, playlistOpen, speedOpen, shareOpen]);
 
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
@@ -310,6 +317,8 @@ export default function WatchPage() {
     watchMode,
   });
   const usingLocal = playerKind === "local";
+  const sharedTimestamp = Number(new URLSearchParams(location.search).get("t"));
+  const sharedStartSeconds = Number.isFinite(sharedTimestamp) ? Math.max(0, Math.floor(sharedTimestamp)) : 0;
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
   const rawSubtitleSize = settings?.player_sub_size;
   const subtitleSize = rawSubtitleSize === "small" ? 14
@@ -486,10 +495,11 @@ export default function WatchPage() {
 
     const canAutoArchive = video ? (video.live_status !== "live" && video.live_status !== "upcoming") : false;
 
-    const startSeconds =
+    const startSeconds = sharedStartSeconds || (
       video?.watch_position && video?.watch_duration && video.watch_duration > 0 &&
       video.watch_position / video.watch_duration < 0.9
-        ? Math.floor(video.watch_position) : 0;
+        ? Math.floor(video.watch_position) : 0
+    );
 
     const poll = () => {
       const p = playerRef.current;
@@ -627,7 +637,7 @@ export default function WatchPage() {
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing, playerKind, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff]);
+  }, [id, video?.video_id, videoMissing, playerKind, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
@@ -900,9 +910,21 @@ export default function WatchPage() {
     emitToast(t(active ? "scheduleRemovedFeedback" : "scheduledFeedback"), active ? "default" : "scheduled");
   };
 
-  const copyLink = () => {
+  const shareLink = (destination: "webpage" | "youtube") => {
     if (!video) return;
-    navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${video.video_id}`).then(() => {
+    let seconds = 0;
+    if (shareWithTimestamp) {
+      try { seconds = Math.max(0, Math.floor(Number(playerRef.current?.getCurrentTime?.()) || 0)); } catch {}
+    }
+    return destination === "webpage"
+      ? `${window.location.origin}/watch/${video.video_id}${seconds ? `?t=${seconds}` : ""}`
+      : `https://www.youtube.com/watch?v=${video.video_id}${seconds ? `&t=${seconds}s` : ""}`;
+  };
+
+  const copyShareLink = (destination: "webpage" | "youtube") => {
+    const link = shareLink(destination);
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => {
       setCopyKey((k) => k + 1);
     });
   };
@@ -1000,13 +1022,14 @@ export default function WatchPage() {
             <div ref={playerWrapRef} className={`watch-player${usingLocal ? " watch-player--local" : ""}`}>
               {playerKind === "local" && video ? (
                 <LocalPlayer
-                  key={`${video.video_id}-local`}
+                  key={`${video.video_id}-local-${sharedStartSeconds}`}
                   ref={playerRef}
                   src={api.streamUrl(video.video_id)}
                   poster={img(video.thumbnail)}
                   startSeconds={
-                    progressRef.current?.position
-                      ?? (video.watch_position && video.watch_duration && video.watch_duration > 0 &&
+                    sharedStartSeconds
+                      || progressRef.current?.position
+                      || (video.watch_position && video.watch_duration && video.watch_duration > 0 &&
                           video.watch_position / video.watch_duration < 0.9
                         ? Math.floor(video.watch_position) : 0)
                   }
@@ -1305,14 +1328,38 @@ export default function WatchPage() {
             </div>
             </div>
             <div className="watch-action-group watch-action-group--utility">
-            <div className="share-btn-wrap">
+            <div className="dropdown share-btn-wrap" ref={shareMenuRef}>
               <button
-                className="btn icon-only"
-                title={t("copyYoutubeLink")}
-                onClick={copyLink}
+                className={`btn icon-only${shareOpen ? " active" : ""}`}
+                title={t("share")}
+                aria-expanded={shareOpen}
+                onClick={() => setShareOpen((open) => !open)}
               >
                 <Share2 />
               </button>
+              {shareOpen && (
+                <div className="dropdown-menu share-menu">
+                  <div className="share-menu-title">{t("share")}</div>
+                  <label className="share-link-label">{settings?.app_name || "YT Zero"}</label>
+                  <div className="share-link-field">
+                    <input readOnly value={shareLink("webpage") ?? ""} aria-label={settings?.app_name || "YT Zero"} />
+                    <button className="icon-only" title={t("copyLink")} onClick={() => copyShareLink("webpage")}><Copy /></button>
+                  </div>
+                  <label className="share-link-label">YouTube</label>
+                  <div className="share-link-field">
+                    <input readOnly value={shareLink("youtube") ?? ""} aria-label="YouTube" />
+                    <button className="icon-only" title={t("copyLink")} onClick={() => copyShareLink("youtube")}><Copy /></button>
+                  </div>
+                  <label className="share-timestamp-option">
+                    <input
+                      type="checkbox"
+                      checked={shareWithTimestamp}
+                      onChange={(event) => setShareWithTimestamp(event.target.checked)}
+                    />
+                    <Clock /> {t("includeCurrentTime")}
+                  </label>
+                </div>
+              )}
               {copyKey > 0 && (
                 <span key={copyKey} className="copy-toast">{t("copied")}</span>
               )}

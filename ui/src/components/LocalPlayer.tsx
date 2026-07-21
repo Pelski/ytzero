@@ -257,7 +257,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     const v = videoRef.current;
     if (!v) return;
     setDuration(Number.isFinite(v.duration) ? v.duration : 0);
-    if (startSeconds > 10 && startSeconds < v.duration - 5) v.currentTime = startSeconds;
+    if (startSeconds > 0 && startSeconds < v.duration - 5) v.currentTime = startSeconds;
     v.playbackRate = playbackRate;
     v.volume = volume;
     v.muted = muted;

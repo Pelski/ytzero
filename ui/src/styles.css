@@ -2450,6 +2450,54 @@ button.video-card:disabled { cursor: default; }
   box-shadow: 0 2px 12px rgba(0,0,0,0.5);
   animation: copy-float 1.4s ease forwards;
 }
+.share-menu { left: auto; min-width: 330px; padding: 12px; right: 0; }
+.share-menu-title {
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  padding: 0 0 8px;
+  text-transform: uppercase;
+}
+.share-link-label { color: var(--text-2); display: block; font-size: 12px; font-weight: 600; margin: 6px 0; }
+.share-link-field { display: flex; }
+.share-link-field input {
+  background: var(--bg);
+  border: 1px solid var(--surface-3);
+  border-radius: 8px 0 0 8px;
+  color: var(--text-2);
+  flex: 1;
+  font-size: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.share-link-field button {
+  align-items: center;
+  background: var(--surface-3);
+  border: 0;
+  border-radius: 0 8px 8px 0;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  padding: 0 10px;
+  width: auto;
+}
+.share-link-field button:hover { background: var(--chip-hover); }
+.share-link-field button svg { height: 16px; width: 16px; }
+.share-timestamp-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13.5px;
+  margin-top: 12px;
+  padding: 8px 0 0;
+}
+.share-timestamp-option input { accent-color: var(--accent); margin: 0; }
+.share-timestamp-option svg { color: var(--text-2); height: 17px; stroke-width: 1.7; width: 17px; }
 @keyframes copy-float {
   0%   { opacity: 0; transform: translateX(-50%) translateY(4px); }
   18%  { opacity: 1; transform: translateX(-50%) translateY(0px); }
