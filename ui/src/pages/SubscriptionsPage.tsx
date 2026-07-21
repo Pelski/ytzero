@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, Plus, Search, Users } from "lucide-react";
+import { Plus, Search, Users } from "lucide-react";
 import { api, type Channel, type Tag } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
@@ -8,6 +8,7 @@ import TagChip from "../components/TagChip";
 import TagFilterBar from "../components/TagFilterBar";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
+import { EmptyState, IconButton, OptionPicker, PageHeader, Popover } from "../components/ui";
 
 type SubscriptionSort = "name-asc" | "name-desc" | "latest-video" | "subscribed-recent" | "subscribers-desc" | "videos-desc";
 
@@ -22,7 +23,6 @@ function subscriberNumber(value: string | null | undefined): number {
 
 function ChannelTagPicker({ channel, tags, onApply }: { channel: Channel; tags: Tag[]; onApply: (tags: Tag[]) => void }) {
   const { t } = useI18n();
-  const ref = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Tag[]>(channel.tags);
 
@@ -32,41 +32,11 @@ function ChannelTagPicker({ channel, tags, onApply }: { channel: Channel; tags: 
     if (draft.map((tag) => tag.id).sort().join(",") !== channel.tags.map((tag) => tag.id).sort().join(",")) onApply(draft);
   };
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      if (!ref.current?.contains(event.target as Node)) applyAndClose();
-    };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") applyAndClose(); };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [channel.tags, draft, open]);
-
   return (
-    <div className="dropdown subs-card-tag-picker" ref={ref}>
-      <button className="btn-ghost" title={t("manageChannelTags")} onClick={() => {
-        if (open) applyAndClose();
-        else { setDraft(channel.tags); setOpen(true); }
-      }} aria-label={t("manageChannelTags")}><Plus size={13} /></button>
-      {open && (
-        <div className="dropdown-menu subs-card-tag-menu">
-          {tags.length === 0 ? <div className="dropdown-empty">{t("noTags")}</div> : tags.map((tag) => {
-            const selected = draft.some((item) => item.id === tag.id);
-            return (
-              <button key={tag.id} className={selected ? "is-selected" : undefined} onClick={() => setDraft((current) =>
-                selected ? current.filter((item) => item.id !== tag.id) : [...current, tag])}>
-                <span className="dot" style={{ background: tag.color, width: 8, height: 8, borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
-                {tag.name}
-                {selected && <span className="dropdown-menu-status"><Check size={14} /></span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
+    <div className="subs-card-tag-picker">
+      <Popover open={open} onOpenChange={(next) => { if (next) { setDraft(channel.tags); setOpen(true); } else applyAndClose(); }} align="end" className="subs-card-tag-menu" trigger={<IconButton variant="ghost" size="sm" label={t("manageChannelTags")} icon={<Plus size={13} />} />}>
+        {tags.length === 0 ? <div className="dropdown-empty">{t("noTags")}</div> : <OptionPicker label={t("manageChannelTags")} value={draft.map((tag) => tag.id)} options={tags.map((tag) => ({ value: tag.id, label: tag.name, icon: <span className="dot" style={{ background: tag.color }} /> }))} onChange={(id) => setDraft((current) => current.some((tag) => tag.id === id) ? current.filter((tag) => tag.id !== id) : [...current, tags.find((tag) => tag.id === id)!])} />}
+      </Popover>
     </div>
   );
 }
@@ -178,13 +148,7 @@ export default function SubscriptionsPage() {
 
   return (
     <>
-      <div className="page-header-row">
-        <div>
-          <h1 className="page-title">{t("subscriptions")}</h1>
-          <p className="page-hint">{t("followedChannelsCount", { n: channels.length })}</p>
-        </div>
-        <ChannelSearchPicker onAdded={load} />
-      </div>
+      <PageHeader title={t("subscriptions")} description={t("followedChannelsCount", { n: channels.length })} actions={<ChannelSearchPicker onAdded={load} />} />
 
       <div className="subs-toolbar">
         <div className="subs-search">
@@ -224,10 +188,7 @@ export default function SubscriptionsPage() {
       {loading ? (
         <TableSkeleton rows={8} columns={3} />
       ) : filteredChannels.length === 0 ? (
-        <div className="empty-state">
-          <Users />
-          <div>{query || selectedTags.length > 0 ? t("noMatchingChannels") : t("subscriptionsEmpty")}</div>
-        </div>
+        <EmptyState icon={<Users />} title={query || selectedTags.length > 0 ? t("noMatchingChannels") : t("subscriptionsEmpty")} />
       ) : (
         <div className="subs-grid">
           {filteredChannels.map((ch) => (

@@ -33,6 +33,7 @@ const PLUGIN_ROUTES = ["/discovery", "/downloads"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
+import { Badge, Toast } from "./components/ui";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number };
 
@@ -429,7 +430,7 @@ function AppShell() {
       <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
         <Icon />
         <span className="nav-label">{t(item.labelKey)}</span>
-        {item.to === "/live" && liveCount > 0 && <span className="badge">{liveCount}</span>}
+        {item.to === "/live" && liveCount > 0 && <Badge variant="danger" size="sm" className="badge">{liveCount}</Badge>}
       </NavLink>
     );
   };
@@ -481,7 +482,7 @@ function AppShell() {
           </div>
         </main>
       </div>
-      {toast && <div className={`toast toast--${toast.variant}`}>{toast.message}</div>}
+      {toast && <Toast message={toast.message} variant={toast.variant} />}
       <ChildNowWatching />
       {childStatus?.locked && <ChildLockScreen status={childStatus} />}
     </div>

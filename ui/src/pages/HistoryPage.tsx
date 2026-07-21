@@ -4,6 +4,7 @@ import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
+import { Button, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 
 function historyDayKey(value: string) {
   const date = new Date(value.replace(" ", "T"));
@@ -57,19 +58,16 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
 
   return (
     <>
-      <h1 className="page-title">{t("historyTitle")}</h1>
+      <PageHeader title={t("historyTitle")} />
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <div className="empty-state">
-          <History />
-          <div>{t("historyEmpty")}</div>
-        </div>
+        <EmptyState icon={<History />} title={t("historyEmpty")} />
       ) : (
         <>
           {groups.map((group) => (
             <section key={group.key} className="history-day-section">
-              <h2 className="history-day-title">{groupLabel(group.key)}</h2>
+              <SectionHeader title={groupLabel(group.key)} />
               <div className="video-grid">
                 {group.videos.map((v) => (
                   <VideoCard key={`${v.history_id ?? v.video_id}`} video={v} onPlay={onPlay} onChanged={() => { setPage(0); load(0); }} showWatchProgress />
@@ -80,9 +78,7 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
           {loadingMore && <VideoGridSkeleton count={4} />}
           {hasMore && !loadingMore && (
             <div className="load-more">
-              <button className="btn" onClick={() => setPage((p) => p + 1)}>
-                {t("loadMore")}
-              </button>
+              <Button onClick={() => setPage((p) => p + 1)}>{t("loadMore")}</Button>
             </div>
           )}
         </>

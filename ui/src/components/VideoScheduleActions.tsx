@@ -18,6 +18,23 @@ const BUCKET_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
   { labelKey: "groupWeekend", buckets: ["weekend"] },
 ];
 
+export function SchedulePicker({ onSelect }: { onSelect: (bucket: Bucket) => void }) {
+  const { t, bucketLabel } = useI18n();
+  return <>
+    {BUCKET_GROUPS.map((group) => (
+      <div key={group.labelKey} className="dropdown-menu-group">
+        <div className="dropdown-menu-label">{t(group.labelKey)}</div>
+        <div className="dropdown-menu-row">
+          {group.buckets.map((bucket) => {
+            const Icon = BUCKET_ICONS[bucket];
+            return <button type="button" key={bucket} className="schedule-icon-choice" title={bucketLabel(bucket)} onClick={() => onSelect(bucket)}><Icon /></button>;
+          })}
+        </div>
+      </div>
+    ))}
+  </>;
+}
+
 export function VideoScheduleActions({
   video,
   variant,

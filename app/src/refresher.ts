@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo, fetchVideoPublishedAt } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -12,7 +12,8 @@ const upsertVideo = db.prepare(`
     title = excluded.title,
     description = excluded.description,
     thumbnail = excluded.thumbnail,
-    published_at = excluded.published_at,
+    published_at = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN excluded.published_at ELSE videos.published_at END,
+    published_at_approximate = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN 0 ELSE videos.published_at_approximate END,
     views = COALESCE(excluded.views, views),
     likes = COALESCE(excluded.likes, likes)
 `);
@@ -23,12 +24,43 @@ const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 // tripping YouTube's rate limiting (HTTP 429).
 const MAX_SYNC_PLAYLISTS = 25;
 const PLAYLIST_SYNC_DELAY_MS = 800;
+const EXACT_DATE_BACKFILL_LIMIT = 18;
+const EXACT_DATE_BACKFILL_CONCURRENCY = 3;
 const VIDEO_MAINTENANCE_MAX_AGE_DAYS = positiveNumber(process.env.VIDEO_MAINTENANCE_MAX_AGE_DAYS, 90);
 const VIDEO_MAINTENANCE_CUTOFF = `-${VIDEO_MAINTENANCE_MAX_AGE_DAYS} days`;
 
 function positiveNumber(value: string | undefined, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function backfillExactPublishedDates(channelId: string) {
+  const ids = (db.prepare(`
+    SELECT video_id FROM videos
+    WHERE channel_id = ?
+      AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
+    ORDER BY COALESCE(published_at, '1970-01-01') DESC
+    LIMIT ?
+  `).all(channelId, EXACT_DATE_BACKFILL_LIMIT) as { video_id: string }[]).map((row) => row.video_id);
+  const update = db.prepare(`
+    UPDATE videos
+    SET published_at = ?, published_at_approximate = 0
+    WHERE video_id = ? AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
+  `);
+  let recovered = 0;
+  for (let i = 0; i < ids.length; i += EXACT_DATE_BACKFILL_CONCURRENCY) {
+    await Promise.all(ids.slice(i, i + EXACT_DATE_BACKFILL_CONCURRENCY).map(async (videoId) => {
+      try {
+        const publishedAt = await fetchVideoPublishedAt(videoId);
+        if (publishedAt) recovered += update.run(publishedAt, videoId).changes;
+      } catch {
+        // Members-only and otherwise restricted videos may not expose a watch
+        // payload. Their channel-card relative date remains the honest fallback.
+      }
+    }));
+    if (i + EXACT_DATE_BACKFILL_CONCURRENCY < ids.length) await Bun.sleep(120);
+  }
+  if (recovered > 0) log.info("video.published_dates_recovered", { requested: ids.length, recovered });
 }
 
 async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh = false) {
@@ -263,11 +295,23 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
 
   const feedMap = new Map(feed.videos.map((v) => [v.videoId, v]));
   const insertOrUpdate = db.prepare(`
-    INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes, duration)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, published_at_approximate, members_only, views, likes, duration)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(video_id) DO UPDATE SET
       title = excluded.title,
       thumbnail = excluded.thumbnail,
+      published_at = CASE
+        WHEN excluded.published_at IS NULL OR excluded.published_at = '' THEN videos.published_at
+        WHEN excluded.published_at_approximate = 0 THEN excluded.published_at
+        ELSE COALESCE(videos.published_at, excluded.published_at)
+      END,
+      published_at_approximate = CASE
+        WHEN excluded.published_at IS NULL OR excluded.published_at = '' THEN videos.published_at_approximate
+        WHEN excluded.published_at_approximate = 0 THEN 0
+        WHEN videos.published_at IS NULL OR videos.published_at = '' THEN 1
+        ELSE videos.published_at_approximate
+      END,
+      members_only = excluded.members_only,
       views = COALESCE(excluded.views, views),
       duration = COALESCE(excluded.duration, duration)
   `);
@@ -286,12 +330,16 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
     seen.add(v.videoId);
     const isNew = !videoExists.get(v.videoId);
     const rss = feedMap.get(v.videoId);
+    const exactPublishedAt = rss?.publishedAt || null;
+    const publishedAt = exactPublishedAt ?? v.publishedAt;
     insertOrUpdate.run(
       v.videoId, channelId,
       rss?.title ?? v.title,
       rss?.description ?? "",
       rss?.thumbnail ?? v.thumbnail,
-      rss?.publishedAt ?? null,
+      publishedAt,
+      exactPublishedAt ? 0 : publishedAt ? 1 : 0,
+      v.membersOnly ? 1 : 0,
       rss?.views ?? v.viewCount,
       rss?.likes ?? null,
       v.duration || null,
@@ -309,6 +357,8 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
       log.info("video.added", { source: "sync", channelId, videoId: v.videoId, title: rss?.title ?? v.title, publishedAt: rss?.publishedAt ?? null });
     }
   }
+
+  await backfillExactPublishedDates(channelId);
 
   // Also add RSS-only videos (not in scraped list) to get description + published_at
   for (const v of feed.videos) {

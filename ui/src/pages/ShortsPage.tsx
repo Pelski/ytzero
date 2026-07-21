@@ -6,6 +6,7 @@ import { api, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import TagFilterBar from "../components/TagFilterBar";
 import ShortCard from "../components/ShortCard";
+import { Button, Chip, EmptyState } from "../components/ui";
 import ShortsPlayer from "../components/ShortsPlayer";
 import { ShortsGridSkeleton } from "../components/LoadingState";
 
@@ -220,12 +221,8 @@ export default function ShortsPage() {
       )}
 
       <div className="shorts-hero">
-        <button className="btn primary" onClick={playFromStart} disabled={videos.length === 0}>
-          <Play size={15} /> {t("shortsPlayAll")}
-        </button>
-        <button className="btn" onClick={playRandom} disabled={videos.length === 0}>
-          <Shuffle size={15} /> {t("shortsShuffle")}
-        </button>
+        <Button variant="primary" leadingIcon={<Play size={15} />} onClick={playFromStart} disabled={videos.length === 0}>{t("shortsPlayAll")}</Button>
+        <Button leadingIcon={<Shuffle size={15} />} onClick={playRandom} disabled={videos.length === 0}>{t("shortsShuffle")}</Button>
       </div>
 
       <TagFilterBar
@@ -234,24 +231,20 @@ export default function ShortsPage() {
         onToggle={toggleTag}
         onClearAll={clearTags}
         suffix={
-          <button
-            className={`chip${likedOnly ? " active" : ""}`}
+          <Chip
+            active={likedOnly}
             onClick={toggleLikedOnly}
-            aria-pressed={likedOnly}
           >
             <Heart size={12} fill={likedOnly ? "currentColor" : "none"} />
             {t("likedOnly")}
-          </button>
+          </Chip>
         }
       />
 
       {loading && videos.length === 0 ? (
         <ShortsGridSkeleton />
       ) : videos.length === 0 ? (
-        <div className="empty-state">
-          <Zap />
-          <div>{t("shortsEmpty")}</div>
-        </div>
+        <EmptyState icon={<Zap />} title={t("shortsEmpty")} />
       ) : (
         <>
           <div className="shorts-grid">
@@ -273,9 +266,7 @@ export default function ShortsPage() {
           {loadingMore && <ShortsGridSkeleton count={6} />}
           {hasMore && !loadingMore && (
             <div className="load-more" ref={loadMoreRef}>
-              <button className="btn" onClick={() => setPage((p) => p + 1)}>
-                {t("loadMore")}
-              </button>
+              <Button onClick={() => setPage((p) => p + 1)}>{t("loadMore")}</Button>
             </div>
           )}
         </>

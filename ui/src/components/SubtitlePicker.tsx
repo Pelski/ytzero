@@ -1,8 +1,9 @@
 import { Captions, Check, LoaderCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { VideoSubtitle } from "../api";
 import { useI18n } from "../i18n";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
+import { FloatingPopover, Menu, MenuItem, MenuSeparator, Switch } from "./ui";
 
 interface SubtitlePickerProps {
   videoId?: string;
@@ -26,17 +27,7 @@ export default function SubtitlePicker({
   onToggle,
 }: SubtitlePickerProps) {
   const { t } = useI18n();
-  const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnOutsideClick = (event: MouseEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
-  }, [open]);
 
   if (!videoId) return null;
 
@@ -64,64 +55,62 @@ export default function SubtitlePicker({
   );
 
   return (
-    <div className="lp-sub-menu-wrap" ref={rootRef}>
-      <button
-        className={`lp-btn${selectedLanguage ? " active" : ""}`}
-        onClick={() => setOpen((value) => !value)}
-        aria-label={t("subtitles")}
-        aria-pressed={Boolean(selectedLanguage)}
-        title={t("subtitles")}
+    <div className="lp-sub-menu-wrap">
+      <FloatingPopover
+        open={open}
+        onOpenChange={setOpen}
+        align="end"
+        className="lp-sub-menu"
+        trigger={
+          <button
+            className={`lp-btn${selectedLanguage ? " active" : ""}`}
+            aria-label={t("subtitles")}
+            aria-pressed={Boolean(selectedLanguage)}
+            title={t("subtitles")}
+          >
+            {loadingLanguage ? <LoaderCircle className="spin" size={19} /> : <Captions size={20} />}
+          </button>
+        }
       >
-        {loadingLanguage ? <LoaderCircle className="spin" size={19} /> : <Captions size={20} />}
-      </button>
-      {open && (
-        <div className="lp-sub-menu">
           <div className="lp-sub-toggle">
             <span>{t("subtitles")}</span>
-            <button
-              className={`switch${selectedLanguage ? " on" : ""}`}
-              role="switch"
-              aria-checked={Boolean(selectedLanguage)}
-              onClick={toggle}
-            />
+            <Switch checked={Boolean(selectedLanguage)} onCheckedChange={toggle} />
           </div>
-          <div className="lp-sub-menu-list">
+          <Menu className="lp-sub-menu-list">
             {preferred.map((language) => (
-              <button
+              <MenuItem
                 key={language}
-                className={`lp-sub-option${selectedLanguage === language ? " is-selected" : ""}`}
+                selected={selectedLanguage === language}
                 disabled={loadingLanguage != null}
                 onClick={() => select(language)}
+                suffix={status(language)}
               >
-                <span>{subtitleLanguageLabel(language)}</span>
-                {status(language)}
-              </button>
+                {subtitleLanguageLabel(language)}
+              </MenuItem>
             ))}
-            {preferred.length > 0 && (downloaded.length > 0 || remaining.length > 0) && <div className="lp-sub-separator" />}
+            {preferred.length > 0 && (downloaded.length > 0 || remaining.length > 0) && <MenuSeparator />}
             {downloaded.map((subtitle) => (
-              <button
+              <MenuItem
                 key={subtitle.lang}
-                className={`lp-sub-option${selectedLanguage === subtitle.lang ? " is-selected" : ""}`}
+                selected={selectedLanguage === subtitle.lang}
                 onClick={() => select(subtitle.lang)}
+                suffix={status(subtitle.lang)}
               >
-                <span>{subtitleLanguageLabel(subtitle.lang)}</span>
-                {status(subtitle.lang)}
-              </button>
+                {subtitleLanguageLabel(subtitle.lang)}
+              </MenuItem>
             ))}
             {remaining.map((language) => (
-              <button
-                className="lp-sub-option"
+              <MenuItem
                 key={language.code}
                 disabled={loadingLanguage != null}
                 onClick={() => select(language.code)}
+                suffix={status(language.code)}
               >
-                <span>{language.label}</span>
-                {status(language.code)}
-              </button>
+                {language.label}
+              </MenuItem>
             ))}
-          </div>
-        </div>
-      )}
+          </Menu>
+      </FloatingPopover>
     </div>
   );
 }

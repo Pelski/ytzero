@@ -573,8 +573,34 @@ export interface ScrapedVideo {
   thumbnail: string;
   duration: string;
   viewCount: number | null;
+  publishedAt: string | null;
+  publishedAtApproximate: boolean;
+  membersOnly: boolean;
   isStream?: boolean;
   isLive?: boolean;
+}
+
+export function hasMembersOnlyBadge(node: any): boolean {
+  return deepCollect(node, "badgeViewModel").some((badge: any) =>
+    badge?.badgeStyle === "BADGE_MEMBERS_ONLY" || badge?.iconName === "SPONSORSHIP_STAR"
+  ) || deepCollect(node, "metadataBadgeRenderer").some((badge: any) =>
+    badge?.style === "BADGE_STYLE_TYPE_MEMBERS_ONLY"
+  );
+}
+
+function relativePublishedFromNode(node: any): string | null {
+  for (const parts of deepCollect(node, "metadataParts")) {
+    for (const part of Array.isArray(parts) ? parts : []) {
+      for (const text of textFromMetadataPart(part)) {
+        const parsed = parsePublishedTimeText(text);
+        if (parsed) return relativePublishedAt(parsed);
+      }
+    }
+  }
+  const legacy = node?.publishedTimeText?.simpleText
+    ?? node?.publishedTimeText?.runs?.map((part: any) => part.text).join("");
+  const parsed = parsePublishedTimeText(legacy);
+  return parsed ? relativePublishedAt(parsed) : null;
 }
 
 /**
@@ -602,6 +628,9 @@ async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams
         `https://i.ytimg.com/vi/${r.videoId}/hqdefault.jpg`,
       duration: r.lengthText?.simpleText ?? "",
       viewCount: Number.isFinite(viewNum) && viewNum > 0 ? viewNum : null,
+      publishedAt: relativePublishedFromNode(r),
+      publishedAtApproximate: true,
+      membersOnly: hasMembersOnlyBadge(r),
     });
   }
 
@@ -625,6 +654,9 @@ async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams
         `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       duration: badges.find((text) => /^\d{1,2}:\d{2}(?::\d{2})?$/.test(text)) ?? "",
       viewCount: null,
+      publishedAt: relativePublishedFromNode(vm),
+      publishedAtApproximate: true,
+      membersOnly: hasMembersOnlyBadge(vm),
       isLive: badges.includes("LIVE"),
     });
   }
@@ -668,10 +700,47 @@ export interface PublishedAgo {
 
 // YouTube only exposes a relative label here ("3 days ago", "Streamed 2 weeks ago");
 // English wording is guaranteed by the Accept-Language pin in FETCH_HEADERS.
-function parsePublishedTimeText(text: string | undefined): PublishedAgo | null {
-  const m = text?.match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/);
-  if (!m) return null;
-  return { value: parseInt(m[1], 10), unit: m[2] as PublishedAgo["unit"] };
+export function parsePublishedTimeText(text: string | undefined): PublishedAgo | null {
+  if (!text) return null;
+  const english = text.match(/(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago/i);
+  if (english) return { value: parseInt(english[1], 10), unit: english[2].toLowerCase() as PublishedAgo["unit"] };
+
+  const polish = text.match(/(\d+)\s+(sekund(?:ę|y)?|minut(?:ę|y)?|godzin(?:ę|y)?|dzień|dni|tydzień|tygodnie|tygodni|miesiąc|miesiące|miesięcy|rok|lata|lat)\s+temu/i);
+  if (polish) {
+    const word = polish[2].toLowerCase();
+    const unit: PublishedAgo["unit"] = word.startsWith("sekund") ? "second"
+      : word.startsWith("minut") ? "minute"
+      : word.startsWith("godzin") ? "hour"
+      : word === "dzień" || word === "dni" ? "day"
+      : word.startsWith("tygod") ? "week"
+      : word.startsWith("miesi") ? "month"
+      : "year";
+    return { value: parseInt(polish[1], 10), unit };
+  }
+
+  const german = text.match(/vor\s+(\d+)\s+(Sekunde[n]?|Minute[n]?|Stunde[n]?|Tag(?:en)?|Woche[n]?|Monat(?:en)?|Jahr(?:en)?)/i);
+  if (!german) return null;
+  const word = german[2].toLowerCase();
+  const unit: PublishedAgo["unit"] = word.startsWith("sekunde") ? "second"
+    : word.startsWith("minute") ? "minute"
+    : word.startsWith("stunde") ? "hour"
+    : word.startsWith("tag") ? "day"
+    : word.startsWith("woche") ? "week"
+    : word.startsWith("monat") ? "month"
+    : "year";
+  return { value: parseInt(german[1], 10), unit };
+}
+
+export function relativePublishedAt(published: PublishedAgo, now = new Date()): string {
+  const date = new Date(now);
+  const value = Math.max(0, published.value);
+  if (published.unit === "year") date.setUTCFullYear(date.getUTCFullYear() - value);
+  else if (published.unit === "month") date.setUTCMonth(date.getUTCMonth() - value);
+  else {
+    const seconds = value * ({ second: 1, minute: 60, hour: 3600, day: 86400, week: 604800 } as const)[published.unit];
+    date.setTime(date.getTime() - seconds * 1000);
+  }
+  return date.toISOString();
 }
 
 const searchCache = new Map<string, { at: number; data: { results: SearchResult[]; channels: ChannelSearchResult[] } }>();
@@ -821,6 +890,22 @@ export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
   }
   videoInfoCache.set(videoId, { at: Date.now(), data: result });
   return result;
+}
+
+/** Fetch only the exact publish date without requiring a playable video. */
+export async function fetchVideoPublishedAt(videoId: string): Promise<string | null> {
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: FETCH_HEADERS });
+  if (!res.ok) return null;
+  const html = await res.text();
+  const playerDate = extractVariable(html, "ytInitialPlayerResponse")
+    ?.microformat?.playerMicroformatRenderer?.publishDate;
+  const raw = typeof playerDate === "string" ? playerDate
+    : html.match(/"publishDate":"([^"]+)"/)?.[1]
+      ?? html.match(/"uploadDate":"([^"]+)"/)?.[1]
+      ?? html.match(/itemprop="datePublished" content="([^"]+)"/)?.[1];
+  if (!raw || !/^\d{4}-\d{2}-\d{2}/.test(raw)) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 
 export interface VideoChapter {

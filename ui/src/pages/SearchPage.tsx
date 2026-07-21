@@ -7,6 +7,7 @@ import { img } from "../img";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail } from "../components/VideoThumbnail";
+import { Button, EmptyState } from "../components/ui";
 
 function normalizeSearchText(value: string) {
   return value
@@ -82,7 +83,7 @@ export default function SearchPage({ onPlay, hideExternalSearch = false }: { onP
   }, [q, hideExternalSearch]);
 
   if (!q) {
-    return <div className="empty-state"><Search /><div>{t("searchPlaceholder")}</div></div>;
+    return <EmptyState icon={<Search />} title={t("searchPlaceholder")} />;
   }
 
   const localChannelIds = new Set(localChannels.map((channel) => channel.channel_id));
@@ -120,9 +121,7 @@ export default function SearchPage({ onPlay, hideExternalSearch = false }: { onP
               </div>
               {!localResultsExpanded && videos.length > 7 && (
                 <div className="search-local-load-more">
-                  <button className="btn" onClick={showAllLocalResults} disabled={localLoadingMore}>
-                    {localLoadingMore ? t("loading") : t("showAllResults")}
-                  </button>
+                  <Button onClick={showAllLocalResults} disabled={localLoadingMore}>{localLoadingMore ? t("loading") : t("showAllResults")}</Button>
                 </div>
               )}
             </>

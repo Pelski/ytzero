@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   Archive,
@@ -75,6 +74,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useI18n } from "../i18n";
+import { FloatingPopover, IconPicker, Input } from "./ui";
 
 type IconComponent = LucideIcon;
 
@@ -174,19 +174,6 @@ export function PlaylistIcon({ icon }: { icon?: string }) {
   return <Icon />;
 }
 
-function computePopoverStyle(trigger: HTMLButtonElement): CSSProperties {
-  const rect = trigger.getBoundingClientRect();
-  const width = Math.min(360, window.innerWidth - 16);
-  const height = 334;
-  const gap = 8;
-  const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
-  const below = rect.bottom + gap;
-  const top = below + height <= window.innerHeight - 8
-    ? below
-    : Math.max(8, rect.top - height - gap);
-  return { left, top, width };
-}
-
 export function PlaylistIconPicker({
   value,
   onChange,
@@ -199,10 +186,6 @@ export function PlaylistIconPicker({
   const { t, iconLabel } = useI18n();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [style, setStyle] = useState<CSSProperties>({});
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -212,83 +195,32 @@ export function PlaylistIconPicker({
     });
   }, [iconLabel, query]);
 
-  useEffect(() => {
-    if (!open) return;
-    const trigger = triggerRef.current;
-    if (!trigger) return;
-    setStyle(computePopoverStyle(trigger));
-    queueMicrotask(() => searchRef.current?.focus());
-
-    const close = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (trigger.contains(target) || popoverRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    const reposition = () => setStyle(computePopoverStyle(trigger));
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
-    };
-  }, [open]);
-
   const selectedLabel = iconLabel(value);
 
   return (
-    <>
-      <button
+    <FloatingPopover
+      open={open}
+      onOpenChange={setOpen}
+      className="playlist-icon-picker-popover"
+      trigger={<button
         type="button"
-        ref={triggerRef}
         className={`playlist-icon-trigger${compact ? " compact" : ""}`}
-        onClick={() => setOpen((v) => !v)}
         aria-label={t("choosePlaylistIcon")}
         title={selectedLabel}
       >
         <span className="playlist-icon-trigger-mark"><PlaylistIcon icon={value} /></span>
-      </button>
-      {open && createPortal(
-        <div className="playlist-icon-popover" ref={popoverRef} style={style}>
-          <input
-            ref={searchRef}
+      </button>}
+    >
+        <div>
+          <Input
+            autoFocus
             className="playlist-icon-search"
             value={query}
             placeholder={t("search")}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <div className="playlist-icon-grid">
-            {filtered.map((id) => {
-              const Icon = getIcon(id);
-              const label = iconLabel(id);
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  className={`playlist-icon-choice${value === id ? " active" : ""}`}
-                  title={label}
-                  aria-label={label}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChange(id);
-                    setOpen(false);
-                    setQuery("");
-                  }}
-                >
-                  <Icon />
-                </button>
-              );
-            })}
-          </div>
-        </div>,
-        document.body
-      )}
-    </>
+          <IconPicker label={t("choosePlaylistIcon")} value={value} options={filtered.map((id) => { const Icon = getIcon(id); return { value: id, label: iconLabel(id), icon: <Icon /> }; })} onChange={(id) => { onChange(id); setOpen(false); setQuery(""); }} />
+        </div>
+    </FloatingPopover>
   );
 }

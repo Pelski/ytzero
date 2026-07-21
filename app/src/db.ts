@@ -357,6 +357,9 @@ try { db.exec("ALTER TABLE channels ADD COLUMN followed INTEGER NOT NULL DEFAULT
 try { db.exec("ALTER TABLE user_channels ADD COLUMN playback_speed TEXT"); } catch {}
 try { db.exec("ALTER TABLE user_channels ADD COLUMN caption_mode TEXT"); } catch {}
 try { db.exec("ALTER TABLE user_channels ADD COLUMN caption_language TEXT"); } catch {}
+// NULL inherits the profile setting; 0 always shows and 1 always hides this
+// channel's members-only uploads from the main feed.
+try { db.exec("ALTER TABLE user_channels ADD COLUMN hide_members_only_from_feed INTEGER"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN duration TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_position REAL"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
@@ -400,6 +403,11 @@ try {
 // filename template; sidecar files (nfo/thumbnail/subs) share this base.
 try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
+// Publication dates discovered only as relative channel-card labels are kept
+// distinct until the watch page can provide YouTube's exact publish date.
+try { db.exec("ALTER TABLE videos ADD COLUMN published_at_approximate INTEGER NOT NULL DEFAULT 0"); } catch {}
+// YouTube exposes members-only status as a badge on channel video cards.
+try { db.exec("ALTER TABLE videos ADD COLUMN members_only INTEGER NOT NULL DEFAULT 0"); } catch {}
 db.exec("UPDATE videos SET bucket = 'today' WHERE bucket = 'morning';");
 db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
 
@@ -426,6 +434,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   shorts_tab: "1",
   show_top_channels: "1",
   hide_live_from_feed: "0",
+  hide_members_only_from_feed: "0",
   watched_style: "dimmed",
   sidebar_nav: "",
   sponsorblock_enabled: "0",

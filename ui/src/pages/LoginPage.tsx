@@ -3,6 +3,7 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { KeyRound, LogIn, Play, ShieldAlert } from "lucide-react";
 import { api, type AuthStatus } from "../api";
 import { useI18n } from "../i18n";
+import { Button, ButtonAnchor, Input } from "../components/ui";
 
 /**
  * Full-screen sign-in shown when `auth/status` reports the request is not
@@ -66,7 +67,7 @@ export default function LoginPage({ status }: { status: AuthStatus }) {
         {login.password && (
           <form className="login-form" onSubmit={submitPassword}>
             {showUsername && (
-              <input
+              <Input
                 className="login-input"
                 placeholder={t("authUsername")}
                 value={username}
@@ -74,7 +75,7 @@ export default function LoginPage({ status }: { status: AuthStatus }) {
                 onChange={(e) => setUsername(e.target.value)}
               />
             )}
-            <input
+            <Input
               className="login-input"
               type="password"
               placeholder={t("authPassword")}
@@ -82,22 +83,16 @@ export default function LoginPage({ status }: { status: AuthStatus }) {
               autoFocus={!showUsername}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <button className="btn primary login-btn" type="submit" disabled={busy || !password}>
-              <LogIn size={18} /> {t("loginSignIn")}
-            </button>
+            <Button className="login-btn" variant="primary" type="submit" disabled={busy || !password} leadingIcon={<LogIn size={18} />}>{t("loginSignIn")}</Button>
           </form>
         )}
 
         {login.passkey && (
-          <button className="btn login-btn" onClick={loginPasskey} disabled={busy}>
-            <KeyRound size={18} /> {t("loginWithPasskey")}
-          </button>
+          <Button className="login-btn" onClick={loginPasskey} disabled={busy} leadingIcon={<KeyRound size={18} />}>{t("loginWithPasskey")}</Button>
         )}
 
         {login.oidc && (
-          <a className="btn primary login-btn" href="/api/auth/oidc/login">
-            <LogIn size={18} /> {t("loginWithSso")}
-          </a>
+          <ButtonAnchor className="login-btn" variant="primary" href="/api/auth/oidc/login" leadingIcon={<LogIn size={18} />}>{t("loginWithSso")}</ButtonAnchor>
         )}
 
         {error && <div className="login-error">{error}</div>}

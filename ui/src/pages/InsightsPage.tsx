@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type HouseholdInsights, type InsightProfileRef } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
+import { EmptyState } from "../components/ui";
 
 const RANGES = [7, 30, 90, 365];
 
@@ -59,7 +60,7 @@ export default function InsightsPage() {
   }), [locale]);
 
   if (!data && loading) return <div className="insights-loading"><Activity className="spin" /> {t("loading")}</div>;
-  if (!data) return <div className="empty-state">{error || t("insightsNoData")}</div>;
+  if (!data) return <EmptyState title={error || t("insightsNoData")} />;
 
   const { summary } = data;
   const maxDay = Math.max(...data.daily.map((item) => item.seconds), 1);

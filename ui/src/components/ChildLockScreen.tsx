@@ -3,6 +3,7 @@ import { Hourglass, Lock, ShieldAlert, X } from "lucide-react";
 import { api, type ChildStatus, type Profile } from "../api";
 import { useI18n } from "../i18n";
 import { ProfileAvatar } from "./ProfileMenu";
+import { Button, IconButton, Input } from "./ui";
 
 // Full-screen overlay shown to a child profile whose daily watch time ran out
 // (lock_reason "time") or that got locked after repeated wrong child-lock PINs
@@ -75,9 +76,9 @@ export default function ChildLockScreen({ status }: { status: ChildStatus }) {
           sent ? (
             <div className="child-lock-sent">{t("childAskTimeSent")}</div>
           ) : (
-            <button className="btn primary child-lock-ask" onClick={askForTime}>
+            <Button variant="primary" className="child-lock-ask" onClick={askForTime}>
               {t("childAskTime")}
-            </button>
+            </Button>
           )
         )}
       </div>
@@ -110,15 +111,15 @@ export default function ChildLockScreen({ status }: { status: ChildStatus }) {
               else setPinError(true);
             }}
           >
-            <button type="button" className="profile-pin-close" aria-label={t("close")} onClick={() => setPinFor(null)}>
+            <IconButton className="profile-pin-close" label={t("close")} onClick={() => setPinFor(null)}>
               <X size={18} />
-            </button>
+            </IconButton>
             <ProfileAvatar profile={pinFor} size={56} />
             <div className="profile-pin-title">{pinFor.name}</div>
             {needsChildLock && (
               <>
                 <div className="profile-pin-hint">{t("enterChildLockPin")}</div>
-                <input
+                <Input
                   className={`profile-pin-input${pinError ? " error" : ""}`}
                   type="password"
                   inputMode="numeric"
@@ -138,7 +139,7 @@ export default function ChildLockScreen({ status }: { status: ChildStatus }) {
             {pinFor.has_pin && (
               <>
                 <div className="profile-pin-hint">{t("enterProfilePin")}</div>
-                <input
+                <Input
                   className={`profile-pin-input${pinError ? " error" : ""}`}
                   type="password"
                   inputMode="numeric"
@@ -155,7 +156,7 @@ export default function ChildLockScreen({ status }: { status: ChildStatus }) {
                 />
               </>
             )}
-            <button type="submit" className="btn primary" disabled={!pinComplete(pinFor)}>{t("switchProfile")}</button>
+            <Button type="submit" variant="primary" disabled={!pinComplete(pinFor)}>{t("switchProfile")}</Button>
           </form>
         </div>
       )}

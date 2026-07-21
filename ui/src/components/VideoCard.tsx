@@ -5,6 +5,7 @@ import {
   CalendarX,
   Eye,
   Heart,
+  Star,
   Trash2,
   Undo2,
   X,
@@ -331,6 +332,13 @@ export default function VideoCard({
           willChange: swiping ? "transform" : "auto",
         }}
       >
+        {video.members_only === 1 && (
+          <Tooltip text={t("membersOnly")} pos="right" delay={300} className={`members-only-marker${isLiked && video.is_short === 1 ? " members-only-marker--stacked" : ""}`}>
+            <span className="members-only-marker__icon" aria-label={t("membersOnly")}>
+              <Star size={15} fill="currentColor" />
+            </span>
+          </Tooltip>
+        )}
         <div
           className={`thumb-wrap${actionsOpen ? " controls-near" : ""}`}
           style={{ "--actions-proximity": actionProximity } as CSSProperties}

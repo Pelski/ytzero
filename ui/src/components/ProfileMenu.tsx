@@ -3,11 +3,10 @@ import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Check, Lock, LogOut, Settings, SlidersHorizontal, UserPlus, X } from "lucide-react";
 import { api, type AuthStatus, type Profile } from "../api";
-import { subscribe } from "../events";
+import { emit, subscribe } from "../events";
 import { useI18n } from "../i18n";
-import { parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { emit } from "../events";
-import SteppedSlider from "./SteppedSlider";
+import { parseVideoCardSize, persistVideoCardSize } from "../videoCardSize";
+import { IconButton, Popover, SteppedSlider } from "./ui";
 
 /** Round avatar: uploaded image, or a colored circle with the name initial. */
 export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
@@ -127,13 +126,18 @@ export default function ProfileMenu() {
       <button className="profile-trigger" aria-label={t("profiles")} onClick={() => setOpen((v) => !v)}>
         <ProfileAvatar profile={active} size={32} />
       </button>
-      <div className="dropdown profile-card-size-wrap">
-        <button className={`profile-card-size-trigger${cardSizeOpen ? " active" : ""}`} title={t("videoCardSize")} onClick={() => setCardSizeOpen((v) => !v)}><SlidersHorizontal size={16} /></button>
-        {cardSizeOpen && <div className="dropdown-menu profile-card-size-popover">
-          <div className="share-menu-title">{t("videoCardSize")}</div>
+      <div className="profile-card-size-wrap">
+        <Popover
+          open={cardSizeOpen}
+          onOpenChange={setCardSizeOpen}
+          align="end"
+          title={t("videoCardSize")}
+          className="profile-card-size-popover"
+          trigger={<IconButton variant="ghost" size="sm" className="profile-card-size-trigger" label={t("videoCardSize")} icon={<SlidersHorizontal />} />}
+        >
           <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => { setCardSize(next); persistVideoCardSize(next).then(() => emit("video-card-size-changed")).catch(() => {}); }} />
           <output>{cardSize}px</output>
-        </div>}
+        </Popover>
       </div>
 
       {open && (

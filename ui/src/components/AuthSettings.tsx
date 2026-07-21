@@ -4,6 +4,7 @@ import { Check, KeyRound, TriangleAlert, Trash2 } from "lucide-react";
 import { api, type AuthConfig, type AuthConfigUpdate, type AuthMethod } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 import Popconfirm from "./Popconfirm";
+import { Button, Checkbox, Dialog, Field, FormActions, IconButton, Input, Select, SettingsSection, Text } from "./ui";
 
 const METHODS: { id: AuthMethod; label: I18nKey; desc: I18nKey }[] = [
   { id: "none", label: "authMethodNone", desc: "authMethodNoneDesc" },
@@ -70,7 +71,7 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
     return () => clearInterval(id);
   }, [confirming]);
 
-  if (forbidden) return <p className="page-hint">{t("primaryOnlyHint")}</p>;
+  if (forbidden) return <Text tone="secondary">{t("primaryOnlyHint")}</Text>;
   if (!cfg || !oidc) return null;
 
   const buildUpdate = (): AuthConfigUpdate => ({
@@ -170,10 +171,10 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
   const blockActivate = Boolean(mappingIssues && !mappingIssues.ok);
 
   return (
-    <section className="settings-section auth-settings">
-      <p className="hint">
+    <SettingsSection className="auth-settings">
+      <Text tone="secondary">
         {t("authCurrentMethod")}: <strong>{t(METHODS.find((m) => m.id === cfg.method)!.label)}</strong>
-      </p>
+      </Text>
 
       {/* Step 1 — method cards */}
       <h3 className="auth-step-title">{t("authStep1")}</h3>
@@ -202,14 +203,8 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
 
       {selected === "shared" && (
         <div className="auth-config-block">
-          <label className="settings-field">
-            <span>{t("authSharedUsername")}</span>
-            <input value={sharedUser} onChange={(e) => setSharedUser(e.target.value)} />
-          </label>
-          <label className="settings-field">
-            <span>{t("authPassword")}{cfg.shared.password_set ? ` (${t("authPasswordSet")})` : ""}</span>
-            <input type="password" value={sharedPw} onChange={(e) => setSharedPw(e.target.value)} autoComplete="new-password" />
-          </label>
+          <Field label={t("authSharedUsername")}><Input value={sharedUser} onChange={(e) => setSharedUser(e.target.value)} /></Field>
+          <Field label={`${t("authPassword")}${cfg.shared.password_set ? ` (${t("authPasswordSet")})` : ""}`}><Input type="password" value={sharedPw} onChange={(e) => setSharedPw(e.target.value)} autoComplete="new-password" /></Field>
           <PasskeyList passkeys={cfg.shared.passkeys} onAdd={addSharedPasskey} onDeleted={load} showToast={showToast} />
         </div>
       )}
@@ -222,9 +217,9 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
               {cfg.profiles.map((p) => (
                 <tr key={p.id}>
                   <td>{p.name}</td>
-                  <td><input value={userDraft[p.id] ?? ""} onChange={(e) => setUserDraft({ ...userDraft, [p.id]: e.target.value })} /></td>
+                  <td><Input value={userDraft[p.id] ?? ""} onChange={(e) => setUserDraft({ ...userDraft, [p.id]: e.target.value })} /></td>
                   <td>
-                    <input
+                    <Input
                       type="password"
                       placeholder={p.has_password ? t("authPasswordSet") : ""}
                       value={pwDraft[p.id] ?? ""}
@@ -241,43 +236,31 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
 
       {selected === "oidc" && (
         <div className="auth-config-block">
-          <label className="settings-field"><span>{t("authOidcIssuer")}</span>
-            <input value={oidc.issuer} onChange={(e) => setOidc({ ...oidc, issuer: e.target.value })} placeholder="https://id.example.com" /></label>
-          <p className="hint">{t("authOidcIssuerHint")}</p>
-          <label className="settings-field"><span>{t("authOidcClientId")}</span>
-            <input value={oidc.client_id} onChange={(e) => setOidc({ ...oidc, client_id: e.target.value })} /></label>
-          <label className="settings-field"><span>{t("authOidcClientSecret")}</span>
-            <input type="password" value={oidcSecret} placeholder={cfg.oidc.client_secret_set ? t("authOidcSecretKeep") : ""} onChange={(e) => setOidcSecret(e.target.value)} /></label>
-          <label className="settings-field"><span>{t("authOidcScopes")}</span>
-            <input value={oidc.scopes} onChange={(e) => setOidc({ ...oidc, scopes: e.target.value })} /></label>
-          <label className="settings-field"><span>{t("authOidcRedirectUri")}</span>
-            <input readOnly value={cfg.oidc.redirect_uri} onFocus={(e) => e.target.select()} /></label>
-          <p className="hint">{t("authOidcRedirectUriHint")}</p>
-          <label className="settings-field"><span>{t("authOidcMode")}</span>
-            <select value={oidc.mode} onChange={(e) => setOidc({ ...oidc, mode: e.target.value as "mapped" | "gateway" })}>
+          <Field label={t("authOidcIssuer")}><Input value={oidc.issuer} onChange={(e) => setOidc({ ...oidc, issuer: e.target.value })} placeholder="https://id.example.com" /></Field>
+          <Text tone="secondary">{t("authOidcIssuerHint")}</Text>
+          <Field label={t("authOidcClientId")}><Input value={oidc.client_id} onChange={(e) => setOidc({ ...oidc, client_id: e.target.value })} /></Field>
+          <Field label={t("authOidcClientSecret")}><Input type="password" value={oidcSecret} placeholder={cfg.oidc.client_secret_set ? t("authOidcSecretKeep") : ""} onChange={(e) => setOidcSecret(e.target.value)} /></Field>
+          <Field label={t("authOidcScopes")}><Input value={oidc.scopes} onChange={(e) => setOidc({ ...oidc, scopes: e.target.value })} /></Field>
+          <Field label={t("authOidcRedirectUri")}><Input readOnly value={cfg.oidc.redirect_uri} onFocus={(e) => e.target.select()} /></Field>
+          <Text tone="secondary">{t("authOidcRedirectUriHint")}</Text>
+          <Field label={t("authOidcMode")}>
+            <Select value={oidc.mode} onChange={(e) => setOidc({ ...oidc, mode: e.target.value as "mapped" | "gateway" })}>
               <option value="mapped">{t("authOidcModeMapped")}</option>
               <option value="gateway">{t("authOidcModeGateway")}</option>
-            </select></label>
+            </Select></Field>
           {oidc.mode === "mapped" && (
             <>
-              <label className="settings-field"><span>{t("authOidcClaim")}</span>
-                <input value={oidc.claim} onChange={(e) => setOidc({ ...oidc, claim: e.target.value })} /></label>
-              <label className="settings-checkbox">
-                <input type="checkbox" checked={oidc.autocreate} onChange={(e) => setOidc({ ...oidc, autocreate: e.target.checked })} />
-                <span>{t("authOidcAutocreate")}</span>
-              </label>
+              <Field label={t("authOidcClaim")}><Input value={oidc.claim} onChange={(e) => setOidc({ ...oidc, claim: e.target.value })} /></Field>
+              <Checkbox label={t("authOidcAutocreate")} checked={oidc.autocreate} onChange={(e) => setOidc({ ...oidc, autocreate: e.target.checked })} />
               <MappingTable profiles={cfg.profiles} label={t("authOidcSubject")} draft={mapDraft} setDraft={setMapDraft} />
             </>
           )}
-          <label className="settings-field"><span>{t("authOidcGroupsClaim")}</span>
-            <input value={oidc.groups_claim} onChange={(e) => setOidc({ ...oidc, groups_claim: e.target.value })} placeholder="groups" /></label>
-          <label className="settings-field"><span>{t("authOidcAdminGroup")}</span>
-            <input value={oidc.admin_group} onChange={(e) => setOidc({ ...oidc, admin_group: e.target.value })} /></label>
-          <p className="hint">{t("authOidcAdminGroupHint")}</p>
-          <label className="settings-field"><span>{t("authOidcLogoutUrl")}</span>
-            <input value={oidc.logout_url} onChange={(e) => setOidc({ ...oidc, logout_url: e.target.value })} /></label>
+          <Field label={t("authOidcGroupsClaim")}><Input value={oidc.groups_claim} onChange={(e) => setOidc({ ...oidc, groups_claim: e.target.value })} placeholder="groups" /></Field>
+          <Field label={t("authOidcAdminGroup")}><Input value={oidc.admin_group} onChange={(e) => setOidc({ ...oidc, admin_group: e.target.value })} /></Field>
+          <Text tone="secondary">{t("authOidcAdminGroupHint")}</Text>
+          <Field label={t("authOidcLogoutUrl")}><Input value={oidc.logout_url} onChange={(e) => setOidc({ ...oidc, logout_url: e.target.value })} /></Field>
           <div className="form-row">
-            <button className="btn" onClick={runTest}>{t("authTestConnection")}</button>
+            <Button onClick={runTest}>{t("authTestConnection")}</Button>
             {test && <span className={test.ok ? "auth-test-ok" : "auth-test-fail"}>{test.msg}</span>}
           </div>
         </div>
@@ -285,13 +268,11 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
 
       {selected === "proxy_header" && (
         <div className="auth-config-block">
-          <label className="settings-field"><span>{t("authProxyHeader")}</span>
-            <input value={proxyHeader} onChange={(e) => setProxyHeader(e.target.value)} /></label>
-          <p className="hint">{t("authProxyHeaderHint")}</p>
-          <p className="hint">{t("authProxyCurrentValue")}: <code>{cfg.proxy.current_header_value || "—"}</code></p>
+          <Field label={t("authProxyHeader")}><Input value={proxyHeader} onChange={(e) => setProxyHeader(e.target.value)} /></Field>
+          <Text tone="secondary">{t("authProxyHeaderHint")}</Text>
+          <Text tone="secondary">{t("authProxyCurrentValue")}: <code>{cfg.proxy.current_header_value || "—"}</code></Text>
           <MappingTable profiles={cfg.profiles} label={t("authProxyMatch")} draft={mapDraft} setDraft={setMapDraft} />
-          <label className="settings-field"><span>{t("authLogoutUrl")}</span>
-            <input value={proxyLogout} onChange={(e) => setProxyLogout(e.target.value)} /></label>
+          <Field label={t("authLogoutUrl")}><Input value={proxyLogout} onChange={(e) => setProxyLogout(e.target.value)} /></Field>
         </div>
       )}
 
@@ -307,37 +288,42 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
         </div>
       )}
       {selected !== "none" && (
-        <div className="form-row auth-actions">
-          <button className="btn" onClick={save}>{t("authSave")}</button>
-          <button className="btn primary" disabled={blockActivate} onClick={() => setConfirming(true)}>{t("authActivate")}</button>
-        </div>
+        <FormActions className="auth-actions">
+          <Button onClick={save}>{t("authSave")}</Button>
+          <Button variant="primary" disabled={blockActivate} onClick={() => setConfirming(true)}>{t("authActivate")}</Button>
+        </FormActions>
       )}
       {selected === "none" && cfg.method !== "none" && (
-        <div className="form-row auth-actions">
-          <button className="btn primary" onClick={() => setConfirming(true)}>{t("authActivate")}</button>
-        </div>
+        <FormActions className="auth-actions">
+          <Button variant="primary" onClick={() => setConfirming(true)}>{t("authActivate")}</Button>
+        </FormActions>
       )}
 
-      {confirming && (
-        <div className="auth-confirm-backdrop" onClick={() => setConfirming(false)}>
-          <div className="auth-confirm-card" onClick={(e) => e.stopPropagation()}>
+      <Dialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title={t("authActivateConfirmTitle")}
+        closeLabel={t("close")}
+        className="auth-confirm-dialog"
+        footer={
+          <FormActions>
+            <Button onClick={() => setConfirming(false)}>{t("close")}</Button>
+            <Button variant="primary" disabled={countdown > 0} onClick={doActivate}>
+              {countdown > 0 ? `${t("authActivate")} (${countdown})` : t("authActivate")}
+            </Button>
+          </FormActions>
+        }
+      >
+          <div className="auth-confirm-content">
             <div className="auth-confirm-icon"><TriangleAlert size={34} strokeWidth={2.25} /></div>
-            <h3 className="auth-confirm-title">{t("authActivateConfirmTitle")}</h3>
             <p className="auth-confirm-msg">{t("authActivateConfirmMsg")}</p>
             <div className="auth-confirm-note">
               <div className="auth-confirm-note-label">{t("authActivateConfirmRecovery")}</div>
               <code className="auth-confirm-code">YTZERO_AUTH_DISABLE=1</code>
             </div>
-            <div className="auth-confirm-actions">
-              <button className="btn" onClick={() => setConfirming(false)}>{t("close")}</button>
-              <button className="btn primary" disabled={countdown > 0} onClick={doActivate}>
-                {countdown > 0 ? `${t("authActivate")} (${countdown})` : t("authActivate")}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
-    </section>
+      </Dialog>
+    </SettingsSection>
   );
 }
 
@@ -352,7 +338,7 @@ function MappingTable({
         {profiles.map((p) => (
           <tr key={p.id}>
             <td>{p.name}</td>
-            <td><input value={draft[p.id] ?? ""} onChange={(e) => setDraft({ ...draft, [p.id]: e.target.value })} /></td>
+            <td><Input value={draft[p.id] ?? ""} onChange={(e) => setDraft({ ...draft, [p.id]: e.target.value })} /></td>
           </tr>
         ))}
       </tbody>
@@ -371,10 +357,10 @@ function PasskeyList({
     <div className="auth-passkeys">
       <div className="auth-passkeys-head">
         <span>{t("authPasskeys")}</span>
-        <button className="btn" onClick={onAdd}><KeyRound size={15} /> {t("authRegisterPasskey")}</button>
+        <Button onClick={onAdd}><KeyRound size={15} /> {t("authRegisterPasskey")}</Button>
       </div>
       {passkeys.length === 0 ? (
-        <p className="hint">{t("authNoPasskeys")}</p>
+        <Text tone="secondary">{t("authNoPasskeys")}</Text>
       ) : (
         <ul className="auth-passkey-list">
           {passkeys.map((k) => (
@@ -382,7 +368,7 @@ function PasskeyList({
               <KeyRound size={14} />
               <span>{k.label || `#${k.id}`}</span>
               <Popconfirm message={t("authDeletePasskeyConfirm")} onConfirm={() => del(k.id)}>
-                <button className="icon-btn" aria-label={t("authDeletePasskey")}><Trash2 size={14} /></button>
+                <IconButton label={t("authDeletePasskey")}><Trash2 size={14} /></IconButton>
               </Popconfirm>
             </li>
           ))}

@@ -7,6 +7,7 @@ import { useI18n, type I18nKey } from "../i18n";
 import { BUCKET_ICONS } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail } from "../components/VideoThumbnail";
+import { Badge, EmptyState, IconButton, PageHeader, SectionHeader } from "../components/ui";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 const BUCKET_ACTION_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
@@ -67,22 +68,17 @@ export default function WatchlistPage() {
 
   return (
     <>
-      <h1 className="page-title">{t("navWatchlist")}</h1>
+      <PageHeader title={t("navWatchlist")} />
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <div className="empty-state">
-          <Clock />
-          <div>{t("watchlistEmpty")}</div>
-        </div>
+        <EmptyState icon={<Clock />} title={t("watchlistEmpty")} />
       ) : (
         <>
           {sections.map(({ id, labelKey, Icon, items }) => {
             return (
               <section key={id} className="bucket-section">
-                <h2 className="bucket-title">
-                  <Icon /> {t(labelKey)} <span className="count">{items.length}</span>
-                </h2>
+                <SectionHeader icon={<Icon />} title={t(labelKey)} actions={<Badge>{items.length}</Badge>} />
                 <div className="scheduled-list">
                   {items.map((v) => (
                     <article key={v.video_id} className="scheduled-item">
@@ -108,10 +104,10 @@ export default function WatchlistPage() {
                                 const Icon = BUCKET_ICONS[bucket];
                                 const active = v.bucket === bucket;
                                 return (
-                                  <button
+                                  <IconButton
                                     key={bucket}
-                                    className={`icon-btn${active ? " active" : ""}`}
-                                    title={active ? bucketLabel(bucket) : `${t("moveTo")} ${bucketLabel(bucket)}`}
+                                    className={active ? "active" : undefined}
+                                    label={active ? bucketLabel(bucket) : `${t("moveTo")} ${bucketLabel(bucket)}`}
                                     style={active ? { color: "var(--accent)" } : undefined}
                                     onClick={() => api.queue(v.video_id, bucket).then(() => {
                                       emit("queue-changed");
@@ -120,13 +116,13 @@ export default function WatchlistPage() {
                                     })}
                                   >
                                     <Icon size={15} />
-                                  </button>
+                                  </IconButton>
                                 );
                               })}
                             </div>
                           </div>
                         ))}
-                        <button className="icon-btn" title={t("removeFromQueue")} onClick={() => api.dequeue(v.video_id).then(() => { emit("queue-changed"); load(); })}><X size={15} /></button>
+                        <IconButton label={t("removeFromQueue")} onClick={() => api.dequeue(v.video_id).then(() => { emit("queue-changed"); load(); })}><X size={15} /></IconButton>
                       </div>
                     </article>
                   ))}

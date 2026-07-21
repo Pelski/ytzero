@@ -10,6 +10,7 @@ import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
+import { Button, ButtonLink, Divider, EmptyState, IconButton } from "../components/ui";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
 
@@ -24,12 +25,8 @@ function FeedOnboarding() {
         <p>{t("feedOnboardingDescription")}</p>
       </div>
       <div className="feed-onboarding-actions">
-        <Link className="btn primary" to="/subscriptions">
-          <Plus size={16} /> {t("feedOnboardingAddChannels")}
-        </Link>
-        <Link className="btn" to="/settings?tab=channels">
-          <Upload size={16} /> {t("feedOnboardingImportSubscriptions")}
-        </Link>
+        <ButtonLink variant="primary" to="/subscriptions" leadingIcon={<Plus size={16} />}>{t("feedOnboardingAddChannels")}</ButtonLink>
+        <ButtonLink to="/settings?tab=channels" leadingIcon={<Upload size={16} />}>{t("feedOnboardingImportSubscriptions")}</ButtonLink>
       </div>
       <div className="feed-onboarding-steps" aria-label={t("feedOnboardingHowItWorks")}>
         <div><span className="feed-onboarding-step-number">1</span><p>{t("feedOnboardingStepOne")}</p></div>
@@ -336,9 +333,7 @@ export default function FeedPage({
           }
         />
         <div className="toolbar-right" style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          <button className="btn icon-only" title={t("refresh")} onClick={refresh} disabled={refreshing}>
-            <RefreshCw className={refreshing ? "spin" : undefined} />
-          </button>
+          <IconButton label={t("refresh")} icon={<RefreshCw className={refreshing ? "spin" : undefined} />} onClick={refresh} disabled={refreshing} />
         </div>
       </div>
 
@@ -377,19 +372,14 @@ export default function FeedPage({
               ))}
             </div>
           </div>
-          <div className="time-section-divider" />
+          <Divider />
         </div>
       )}
 
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton gridSize={gridSize} />
       ) : videos.length === 0 ? (
-        <div className="empty-state">
-          <Inbox />
-          <div>
-            {t("noVideos")}
-          </div>
-        </div>
+        <EmptyState icon={<Inbox />} title={t("noVideos")} />
       ) : (
         <>
           <div className={`video-grid video-grid--${gridSize}`}>
@@ -400,9 +390,7 @@ export default function FeedPage({
           {loadingMore && <VideoGridSkeleton count={4} gridSize={gridSize} />}
           {hasMore && !loadingMore && (
             <div className="load-more">
-              <button ref={loadMoreRef} className="btn" onClick={() => setPage((p) => p + 1)}>
-                {t("loadMore")}
-              </button>
+              <Button ref={loadMoreRef} onClick={() => setPage((p) => p + 1)}>{t("loadMore")}</Button>
             </div>
           )}
         </>

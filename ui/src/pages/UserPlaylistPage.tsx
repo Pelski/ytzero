@@ -8,6 +8,7 @@ import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n } from "../i18n";
+import { Button, EmptyState, IconButton, Input, PageHeader } from "../components/ui";
 
 export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t, language } = useI18n();
@@ -58,45 +59,35 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
 
   return (
     <>
-      <div className="playlist-header">
-        <div className="playlist-title-wrap">
-          {editing ? (
+      {editing ? (
+        <div className="playlist-header">
+          <div className="playlist-title-wrap">
             <div className="playlist-edit-row">
               <PlaylistIconPicker value={icon} onChange={setIcon} />
-              <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
-              <button className="btn primary" onClick={save}>
-                <Save /> {t("save")}
-              </button>
-              <button className="btn icon-only" title={t("cancel")} onClick={() => setEditing(false)}>
-                <X />
-              </button>
+              <Input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} />
+              <Button variant="primary" leadingIcon={<Save />} onClick={save}>{t("save")}</Button>
+              <IconButton label={t("cancel")} icon={<X />} onClick={() => setEditing(false)} />
             </div>
-          ) : (
-            <>
-              <div className="playlist-icon"><PlaylistIcon icon={playlist.icon} /></div>
-              <div className="playlist-title-text">
-                <h1 className="page-title">{playlist.name}</h1>
-                <div className="muted">{formatVideoCount(playlist.video_count, language)}</div>
-              </div>
-              <button className="icon-btn playlist-title-edit" title={t("edit")} onClick={() => setEditing(true)}>
-                <Edit3 />
-              </button>
-            </>
-          )}
+          </div>
+          <div className="playlist-actions">
+            <Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}>
+              <Button variant="danger" leadingIcon={<Trash2 />}>{t("deletePlaylist")}</Button>
+            </Popconfirm>
+          </div>
         </div>
-        <div className="playlist-actions">
-          <Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}>
-            <button className="btn danger">
-              <Trash2 /> {t("deletePlaylist")}
-            </button>
-          </Popconfirm>
-        </div>
-      </div>
+      ) : (
+        <PageHeader
+          icon={<div className="playlist-icon"><PlaylistIcon icon={playlist.icon} /></div>}
+          title={playlist.name}
+          description={formatVideoCount(playlist.video_count, language)}
+          actions={<><IconButton variant="ghost" label={t("edit")} icon={<Edit3 />} onClick={() => setEditing(true)} /><Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}><Button variant="danger" leadingIcon={<Trash2 />}>{t("deletePlaylist")}</Button></Popconfirm></>}
+        />
+      )}
 
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton gridSize="sm" />
       ) : videos.length === 0 ? (
-        <div className="empty-state">{t("playlistIsEmpty")}</div>
+        <EmptyState title={t("playlistIsEmpty")} />
       ) : (
         <div className="video-grid video-grid--sm">
           {videos.map((v) => (

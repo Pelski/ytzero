@@ -21,6 +21,8 @@ export interface Video {
   description: string;
   thumbnail: string;
   published_at: string | null;
+  published_at_approximate: number;
+  members_only: number;
   live_status: "none" | "upcoming" | "live" | "was_live";
   status: "inbox" | "queued" | "archived";
   bucket: Bucket | null;
@@ -64,6 +66,7 @@ export interface Channel {
   playback_speed?: string | null;
   caption_mode?: "off" | "language" | null;
   caption_language?: string | null;
+  hide_members_only_from_feed?: number | null;
   auto_download_min_duration_override?: number | null;
   subscribed_at?: string | null;
   latest_video_at?: string | null;
@@ -166,6 +169,7 @@ export interface AppSettings {
   shorts_tab: string;
   show_top_channels: string;
   hide_live_from_feed: string;
+  hide_members_only_from_feed: string;
   watched_style: string;
   sidebar_nav: string;
   sponsorblock_enabled: string;
@@ -710,6 +714,8 @@ export const api = {
     http(`/channels/${id}/speed`, { method: "PUT", body: JSON.stringify({ speed }) }),
   setChannelCaptions: (id: string, mode: "off" | "language" | null, language?: string) =>
     http(`/channels/${id}/captions`, { method: "PUT", body: JSON.stringify({ mode, language }) }),
+  setChannelMembersOnlyFeed: (id: string, hide: boolean | null) =>
+    http(`/channels/${id}/members-only-feed`, { method: "PUT", body: JSON.stringify({ hide }) }),
   setChannelDownloadMinDuration: (id: string, seconds: number | null) =>
     http(`/channels/${id}/download-min-duration`, { method: "PUT", body: JSON.stringify({ seconds }) }),
   unfollowedChannels: () => http<{ channels: Channel[] }>("/channels/unfollowed"),

@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { api, type ChildGrant, type ChildTimeRequest } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 import { ProfileAvatar } from "./ProfileMenu";
+import { Button, IconButton, Input } from "./ui";
 
 const GRANTS: { grant: ChildGrant; labelKey: I18nKey }[] = [
   { grant: "15m", labelKey: "childGrant15m" },
@@ -64,13 +65,13 @@ export default function ChildTimeRequestBanner() {
             <div className="child-time-banner-title">{t("childTimeRequestTitle", { name: r.name })}</div>
             <div className="child-time-banner-actions">
               {GRANTS.map(({ grant, labelKey }) => (
-                <button key={grant} className="btn" onClick={() => onGrant(r, grant)}>{t(labelKey)}</button>
+                <Button key={grant} onClick={() => onGrant(r, grant)}>{t(labelKey)}</Button>
               ))}
             </div>
           </div>
-          <button className="icon-btn child-time-banner-close" aria-label={t("close")} onClick={() => resolve(r)}>
+          <IconButton className="child-time-banner-close" label={t("close")} onClick={() => resolve(r)}>
             <X size={16} />
-          </button>
+          </IconButton>
         </div>
       ))}
 
@@ -85,13 +86,13 @@ export default function ChildTimeRequestBanner() {
               else setPinError(true);
             }}
           >
-            <button type="button" className="profile-pin-close" aria-label={t("close")} onClick={() => setPinFor(null)}>
+            <IconButton className="profile-pin-close" label={t("close")} onClick={() => setPinFor(null)}>
               <X size={18} />
-            </button>
+            </IconButton>
             <ProfileAvatar profile={pinFor.request} size={56} />
             <div className="profile-pin-title">{t(GRANTS.find((g) => g.grant === pinFor.grant)!.labelKey)}</div>
             <div className="profile-pin-hint">{t("childApprovePinHint")}</div>
-            <input
+            <Input
               className={`profile-pin-input${pinError ? " error" : ""}`}
               type="password"
               inputMode="numeric"
@@ -106,7 +107,7 @@ export default function ChildTimeRequestBanner() {
                 if (v.length === 6) resolve(pinFor.request, pinFor.grant, v);
               }}
             />
-            <button type="submit" className="btn primary" disabled={pin.length !== 6}>{t("childApprove")}</button>
+            <Button type="submit" variant="primary" disabled={pin.length !== 6}>{t("childApprove")}</Button>
           </form>
         </div>
       )}

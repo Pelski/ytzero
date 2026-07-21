@@ -24,8 +24,7 @@ import {
   Play,
   Rewind,
   Share2,
-  SkipForward,
-  Square,
+  Star,
   ThumbsUp,
   Trash2,
   Undo2,
@@ -33,16 +32,17 @@ import {
   Volume2,
 } from "lucide-react";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
-import { compactNumber, formatTimeAgo, formatViewsCount, useI18n, type I18nKey } from "../i18n";
+import { compactNumber, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
 import LocalPlayer from "../components/LocalPlayer";
 import Popconfirm from "../components/Popconfirm";
-import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
+import PlaylistPicker from "../components/PlaylistPicker";
 import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
 import { VideoThumbnail } from "../components/VideoThumbnail";
-import { VideoScheduleActions } from "../components/VideoScheduleActions";
+import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
 import { img } from "../img";
 import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
+import { Alert, Button, ButtonAnchor, Checkbox, MenuSeparator, Switch } from "../components/ui";
 
 let ytApiReady: Promise<void> | null = null;
 function loadYouTubeApi(): Promise<void> {
@@ -69,15 +69,6 @@ function restoreSidebarVisibility() {
   document.body.classList.remove("cinema");
   document.body.classList.toggle("sidebar-hidden", localStorage.getItem(SIDEBAR_KEY) === "0");
 }
-const WATCH_LATER_GROUPS: {
-  labelKey: I18nKey;
-  buckets: Bucket[];
-}[] = [
-  { labelKey: "groupToday", buckets: ["today", "tonight"] },
-  { labelKey: "groupTomorrow", buckets: ["tomorrow", "tomorrow_evening"] },
-  { labelKey: "groupWeekend", buckets: ["weekend"] },
-];
-
 function fmtTime(s: number): string {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -316,7 +307,8 @@ export default function WatchPage() {
     sourceChoice,
     watchMode,
   });
-  const usingLocal = playerKind === "local";
+  const membersOnlyNotice = video?.members_only === 1 && !isChildProfile;
+  const usingLocal = playerKind === "local" && !membersOnlyNotice;
   const sharedTimestamp = Number(new URLSearchParams(location.search).get("t"));
   const sharedStartSeconds = Number.isFinite(sharedTimestamp) ? Math.max(0, Math.floor(sharedTimestamp)) : 0;
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
@@ -541,6 +533,8 @@ export default function WatchPage() {
       }
     };
 
+    if (membersOnlyNotice) return;
+
     if (playerKind === "local") {
       // LocalPlayer renders the <video> itself and fills playerRef via its ref.
       const pollInterval = setInterval(poll, 1_000);
@@ -637,13 +631,13 @@ export default function WatchPage() {
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing, playerKind, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
+  }, [id, video?.video_id, videoMissing, membersOnlyNotice, playerKind, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
   // or the download fails.
   useEffect(() => {
-    if (playerKind !== "waiting" || !id) return;
+    if (membersOnlyNotice || playerKind !== "waiting" || !id) return;
     let cancelled = false;
     setWaitError(null);
     api.requestDownload(id, true).catch(() => {});
@@ -657,7 +651,7 @@ export default function WatchPage() {
       }).catch(() => {});
     }, 1_500);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [playerKind, id]);
+  }, [playerKind, id, membersOnlyNotice]);
 
   useEffect(() => {
     if (!moreOpen) return;
@@ -1020,7 +1014,25 @@ export default function WatchPage() {
           )}
           <div className="watch-player-shell">
             <div ref={playerWrapRef} className={`watch-player${usingLocal ? " watch-player--local" : ""}`}>
-              {playerKind === "local" && video ? (
+              {membersOnlyNotice && video ? (
+                <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
+                  <div className="wp-panel-scrim" />
+                  <div className="wp-panel-content">
+                    <span className="wp-members-icon" aria-hidden="true"><Star fill="currentColor" /></span>
+                    <h3>{t("membersOnlyWatchTitle")}</h3>
+                    <p className="wp-panel-sub">{t("membersOnlyWatchDescription")}</p>
+                    <ButtonAnchor
+                      variant="primary"
+                      href={`https://www.youtube.com/watch?v=${video.video_id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      leadingIcon={<ExternalLink />}
+                    >
+                      {t("membersOnlyWatchAction")}
+                    </ButtonAnchor>
+                  </div>
+                </div>
+              ) : playerKind === "local" && video ? (
                 <LocalPlayer
                   key={`${video.video_id}-local-${sharedStartSeconds}`}
                   ref={playerRef}
@@ -1140,13 +1152,7 @@ export default function WatchPage() {
           </div>
         </div>
         {playerKind === "youtube" && youtubeError === 153 && (
-          <div className="youtube-referrer-alert" role="alert">
-            <AlertTriangle size={17} />
-            <div>
-              <strong>{t("youtubeReferrerErrorTitle")}</strong>
-              <span>{t("youtubeReferrerErrorHint")}</span>
-            </div>
-          </div>
+          <Alert className="youtube-referrer-alert-layout" variant="warning" icon={<AlertTriangle />} title={t("youtubeReferrerErrorTitle")}>{t("youtubeReferrerErrorHint")}</Alert>
         )}
         {(video ?? videoInfo) && (
           <h1 className="watch-title">{video?.title ?? videoInfo?.title}</h1>
@@ -1278,21 +1284,7 @@ export default function WatchPage() {
               </button>
               {scheduleOpen && (
                 <div className="dropdown-menu schedule-menu">
-                  {WATCH_LATER_GROUPS.map((group) => (
-                    <div key={group.labelKey} className="dropdown-menu-group">
-                      <div className="dropdown-menu-label">{t(group.labelKey)}</div>
-                      <div className="dropdown-menu-row">
-                        {group.buckets.map((b) => {
-                          const Icon = BUCKET_ICONS[b];
-                          return (
-                            <button key={b} className="schedule-icon-choice" title={bucketLabel(b)} onClick={() => queue(b)}>
-                              <Icon />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+                  <SchedulePicker onSelect={queue} />
                 </div>
               )}
             </div>
@@ -1302,27 +1294,7 @@ export default function WatchPage() {
               </button>
               {playlistOpen && (
                 <div className="dropdown-menu playlist-picker-menu">
-                  {playlists.length === 0 && <div className="dropdown-empty">{t("noPlaylists")}</div>}
-                  {playlists.map((p) => (
-                    <button key={p.id} className={p.has_video === 1 ? "is-selected" : undefined} onClick={() => togglePlaylist(p)}>
-                      <span className="playlist-dot"><PlaylistIcon icon={p.icon} /></span>
-                      {p.name}
-                      {p.has_video === 1 && <span className="dropdown-menu-status"><Check size={14} /></span>}
-                    </button>
-                  ))}
-                  <div className="dropdown-form">
-                    <div className="dropdown-form-title">{t("newPlaylistDots")}</div>
-                    <div className="dropdown-form-row">
-                      <PlaylistIconPicker value={newPlaylistIcon} onChange={setNewPlaylistIcon} compact />
-                      <input
-                        value={newPlaylistName}
-                        placeholder={t("name")}
-                        onChange={(e) => setNewPlaylistName(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && createPlaylist()}
-                      />
-                    </div>
-                    <button className="btn primary" disabled={!newPlaylistName.trim()} onClick={createPlaylist}>{t("createAndAdd")}</button>
-                  </div>
+                  <PlaylistPicker playlists={playlists} name={newPlaylistName} icon={newPlaylistIcon} onNameChange={setNewPlaylistName} onIconChange={setNewPlaylistIcon} onToggle={togglePlaylist} onCreate={createPlaylist} />
                 </div>
               )}
             </div>
@@ -1350,14 +1322,7 @@ export default function WatchPage() {
                     <input readOnly value={shareLink("youtube") ?? ""} aria-label="YouTube" />
                     <button className="icon-only" title={t("copyLink")} onClick={() => copyShareLink("youtube")}><Copy /></button>
                   </div>
-                  <label className="share-timestamp-option">
-                    <input
-                      type="checkbox"
-                      checked={shareWithTimestamp}
-                      onChange={(event) => setShareWithTimestamp(event.target.checked)}
-                    />
-                    <Clock /> {t("includeCurrentTime")}
-                  </label>
+                  <Checkbox className="share-timestamp-option" label={t("includeCurrentTime")} checked={shareWithTimestamp} onChange={(event) => setShareWithTimestamp(event.target.checked)} />
                 </div>
               )}
               {copyKey > 0 && (
@@ -1401,7 +1366,7 @@ export default function WatchPage() {
                       )}
                       {downloadsEnabled && !isChildProfile && video.live_status !== "live" && video.live_status !== "upcoming" && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
                         <div className="more-menu-section">
-                          <div className="more-menu-divider" />
+                          <MenuSeparator />
                           <div className="more-menu-section-label">{t("localDownload")}</div>
                           <button className="more-item-always" onClick={() => { requestDownload(); setMoreOpen(false); }}>
                             <ArrowDownToLine /> {t("downloadLocally")}
@@ -1410,7 +1375,7 @@ export default function WatchPage() {
                       )}
                       {downloadsEnabled && !isChildProfile && downloadStatus === "done" && (
                         <div className="more-menu-section">
-                          <div className="more-menu-divider" />
+                          <MenuSeparator />
                           <div className="more-menu-section-label">{t("downloadedVideo")}</div>
                           <a className="more-item-always" href={api.downloadFileUrl(video.video_id)} onClick={() => setMoreOpen(false)}>
                             <ArrowDownToLine /> {t("downloadFileToDevice")}
@@ -1455,21 +1420,7 @@ export default function WatchPage() {
                         </button>
                         {t("watchLater")}
                       </div>
-                      {WATCH_LATER_GROUPS.map((group) => (
-                        <div key={group.labelKey} className="dropdown-menu-group">
-                          <div className="dropdown-menu-label">{t(group.labelKey)}</div>
-                          <div className="dropdown-menu-row">
-                            {group.buckets.map((b) => {
-                              const Icon = BUCKET_ICONS[b];
-                              return (
-                                <button key={b} className="schedule-icon-choice" title={bucketLabel(b)} onClick={() => queue(b)}>
-                                  <Icon />
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
+                      <SchedulePicker onSelect={queue} />
                     </>
                   )}
                   {moreView === "playlist" && (
@@ -1480,29 +1431,7 @@ export default function WatchPage() {
                         </button>
                         {t("addToPlaylist")}
                       </div>
-                      {playlists.length === 0 && <div className="dropdown-empty">{t("noPlaylists")}</div>}
-                      {playlists.map((p) => (
-                        <button key={p.id} className={p.has_video === 1 ? "is-selected" : undefined} onClick={() => togglePlaylist(p)}>
-                          <span className="playlist-dot"><PlaylistIcon icon={p.icon} /></span>
-                          {p.name}
-                          {p.has_video === 1 && (
-                            <span className="dropdown-menu-status"><Check size={14} /></span>
-                          )}
-                        </button>
-                      ))}
-                      <div className="dropdown-form">
-                        <div className="dropdown-form-title">{t("newPlaylistDots")}</div>
-                        <div className="dropdown-form-row">
-                          <PlaylistIconPicker value={newPlaylistIcon} onChange={setNewPlaylistIcon} compact />
-                          <input
-                            value={newPlaylistName}
-                            placeholder={t("name")}
-                            onChange={(e) => setNewPlaylistName(e.target.value)}
-                            onKeyDown={(e) => e.key === "Enter" && createPlaylist()}
-                          />
-                        </div>
-                        <button className="btn primary" disabled={!newPlaylistName.trim()} onClick={createPlaylist}>{t("createAndAdd")}</button>
-                      </div>
+                      <PlaylistPicker playlists={playlists} name={newPlaylistName} icon={newPlaylistIcon} onNameChange={setNewPlaylistName} onIconChange={setNewPlaylistIcon} onToggle={togglePlaylist} onCreate={createPlaylist} />
                     </>
                   )}
                 </div>
@@ -1581,19 +1510,22 @@ export default function WatchPage() {
               </div>
             )}
             {sbSegments.length > 0 && (
-              <div className={`sb-segments watch-panel${sbPaused ? " sb-paused" : ""}`}>
-                <div className="sb-segments-head">
-                  <span className="sb-segments-label">{t("sbSegmentsTitle")}</span>
-                  <button
-                    type="button"
-                    className={`sb-pause-btn${sbPaused ? " active" : ""}`}
+              <section className={`sb-segments sb-segments--sponsor watch-panel${sbPaused ? " sb-paused" : ""}`} aria-label={t("sbSegmentsTitle")}>
+                <header className="sb-segments-head">
+                  <div className="sb-segments-heading">
+                    <span className="sb-segments-label">{t("sbSegmentsTitle").replace(/:$/, "")}</span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={sbPaused ? "secondary" : "ghost"}
+                    className="sb-pause-btn"
+                    leadingIcon={sbPaused ? <Play /> : <Pause />}
                     onClick={() => setSbPaused((p) => !p)}
                     title={sbPaused ? t("sbResume") : t("sbPause")}
                   >
-                    {sbPaused ? <Play /> : <Pause />}
-                    <span>{sbPaused ? t("sbResume") : t("sbPause")}</span>
-                  </button>
-                </div>
+                    {sbPaused ? t("sbResume") : t("sbPause")}
+                  </Button>
+                </header>
                 <div className="sb-segments-list">
                   {[...sbSegments].sort((a, b) => a.segment[0] - b.segment[0]).map((seg) => {
                     const cat = SB_CATEGORIES.find((c) => c.id === seg.category);
@@ -1603,32 +1535,32 @@ export default function WatchPage() {
                         key={seg.UUID}
                         className={`sb-segment-row${off ? " disabled" : ""}`}
                         style={{ "--sb-color": cat?.color ?? "#888" } as React.CSSProperties}
-                        onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}
                       >
-                        <span className="sb-dot" />
-                        <span className="sb-segment-name">{cat ? t(cat.labelKey) : seg.category}</span>
-                        <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
-                        <button
-                          type="button"
-                          className="sb-seg-toggle"
-                          title={off ? t("sbSegEnable") : t("sbSegDisable")}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDisabledSegs((prev) => {
-                              const next = new Set(prev);
-                              if (next.has(seg.UUID)) next.delete(seg.UUID);
-                              else next.add(seg.UUID);
-                              return next;
-                            });
-                          }}
-                        >
-                          {off ? <SkipForward /> : <Square />}
+                        <button type="button" className="sb-segment-seek" onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}>
+                          <span className="sb-dot" aria-hidden="true" />
+                          <span className="sb-segment-name">{cat ? t(cat.labelKey) : seg.category}</span>
+                          <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
                         </button>
+                        <span className="sb-seg-toggle">
+                          <Switch
+                            checked={!sbPaused && !off}
+                            disabled={sbPaused}
+                            ariaLabel={off ? t("sbSegEnable") : t("sbSegDisable")}
+                            onCheckedChange={() => {
+                              setDisabledSegs((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(seg.UUID)) next.delete(seg.UUID);
+                                else next.add(seg.UUID);
+                                return next;
+                              });
+                            }}
+                          />
+                        </span>
                       </div>
                     );
                   })}
                 </div>
-              </div>
+              </section>
             )}
           </div>
         )}

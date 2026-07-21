@@ -279,6 +279,8 @@ interface VideoRow {
   description: string;
   thumbnail: string;
   published_at: string | null;
+  published_at_approximate: number;
+  members_only: number;
   live_status: string;
   status: string;
   bucket: string | null;
@@ -377,7 +379,8 @@ function tagFilterSql(uid: number, tagIds: number[]) {
 function videoSelect(uid: number) {
   return `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
-         v.published_at, v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
+         v.published_at, v.published_at_approximate, v.members_only,
+         v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
          v.is_short, v.views, v.likes, uv.liked, uv.watched,
          v.duration, uv.watch_position, uv.watch_duration, v.external,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
@@ -471,6 +474,19 @@ api.get("/feed", (c) => {
   if (c.req.query("only_shorts") !== "1" && (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid))) {
     where.push("v.live_status NOT IN ('live', 'upcoming')");
   }
+  // This preference applies only to the main feed. Search, dedicated views and
+  // the channel page keep members-only videos discoverable.
+  const isMainFeed = !channel && !allSources && !q && c.req.query("liked") !== "1" && c.req.query("only_shorts") !== "1";
+  if (isMainFeed) {
+    where.push(`NOT (
+      v.members_only = 1 AND COALESCE(
+        (SELECT member_pref.hide_members_only_from_feed FROM user_channels member_pref
+         WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id),
+        ?
+      ) = 1
+    )`);
+    params.push(getUserSetting(uid, "hide_members_only_from_feed") === "1" ? 1 : 0);
+  }
   if (c.req.query("liked") === "1") {
     where.push("uv.liked = 1");
   }
@@ -490,7 +506,7 @@ api.get("/feed", (c) => {
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = db
-    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY v.published_at DESC LIMIT ? OFFSET ?`)
+    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ? OFFSET ?`)
     .all(...params, limit, page * limit) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows), page, limit });
 });
@@ -946,7 +962,7 @@ api.get("/channels/:id/live", (c) => {
   const uid = currentUserId(c);
   if (childHidesLive(uid)) return c.json({ videos: [] });
   const rows = db
-    .prepare(`${videoSelect(uid)} WHERE v.channel_id = ? AND v.live_status = 'live' ORDER BY v.published_at DESC`)
+    .prepare(`${videoSelect(uid)} WHERE v.channel_id = ? AND v.live_status = 'live' ORDER BY COALESCE(v.published_at, v.created_at) DESC`)
     .all(c.req.param("id")) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows) });
 });
@@ -963,7 +979,7 @@ api.get("/archive", (c) => {
   const uid = currentUserId(c);
   const page = Math.max(0, Number(c.req.query("page") ?? 0));
   const rows = db
-    .prepare(`${videoSelect(uid)} WHERE uv.status = 'archived' ORDER BY v.published_at DESC LIMIT 60 OFFSET ?`)
+    .prepare(`${videoSelect(uid)} WHERE uv.status = 'archived' ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT 60 OFFSET ?`)
     .all(page * 60) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows), page });
 });
@@ -1152,7 +1168,7 @@ api.get("/videos/:id", (c) => {
       `${videoSelect(uid)} WHERE v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
-       ORDER BY v.published_at DESC LIMIT ?`
+       ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(row.video_id, ...tagIds, ...tagIds, RELATED_TARGET) as VideoRow[]);
   }
 
@@ -1160,7 +1176,7 @@ api.get("/videos/:id", (c) => {
   if (need() > 0) {
     fill(db.prepare(
       `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
-       ORDER BY v.published_at DESC LIMIT ?`
+       ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(row.channel_id, row.video_id, need() * 2) as VideoRow[]);
   }
 
@@ -1173,7 +1189,7 @@ api.get("/videos/:id", (c) => {
       `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
-       ORDER BY v.published_at DESC LIMIT ?`
+       ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(...seen, ...tagIds, ...tagIds, need() * 2) as VideoRow[]);
   }
 
@@ -1182,7 +1198,7 @@ api.get("/videos/:id", (c) => {
     const seenPh = [...seen].map(() => "?").join(",");
     fill(db.prepare(
       `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short IS NOT 1
-       ORDER BY v.published_at DESC LIMIT ?`
+       ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(...seen, need() * 2) as VideoRow[]);
   }
 
@@ -1348,7 +1364,8 @@ api.get("/history", (c) => {
     .prepare(
       `SELECT MAX(h.id) AS history_id, MAX(h.watched_at) AS watched_at,
               v.video_id, v.channel_id, v.title, v.description, v.duration,
-              v.thumbnail, v.published_at, v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket,
+              v.thumbnail, v.published_at, v.published_at_approximate, v.members_only,
+              v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket,
               uv.watch_position, uv.watch_duration, uv.watched,
               COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail
        FROM history h JOIN videos v ON v.video_id = h.video_id
@@ -1719,6 +1736,21 @@ api.put("/channels/:id/captions", async (c) => {
   return c.json({ ok: true, mode, language: captionLanguage });
 });
 
+// Per-profile main-feed override for members-only uploads. NULL inherits the
+// profile-wide setting; false always shows and true always hides this channel.
+api.put("/channels/:id/members-only-feed", async (c) => {
+  const { hide } = await c.req.json<{ hide: unknown }>();
+  if (hide !== null && typeof hide !== "boolean") {
+    return c.json({ error: "hide must be true, false, or null" }, 400);
+  }
+  const value = hide == null ? null : hide ? 1 : 0;
+  db.prepare(
+    `INSERT INTO user_channels (user_id, channel_id, hide_members_only_from_feed) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, channel_id) DO UPDATE SET hide_members_only_from_feed = excluded.hide_members_only_from_feed`
+  ).run(currentUserId(c), c.req.param("id"), value);
+  return c.json({ ok: true, hide });
+});
+
 // Downloads are shared between profiles, therefore this is intentionally a
 // channel-level setting rather than a user_channels preference. Zero disables
 // the threshold.
@@ -1772,12 +1804,12 @@ api.get("/channels/recent", (c) => {
     : "AND COALESCE(is_short, 0) = 0";
   const rows = db.prepare(`
     SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail,
-           (SELECT thumbnail FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY published_at DESC LIMIT 1) AS latest_thumbnail,
-           (SELECT video_id FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY published_at DESC LIMIT 1) AS latest_video_id
+           (SELECT thumbnail FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1) AS latest_thumbnail,
+           (SELECT video_id FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1) AS latest_video_id
     FROM channels c
     JOIN user_channels uc ON uc.channel_id = c.channel_id AND uc.user_id = ? AND uc.followed = 1
     ORDER BY COALESCE(
-      (SELECT published_at FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY published_at DESC LIMIT 1),
+      (SELECT published_at FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1),
       '1970-01-01'
     ) DESC
     LIMIT 20
@@ -1795,8 +1827,8 @@ api.get("/channels/:id", (c) => {
     )
     .all(uid, c.req.param("id")) as any[];
   // followed reflects the active profile (null row = not subscribed).
-  const sub = db.prepare("SELECT followed, playback_speed, caption_mode, caption_language FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null } | null;
-  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, tags } });
+  const sub = db.prepare("SELECT followed, playback_speed, caption_mode, caption_language, hide_members_only_from_feed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null; hide_members_only_from_feed: number | null } | null;
+  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, hide_members_only_from_feed: sub?.hide_members_only_from_feed ?? null, tags } });
 });
 
 api.post("/channels/:id/sync", async (c) => {

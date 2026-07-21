@@ -5,6 +5,7 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { useI18n } from "../i18n";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
+import { Button, EmptyState, IconButton, PageHeader } from "../components/ui";
 
 export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -52,31 +53,16 @@ export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }
 
   if (!enabled) {
     return (
-      <div className="empty-state">
-        <Sparkles />
-        <div>{t("discoveryDisabled")}</div>
-      </div>
+      <EmptyState icon={<Sparkles />} title={t("discoveryDisabled")} />
     );
   }
 
   return (
     <>
-      <div className="page-header-row">
-        <div>
-          <h1 className="page-title">{t("discoveryTitle")}</h1>
-        </div>
-        <div className="toolbar-right" style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          <button className="btn icon-only" title={t("refresh")} onClick={refresh} disabled={refreshing}>
-            <RefreshCw className={refreshing ? "spin" : undefined} />
-          </button>
-        </div>
-      </div>
+      <PageHeader title={t("discoveryTitle")} actions={<IconButton label={t("refresh")} icon={<RefreshCw className={refreshing ? "spin" : undefined} />} onClick={refresh} disabled={refreshing} />} />
 
       {local.length === 0 ? (
-        <div className="empty-state">
-          <Inbox />
-          <div>{t("discoveryEmpty")}</div>
-        </div>
+        <EmptyState icon={<Inbox />} title={t("discoveryEmpty")} />
       ) : null}
 
       {local.length > 0 && (
@@ -99,10 +85,7 @@ export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }
             ))}
           </div>
           <div className="load-more">
-            <button className="btn" onClick={refresh} disabled={refreshing}>
-              <RefreshCw className={refreshing ? "spin" : undefined} />
-              {t("reload")}
-            </button>
+            <Button onClick={refresh} disabled={refreshing} leadingIcon={<RefreshCw className={refreshing ? "spin" : undefined} />}>{t("reload")}</Button>
           </div>
         </section>
       )}

@@ -4,6 +4,7 @@ import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
+import { Button, Chip, EmptyState, PageHeader } from "../components/ui";
 
 export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -47,25 +48,21 @@ export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
 
   return (
     <>
-      <h1 className="page-title">{t("navLiked")}</h1>
+      <PageHeader title={t("navLiked")} />
       <div className="chip-bar liked-filter-bar">
-        <button
-          className={`chip${showShorts ? " active" : ""}`}
+        <Chip
+          active={showShorts === true}
           onClick={toggleShorts}
-          aria-pressed={showShorts === true}
           disabled={showShorts === null}
         >
           <Clapperboard size={13} />
           {t("navShorts")}
-        </button>
+        </Chip>
       </div>
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <div className="empty-state">
-          <ThumbsUp />
-          <div>{t("likedEmpty")}</div>
-        </div>
+        <EmptyState icon={<ThumbsUp />} title={t("likedEmpty")} />
       ) : (
         <>
           <div className="video-grid">
@@ -76,9 +73,7 @@ export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
           {loadingMore && <VideoGridSkeleton count={4} />}
           {hasMore && !loadingMore && (
             <div className="load-more">
-              <button className="btn" onClick={() => setPage((p) => p + 1)}>
-                {t("loadMore")}
-              </button>
+              <Button onClick={() => setPage((p) => p + 1)}>{t("loadMore")}</Button>
             </div>
           )}
         </>

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Gauge, ListVideo, Plus, Radio, RefreshCw, SlidersHorizontal, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
+import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Gauge, ListVideo, Plus, Radio, RefreshCw, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
 import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
+import TagCreateForm from "../components/TagCreateForm";
 import Tooltip from "../components/Tooltip";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
@@ -10,6 +11,7 @@ import { img } from "../img";
 import { emit } from "../events";
 import { formatAddedVideos, formatVideoCount as formatI18nVideoCount, useI18n, type Language } from "../i18n";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
+import { Button, EmptyState, MenuSeparator, SectionHeader, Tabs } from "../components/ui";
 
 type Tab = "videos" | "shorts" | "playlists";
 
@@ -44,8 +46,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [downloadsEnabled, setDownloadsEnabled] = useState(false);
   const [captionMode, setCaptionMode] = useState<"off" | "language" | null>(null);
   const [captionLanguage, setCaptionLanguage] = useState<string | null>(null);
+  const [hideMembersOnlyFromFeed, setHideMembersOnlyFromFeed] = useState<boolean | null>(null);
   const [technicalOpen, setTechnicalOpen] = useState(false);
-  const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "downloads">("root");
+  const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "downloads" | "members">("root");
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
@@ -82,6 +85,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     setAutoDownloadMinDuration(null);
     setCaptionMode(null);
     setCaptionLanguage(null);
+    setHideMembersOnlyFromFeed(null);
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
     api.channel(id).then((r) => {
@@ -91,6 +95,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setAutoDownloadMinDuration(r.channel.auto_download_min_duration_override ?? null);
       setCaptionMode(r.channel.caption_mode ?? null);
       setCaptionLanguage(r.channel.caption_language ?? null);
+      setHideMembersOnlyFromFeed(r.channel.hide_members_only_from_feed == null ? null : r.channel.hide_members_only_from_feed === 1);
     }).catch(console.error);
     api
       .feed({ channel: id, status: "all", shorts: true, page: 0 })
@@ -180,6 +185,22 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     : captionMode === "language" && captionLanguage
       ? subtitleLanguageLabel(captionLanguage)
       : t("channelSettingDefault");
+
+  const membersOnlyFeedLabel = hideMembersOnlyFromFeed == null
+    ? t("channelSettingDefault")
+    : hideMembersOnlyFromFeed
+      ? t("channelMembersOnlyHidden")
+      : t("channelMembersOnlyVisible");
+
+  const changeMembersOnlyFeed = (hide: boolean | null) => {
+    if (!id) return;
+    const previous = hideMembersOnlyFromFeed;
+    setHideMembersOnlyFromFeed(hide);
+    api.setChannelMembersOnlyFeed(id, hide).catch((error) => {
+      setHideMembersOnlyFromFeed(previous);
+      console.error(error);
+    });
+  };
 
   const changeCaptions = (mode: "off" | "language" | null, language?: string) => {
     if (!id) return;
@@ -386,8 +407,13 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     <button className="channel-technical-item" onClick={() => setTechnicalView("captions")}>
                       <Captions /> <span>{t("subtitles")}</span><span className="dropdown-menu-status">{captionsLabel}</span><ChevronRight />
                     </button>
+                    <MenuSeparator />
+                    <div className="more-menu-section-label">{t("channelFeed")}</div>
+                    <button className="channel-technical-item" onClick={() => setTechnicalView("members")}>
+                      <Star /> <span>{t("channelMembersOnlyFeed")}</span><span className="dropdown-menu-status">{membersOnlyFeedLabel}</span><ChevronRight />
+                    </button>
                     {downloadsEnabled && <>
-                      <div className="more-menu-divider" />
+                      <MenuSeparator />
                       <div className="more-menu-section-label">{t("channelDownloads")}</div>
                       <button className="channel-technical-item" onClick={() => setTechnicalView("downloads")}>
                         <Download /> <span>{t("autoDownloadMinimum")}</span><span className="dropdown-menu-status">{autoDownloadLabel}</span><ChevronRight />
@@ -422,7 +448,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                         {t("captionsOff")}
                         {captionMode === "off" && <span className="dropdown-menu-status"><Check size={14} /></span>}
                       </button>
-                      <div className="lp-sub-separator" />
+                      <MenuSeparator />
                       {SUBTITLE_LANGUAGES.map((language) => (
                         <button key={language.code} className={captionMode === "language" && captionLanguage === language.code ? "is-selected" : undefined} onClick={() => changeCaptions("language", language.code)}>
                           {language.label}
@@ -430,6 +456,23 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                         </button>
                       ))}
                     </div>
+                  </>
+                )}
+                {technicalView === "members" && (
+                  <>
+                    <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("channelMembersOnlyFeed")}</div>
+                    <button className={hideMembersOnlyFromFeed == null ? "is-selected" : undefined} onClick={() => changeMembersOnlyFeed(null)}>
+                      {t("channelSettingDefault")}
+                      {hideMembersOnlyFromFeed == null && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    </button>
+                    <button className={hideMembersOnlyFromFeed === false ? "is-selected" : undefined} onClick={() => changeMembersOnlyFeed(false)}>
+                      {t("channelMembersOnlyShow")}
+                      {hideMembersOnlyFromFeed === false && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    </button>
+                    <button className={hideMembersOnlyFromFeed === true ? "is-selected" : undefined} onClick={() => changeMembersOnlyFeed(true)}>
+                      {t("channelMembersOnlyHide")}
+                      {hideMembersOnlyFromFeed === true && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    </button>
                   </>
                 )}
                 {technicalView === "downloads" && (
@@ -484,34 +527,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     </button>
                   );
                 })}
-              <div style={{ borderTop: "1px solid var(--surface-3)", margin: "6px 0" }} />
-              <div style={{ padding: "6px 12px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ fontSize: 11, color: "var(--text-3)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.4px" }}>{t("newTag")}</div>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    type="color"
-                    value={newTagColor}
-                    onChange={(e) => setNewTagColor(e.target.value)}
-                    style={{ width: 32, height: 32, border: "1px solid var(--surface-3)", borderRadius: 6, background: "var(--bg)", padding: 2, cursor: "pointer", flexShrink: 0 }}
-                  />
-                  <input
-                    type="text"
-                    placeholder={t("tagNamePlaceholder")}
-                    value={newTagName}
-                    onChange={(e) => setNewTagName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && createAndAddTag()}
-                    style={{ flex: 1, background: "var(--bg)", border: "1px solid var(--surface-3)", borderRadius: 6, padding: "6px 10px", color: "var(--text)", fontSize: 13, outline: "none", minWidth: 0 }}
-                  />
-                </div>
-                <button
-                  className="btn primary"
-                  onClick={createAndAddTag}
-                  disabled={!newTagName.trim()}
-                  style={{ width: "100%", justifyContent: "center" }}
-                >
-                  {t("addTag")}
-                </button>
-              </div>
+              <TagCreateForm title={t("newTag")} name={newTagName} color={newTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewTagName} onColorChange={setNewTagColor} onSubmit={createAndAddTag} />
             </div>
           )}
         </div>
@@ -522,7 +538,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
 
       {liveStreams.length > 0 && (
         <section className="channel-live-section">
-          <div className="section-title channel-live-title"><Radio size={17} /> LIVE</div>
+          <SectionHeader title="LIVE" icon={<Radio />} variant="uppercase" className="channel-live-title" />
           <div className="video-grid channel-live-row">
             {liveStreams.map((v) => (
               <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} showChannelAvatar={false} />
@@ -531,35 +547,26 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         </section>
       )}
 
-      <div className="chip-bar" style={{ marginBottom: 22 }}>
-        <button className={`chip${tab === "videos" ? " active" : ""}`} onClick={() => setTab("videos")}>
-          <VideoIcon style={{ width: 15, height: 15 }} /> {t("videos")}
-          {videoCount > 0 && <span className="chip-count">{videoCount}</span>}
-        </button>
-        {shortCount > 0 && (
-          <button className={`chip${tab === "shorts" ? " active" : ""}`} onClick={() => setTab("shorts")}>
-            <Zap style={{ width: 15, height: 15 }} /> Shorts
-            <span className="chip-count">{shortCount}</span>
-          </button>
-        )}
-        <button className={`chip${tab === "playlists" ? " active" : ""}`} onClick={() => setTab("playlists")}>
-          <ListVideo style={{ width: 15, height: 15 }} /> {t("playlists")}
-          {playlists && playlists.length > 0 && <span className="chip-count">{playlists.length}</span>}
-        </button>
-      </div>
+      <Tabs
+        className="channel-tabs"
+        label={about?.title ?? t("videos")}
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: "videos", label: t("videos"), icon: <VideoIcon />, count: videoCount },
+          ...(shortCount > 0 ? [{ value: "shorts" as const, label: "Shorts", icon: <Zap />, count: shortCount }] : []),
+          { value: "playlists", label: t("playlists"), icon: <ListVideo />, count: playlists?.length },
+        ]}
+      />
 
       {tab === "videos" &&
         (videosLoading ? (
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
-          <div className="empty-state">
-            <div>{t("channelVideosEmpty")}</div>
-            <div>{t("channelVideosEmptyHint")}</div>
-            <button className="btn primary" onClick={handleSync} disabled={syncing} style={{ marginTop: 12 }}>
+          <EmptyState title={t("channelVideosEmpty")} description={t("channelVideosEmptyHint")} action={<Button variant="primary" onClick={handleSync} disabled={syncing}>
               <RefreshCw size={15} className={syncing ? "spin" : undefined} />
               {syncing ? t("syncing") : t("syncChannelVideos")}
-            </button>
-          </div>
+            </Button>} />
         ) : (
           <div className="video-grid">
             {regularVideos.map((v) => (
@@ -584,7 +591,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         (playlists === null ? (
           <VideoGridSkeleton />
         ) : playlists.length === 0 ? (
-          <div className="empty-state">{t("publicPlaylistsEmpty")}</div>
+          <EmptyState title={t("publicPlaylistsEmpty")} />
         ) : (
           <div className="video-grid">
             {playlists.map((p) => (

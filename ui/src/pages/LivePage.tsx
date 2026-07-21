@@ -6,6 +6,7 @@ import { useI18n } from "../i18n";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
+import { Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 
 export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -41,19 +42,16 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
 
   return (
     <>
-      <h1 className="page-title">{t("navLive")}</h1>
+      <PageHeader title={t("navLive")} />
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <div className="empty-state">
-          <Radio />
-          <div>{t("liveEmpty")}</div>
-        </div>
+        <EmptyState icon={<Radio />} title={t("liveEmpty")} />
       ) : (
         <>
           {individualLive.length > 0 && (
             <>
-              <div className="section-title">{t("liveNow")}</div>
+              <SectionHeader title={t("liveNow")} variant="uppercase" />
               <div className="video-grid">
                 {individualLive.map((v) => (
                   <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={load} />
@@ -72,7 +70,7 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
                     <span className="live-channel-group-avatar-placeholder" />
                   )}
                   <span>{channel.channel_title}</span>
-                  <span className="live-channel-group-count">{group.length} LIVE</span>
+                  <Badge variant="danger" size="sm" className="live-channel-group-count">{group.length} LIVE</Badge>
                 </Link>
                 <div className="video-grid live-channel-group-grid">
                   {group.map((v) => (
@@ -84,7 +82,7 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
           })}
           {upcoming.length > 0 && (
             <>
-              <div className="section-title" style={{ marginTop: live.length > 0 ? 32 : 0 }}>{t("upcoming")}</div>
+              <SectionHeader title={t("upcoming")} variant="uppercase" className={live.length > 0 ? "live-upcoming-header" : undefined} />
               <div className="video-grid">
                 {upcoming.map((v) => (
                   <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={load} />

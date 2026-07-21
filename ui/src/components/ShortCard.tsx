@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { MouseEvent } from "react";
-import { Archive, Check, Eye, Heart } from "lucide-react";
+import { Archive, Check, Eye, Heart, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
@@ -65,7 +65,7 @@ export default function ShortCard({
 
   return (
     <div className={`short-card${isWatched ? " short-card--watched" : ""}${leaving ? " short-card--leaving" : ""}`}>
-      <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title">
+      <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title short-card-thumb-tooltip">
         <Link to={videoHref} className="short-card-thumb" onClick={play} aria-label={video.title}>
           <img
             src={thumbSrc}
@@ -76,6 +76,12 @@ export default function ShortCard({
           />
         </Link>
       </Tooltip>
+
+      {video.members_only === 1 && (
+        <span className={`members-only-marker__icon short-card-members-only${isWatched ? " short-card-members-only--stacked" : ""}`} title={t("membersOnly")} aria-label={t("membersOnly")}>
+          <Star size={15} fill="currentColor" />
+        </span>
+      )}
 
       {isWatched && (
         <span className="short-card-watched-badge" aria-label={t("watched")}>

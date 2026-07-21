@@ -7,6 +7,7 @@ import { img } from "../img";
 import { formatVideoDuration } from "../components/VideoCard";
 import Popconfirm from "../components/Popconfirm";
 import Tooltip from "../components/Tooltip";
+import { Alert, Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 
 const QUEUE_COLLAPSED_COUNT = 3;
 
@@ -141,9 +142,7 @@ export default function DownloadsPage() {
 
   return (
     <>
-      <div className="dl-head">
-        <h1 className="page-title">{t("downloadsTitle")}</h1>
-        <div className="dl-storage">
+      <PageHeader title={t("downloadsTitle")} actions={<div className="dl-storage">
           <HardDrive size={15} />
           <div className="dl-storage-info">
             <span>
@@ -154,29 +153,22 @@ export default function DownloadsPage() {
               <div className="dl-storage-fill" style={{ width: `${usedFrac * 100}%` }} />
             </div>
           </div>
-        </div>
-      </div>
+        </div>} />
 
       {!data.enabled && (
-        <div className="dl-alert"><AlertTriangle size={16} /> {t("downloadsDisabled")}</div>
+        <Alert className="dl-alert-layout" variant="warning" icon={<AlertTriangle />}>{t("downloadsDisabled")}</Alert>
       )}
       {data.enabled && data.ytdlp_version === null && (
-        <div className="dl-alert"><AlertTriangle size={16} /> {t("downloadsYtdlpMissing")}</div>
+        <Alert className="dl-alert-layout" variant="warning" icon={<AlertTriangle />}>{t("downloadsYtdlpMissing")}</Alert>
       )}
 
       {queueItems.length === 0 && doneItems.length === 0 ? (
-        <div className="empty-state">
-          <ArrowDownToLine />
-          <div>{t("downloadsEmpty")}</div>
-        </div>
+        <EmptyState icon={<ArrowDownToLine />} title={t("downloadsEmpty")} />
       ) : (
         <>
           {queueItems.length > 0 && (
             <section className="dl-section">
-              <div className="dl-section-head">
-                <h2>{t("downloadsSectionQueue")}</h2>
-                <span className="dl-section-count">{queueItems.length}</span>
-              </div>
+              <SectionHeader title={t("downloadsSectionQueue")} actions={<Badge>{queueItems.length}</Badge>} />
               <div className="dl-list">
                 {visibleQueue.map(renderRow)}
               </div>
@@ -193,10 +185,7 @@ export default function DownloadsPage() {
 
           {doneItems.length > 0 && (
             <section className="dl-section">
-              <div className="dl-section-head">
-                <h2>{t("downloadsSectionDone")}</h2>
-                <span className="dl-section-count">{doneItems.length}</span>
-              </div>
+              <SectionHeader title={t("downloadsSectionDone")} actions={<Badge>{doneItems.length}</Badge>} />
               <div className="dl-list">
                 {doneItems.map(renderRow)}
               </div>
