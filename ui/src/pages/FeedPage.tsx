@@ -140,23 +140,33 @@ export default function FeedPage({
   const queuedScroll = useHScroll();
   const hScrollWrapRef = useRef<HTMLDivElement>(null);
   const [hCardWidth, setHCardWidth] = useState(220);
+  const [hCardMin, setHCardMin] = useState(248);
 
-  const GRID_MIN: Record<GridSize, number> = { sm: 220, md: 320, lg: 360 };
+  useEffect(() => {
+    const read = () => setHCardMin(Number.parseInt(getComputedStyle(document.documentElement).getPropertyValue("--video-card-min"), 10) || 248);
+    read();
+    const unsubscribeChanged = subscribe("video-card-size-changed", read);
+    const unsubscribeApplied = subscribe("video-card-size-applied", read);
+    return () => { unsubscribeChanged(); unsubscribeApplied(); };
+  }, []);
 
   useEffect(() => {
     const el = hScrollWrapRef.current;
     if (!el) return;
     const update = () => {
       const w = el.clientWidth;
-      const min = GRID_MIN[gridSize];
-      const cols = Math.max(1, Math.floor(w / min));
-      setHCardWidth(Math.floor((w - (cols - 1) * 12) / cols));
+      const min = hCardMin;
+      const gap = 12;
+      // Match CSS Grid's auto-fill calculation: gaps consume width too.
+      // Without them, a 220 px preference could squeeze in one extra card.
+      const cols = Math.max(1, Math.floor((w + gap) / (min + gap)));
+      setHCardWidth(Math.max(min, Math.floor((w - (cols - 1) * gap) / cols)));
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [gridSize]);
+  }, [hCardMin]);
 
   const load = useCallback(async (requestedPage = page) => {
     if (requestedPage === 0) setLoading(true);
@@ -326,18 +336,6 @@ export default function FeedPage({
           }
         />
         <div className="toolbar-right" style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          <div className="grid-size-toggle">
-            {GRID_SIZES.map((g) => (
-              <button
-                key={g.id}
-                className={`grid-size-btn${gridSize === g.id ? " active" : ""}`}
-                title={t(g.labelKey)}
-                onClick={() => changeGridSize(g.id)}
-              >
-                {g.icon}
-              </button>
-            ))}
-          </div>
           <button className="btn icon-only" title={t("refresh")} onClick={refresh} disabled={refreshing}>
             <RefreshCw className={refreshing ? "spin" : undefined} />
           </button>

@@ -26,6 +26,7 @@ import InsightsPage from "./pages/InsightsPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
+import { applyVideoCardSize } from "./videoCardSize";
 
 // Routes owned by plugins — visible in the sidebar only while enabled.
 const PLUGIN_ROUTES = ["/discovery", "/downloads"];
@@ -296,6 +297,8 @@ function AppShell() {
       setShowShorts(r.settings.show_shorts === "1");
       setAppName(r.settings.app_name || "YT Zero");
       setAppIconColor(r.settings.app_icon_color || "#f2293a");
+      applyVideoCardSize(r.settings.grid_size);
+      emit("video-card-size-applied");
       applyWatchedStyle(parseWatchedStyle(r.settings.watched_style));
       const raw = r.settings.sidebar_nav;
       const navCfg = parseNavConfig(raw);
@@ -311,6 +314,7 @@ function AppShell() {
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("watched-style-changed", loadSettings), [loadSettings]);
+  useEffect(() => subscribe("video-card-size-changed", loadSettings), [loadSettings]);
 
   const loadPlugins = useCallback(() => {
     api.plugins()

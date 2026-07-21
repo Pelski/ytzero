@@ -201,6 +201,8 @@ export const en = {
     gridSmall: "Small",
     gridMedium: "Medium",
     gridLarge: "Large",
+    videoCardSize: "Video card size",
+    videoCardSizeHint: "Minimum card width across video views.",
     liveNow: "Live now",
     liveEmpty: "None of your channels is live right now.",
     upcoming: "Upcoming",

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Check, Lock, LogOut, Settings, UserPlus, X } from "lucide-react";
+import { Check, Lock, LogOut, Settings, SlidersHorizontal, UserPlus, X } from "lucide-react";
 import { api, type AuthStatus, type Profile } from "../api";
 import { subscribe } from "../events";
 import { useI18n } from "../i18n";
+import { parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
+import { emit } from "../events";
+import SteppedSlider from "./SteppedSlider";
 
 /** Round avatar: uploaded image, or a colored circle with the name initial. */
 export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
@@ -24,6 +27,8 @@ export default function ProfileMenu() {
   const navigate = useNavigate();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [open, setOpen] = useState(false);
+  const [cardSizeOpen, setCardSizeOpen] = useState(false);
+  const [cardSize, setCardSize] = useState(248);
   const [pinFor, setPinFor] = useState<Profile | null>(null);
   const [pin, setPin] = useState("");
   const [childLockPin, setChildLockPin] = useState("");
@@ -37,6 +42,7 @@ export default function ProfileMenu() {
     api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
     api.authStatus().then(setAuth).catch(() => {});
     api.childLock().then((r) => setChildLockEnabled(r.child_lock.enabled)).catch(() => {});
+    api.settings().then((r) => setCardSize(parseVideoCardSize(r.settings.grid_size))).catch(() => {});
   }, []);
   useEffect(load, [load]);
   useEffect(() => subscribe("profiles-changed", load), [load]);
@@ -45,7 +51,7 @@ export default function ProfileMenu() {
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) { setOpen(false); setCardSizeOpen(false); }
     };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", onDown);
@@ -57,6 +63,7 @@ export default function ProfileMenu() {
   }, [open]);
 
   const active = profiles.find((p) => p.active) ?? profiles[0];
+  const cardSizeSteps = [180, 220, 260, 300, 372, 480] as const;
   // Leaving a child profile is gated by the app-wide child lock PIN.
   const needsChildLock = Boolean(active?.is_child && childLockEnabled);
 
@@ -120,6 +127,14 @@ export default function ProfileMenu() {
       <button className="profile-trigger" aria-label={t("profiles")} onClick={() => setOpen((v) => !v)}>
         <ProfileAvatar profile={active} size={32} />
       </button>
+      <div className="dropdown profile-card-size-wrap">
+        <button className={`profile-card-size-trigger${cardSizeOpen ? " active" : ""}`} title={t("videoCardSize")} onClick={() => setCardSizeOpen((v) => !v)}><SlidersHorizontal size={16} /></button>
+        {cardSizeOpen && <div className="dropdown-menu profile-card-size-popover">
+          <div className="share-menu-title">{t("videoCardSize")}</div>
+          <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => { setCardSize(next); persistVideoCardSize(next).then(() => emit("video-card-size-changed")).catch(() => {}); }} />
+          <output>{cardSize}px</output>
+        </div>}
+      </div>
 
       {open && (
         <div className="profile-dropdown" role="menu">

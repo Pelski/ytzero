@@ -17,6 +17,7 @@ import { emit } from "../events";
 import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail } from "../components/VideoThumbnail";
+import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -1186,6 +1187,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
   const [watchedStyle, setWatchedStyle] = useState<WatchedStyle>("dimmed");
+  const [videoCardSize, setVideoCardSize] = useState(248);
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const navSaveTimer = useRef<number | null>(null);
   const [playerHl, setPlayerHl] = useState("pl");
@@ -1321,6 +1323,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setShowTopChannels(r.settings.show_top_channels !== "0");
         setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
         setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
+        setVideoCardSize(parseVideoCardSize(r.settings.grid_size));
         const raw = r.settings.sidebar_nav;
         const navCfg = parseNavConfig(raw);
         if (!raw && r.settings.shorts_tab === "1") {
@@ -1466,6 +1469,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     await api.updateSettings({ watched_style: next });
     emit("watched-style-changed");
     showToast(t("displaySettingsSaved"));
+  };
+
+  const changeVideoCardSize = (next: number) => {
+    setVideoCardSize(next);
+    persistVideoCardSize(next);
+    applyVideoCardSize(next);
+    emit("video-card-size-changed");
   };
 
   // Reorder/hide is interactive (drag fires many updates) — reflect locally at

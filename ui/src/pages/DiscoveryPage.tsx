@@ -66,18 +66,6 @@ export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }
           <h1 className="page-title">{t("discoveryTitle")}</h1>
         </div>
         <div className="toolbar-right" style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          <div className="grid-size-toggle">
-            {GRID_SIZES.map((g) => (
-              <button
-                key={g.id}
-                className={`grid-size-btn${gridSize === g.id ? " active" : ""}`}
-                title={t(g.labelKey)}
-                onClick={() => changeGridSize(g.id)}
-              >
-                {g.icon}
-              </button>
-            ))}
-          </div>
           <button className="btn icon-only" title={t("refresh")} onClick={refresh} disabled={refreshing}>
             <RefreshCw className={refreshing ? "spin" : undefined} />
           </button>

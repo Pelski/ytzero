@@ -200,6 +200,8 @@ export const de: Locale = {
     gridSmall: "Klein",
     gridMedium: "Mittel",
     gridLarge: "Groß",
+    videoCardSize: "Videokartengröße",
+    videoCardSizeHint: "Minimale Kartenbreite in allen Videoansichten.",
     liveNow: "Jetzt live",
     liveEmpty: "Keiner deiner Kanäle ist gerade live.",
     upcoming: "Demnächst",

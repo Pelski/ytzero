@@ -798,12 +798,27 @@ body.cinema .topbar.topbar--solid {
 /* ---------- video grid & cards (YouTube-style: borderless) ---------- */
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
-  gap: 22px 16px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--video-card-min, 248px), 1fr));
+  gap: 22px 12px;
 }
-.video-grid--sm { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-.video-grid--md { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
-.video-grid--lg { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+.video-grid--sm,
+.video-grid--md,
+.video-grid--lg { grid-template-columns: repeat(auto-fill, minmax(var(--video-card-min, 248px), 1fr)); }
+.video-card-size-setting { align-items: center; border-top: 1px solid var(--surface-2); display: flex; gap: 20px; justify-content: space-between; padding: 14px 0; }
+.video-card-size-control { align-items: center; display: flex; gap: 10px; min-width: 230px; }
+.video-card-size-control input { accent-color: var(--accent); flex: 1; }
+.video-card-size-control output { color: var(--text-2); font-size: 12px; min-width: 42px; text-align: right; }
+.profile-card-size-wrap { margin-right: 4px; order: 1; position: relative; }
+.profile-card-size-trigger { align-items: center; background: transparent; border: 0; border-radius: 50%; color: var(--text-2); cursor: pointer; display: flex; height: 32px; justify-content: center; width: 32px; }
+.profile-card-size-trigger:hover, .profile-card-size-trigger.active { background: var(--surface-2); color: var(--text); }
+.dropdown.profile-card-size-wrap > .profile-card-size-popover { left: auto; min-width: min(220px, calc(100vw - 24px)); padding: 12px; right: 0; }
+.profile-card-size-popover output { color: var(--text-2); display: block; font-size: 12px; margin-top: 5px; text-align: right; }
+.stepped-slider { height: 22px; position: relative; }
+.stepped-slider input { appearance: none; background: linear-gradient(to right, var(--accent) 0 var(--stepped-slider-progress), var(--surface-3) var(--stepped-slider-progress) 100%); border-radius: 999px; cursor: pointer; height: 6px; left: 0; margin: 8px 0; outline: none; position: absolute; top: 0; width: 100%; z-index: 2; }
+.stepped-slider input::-webkit-slider-thumb { appearance: none; background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 45%, transparent); height: 18px; width: 18px; }
+.stepped-slider input::-moz-range-thumb { background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 45%, transparent); height: 18px; width: 18px; }
+.stepped-slider-ticks { inset: 0 9px; pointer-events: none; position: absolute; z-index: 3; }
+.stepped-slider-ticks span { background: var(--accent); height: 10px; position: absolute; top: 6px; transform: translateX(-1px); width: 2px; }
 
 /* grid size toggle */
 .grid-size-toggle { display: flex; gap: 2px; background: var(--surface); border-radius: 8px; padding: 3px; }
@@ -1013,7 +1028,7 @@ body.cinema .topbar.topbar--solid {
   gap: 12px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding-bottom: 4px;
+  padding: 0 0 4px 3px;
 }
 .h-scroll-row::-webkit-scrollbar { display: none; }
 .h-scroll-card {
@@ -5548,11 +5563,12 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 }
 
 /* ---------- Profile menu (topbar) ---------- */
-.profile-menu { position: relative; flex-shrink: 0; margin-left: 4px; }
+.profile-menu { align-items: center; display: flex; position: relative; flex-shrink: 0; margin-left: 4px; }
 .profile-trigger {
   display: flex; align-items: center; justify-content: center;
   background: none; border: none; padding: 2px; border-radius: 50%; cursor: pointer;
 }
+.profile-trigger { order: 2; }
 .profile-trigger:hover { background: var(--surface); }
 .profile-avatar {
   display: inline-flex; align-items: center; justify-content: center;
