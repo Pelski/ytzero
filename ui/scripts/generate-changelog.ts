@@ -20,6 +20,7 @@ interface GitHubRelease {
 }
 
 const outputPath = resolve(import.meta.dir, "../public/changelog.json");
+const repositoryPath = resolve(import.meta.dir, "../..");
 const CHANGELOG_RELEASE_LIMIT = 10;
 const releasesUrl = `https://api.github.com/repos/Pelski/ytzero/releases?per_page=${CHANGELOG_RELEASE_LIMIT}`;
 
@@ -32,21 +33,31 @@ function notesFromBody(body: unknown): string[] {
     .map((line) => line.replace(/^[-*]\s+/, ""));
 }
 
+function runGit(args: string[]): string | null {
+  try {
+    const result = Bun.spawnSync(["git", ...args], { cwd: repositoryPath });
+    return result.success ? result.stdout.toString().trim() : null;
+  } catch {
+    // The UI Docker build intentionally contains neither git nor the .git
+    // directory. Release metadata from the repository is only an optional
+    // enhancement; the GitHub release list remains the changelog source.
+    return null;
+  }
+}
+
 function releaseFromCurrentTag(existingVersions: Set<string>): ReleaseEntry | null {
-  const tagResult = Bun.spawnSync(["git", "describe", "--tags", "--exact-match", "HEAD"], { cwd: resolve(import.meta.dir, "../..") });
-  const tag = tagResult.success ? tagResult.stdout.toString().trim() : "";
+  const tag = runGit(["describe", "--tags", "--exact-match", "HEAD"]) ?? "";
   if (!/^v\d+\.\d+\.\d+/.test(tag) || existingVersions.has(tag)) return null;
 
-  const previousResult = Bun.spawnSync(["git", "describe", "--tags", "--abbrev=0", `${tag}^`], { cwd: resolve(import.meta.dir, "../..") });
-  const previous = previousResult.success ? previousResult.stdout.toString().trim() : "";
+  const previous = runGit(["describe", "--tags", "--abbrev=0", `${tag}^`]) ?? "";
   const range = previous ? `${previous}..${tag}` : tag;
-  const logResult = Bun.spawnSync(["git", "log", "--no-merges", "--pretty=format:%s (`%h`)", range], { cwd: resolve(import.meta.dir, "../..") });
+  const log = runGit(["log", "--no-merges", "--pretty=format:%s (`%h`)", range]);
   return {
     version: tag,
     name: tag,
     publishedAt: new Date().toISOString(),
     url: `https://github.com/Pelski/ytzero/releases/tag/${encodeURIComponent(tag)}`,
-    notes: logResult.success ? logResult.stdout.toString().split("\n").map((line) => line.trim()).filter(Boolean) : [],
+    notes: log ? log.split("\n").map((line) => line.trim()).filter(Boolean) : [],
   };
 }
 

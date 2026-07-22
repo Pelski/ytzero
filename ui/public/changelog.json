@@ -1,6 +1,16 @@
 {
   "releases": [
     {
+      "version": "v0.9.2",
+      "name": "v0.9.2",
+      "publishedAt": "2026-07-22T00:17:30Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.9.2",
+      "notes": [
+        "Changelog built in app (`55af2e6`)",
+        "Fixed pipeline for issues (`e104d53`)"
+      ]
+    },
+    {
       "version": "v0.9.1",
       "name": "v0.9.1",
       "publishedAt": "2026-07-21T23:48:07Z",
@@ -93,15 +103,6 @@
       "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.1",
       "notes": [
         "Fixed live videos with local only playback - disabled this option (`98fe785`)"
-      ]
-    },
-    {
-      "version": "v0.7.0",
-      "name": "v0.7.0",
-      "publishedAt": "2026-07-17T22:56:39Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.0",
-      "notes": [
-        "yt-dlp improvements, subtitles and more (`895905c`)"
       ]
     }
   ]
