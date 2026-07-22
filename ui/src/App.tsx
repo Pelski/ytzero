@@ -267,7 +267,7 @@ function AppShell() {
   const [toast, setToast] = useState<{ message: string; variant: ToastVariant } | null>(null);
   const [showShorts, setShowShorts] = useState(false);
   const [appName, setAppName] = useState("YT Zero");
-  const [appIconColor, setAppIconColor] = useState("#f2293a");
+  const [appIconColor, setAppIconColor] = useState("#0a5fff");
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
   const [showHidden, setShowHidden] = useState(false);
@@ -299,7 +299,7 @@ function AppShell() {
     api.settings().then((r) => {
       setShowShorts(r.settings.show_shorts === "1");
       setAppName(r.settings.app_name || "YT Zero");
-      setAppIconColor(r.settings.app_icon_color || "#f2293a");
+      setAppIconColor(r.settings.app_icon_color || "#0a5fff");
       applyVideoCardSize(r.settings.grid_size);
       emit("video-card-size-applied");
       applyWatchedStyle(parseWatchedStyle(r.settings.watched_style));
@@ -352,9 +352,10 @@ function AppShell() {
 
   // Re-skin the tab favicon live (the OS-cached PWA icon only refreshes on reinstall).
   useEffect(() => {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="${appIconColor}"/><polygon points="192,160 384,256 192,352" fill="#fff"/></svg>`;
-    const href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
-    document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((l) => { l.href = href; });
+    const href = `/favicon.svg?color=${encodeURIComponent(appIconColor)}`;
+    // Keep the iOS install icon as a real PNG. Safari does not reliably use
+    // SVG or data URLs for apple-touch-icon.
+    document.querySelectorAll<HTMLLinkElement>('link[rel="icon"]').forEach((l) => { l.href = href; });
   }, [appIconColor]);
 
   useEffect(() => {

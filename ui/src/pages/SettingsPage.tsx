@@ -1140,7 +1140,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playlistIcon, setPlaylistIcon] = useState("ListMusic");
   const [appName, setAppName] = useState("YT Zero");
   const [appNameInput, setAppNameInput] = useState("YT Zero");
-  const [appIconColor, setAppIconColor] = useState("#f2293a");
+  const [appIconColor, setAppIconColor] = useState("#0a5fff");
   // App-wide settings (app name, icon color, child lock) are owned by the
   // primary profile; other profiles see them read-only.
   const [isPrimary, setIsPrimary] = useState(true);
@@ -1311,7 +1311,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         const name = r.settings.app_name || "YT Zero";
         setAppName(name);
         setAppNameInput(name);
-        setAppIconColor(r.settings.app_icon_color || "#f2293a");
+        setAppIconColor(r.settings.app_icon_color || "#0a5fff");
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
         setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");

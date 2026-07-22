@@ -6,6 +6,7 @@ import { startScheduler } from "./refresher";
 import { startDownloader } from "./downloader";
 import { log } from "./logger";
 import { COMMIT, VERSION } from "./version";
+import { createAppIconPng, createAppIconSvg } from "./app-icon";
 
 const app = new Hono();
 
@@ -28,24 +29,23 @@ app.route("/api", api);
 // match the in-app logo. Served before serveStatic so it wins over the static
 // files in ./public. Note: an already-installed PWA caches its icon at install
 // time, so a color change only shows on (re)install or an OS icon refresh.
-const iconColor = () => getSetting("app_icon_color") || "#f2293a";
+const iconColor = () => getSetting("app_icon_color") || "#0a5fff";
 const svgHeaders = { "Content-Type": "image/svg+xml", "Cache-Control": "no-cache" };
+const pngHeaders = { "Content-Type": "image/png", "Cache-Control": "no-cache, no-store, must-revalidate" };
 
 app.get("/favicon.svg", (c) =>
-  c.body(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="${iconColor()}"/><polygon points="192,160 384,256 192,352" fill="#fff"/></svg>`,
-    200,
-    svgHeaders,
-  ),
+  c.body(createAppIconSvg(iconColor()), 200, svgHeaders),
 );
 
 app.get("/icon-maskable.svg", (c) =>
-  c.body(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="${iconColor()}"/><polygon points="178,168 358,256 178,344" fill="#fff"/></svg>`,
-    200,
-    svgHeaders,
-  ),
+  c.body(createAppIconSvg(iconColor(), true), 200, svgHeaders),
 );
+
+// Apple requires a raster touch icon. These routes also let a fresh PWA
+// installation use the color selected in settings instead of a baked asset.
+app.get("/apple-touch-icon.png", (c) => c.body(createAppIconPng(iconColor(), 180), 200, pngHeaders));
+app.get("/icon-192.png", (c) => c.body(createAppIconPng(iconColor(), 192), 200, pngHeaders));
+app.get("/icon-512.png", (c) => c.body(createAppIconPng(iconColor(), 512), 200, pngHeaders));
 
 // Serve the built UI (ui/dist is copied to ./public in the Docker image,
 // or set UI_DIST when running locally).

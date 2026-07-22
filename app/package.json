@@ -9,6 +9,7 @@
     "start": "bun src/index.ts"
   },
   "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@simplewebauthn/server": "^13.3.2",
     "fast-xml-parser": "^5.7.0",
     "hono": "^4.6.0",

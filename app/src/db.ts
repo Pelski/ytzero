@@ -534,7 +534,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   child_lock_enabled: "0",
   child_lock_pin_hash: "",
   app_name: "YT Zero",
-  app_icon_color: "#f2293a",
+  app_icon_color: "#0a5fff",
   shorts_tab: "1",
   show_top_channels: "1",
   hide_live_from_feed: "0",
