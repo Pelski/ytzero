@@ -287,23 +287,25 @@ export default function InsightsPage() {
           </article>
         </section>
 
-        {hasSharedInterests && <section className="insights-card">
-          <div className="insights-card-head"><div><h2>{t("insightsSharedInterests")}</h2><p>{t("insightsSharedInterestsHint")}</p></div><Users /></div>
-          <div className="insights-shared-list">
-            <InsightMiniList title={t("insightsChannels")} items={data.shared_interests.channels.map((channel) => ({
-              key: channel.channel_id, title: channel.title, thumbnail: channel.thumbnail, href: `/channel/${channel.channel_id}`,
-              meta: t("insightsProfilesCount", { count: channel.profile_count }), value: formatDuration(channel.seconds, locale),
-            }))} />
-          </div>
-        </section>}
+        {(hasSharedInterests || data.sponsorblock_categories.length > 0) && <div className={`insights-secondary-grid${!hasSharedInterests || data.sponsorblock_categories.length === 0 ? " is-single" : ""}`}>
+          {hasSharedInterests && <section className="insights-card">
+            <div className="insights-card-head"><div><h2>{t("insightsSharedInterests")}</h2><p>{t("insightsSharedInterestsHint")}</p></div><Users /></div>
+            <div className="insights-shared-list">
+              <InsightMiniList title={t("insightsChannels")} items={data.shared_interests.channels.map((channel) => ({
+                key: channel.channel_id, title: channel.title, thumbnail: channel.thumbnail, href: `/channel/${channel.channel_id}`,
+                meta: t("insightsProfilesCount", { count: channel.profile_count }), value: formatDuration(channel.seconds, locale),
+              }))} />
+            </div>
+          </section>}
 
-        {data.sponsorblock_categories.length > 0 && <section className="insights-card insights-sponsor-details">
-          <div className="insights-card-head"><div><h2>{t("insightsSponsorblockDetails")}</h2><p>{t("insightsSponsorblockDetailsHint")}</p></div><FastForward /></div>
-          <div className="insights-sponsor-categories">{data.sponsorblock_categories.map((item) => {
-            const category = sponsorCategory(item.category);
-            return <div key={item.category}><i style={{ backgroundColor: category?.color ?? "var(--text-2)" }} /><span><strong>{category ? t(category.labelKey) : item.category}</strong><small>{t("insightsSkipsCount", { count: item.skip_count })}</small></span><b>{formatAdaptiveDuration(item.seconds, locale)}</b></div>;
-          })}</div>
-        </section>}
+          {data.sponsorblock_categories.length > 0 && <section className="insights-card insights-sponsor-details">
+            <div className="insights-card-head"><div><h2>{t("insightsSponsorblockDetails")}</h2><p>{t("insightsSponsorblockDetailsHint")}</p></div><FastForward /></div>
+            <div className="insights-sponsor-categories">{data.sponsorblock_categories.map((item) => {
+              const category = sponsorCategory(item.category);
+              return <div key={item.category}><i style={{ backgroundColor: category?.color ?? "var(--text-2)" }} /><span><strong>{category ? t(category.labelKey) : item.category}</strong><small>{t("insightsSkipsCount", { count: item.skip_count })}</small></span><b>{formatAdaptiveDuration(item.seconds, locale)}</b></div>;
+            })}</div>
+          </section>}
+        </div>}
       </>}
     </div>
   );

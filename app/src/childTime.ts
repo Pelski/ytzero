@@ -4,6 +4,7 @@
 // PINs. Enforcement is cooperative — the server stops counting and reports
 // `locked`, and the UI locks the screen.
 import { db, getUserSetting, setUserSetting } from "./db";
+import { recordWatchTagSignals } from "./contentSignals";
 
 export type ChildGrant = "15m" | "1h" | "video_end" | "today_off";
 export const CHILD_GRANTS: ChildGrant[] = ["15m", "1h", "video_end", "today_off"];
@@ -50,6 +51,7 @@ export function recordWatchTick(userId: number, videoId: string) {
      VALUES (?, ?, date('now','localtime'), CAST(strftime('%H','now','localtime') AS INTEGER), ?)
      ON CONFLICT(user_id, video_id, day, hour) DO UPDATE SET seconds = seconds + excluded.seconds`
   ).run(userId, videoId, delta);
+  recordWatchTagSignals(userId, videoId, delta);
 }
 
 /** The video the user was most recently watching (for "until video ends"). */

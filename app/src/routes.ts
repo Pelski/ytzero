@@ -32,6 +32,7 @@ import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesCo
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
+import { recordSchedulingSignal } from "./contentSignals";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, saveChannelPlaylists, videoPlaylistsForUser } from "./channelPlaylists";
 import {
   authMethod,
@@ -1420,6 +1421,7 @@ api.post("/videos/:id/queue", async (c) => {
      VALUES (?, ?, 'queued', ?, datetime('now'), ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'queued', bucket = excluded.bucket, queued_at = excluded.queued_at, show_from = excluded.show_from`
   ).run(uid, id, bucket, showFrom);
+  recordSchedulingSignal(uid, id, bucket);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });

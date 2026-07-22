@@ -1318,7 +1318,6 @@ body.cinema .topbar.topbar--solid {
   white-space: nowrap;
   font-size: 14px;
 }
-.sidebar-order-item.is-hidden .sidebar-order-name { text-decoration: line-through; }
 .sidebar-order-actions { display: flex; gap: 2px; flex-shrink: 0; }
 
 .time-section { margin-bottom: 8px; }
@@ -6460,6 +6459,9 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .insights-completion-legend strong { font-size: 15px; grid-column: 2; }
 .insights-paired-lists { display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .insights-shared-list { max-width: 560px; }
+.insights-secondary-grid { align-items: stretch; display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.insights-secondary-grid.is-single { grid-template-columns: 1fr; }
+.insights-secondary-grid .insights-shared-list { max-width: none; }
 .insights-mini-group { min-width: 0; }
 .insights-mini-group h3 { color: var(--text-2); font-size: 12px; letter-spacing: .07em; margin: 0 0 7px; text-transform: uppercase; }
 .insights-mini-group > p { color: var(--text-2); font-size: 12px; line-height: 1.45; margin: 12px 0 0; }
@@ -6489,6 +6491,7 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   .insights-content-body { justify-content: center; }
   .insights-rankings { grid-template-columns: 1fr; }
   .insights-behavior-grid { grid-template-columns: 1fr; }
+  .insights-secondary-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
   .insights-page { gap: 12px; }

@@ -295,6 +295,38 @@ CREATE TABLE IF NOT EXISTS watch_time_log (
 );
 CREATE INDEX IF NOT EXISTS idx_watch_time_log_day ON watch_time_log(user_id, day);
 
+-- Every explicit scheduling choice. Unlike user_videos.bucket this is an
+-- append-only history, so rescheduling and recurring channel habits remain
+-- measurable. tags_json snapshots the profile's effective tags at that time.
+CREATE TABLE IF NOT EXISTS scheduling_event_log (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id     TEXT NOT NULL,
+  channel_id   TEXT NOT NULL,
+  bucket       TEXT NOT NULL,
+  source       TEXT NOT NULL DEFAULT 'manual',
+  tags_json    TEXT NOT NULL DEFAULT '[]',
+  local_day    TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+  local_hour   INTEGER NOT NULL DEFAULT (CAST(strftime('%H', 'now', 'localtime') AS INTEGER)),
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_scheduling_event_user_time ON scheduling_event_log(user_id, local_day, local_hour);
+CREATE INDEX IF NOT EXISTS idx_scheduling_event_channel_bucket ON scheduling_event_log(user_id, channel_id, bucket);
+
+-- Stable tag snapshots aggregated from actual playback heartbeats. This keeps
+-- time-of-day preferences honest even if tags are renamed or reassigned later.
+CREATE TABLE IF NOT EXISTS watch_tag_time_log (
+  user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tag_id    INTEGER NOT NULL,
+  tag_name  TEXT NOT NULL,
+  tag_color TEXT NOT NULL,
+  day       TEXT NOT NULL,
+  hour      INTEGER NOT NULL,
+  seconds   REAL NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, tag_id, day, hour)
+);
+CREATE INDEX IF NOT EXISTS idx_watch_tag_time_hour ON watch_tag_time_log(user_id, hour, tag_id);
+
 -- SponsorBlock segments that were actually skipped by the player. Each event
 -- is recorded once so Pulse can report time genuinely saved, rather than all
 -- segments merely returned by the public SponsorBlock API.
@@ -379,6 +411,9 @@ for (const stmt of [
 ]) {
   try { db.exec(stmt); } catch {}
 }
+
+// Scheduling signals predate the source column in development databases.
+try { db.exec("ALTER TABLE scheduling_event_log ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'"); } catch {}
 
 // Per-user ownership columns on previously global state tables.
 for (const stmt of [

@@ -1,6 +1,45 @@
 {
   "releases": [
     {
+      "version": "v0.10.1",
+      "name": "v0.10.1",
+      "publishedAt": "2026-07-22T09:56:52Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.1",
+      "notes": [
+        "Pulse - more details (`c407bfe`)",
+        "Sorry, fixed video import improvements and added processing tab on a channel (`6f59ccf`)"
+      ]
+    },
+    {
+      "version": "v0.10.0",
+      "name": "v0.10.0",
+      "publishedAt": "2026-07-22T08:44:25Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.0",
+      "notes": [
+        "Follow playlist only on channels, new view with subscribed playlists #46 (`c19817c`)"
+      ]
+    },
+    {
+      "version": "v0.9.4",
+      "name": "v0.9.4",
+      "publishedAt": "2026-07-22T07:40:11Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.9.4",
+      "notes": [
+        "Improved image cache (`820c6a2`)",
+        "Improved image cache (`6ec85b3`)",
+        "Fixed one creator popover on watch view (`a4cb490`)"
+      ]
+    },
+    {
+      "version": "v0.9.3",
+      "name": "v0.9.3",
+      "publishedAt": "2026-07-22T00:22:47Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.9.3",
+      "notes": [
+        "Changelog built in app (`aef7660`)"
+      ]
+    },
+    {
       "version": "v0.9.2",
       "name": "v0.9.2",
       "publishedAt": "2026-07-22T00:17:30Z",
@@ -67,42 +106,6 @@
       "url": "https://github.com/Pelski/ytzero/releases/tag/v0.8.1",
       "notes": [
         "Allow PIP mode on embedded video (`a811210`)"
-      ]
-    },
-    {
-      "version": "v0.8.0",
-      "name": "v0.8.0",
-      "publishedAt": "2026-07-19T23:47:01Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.8.0",
-      "notes": [
-        "Improved search and subscription views (`c51e4ac`)"
-      ]
-    },
-    {
-      "version": "v0.7.3",
-      "name": "v0.7.3",
-      "publishedAt": "2026-07-19T22:54:33Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.3",
-      "notes": [
-        "Fixed: #32, #33, #34, #35 (`cdb2350`)"
-      ]
-    },
-    {
-      "version": "v0.7.2",
-      "name": "v0.7.2",
-      "publishedAt": "2026-07-18T20:24:06Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.2",
-      "notes": [
-        "Better logging and details fetch backoff (`0db66c3`)"
-      ]
-    },
-    {
-      "version": "v0.7.1",
-      "name": "v0.7.1",
-      "publishedAt": "2026-07-17T23:12:26Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.1",
-      "notes": [
-        "Fixed live videos with local only playback - disabled this option (`98fe785`)"
       ]
     }
   ]
