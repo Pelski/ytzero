@@ -13,11 +13,13 @@ function formatDuration(seconds: number, locale: string) {
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(seconds / 3600)} h`;
 }
 
-function formatAxisDuration(seconds: number, locale: string) {
+function formatAdaptiveDuration(seconds: number, locale: string) {
   if (seconds < 60) return `${Math.round(seconds)} s`;
   if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
   return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(seconds / 3600)} h`;
 }
+
+const formatAxisDuration = formatAdaptiveDuration;
 
 function TimeAxis({ max, locale }: { max: number; locale: string }) {
   return <div className="insights-chart-y-axis" aria-hidden="true">
@@ -146,7 +148,7 @@ export default function InsightsPage() {
           <article><Film /><span>{t("insightsVideos")}</span><strong>{summary.video_count}</strong></article>
           <article><CalendarDays /><span>{t("insightsActiveDays")}</span><strong>{summary.active_days}<small> / {days}</small></strong></article>
           <article><Flame /><span>{t("insightsStreak")}</span><strong>{summary.streak_days}</strong><small>{t("insightsDays")}</small></article>
-          <article><FastForward /><span>{t("insightsSponsorSaved")}</span><strong>{formatDuration(summary.sponsorblock_saved_seconds, locale)}</strong><small>SponsorBlock</small></article>
+          <article><FastForward /><span>{t("insightsSponsorSaved")}</span><strong>{formatAdaptiveDuration(summary.sponsorblock_saved_seconds, locale)}</strong><small>SponsorBlock</small></article>
         </section>
 
         <section className="insights-grid insights-grid-top">
@@ -299,7 +301,7 @@ export default function InsightsPage() {
           <div className="insights-card-head"><div><h2>{t("insightsSponsorblockDetails")}</h2><p>{t("insightsSponsorblockDetailsHint")}</p></div><FastForward /></div>
           <div className="insights-sponsor-categories">{data.sponsorblock_categories.map((item) => {
             const category = sponsorCategory(item.category);
-            return <div key={item.category}><i style={{ backgroundColor: category?.color ?? "var(--text-2)" }} /><span><strong>{category ? t(category.labelKey) : item.category}</strong><small>{t("insightsSkipsCount", { count: item.skip_count })}</small></span><b>{formatDuration(item.seconds, locale)}</b></div>;
+            return <div key={item.category}><i style={{ backgroundColor: category?.color ?? "var(--text-2)" }} /><span><strong>{category ? t(category.labelKey) : item.category}</strong><small>{t("insightsSkipsCount", { count: item.skip_count })}</small></span><b>{formatAdaptiveDuration(item.seconds, locale)}</b></div>;
           })}</div>
         </section>}
       </>}
