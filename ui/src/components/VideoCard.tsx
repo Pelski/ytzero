@@ -505,6 +505,9 @@ export default function VideoCard({
                 </Link>
                 {publishedTime && <span className="v-time">{publishedTime}</span>}
               </div>
+              {video.source_playlist_id && video.source_playlist_title && (
+                <Link className="v-source-playlist" to={`/playlist/${video.source_playlist_id}`}>{video.source_playlist_title}</Link>
+              )}
             </div>
           </div>
         )}

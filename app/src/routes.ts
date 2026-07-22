@@ -21,7 +21,7 @@ import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel } from "./refresher";
+import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelPlaylists, syncPlaylist } from "./refresher";
 import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
@@ -32,7 +32,7 @@ import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesCo
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
-import { saveChannelPlaylists, videoPlaylistsForUser } from "./channelPlaylists";
+import { CHANNEL_PLAYLIST_CACHE_VERSION, saveChannelPlaylists, videoPlaylistsForUser } from "./channelPlaylists";
 import {
   authMethod,
   hashPassword,
@@ -396,6 +396,18 @@ function videoSelect(uid: number) {
          v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
          v.is_short, v.views, v.likes, uv.liked, uv.watched,
          v.duration, uv.watch_position, uv.watch_duration, v.external,
+         (SELECT cp.title
+          FROM channel_playlist_videos cpv
+          JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
+          JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id AND ufp.user_id = ${uid}
+          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
+          ORDER BY cpv.discovered_at DESC LIMIT 1) AS source_playlist_title,
+         (SELECT cp.playlist_id
+          FROM channel_playlist_videos cpv
+          JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
+          JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id AND ufp.user_id = ${uid}
+          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
+          ORDER BY cpv.discovered_at DESC LIMIT 1) AS source_playlist_id,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
          (SELECT d.status FROM downloads d WHERE d.video_id = v.video_id AND d.status != 'deleted') AS download_status,
          COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
@@ -406,6 +418,24 @@ function videoSelect(uid: number) {
 /** EXISTS fragment: the active user follows this video's channel. */
 function followedExists(uid: number) {
   return `EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id = v.channel_id AND uc.user_id = ${uid} AND uc.followed = 1)`;
+}
+
+function followedPlaylistExists(uid: number) {
+  return `EXISTS (
+    SELECT 1 FROM channel_playlist_videos cpv
+    JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id
+    WHERE cpv.video_id = v.video_id AND ufp.user_id = ${uid}
+      AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
+  )`;
+}
+
+function feedSortSql(uid: number) {
+  return `COALESCE((
+    SELECT MAX(cpv.discovered_at) FROM channel_playlist_videos cpv
+    JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id
+    WHERE cpv.video_id = v.video_id AND ufp.user_id = ${uid}
+      AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
+  ), v.published_at, v.created_at)`;
 }
 
 function localSQLite(d: Date): string {
@@ -466,8 +496,7 @@ api.get("/feed", (c) => {
     where.push("v.channel_id = ?");
     params.push(channel);
   } else if (!allSources) {
-    where.push(followedExists(uid));
-    where.push("v.external = 0");
+    where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
   }
   if (q) {
     where.push("(v.title LIKE ? OR v.description LIKE ?)");
@@ -519,7 +548,7 @@ api.get("/feed", (c) => {
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = db
-    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ? OFFSET ?`)
+    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${isMainFeed ? feedSortSql(uid) : "COALESCE(v.published_at, v.created_at)"} DESC LIMIT ? OFFSET ?`)
     .all(...params, limit, page * limit) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows), page, limit });
 });
@@ -1645,7 +1674,13 @@ const PLAYLISTS_DB_TTL = 7 * 24 * 60 * 60_000;
 const CHAPTERS_DB_TTL = 7 * 24 * 60 * 60_000;
 const CREATORS_DB_TTL = 7 * 24 * 60 * 60_000;
 
+const ensureExternalChannelRow = db.prepare(`
+  INSERT OR IGNORE INTO channels (channel_id, title, url, followed, external)
+  VALUES (?, ?, ?, 0, 1)
+`);
+
 function persistChannelAbout(channelId: string, about: ChannelAbout) {
+  ensureExternalChannelRow.run(channelId, about.title || channelId, `https://www.youtube.com/channel/${channelId}`);
   db.prepare(
     `UPDATE channels SET about_json = ?, about_fetched_at = datetime('now'),
        thumbnail = COALESCE(?, thumbnail), title = COALESCE(?, title), subscriber_count = COALESCE(?, subscriber_count)
@@ -1738,27 +1773,40 @@ api.get("/channels/:id/about", async (c) => {
   }
 });
 
-async function refreshChannelPlaylists(channelId: string) {
-  const playlists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId));
+function attachPlaylistFollowState(userId: number, playlists: any[]) {
+  const followed = db.prepare("SELECT playlist_id FROM user_followed_playlists WHERE user_id = ?").all(userId) as { playlist_id: string }[];
+  const ids = new Set(followed.map((row) => row.playlist_id));
+  return playlists.map((playlist) => ({ ...playlist, followed: ids.has(playlist.playlistId) }));
+}
+
+async function refreshChannelPlaylists(channelId: string, force = false) {
+  const playlists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, force));
+  // Channel pages are available for unsubscribed/external creators too. Their
+  // parent row may not exist yet, but channel_playlists has a strict FK.
+  ensureExternalChannelRow.run(channelId, channelId, `https://www.youtube.com/channel/${channelId}`);
   saveChannelPlaylists(channelId, playlists);
-  db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now') WHERE channel_id = ?")
-    .run(JSON.stringify(playlists), channelId);
+  db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
+    .run(JSON.stringify(playlists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
   return playlists;
 }
 
 api.get("/channels/:id/playlists", async (c) => {
+  const uid = currentUserId(c);
   const channelId = c.req.param("id");
-  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at FROM channels WHERE channel_id = ?")
-    .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null } | null;
+  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at, playlists_cache_version FROM channels WHERE channel_id = ?")
+    .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null; playlists_cache_version: number } | null;
 
   if (cached?.playlists_json) {
     try {
       const playlists = JSON.parse(cached.playlists_json);
+      if (cached.playlists_cache_version < CHANNEL_PLAYLIST_CACHE_VERSION) {
+        return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId, true)) });
+      }
       // Pre-pagination cache entries commonly contain exactly YouTube's first
       // page of 30 cards. Upgrade them synchronously so this request already
       // shows the missing playlists instead of waiting for the weekly refresh.
       if (Array.isArray(playlists) && playlists.length === 30) {
-        return c.json({ playlists: await refreshChannelPlaylists(channelId) });
+        return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
       }
       if (Array.isArray(playlists)) saveChannelPlaylists(channelId, playlists);
     } catch { /* corrupted cache — fall through to a fresh fetch */ }
@@ -1767,12 +1815,30 @@ api.get("/channels/:id/playlists", async (c) => {
         log.warn("channel.playlists.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
     }
     try {
-      return c.json({ playlists: JSON.parse(cached.playlists_json) });
+      return c.json({ playlists: attachPlaylistFollowState(uid, JSON.parse(cached.playlists_json)) });
     } catch { /* corrupted cache — fall through */ }
   }
 
   try {
-    return c.json({ playlists: await refreshChannelPlaylists(channelId) });
+    return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
+});
+
+api.post("/channels/:id/playlists/sync", async (c) => {
+  const channelId = c.req.param("id");
+  try {
+    const result = await syncChannelPlaylists(channelId);
+    log.info("channel.playlists.sync_requested", { channelId, count: result.playlists.length, synced: result.synced, added: result.added, errors: result.errors });
+    return c.json({
+      ok: true,
+      count: result.playlists.length,
+      synced: result.synced,
+      added: result.added,
+      errors: result.errors,
+      playlists: attachPlaylistFollowState(currentUserId(c), result.playlists),
+    });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
@@ -1949,6 +2015,131 @@ api.post("/channels/:id/sync", async (c) => {
     log.error("channel.sync_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
+});
+
+// ---------- followed YouTube playlists ----------
+
+api.get("/channel-playlists/:id", async (c) => {
+  const uid = currentUserId(c);
+  const id = c.req.param("id");
+  let playlist = db.prepare(`
+    SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
+           cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
+           ch.thumbnail AS channel_thumbnail,
+           EXISTS(SELECT 1 FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id) AS followed
+    FROM channel_playlists cp JOIN channels ch ON ch.channel_id = cp.channel_id
+    WHERE cp.playlist_id = ?
+  `).get(uid, id) as any;
+  if (!playlist) {
+    try {
+      await syncPlaylist(id);
+      playlist = db.prepare(`
+        SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
+               cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
+               ch.thumbnail AS channel_thumbnail, 0 AS followed
+        FROM channel_playlists cp JOIN channels ch ON ch.channel_id = cp.channel_id
+        WHERE cp.playlist_id = ?
+      `).get(id) as any;
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  }
+  if (!playlist) return c.json({ error: "not found" }, 404);
+  return c.json({ playlist });
+});
+
+api.get("/channel-playlists/:id/videos", async (c) => {
+  const uid = currentUserId(c);
+  const id = c.req.param("id");
+  const exists = db.prepare("SELECT 1 FROM channel_playlists WHERE playlist_id = ?").get(id);
+  if (!exists) {
+    try { await syncPlaylist(id); } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+    }
+  }
+  const rows = db.prepare(`${videoSelect(uid)}
+    JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
+    WHERE cpv.playlist_id = ?
+    ORDER BY cpv.position ASC`).all(id) as VideoRow[];
+  return c.json({ videos: attachTags(uid, rows) });
+});
+
+api.put("/channel-playlists/:id/follow", async (c) => {
+  const uid = currentUserId(c);
+  const id = c.req.param("id");
+  const { followed } = await c.req.json<{ followed: boolean }>();
+  if (!followed) {
+    db.prepare("DELETE FROM user_followed_playlists WHERE user_id = ? AND playlist_id = ?").run(uid, id);
+    return c.json({ ok: true, followed: false });
+  }
+  try {
+    // Establish the complete current snapshot before setting the feed baseline.
+    // Only videos discovered by a later sync are allowed into the main feed.
+    await syncPlaylist(id);
+    db.prepare(`INSERT INTO user_followed_playlists (user_id, playlist_id, followed_at, feed_from)
+      VALUES (?, ?, datetime('now'), datetime('now'))
+      ON CONFLICT(user_id, playlist_id) DO UPDATE SET include_in_feed = 1`).run(uid, id);
+    return c.json({ ok: true, followed: true });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
+});
+
+api.post("/channel-playlists/:id/sync", async (c) => {
+  try {
+    const result = await syncPlaylist(c.req.param("id"));
+    return c.json({ ok: true, added: result.added });
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
+});
+
+api.get("/followed-playlists", (c) => {
+  const uid = currentUserId(c);
+  const playlists = db.prepare(`
+    SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
+           cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
+           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.include_in_feed
+    FROM user_followed_playlists ufp
+    JOIN channel_playlists cp ON cp.playlist_id = ufp.playlist_id
+    JOIN channels ch ON ch.channel_id = cp.channel_id
+    WHERE ufp.user_id = ?
+    ORDER BY channel_title COLLATE NOCASE, cp.title COLLATE NOCASE
+  `).all(uid);
+  return c.json({ playlists });
+});
+
+api.get("/followed-playlists/updates", (c) => {
+  const uid = currentUserId(c);
+  const playlists = db.prepare(`
+    SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
+           cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
+           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.feed_from, ufp.include_in_feed
+    FROM user_followed_playlists ufp
+    JOIN channel_playlists cp ON cp.playlist_id = ufp.playlist_id
+    JOIN channels ch ON ch.channel_id = cp.channel_id
+    WHERE ufp.user_id = ?
+    ORDER BY cp.title COLLATE NOCASE
+  `).all(uid) as any[];
+
+  const updates = playlists.map((playlist) => {
+    const rows = db.prepare(`${videoSelect(uid)}
+      JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
+      WHERE cpv.playlist_id = ?
+        AND cpv.discovered_at > ?
+        AND COALESCE(uv.watched, 0) = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM history h
+          WHERE h.user_id = ? AND h.video_id = v.video_id
+        )
+      ORDER BY COALESCE(v.published_at, cpv.discovered_at) DESC, cpv.position ASC
+    `).all(playlist.playlist_id, playlist.feed_from, uid) as VideoRow[];
+    const newVideos = attachTags(uid, rows);
+    const { feed_from: _feedFrom, ...publicPlaylist } = playlist;
+    return { ...publicPlaylist, new_video_count: newVideos.length, new_videos: newVideos };
+  });
+
+  return c.json({ playlists: updates });
 });
 
 // ---------- user playlists ----------

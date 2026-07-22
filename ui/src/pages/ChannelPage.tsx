@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Gauge, ListVideo, Plus, Radio, RefreshCw, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, Zap } from "lucide-react";
+import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
 import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
@@ -11,7 +11,7 @@ import { img } from "../img";
 import { emit } from "../events";
 import { formatAddedVideos, formatPlaylistVideoCount, useI18n } from "../i18n";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
-import { Button, EmptyState, MenuSeparator, SectionHeader, Tabs } from "../components/ui";
+import { Button, EmptyState, Input, MenuItem, MenuSeparator, SectionHeader, SplitButton, Tabs } from "../components/ui";
 
 type Tab = "videos" | "shorts" | "playlists";
 
@@ -23,7 +23,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const { t, language, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [openingPlaylist, setOpeningPlaylist] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = (searchParams.get("tab") as Tab) ?? "videos";
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
@@ -48,6 +47,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [channelSearch, setChannelSearch] = useState("");
+  const [searchVideos, setSearchVideos] = useState<Video[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#3ea6ff");
   const [page, setPage] = useState(0);
@@ -67,6 +69,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     setPage(0);
     setHasMore(true);
     setPlaylists(null);
+    setChannelSearch("");
+    setSearchVideos([]);
     setChannelTags([]);
     // Reset to the default tab only when switching channels — preserve an
     // incoming ?tab= (e.g. tab=playlists) on first load / deep links.
@@ -101,6 +105,23 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     api.tags().then((r) => setAllTags(r.tags)).catch(console.error);
     api.plugins().then((r) => setDownloadsEnabled(r.plugins.some((plugin) => plugin.id === "downloads" && plugin.enabled))).catch(console.error);
   }, [id]);
+
+  useEffect(() => {
+    if (!id || !channelSearch.trim()) {
+      setSearchVideos([]);
+      setSearchLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setSearchLoading(true);
+    const timer = window.setTimeout(() => {
+      api.feed({ channel: id, status: "all", shorts: true, q: channelSearch.trim(), limit: 100 })
+        .then((result) => { if (!cancelled) setSearchVideos(result.videos); })
+        .catch((error) => { if (!cancelled) { setSearchVideos([]); console.error(error); } })
+        .finally(() => { if (!cancelled) setSearchLoading(false); });
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [id, channelSearch]);
 
   // Append subsequent pages as the user scrolls. Page 0 is handled by the
   // [id] effect above; channel id is read from the closure (always current
@@ -225,21 +246,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
   };
 
-  // Playlists open inside the watch view (first video + playlist context),
-  // so we resolve the first video id before navigating.
-  const openPlaylist = async (playlistId: string) => {
-    if (openingPlaylist) return;
-    setOpeningPlaylist(playlistId);
-    try {
-      const r = await api.playlistVideos(playlistId);
-      const first = r.videos[0];
-      if (first) navigate(`/watch/${first.videoId}/playlist/${playlistId}`);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setOpeningPlaylist(null);
-    }
-  };
+  const openPlaylist = (playlistId: string) => navigate(`/playlist/${playlistId}`);
 
   const toggleTag = async (tag: Tag) => {
     if (!id) return;
@@ -290,6 +297,21 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     }
   };
 
+  const handlePlaylistCatalogSync = async () => {
+    if (!id || syncing) return;
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const result = await api.syncChannelPlaylists(id);
+      setPlaylists(result.playlists);
+      setSyncMsg(result.added > 0 ? formatAddedVideos(result.added, language) : t("playlistsSynced", { count: result.synced }));
+    } catch { setSyncMsg(t("syncError")); }
+    finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
+  };
+
   const toggleFollow = async () => {
     if (!id) return;
     setUnfollowPending(true);
@@ -308,6 +330,11 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   // Prefer the server's real counts; fall back to what's loaded until they arrive.
   const videoCount = about?.counts?.videos ?? regularVideos.length;
   const shortCount = about?.counts?.shorts ?? shorts.length;
+  const searchActive = channelSearch.trim().length > 0;
+  const normalizedSearch = channelSearch.trim().toLocaleLowerCase(locale);
+  const matchingPlaylists = (playlists ?? []).filter((playlist) =>
+    playlist.title.toLocaleLowerCase(locale).includes(normalizedSearch)
+  );
 
   return (
     <>
@@ -362,15 +389,16 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           )}
         </div>
         <div className="channel-header-actions">
-          <button
-            className="btn"
+          <SplitButton
             onClick={handleSync}
             disabled={syncing}
             title={t("syncTitle")}
+            menuLabel={t("moreActions")}
+            menu={<MenuItem icon={<ListRestart />} onClick={handlePlaylistCatalogSync} title={t("syncPlaylistCatalogHint")}>{t("syncPlaylistCatalog")}</MenuItem>}
           >
             <RefreshCw size={15} className={syncing ? "spin" : ""} />
             {syncing ? t("syncing") : syncMsg ?? t("syncChannel")}
-          </button>
+          </SplitButton>
           <button
             className={`btn${followed ? " danger" : " primary"}`}
             onClick={toggleFollow}
@@ -541,19 +569,50 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         </section>
       )}
 
-      <Tabs
-        className="channel-tabs"
-        label={about?.title ?? t("videos")}
-        value={tab}
-        onChange={setTab}
-        options={[
-          { value: "videos", label: t("videos"), icon: <VideoIcon />, count: videoCount },
-          ...(shortCount > 0 ? [{ value: "shorts" as const, label: "Shorts", icon: <Zap />, count: shortCount }] : []),
-          { value: "playlists", label: t("playlists"), icon: <ListVideo />, count: playlists?.length },
-        ]}
-      />
+      <div className="channel-tabs-row">
+        <Tabs
+          className="channel-tabs"
+          label={about?.title ?? t("videos")}
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "videos", label: t("videos"), icon: <VideoIcon />, count: videoCount },
+            ...(shortCount > 0 ? [{ value: "shorts" as const, label: "Shorts", icon: <Zap />, count: shortCount }] : []),
+            { value: "playlists", label: t("playlists"), icon: <ListVideo />, count: playlists?.length },
+          ]}
+        />
+        <div className="channel-content-search">
+          <Search className="channel-content-search__icon" aria-hidden="true" />
+          <Input
+            className="channel-content-search__input"
+            value={channelSearch}
+            onChange={(event) => setChannelSearch(event.target.value)}
+            placeholder={t("searchChannelContent")}
+            aria-label={t("searchChannelContent")}
+          />
+          {channelSearch && <button className="channel-content-search__clear" type="button" onClick={() => setChannelSearch("")} aria-label={t("clearSearch")}><X /></button>}
+        </div>
+      </div>
 
-      {tab === "videos" &&
+      {searchActive && (
+        searchLoading ? <VideoGridSkeleton /> : matchingPlaylists.length === 0 && searchVideos.length === 0 ?
+          <EmptyState title={t("channelSearchEmpty")} /> :
+          <div className="channel-content-search-results">
+            {matchingPlaylists.length > 0 && <section>
+              <SectionHeader title={t("playlists")} icon={<ListVideo />} />
+              <div className="video-grid video-grid--sm">{matchingPlaylists.map((playlist) => <button key={playlist.playlistId} type="button" className="video-card playlist-card" onClick={() => openPlaylist(playlist.playlistId)}>
+                <div className="thumb-wrap">{playlist.thumbnail ? <img className="thumb" src={img(playlist.thumbnail)} alt="" loading="lazy" /> : <div className="thumb" />}{playlist.videoCount && <span className="playlist-count">{formatPlaylistVideoCount(playlist.videoCount, language)}</span>}</div>
+                <div className="card-body" style={{ flexDirection: "column", gap: 3 }}><div className="v-title">{playlist.title}</div></div>
+              </button>)}</div>
+            </section>}
+            {searchVideos.length > 0 && <section>
+              <SectionHeader title={t("videos")} icon={<VideoIcon />} />
+              <div className="video-grid">{searchVideos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={onPlay} onChanged={reload} showChannelAvatar={false} />)}</div>
+            </section>}
+          </div>
+      )}
+
+      {!searchActive && tab === "videos" &&
         (videosLoading ? (
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
@@ -569,7 +628,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           </div>
         ))}
 
-      {tab === "shorts" && (
+      {!searchActive && tab === "shorts" && (
         videosLoading ? (
           <VideoGridSkeleton />
         ) : (
@@ -581,7 +640,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         )
       )}
 
-      {tab === "playlists" &&
+      {!searchActive && tab === "playlists" &&
         (playlists === null ? (
           <VideoGridSkeleton />
         ) : playlists.length === 0 ? (
@@ -594,7 +653,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                 type="button"
                 className="video-card playlist-card"
                 onClick={() => openPlaylist(p.playlistId)}
-                disabled={openingPlaylist !== null}
               >
                 <div className="thumb-wrap">
                   {p.thumbnail ? (
@@ -614,7 +672,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           </div>
         ))}
 
-      {(tab === "videos" || tab === "shorts") && !videosLoading && (
+      {!searchActive && (tab === "videos" || tab === "shorts") && !videosLoading && (
         <>
           {loadingMore && <VideoGridSkeleton count={4} />}
           {hasMore && <div ref={loadMoreRef} style={{ height: 1 }} />}

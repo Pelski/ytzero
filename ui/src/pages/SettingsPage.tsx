@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -1082,7 +1082,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const requestedTab = searchParams.get("tab");
   const tab: Tab = TABS.some((item) => item.id === requestedTab) ? requestedTab as Tab : "channels";
   const section = searchParams.get("section");
-  const channelSubTab: "list" | "filters" = section === "filters" ? "filters" : "list";
+  const channelSubTab: "list" | "playlists" | "filters" = section === "filters" || section === "playlists" ? section : "list";
   const tagSubTab: "list" | "rules" = section === "rules" ? "rules" : "list";
   const advancedSubTab: "external" | "logs" | "changelog" = section === "logs" || section === "changelog" ? section : "external";
   const setSettingsRoute = (nextTab: Tab, nextSection?: string) => {
@@ -1092,7 +1092,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     setSearchParams(next, { replace: true });
   };
   const setTab = (nextTab: Tab) => setSettingsRoute(nextTab);
-  const setChannelSubTab = (nextSection: "list" | "filters") => setSettingsRoute("channels", nextSection === "list" ? undefined : nextSection);
+  const setChannelSubTab = (nextSection: "list" | "playlists" | "filters") => setSettingsRoute("channels", nextSection === "list" ? undefined : nextSection);
   const setTagSubTab = (nextSection: "list" | "rules") => setSettingsRoute("tags", nextSection === "list" ? undefined : nextSection);
   const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog") => setSettingsRoute("advanced", nextSection === "external" ? undefined : nextSection);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -1100,6 +1100,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [rules, setRules] = useState<Rule[]>([]);
   const [filterRules, setFilterRules] = useState<FilterRule[]>([]);
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [followedPlaylists, setFollowedPlaylists] = useState<FollowedPlaylist[]>([]);
   const [playlistRules, setPlaylistRules] = useState<Record<number, UserPlaylistRule[]>>({});
   const [plugins, setPlugins] = useState<PluginManifest[]>([]);
   const [pluginSettings, setPluginSettings] = useState<Record<string, PluginSettingsResponse>>({});
@@ -1243,6 +1244,14 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     if (tab === "advanced" && advancedSubTab === "logs") loadLogs();
     if (tab === "advanced" && advancedSubTab === "changelog") loadChangelog();
   }, [tab, advancedSubTab, loadExternal, loadLogs, loadChangelog]);
+
+  const loadFollowedPlaylists = useCallback(() => {
+    api.followedPlaylists().then((result) => setFollowedPlaylists(result.playlists)).catch(console.error);
+  }, []);
+
+  useEffect(() => {
+    if (tab === "channels" && channelSubTab === "playlists") loadFollowedPlaylists();
+  }, [tab, channelSubTab, loadFollowedPlaylists]);
 
   const clearExternal = async () => {
     setClearingExternal(true);
@@ -1834,7 +1843,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isSettingsLocked && tab === "channels" && (
         <SettingsSection>
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("channels")} value={channelSubTab} onChange={setChannelSubTab} options={[{ value: "list", label: t("channels"), count: channels.length }, { value: "filters", label: t("filters"), count: filterRules.length }]} />
+          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("channels")} value={channelSubTab} onChange={setChannelSubTab} options={[{ value: "list", label: t("channels"), count: channels.length }, { value: "playlists", label: t("followedPlaylists"), count: followedPlaylists.length }, { value: "filters", label: t("filters"), count: filterRules.length }]} />
 
           {channelSubTab === "list" && (
             <>
@@ -2028,6 +2037,21 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 </div>
               )}
             </>
+          )}
+
+          {channelSubTab === "playlists" && (
+            followedPlaylists.length === 0 ? <EmptyState title={t("noFollowedPlaylists")} description={t("noFollowedPlaylistsHint")} /> :
+            <div className="followed-playlists-settings">
+              {followedPlaylists.map((playlist) => <div className="followed-playlist-row" key={playlist.playlist_id}>
+                <Link to={`/playlist/${playlist.playlist_id}`} className="followed-playlist-row__identity">
+                  {playlist.thumbnail ? <img src={img(playlist.thumbnail)} alt="" /> : <div className="followed-playlist-row__placeholder"><ListMusic /></div>}
+                  <span><strong>{playlist.title}</strong><small>{playlist.channel_title}</small></span>
+                </Link>
+                <span className="muted">{playlist.video_count ? formatVideoCount(Number.parseInt(playlist.video_count, 10) || 0, language) : ""}</span>
+                <Button size="sm" leadingIcon={<RefreshCw />} onClick={async () => { await api.syncPlaylist(playlist.playlist_id); loadFollowedPlaylists(); }}>{t("syncPlaylist")}</Button>
+                <Button size="sm" variant="danger" leadingIcon={<ListMinus />} onClick={async () => { await api.followPlaylist(playlist.playlist_id, false); loadFollowedPlaylists(); }}>{t("unfollowPlaylist")}</Button>
+              </div>)}
+            </div>
           )}
 
           {channelSubTab === "filters" && (

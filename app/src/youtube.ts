@@ -27,6 +27,8 @@ export interface FeedVideo {
   publishedAt: string;
   views: number | null;
   likes: number | null;
+  channelId?: string;
+  channelTitle?: string;
 }
 
 export interface ChannelFeed {
@@ -60,6 +62,8 @@ export async function fetchChannelFeed(channelId: string): Promise<ChannelFeed> 
       publishedAt: e.published ?? "",
       views: Number.isFinite(views) ? views : null,
       likes: Number.isFinite(likes) ? likes : null,
+      channelId,
+      channelTitle: decodeHtmlEntities(String(feed.title ?? "")),
     };
   });
   return {
@@ -413,9 +417,23 @@ function collectChannelPlaylists(data: any, out: PlaylistInfo[], seen: Set<strin
   }
 }
 
-function playlistContinuationToken(data: any): string | null {
+/** Parse the playlists present in a channel page's initial payload. Exported
+ * separately so YouTube layout changes can be covered with fixture tests. */
+export function parseChannelPlaylistsHtml(html: string): PlaylistInfo[] {
+  const out: PlaylistInfo[] = [];
+  collectChannelPlaylists(extractInitialData(html), out, new Set<string>());
+  return out;
+}
+
+export function playlistContinuationToken(data: any): string | null {
   for (const renderer of deepCollect(data, "continuationItemRenderer")) {
     const token = renderer?.continuationEndpoint?.continuationCommand?.token;
+    if (typeof token === "string" && token) return token;
+  }
+  // Current view-model markup used by channel and playlist pages.
+  for (const viewModel of deepCollect(data, "continuationItemViewModel")) {
+    const token = viewModel?.continuationCommand?.innertubeCommand?.continuationCommand?.token
+      ?? viewModel?.continuationEndpoint?.continuationCommand?.token;
     if (typeof token === "string" && token) return token;
   }
   return null;
@@ -440,11 +458,11 @@ async function fetchPlaylistContinuation(token: string, config: { apiKey: string
   return res.json();
 }
 
-export async function fetchChannelPlaylists(channelId: string): Promise<PlaylistInfo[]> {
+export async function fetchChannelPlaylists(channelId: string, force = false): Promise<PlaylistInfo[]> {
   const cached = playlistCache.get(channelId);
   // Older versions cached only YouTube's first page (~30 cards). Re-fetch that
   // boundary case once so it is upgraded to a complete paginated result.
-  if (cached && cached.complete && Date.now() - cached.at < ABOUT_TTL) return cached.data;
+  if (!force && cached && cached.complete && Date.now() - cached.at < ABOUT_TTL) return cached.data;
 
   const res = await fetch(`https://www.youtube.com/channel/${channelId}/playlists`, {
     headers: FETCH_HEADERS,
@@ -483,12 +501,15 @@ export interface PlaylistVideo {
   channelTitle: string;
   duration: string;
   index: number;
+  channelId: string;
 }
 
 const playlistFeedCache = new Map<string, { at: number; data: PlaylistFeed }>();
+const playlistVideosCache = new Map<string, { at: number; videos: PlaylistVideo[]; complete: boolean }>();
 
 export interface PlaylistFeed {
   playlistId: string;
+  title: string;
   /** Channel that owns the playlist (from the feed's top-level yt:channelId). */
   channelId: string;
   channelTitle: string;
@@ -515,9 +536,9 @@ export async function fetchChannelVideosDurations(channelId: string): Promise<Vi
  * format used by channel feeds. More reliable than scraping the playlist page,
  * but capped at ~15 entries and without per-video duration.
  */
-export async function fetchPlaylistFeed(playlistId: string): Promise<PlaylistFeed> {
+export async function fetchPlaylistFeed(playlistId: string, force = false): Promise<PlaylistFeed> {
   const cached = playlistFeedCache.get(playlistId);
-  if (cached && Date.now() - cached.at < ABOUT_TTL) return cached.data;
+  if (!force && cached && Date.now() - cached.at < ABOUT_TTL) return cached.data;
 
   const url = `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
   const res = await fetch(url, { headers: RSS_HEADERS });
@@ -540,12 +561,15 @@ export async function fetchPlaylistFeed(playlistId: string): Promise<PlaylistFee
         publishedAt: e.published ?? "",
         views: Number.isFinite(views) ? views : null,
         likes: Number.isFinite(likes) ? likes : null,
+        channelId: String(e["yt:channelId"] ?? feed["yt:channelId"] ?? ""),
+        channelTitle: decodeHtmlEntities(String(e.author?.name ?? feed.author?.name ?? "")),
       };
     })
     .filter((v) => v.videoId);
 
   const data: PlaylistFeed = {
     playlistId,
+    title: decodeHtmlEntities(String(feed.title ?? "")),
     channelId: String(feed["yt:channelId"] ?? ""),
     channelTitle: decodeHtmlEntities(String(feed.author?.name ?? feed.title ?? "")),
     videos,
@@ -554,17 +578,106 @@ export async function fetchPlaylistFeed(playlistId: string): Promise<PlaylistFee
   return data;
 }
 
-/** Playlist videos shaped for the watch-page sidebar (no duration in RSS). */
+function collectPlaylistVideos(data: any, out: PlaylistVideo[], seen: Set<string>) {
+  for (const renderer of deepCollect(data, "playlistVideoRenderer")) {
+    const videoId = renderer?.videoId;
+    if (!videoId || seen.has(videoId)) continue;
+    seen.add(videoId);
+    const bylineRun = renderer?.shortBylineText?.runs?.[0] ?? renderer?.longBylineText?.runs?.[0];
+    const rawIndex = renderer?.index?.simpleText ?? String(out.length + 1);
+    out.push({
+      videoId,
+      title: decodeHtmlEntities(renderer?.title?.runs?.[0]?.text ?? renderer?.title?.simpleText ?? ""),
+      thumbnail: renderer?.thumbnail?.thumbnails?.at(-1)?.url ?? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      channelTitle: decodeHtmlEntities(bylineRun?.text ?? ""),
+      channelId: bylineRun?.navigationEndpoint?.browseEndpoint?.browseId ?? "",
+      duration: renderer?.lengthText?.simpleText ?? "",
+      index: Number.parseInt(String(rawIndex).replace(/\D/g, ""), 10) || out.length,
+    });
+  }
+  // Current playlist markup. YouTube migrated the first page (normally 100
+  // entries) from playlistVideoRenderer to lockupViewModel.
+  for (const vm of deepCollect(data, "lockupViewModel")) {
+    const video = playlistVideoFromLockup(vm, out.length + 1);
+    if (!video || seen.has(video.videoId)) continue;
+    seen.add(video.videoId);
+    out.push(video);
+  }
+}
+
+export function playlistVideoFromLockup(vm: any, fallbackIndex: number): PlaylistVideo | null {
+  if (!vm?.contentId || vm?.contentType !== "LOCKUP_CONTENT_TYPE_VIDEO") return null;
+  const metadata = vm?.metadata?.lockupMetadataViewModel;
+  const rows = metadata?.metadata?.contentMetadataViewModel?.metadataRows ?? [];
+  const channelText = rows?.[0]?.metadataParts?.[0]?.text;
+  const channelCommand = channelText?.commandRuns?.[0]?.onTap?.innertubeCommand;
+  const imageChannelCommand = metadata?.image?.decoratedAvatarViewModel?.rendererContext?.commandContext?.onTap?.innertubeCommand;
+  const watchEndpoint = vm?.rendererContext?.commandContext?.onTap?.innertubeCommand?.watchEndpoint;
+  const badges = deepCollect(vm?.contentImage, "thumbnailBadgeViewModel")
+    .map((badge: any) => String(badge?.text ?? ""));
+  const duration = badges.find((text: string) => /^\d+(?::\d+)+$/.test(text)) ?? "";
+  const sourceGroups = deepCollect(vm?.contentImage, "sources");
+  const thumbnailSources = sourceGroups.find((sources: any) => Array.isArray(sources) && sources.some((source) => source?.url)) ?? [];
+  return {
+    videoId: vm.contentId,
+    title: decodeHtmlEntities(metadata?.title?.content ?? ""),
+    thumbnail: thumbnailSources.at(-1)?.url ?? `https://i.ytimg.com/vi/${vm.contentId}/hqdefault.jpg`,
+    channelTitle: decodeHtmlEntities(channelText?.content ?? ""),
+    channelId: channelCommand?.browseEndpoint?.browseId ?? imageChannelCommand?.browseEndpoint?.browseId ?? "",
+    duration,
+    index: Number.isFinite(watchEndpoint?.index) ? Number(watchEndpoint.index) + 1 : fallbackIndex,
+  };
+}
+
+export async function fetchPlaylistSnapshot(playlistId: string, force = false): Promise<{ videos: PlaylistVideo[]; complete: boolean }> {
+  const cached = playlistVideosCache.get(playlistId);
+  if (!force && cached && Date.now() - cached.at < ABOUT_TTL) return { videos: cached.videos, complete: cached.complete };
+
+  const res = await fetch(`https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`, { headers: FETCH_HEADERS });
+  if (!res.ok) throw new Error(`playlist page fetch failed (${res.status})`);
+  const html = await res.text();
+  const data = extractInitialData(html);
+  const videos: PlaylistVideo[] = [];
+  const seen = new Set<string>();
+  collectPlaylistVideos(data, videos, seen);
+  const config = innertubePlaylistConfig(html);
+  let token = playlistContinuationToken(data);
+  let complete = true;
+  for (let page = 0; config && token && page < MAX_PLAYLIST_CONTINUATION_PAGES; page++) {
+    const previousToken = token;
+    try {
+      const continuation = await fetchPlaylistContinuation(token, config);
+      collectPlaylistVideos(continuation, videos, seen);
+      token = playlistContinuationToken(continuation);
+      if (token === previousToken) { complete = false; break; }
+    } catch {
+      complete = false;
+      break;
+    }
+  }
+  if (token) complete = false;
+
+  if (videos.length === 0) {
+    const feed = await fetchPlaylistFeed(playlistId, force);
+    const fallback = feed.videos.map((video, index) => ({
+      videoId: video.videoId,
+      title: video.title,
+      thumbnail: video.thumbnail,
+      channelTitle: video.channelTitle || feed.channelTitle,
+      channelId: video.channelId || feed.channelId,
+      duration: "",
+      index,
+    }));
+    playlistVideosCache.set(playlistId, { at: Date.now(), videos: fallback, complete: false });
+    return { videos: fallback, complete: false };
+  }
+  playlistVideosCache.set(playlistId, { at: Date.now(), videos, complete });
+  return { videos, complete };
+}
+
+/** Complete playlist videos shaped for the watch page and playlist library. */
 export async function fetchPlaylistVideos(playlistId: string): Promise<PlaylistVideo[]> {
-  const feed = await fetchPlaylistFeed(playlistId);
-  return feed.videos.map((v, i) => ({
-    videoId: v.videoId,
-    title: v.title,
-    thumbnail: v.thumbnail,
-    channelTitle: feed.channelTitle,
-    duration: "",
-    index: i,
-  }));
+  return (await fetchPlaylistSnapshot(playlistId)).videos;
 }
 
 export interface ScrapedVideo {

@@ -197,6 +197,9 @@ CREATE INDEX IF NOT EXISTS idx_channel_playlists_channel ON channel_playlists(ch
 CREATE TABLE IF NOT EXISTS channel_playlist_videos (
   playlist_id TEXT NOT NULL REFERENCES channel_playlists(playlist_id) ON DELETE CASCADE,
   video_id    TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
+  discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
+  position     INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (playlist_id, video_id)
 );
 CREATE INDEX IF NOT EXISTS idx_channel_playlist_videos_video ON channel_playlist_videos(video_id);
@@ -237,6 +240,19 @@ CREATE TABLE IF NOT EXISTS user_channels (
   PRIMARY KEY (user_id, channel_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_channels_channel ON user_channels(channel_id);
+
+-- Public YouTube playlists followed independently by each profile. The
+-- playlist and its fetched videos stay global; only the follow choice and feed
+-- baseline are per profile.
+CREATE TABLE IF NOT EXISTS user_followed_playlists (
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  playlist_id  TEXT NOT NULL REFERENCES channel_playlists(playlist_id) ON DELETE CASCADE,
+  followed_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  feed_from    TEXT NOT NULL DEFAULT (datetime('now')),
+  include_in_feed INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (user_id, playlist_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_followed_playlists_playlist ON user_followed_playlists(playlist_id);
 
 -- A profile's per-video state. No row = default inbox / unwatched; a row is
 -- created only when the profile acts on the video (queue/archive/like/progress).
@@ -396,6 +412,21 @@ try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN subscriber_count TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN avatar_checked_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN avatar_refresh_attempted_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channel_playlists ADD COLUMN last_synced_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channel_playlists ADD COLUMN sync_attempted_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channel_playlist_videos ADD COLUMN discovered_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channel_playlist_videos ADD COLUMN last_seen_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channel_playlist_videos ADD COLUMN position INTEGER NOT NULL DEFAULT 0"); } catch {}
+db.exec("UPDATE channel_playlist_videos SET discovered_at = COALESCE(discovered_at, datetime('now')), last_seen_at = COALESCE(last_seen_at, datetime('now'))");
+db.exec(`CREATE TABLE IF NOT EXISTS user_followed_playlists (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  playlist_id TEXT NOT NULL REFERENCES channel_playlists(playlist_id) ON DELETE CASCADE,
+  followed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  feed_from TEXT NOT NULL DEFAULT (datetime('now')),
+  include_in_feed INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (user_id, playlist_id)
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_user_followed_playlists_playlist ON user_followed_playlists(playlist_id)");
 try { db.exec("ALTER TABLE videos ADD COLUMN show_from TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN liked INTEGER"); } catch {}
 try { db.exec("ALTER TABLE user_videos ADD COLUMN watched INTEGER"); } catch {}
@@ -413,6 +444,7 @@ try { db.exec("ALTER TABLE channels ADD COLUMN about_fetched_at TEXT"); } catch 
 // instead of scraping YouTube on every request.
 try { db.exec("ALTER TABLE channels ADD COLUMN playlists_json TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN playlists_fetched_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN playlists_cache_version INTEGER NOT NULL DEFAULT 0"); } catch {}
 // Full channel scans are intentionally much slower than the regular RSS
 // refresh. Separate timestamps keep their round-robin scheduler independent.
 try { db.exec("ALTER TABLE channels ADD COLUMN full_sync_attempted_at TEXT"); } catch {}

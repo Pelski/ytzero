@@ -1,6 +1,10 @@
 import { db } from "./db";
 import type { PlaylistInfo } from "./youtube";
 
+// Increment when playlist extraction changes in a way that invalidates stored
+// empty/incomplete results. Older cache entries are refreshed on first read.
+export const CHANNEL_PLAYLIST_CACHE_VERSION = 1;
+
 export interface VideoChannelPlaylist extends PlaylistInfo {
   channelId: string;
   channelTitle: string;
@@ -18,7 +22,10 @@ const upsertPlaylist = db.prepare(`
 `);
 
 const addMembership = db.prepare(`
-  INSERT OR IGNORE INTO channel_playlist_videos (playlist_id, video_id) VALUES (?, ?)
+  INSERT INTO channel_playlist_videos (playlist_id, video_id, discovered_at, last_seen_at, position)
+  VALUES (?, ?, datetime('now'), datetime('now'), ?)
+  ON CONFLICT(playlist_id, video_id) DO UPDATE SET
+    last_seen_at = datetime('now'), position = excluded.position
 `);
 
 const ensurePlaylist = db.prepare(`
@@ -39,9 +46,15 @@ export function saveChannelPlaylists(channelId: string, playlists: PlaylistInfo[
   })(playlists);
 }
 
-export function savePlaylistMemberships(playlistId: string, videoIds: string[]) {
+export function savePlaylistMemberships(playlistId: string, videoIds: string[], complete = false) {
   db.transaction((ids: string[]) => {
-    for (const videoId of ids) addMembership.run(playlistId, videoId);
+    for (const [position, videoId] of ids.entries()) addMembership.run(playlistId, videoId, position);
+    if (complete) {
+      const current = db.prepare("SELECT video_id FROM channel_playlist_videos WHERE playlist_id = ?").all(playlistId) as { video_id: string }[];
+      const seen = new Set(ids);
+      const remove = db.prepare("DELETE FROM channel_playlist_videos WHERE playlist_id = ? AND video_id = ?");
+      for (const row of current) if (!seen.has(row.video_id)) remove.run(playlistId, row.video_id);
+    }
   })(videoIds);
 }
 

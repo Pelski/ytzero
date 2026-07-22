@@ -50,6 +50,8 @@ export interface Video {
   tags: Tag[];
   history_id?: number;
   watched_at?: string;
+  source_playlist_title?: string | null;
+  source_playlist_id?: string | null;
 }
 
 export interface Channel {
@@ -120,6 +122,26 @@ export interface PlaylistInfo {
   title: string;
   thumbnail: string;
   videoCount: string;
+  followed?: boolean;
+}
+
+export interface FollowedPlaylist {
+  playlist_id: string;
+  title: string;
+  thumbnail: string;
+  video_count: string;
+  last_synced_at: string | null;
+  channel_id: string;
+  channel_title: string;
+  channel_thumbnail: string | null;
+  followed_at?: string;
+  include_in_feed?: number;
+  followed?: number;
+}
+
+export interface FollowedPlaylistUpdates extends FollowedPlaylist {
+  new_video_count: number;
+  new_videos: Video[];
 }
 
 export interface VideoChannelPlaylist extends PlaylistInfo {
@@ -774,6 +796,13 @@ export const api = {
 
   channelAbout: (id: string) => http<ChannelAbout>(`/channels/${id}/about`),
   channelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[] }>(`/channels/${id}/playlists`),
+  syncChannelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[]; count: number; synced: number; added: number; errors: number }>(`/channels/${id}/playlists/sync`, { method: "POST" }),
+  channelPlaylist: (id: string) => http<{ playlist: FollowedPlaylist }>(`/channel-playlists/${id}`),
+  channelPlaylistVideos: (id: string) => http<{ videos: Video[] }>(`/channel-playlists/${id}/videos`),
+  followPlaylist: (id: string, followed: boolean) => http<{ followed: boolean }>(`/channel-playlists/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
+  syncPlaylist: (id: string) => http<{ added: number }>(`/channel-playlists/${id}/sync`, { method: "POST" }),
+  followedPlaylists: () => http<{ playlists: FollowedPlaylist[] }>("/followed-playlists"),
+  followedPlaylistUpdates: () => http<{ playlists: FollowedPlaylistUpdates[] }>("/followed-playlists/updates"),
   playlistVideos: (id: string) => http<{ videos: PlaylistVideo[] }>(`/playlists/${id}/videos`),
 
   userPlaylists: (videoId?: string) => {

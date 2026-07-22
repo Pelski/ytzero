@@ -1,4 +1,5 @@
 export * from "./Button";
+export * from "./SplitButton";
 export * from "./Controls";
 export * from "./ColorPicker";
 export * from "./Fields";

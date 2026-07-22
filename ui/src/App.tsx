@@ -18,6 +18,8 @@ import SettingsPage from "./pages/SettingsPage";
 import WatchPage from "./pages/WatchPage";
 import ChannelPage from "./pages/ChannelPage";
 import UserPlaylistPage from "./pages/UserPlaylistPage";
+import ChannelPlaylistPage from "./pages/ChannelPlaylistPage";
+import FollowedPlaylistsPage from "./pages/FollowedPlaylistsPage";
 import ShortsPage from "./pages/ShortsPage";
 import DownloadsPage from "./pages/DownloadsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
@@ -471,6 +473,8 @@ function AppShell() {
               <Route path="/channel/:id" element={<ChannelPage onPlay={play} />} />
               <Route path="/subscriptions" element={<SubscriptionsPage />} />
               <Route path="/playlists/:id" element={<UserPlaylistPage onPlay={play} />} />
+              <Route path="/playlist/:id" element={<ChannelPlaylistPage />} />
+              <Route path="/followed-playlists" element={<FollowedPlaylistsPage />} />
               <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/downloads" element={<DownloadsPage />} />
               <Route path="/liked" element={<LikedPage onPlay={play} />} />

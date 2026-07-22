@@ -1,10 +1,10 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchVideoInfo, fetchVideoPublishedAt } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchPlaylistSnapshot, fetchVideoInfo, fetchVideoPublishedAt } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
 import { log } from "./logger";
-import { ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
+import { CHANNEL_PLAYLIST_CACHE_VERSION, ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 
 const upsertVideo = db.prepare(`
@@ -102,11 +102,18 @@ async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh 
   });
 }
 
-// Insert-only: never clobber an existing video's richer fields (e.g. a real
-// upload's description) with the sparse data a playlist feed carries.
+// Playlist snapshots are sparse, while RSS is rich but short. Preserve every
+// existing rich value and fill only fields that are still missing.
 const insertPlaylistVideo = db.prepare(`
-  INSERT OR IGNORE INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
+  INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  ON CONFLICT(video_id) DO UPDATE SET
+    title = CASE WHEN TRIM(videos.title) = '' THEN excluded.title ELSE videos.title END,
+    description = CASE WHEN TRIM(videos.description) = '' THEN excluded.description ELSE videos.description END,
+    thumbnail = CASE WHEN TRIM(videos.thumbnail) = '' THEN excluded.thumbnail ELSE videos.thumbnail END,
+    published_at = COALESCE(videos.published_at, excluded.published_at),
+    views = COALESCE(excluded.views, videos.views),
+    likes = COALESCE(excluded.likes, videos.likes)
 `);
 
 const ensureChannel = db.prepare(`
@@ -120,39 +127,119 @@ const ensureChannel = db.prepare(`
  * duplicates. New videos get the same tagging/rule treatment as RSS uploads.
  * The channel row is created (as external) when not already present.
  */
-export async function importPlaylistVideos(playlistId: string): Promise<{ added: number; channelId: string }> {
-  const feed = await fetchPlaylistFeed(playlistId);
+export async function importPlaylistVideos(playlistId: string, force = false): Promise<{ added: number; channelId: string }> {
+  const feed = await fetchPlaylistFeed(playlistId, force);
   if (!feed.channelId) return { added: 0, channelId: "" };
+  const snapshot = await fetchPlaylistSnapshot(playlistId, force).catch(() => ({
+    videos: feed.videos.map((video, index) => ({
+      videoId: video.videoId,
+      title: video.title,
+      thumbnail: video.thumbnail,
+      channelTitle: video.channelTitle || feed.channelTitle,
+      channelId: video.channelId || feed.channelId,
+      duration: "",
+      index,
+    })),
+    complete: false,
+  }));
+  const richById = new Map(feed.videos.map((video) => [video.videoId, video]));
 
   ensureChannel.run(feed.channelId, feed.channelTitle, `https://www.youtube.com/channel/${feed.channelId}`);
   ensureChannelPlaylist(playlistId, feed.channelId);
+  db.prepare(`UPDATE channel_playlists SET
+      title = CASE WHEN TRIM(?) != '' THEN ? ELSE title END,
+      thumbnail = CASE WHEN TRIM(?) != '' THEN ? ELSE thumbnail END,
+      video_count = ?, updated_at = datetime('now')
+    WHERE playlist_id = ?`).run(
+      feed.title, feed.title,
+      snapshot.videos[0]?.thumbnail || "", snapshot.videos[0]?.thumbnail || "",
+      String(snapshot.videos.length), playlistId,
+    );
   const inheritChannelTags = db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );
 
   let added = 0;
-  const importAll = db.transaction((videos: typeof feed.videos) => {
+  const importAll = db.transaction((videos: typeof snapshot.videos) => {
     for (const v of videos) {
-      const res = insertPlaylistVideo.run(
-        v.videoId, feed.channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes
+      const rich = richById.get(v.videoId);
+      const ownerChannelId = v.channelId || rich?.channelId || feed.channelId;
+      const ownerChannelTitle = v.channelTitle || rich?.channelTitle || feed.channelTitle;
+      ensureChannel.run(ownerChannelId, ownerChannelTitle, `https://www.youtube.com/channel/${ownerChannelId}`);
+      const isNew = !videoExists.get(v.videoId);
+      insertPlaylistVideo.run(
+        v.videoId,
+        ownerChannelId,
+        rich?.title || v.title,
+        rich?.description || "",
+        rich?.thumbnail || v.thumbnail,
+        rich?.publishedAt || null,
+        rich?.views ?? null,
+        rich?.likes ?? null,
       );
-      if (res.changes > 0) {
-        applyAutoTags(v.videoId, v.title, v.description);
-        applyFilterRules(v.videoId, feed.channelId, v.title, v.description);
+      if (isNew) {
+        applyAutoTags(v.videoId, rich?.title || v.title, rich?.description || "");
+        applyFilterRules(v.videoId, ownerChannelId, rich?.title || v.title, rich?.description || "");
         applyPlaylistRulesToVideo(v.videoId);
-        inheritChannelTags.run(v.videoId, feed.channelId);
+        inheritChannelTags.run(v.videoId, ownerChannelId);
         added++;
       }
     }
   });
-  importAll(feed.videos);
-  savePlaylistMemberships(playlistId, feed.videos.map((video) => video.videoId));
+  importAll(snapshot.videos);
+  savePlaylistMemberships(playlistId, snapshot.videos.map((video) => video.videoId), snapshot.complete);
+  db.prepare("UPDATE channel_playlists SET last_synced_at = datetime('now'), sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
 
   if (added > 0) {
-    backfillShorts(feed.videos.map((v) => v.videoId)).catch(() => {});
+    backfillShorts(snapshot.videos.map((v) => v.videoId)).catch(() => {});
     log.info("playlist.import.added", { playlistId, channelId: feed.channelId, added });
   }
   return { added, channelId: feed.channelId };
+}
+
+const playlistSyncsInFlight = new Map<string, Promise<{ added: number; channelId: string }>>();
+
+export function syncPlaylist(playlistId: string): Promise<{ added: number; channelId: string }> {
+  const current = playlistSyncsInFlight.get(playlistId);
+  if (current) return current;
+  db.prepare("UPDATE channel_playlists SET sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
+  const task = importPlaylistVideos(playlistId, true).finally(() => playlistSyncsInFlight.delete(playlistId));
+  playlistSyncsInFlight.set(playlistId, task);
+  return task;
+}
+
+/** Refresh a channel's public playlist catalogue and then every playlist's
+ * contents, without scanning the channel's regular videos/shorts tabs. */
+export async function syncChannelPlaylists(channelId: string): Promise<{
+  playlists: Awaited<ReturnType<typeof fetchChannelPlaylists>>;
+  added: number;
+  synced: number;
+  errors: number;
+}> {
+  const playlists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, true));
+  saveChannelPlaylists(channelId, playlists);
+  db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
+    .run(JSON.stringify(playlists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
+
+  let added = 0;
+  let synced = 0;
+  let errors = 0;
+  for (let index = 0; index < playlists.length; index++) {
+    const playlist = playlists[index];
+    try {
+      const result = await syncPlaylist(playlist.playlistId);
+      added += result.added;
+      synced++;
+    } catch (error) {
+      errors++;
+      const message = error instanceof Error ? error.message : String(error);
+      log.warn("channel.playlists_only.playlist_failed", { channelId, playlistId: playlist.playlistId, error: message });
+      if (message.includes("429")) break;
+    }
+    if (index < playlists.length - 1) await Bun.sleep(PLAYLIST_SYNC_DELAY_MS);
+  }
+  log.info("channel.playlists_only.complete", { channelId, playlists: playlists.length, synced, added, errors });
+  return { playlists, added, synced, errors };
 }
 
 export async function refreshChannel(channelId: string): Promise<{ added: number }> {
@@ -389,8 +476,10 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   // Throttled and capped to stay under YouTube's rate limiting (429).
   let playlistsScanned = 0;
   try {
-    const allPlaylists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId));
+    const allPlaylists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, true));
     saveChannelPlaylists(channelId, allPlaylists);
+    db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
+      .run(JSON.stringify(allPlaylists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
     const playlists = allPlaylists.slice(0, MAX_SYNC_PLAYLISTS);
     for (let i = 0; i < playlists.length; i++) {
       try {
@@ -586,6 +675,7 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
 let liveRefreshing = false;
 
 let scheduledFullSyncRunning = false;
+let scheduledPlaylistSyncRunning = false;
 
 /** Run the same deep scan as the channel-page button for one subscribed
  * channel. Attempt time drives rotation so one broken channel cannot starve
@@ -632,6 +722,29 @@ export async function syncNextSubscribedChannel(): Promise<void> {
     }
   } finally {
     scheduledFullSyncRunning = false;
+  }
+}
+
+export async function syncNextFollowedPlaylist(): Promise<void> {
+  if (scheduledPlaylistSyncRunning) return;
+  scheduledPlaylistSyncRunning = true;
+  try {
+    const playlist = db.prepare(`
+      SELECT cp.playlist_id
+      FROM channel_playlists cp
+      WHERE EXISTS (SELECT 1 FROM user_followed_playlists ufp WHERE ufp.playlist_id = cp.playlist_id)
+      ORDER BY COALESCE(cp.sync_attempted_at, cp.last_synced_at, '1970-01-01') ASC, cp.playlist_id ASC
+      LIMIT 1
+    `).get() as { playlist_id: string } | null;
+    if (!playlist) return;
+    try {
+      const result = await syncPlaylist(playlist.playlist_id);
+      log.info("playlist.sync.complete", { playlistId: playlist.playlist_id, added: result.added });
+    } catch (error) {
+      log.warn("playlist.sync.failed", { playlistId: playlist.playlist_id, error: error instanceof Error ? error.message : String(error) });
+    }
+  } finally {
+    scheduledPlaylistSyncRunning = false;
   }
 }
 
@@ -687,6 +800,15 @@ export function startScheduler() {
   };
   setTimeout(runFullSync, 60_000);
   log.info("scheduler.channel_full_sync", { intervalMin: fullSyncIntervalMin, batchSize: 1 });
+
+  const playlistSyncIntervalMin = positiveNumber(process.env.PLAYLIST_SYNC_INTERVAL_MINUTES, 15);
+  const runPlaylistSync = () => {
+    syncNextFollowedPlaylist()
+      .catch((e) => log.error("playlist.sync.cron_failed", { error: e instanceof Error ? e.message : String(e) }))
+      .finally(() => setTimeout(runPlaylistSync, playlistSyncIntervalMin * 60_000));
+  };
+  setTimeout(runPlaylistSync, 90_000);
+  log.info("scheduler.playlist_sync", { intervalMin: playlistSyncIntervalMin, batchSize: 1 });
 
   const avatarBatch = positiveNumber(process.env.AVATAR_REFRESH_BATCH_SIZE, 4);
   const avatarIntervalMin = positiveNumber(process.env.AVATAR_REFRESH_INTERVAL_MINUTES, 60);
