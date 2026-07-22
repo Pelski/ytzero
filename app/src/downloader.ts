@@ -233,6 +233,11 @@ export interface SubtitleFile {
   ext: "vtt" | "srt";
 }
 
+interface SubtitleFetchOptions {
+  manual: boolean;
+  automatic: boolean;
+}
+
 /** Subtitle sidecars already on disk for this video (one entry per language). */
 export function listSubtitleFiles(videoId: string): SubtitleFile[] {
   const bases = new Set<string>([videoId]);
@@ -258,7 +263,7 @@ export function listSubtitleFiles(videoId: string): SubtitleFile[] {
  * wasn't downloaded with the video). --skip-download makes this a quick,
  * metadata-only yt-dlp run writing next to the existing file.
  */
-export async function fetchSubtitles(videoId: string, lang: string): Promise<boolean> {
+async function fetchSubtitleSidecars(videoId: string, langs: string, options: SubtitleFetchOptions): Promise<boolean> {
   const base = outputBaseFor(videoId) ?? videoId;
   mkdirSync(dirname(join(DOWNLOADS_DIR, base)), { recursive: true });
   const args = [
@@ -266,22 +271,39 @@ export async function fetchSubtitles(videoId: string, lang: string): Promise<boo
     "--no-playlist",
     "--no-warnings",
     "--skip-download",
-    "--write-subs",
-    "--write-auto-subs",
-    "--sub-langs", lang,
     "-o", join(DOWNLOADS_DIR, `${base}.%(ext)s`),
   ];
+  if (options.manual) args.push("--write-subs");
+  if (options.automatic) args.push("--write-auto-subs");
+  if (langs.trim()) args.push("--sub-langs", langs.trim());
   if (downloadCookiesConfigured()) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
   try {
-    const proc = Bun.spawn([YTDLP, ...args], { stdout: "ignore", stderr: "ignore" });
+    const stderrTail: string[] = [];
+    const proc = Bun.spawn([YTDLP, ...args], { stdout: "ignore", stderr: "pipe" });
     const timer = setTimeout(() => { try { proc.kill(); } catch {} }, 60_000);
+    await readLines(proc.stderr as ReadableStream<Uint8Array>, (line) => {
+      if (!line.trim()) return;
+      stderrTail.push(line.trim());
+      if (stderrTail.length > 4) stderrTail.shift();
+    }).catch(() => {});
     const code = await proc.exited;
     clearTimeout(timer);
+    if (code !== 0) {
+      log.warn("downloads.subtitles_skipped", {
+        videoId,
+        langs,
+        error: stderrTail.at(-1) ?? `yt-dlp exited with code ${code}`,
+      });
+    }
     return code === 0;
   } catch (e) {
-    log.error("downloads.subtitles_failed", { videoId, lang, error: e instanceof Error ? e.message : String(e) });
+    log.warn("downloads.subtitles_skipped", { videoId, langs, error: e instanceof Error ? e.message : String(e) });
     return false;
   }
+}
+
+export async function fetchSubtitles(videoId: string, lang: string): Promise<boolean> {
+  return fetchSubtitleSidecars(videoId, lang, { manual: true, automatic: true });
 }
 
 /** Naive SRT → WebVTT conversion, enough for <track> playback. */
@@ -680,12 +702,6 @@ async function runDownload(videoId: string, s: DlSettings) {
   if (s.write_thumbnail === 1) args.push("--write-thumbnail");
   if (s.embed_metadata === 1) args.push("--embed-metadata");
   if (s.write_info_json === 1) args.push("--write-info-json");
-  if (s.write_subs === 1) args.push("--write-subs");
-  if (s.write_auto_subs === 1) args.push("--write-auto-subs");
-  if (s.write_subs === 1 || s.write_auto_subs === 1) {
-    const langs = String(s.sub_langs).trim();
-    if (langs) args.push("--sub-langs", langs);
-  }
 
   db.prepare("UPDATE downloads SET status = 'downloading', quality = ?, output_base = ?, error = NULL, attempts = attempts + 1, started_at = datetime('now') WHERE video_id = ?")
     .run(s.quality, base, videoId);
@@ -749,6 +765,14 @@ async function runDownload(videoId: string, s: DlSettings) {
       db.prepare("UPDATE downloads SET status = 'done', path = ?, size_bytes = ?, error = NULL, finished_at = datetime('now') WHERE video_id = ?")
         .run(path, size, videoId);
       log.info("downloads.done", { videoId, size, path });
+      if (s.write_subs === 1 || s.write_auto_subs === 1) {
+        // Subtitles are optional sidecars. A missing language or a YouTube 429
+        // must never turn a successfully downloaded video into a failed job.
+        await fetchSubtitleSidecars(videoId, String(s.sub_langs ?? ""), {
+          manual: s.write_subs === 1,
+          automatic: s.write_auto_subs === 1,
+        });
+      }
       return;
     }
   }
@@ -788,6 +812,17 @@ async function tick() {
 export function startDownloader() {
   // Crash recovery: an interrupted download restarts from the queue.
   db.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run();
+  // Older versions treated optional subtitle failures as a failed video. Give
+  // those jobs one clean run through the new video-first pipeline.
+  const recoveredSubtitleFailures = db.prepare(`
+    UPDATE downloads SET status = 'queued', error = NULL, attempts = 0
+    WHERE status = 'error' AND (
+      error LIKE '%Unable to download video subtitles%'
+      OR error LIKE '%Unable to download subtitles%'
+      OR error LIKE '%Unable to download automatic captions%'
+    )
+  `).run().changes;
+  if (recoveredSubtitleFailures > 0) log.info("downloads.subtitle_failures_requeued", { count: recoveredSubtitleFailures });
   setTimeout(() => tick().catch(() => {}), 8_000);
   setInterval(() => tick().catch(() => {}), TICK_INTERVAL_MS);
   setInterval(() => ytdlpSelfUpdate().catch(() => {}), 24 * 60 * 60_000);
