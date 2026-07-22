@@ -12,7 +12,7 @@ const upsertPlaylist = db.prepare(`
   ON CONFLICT(playlist_id) DO UPDATE SET
     channel_id = excluded.channel_id,
     title = excluded.title,
-    thumbnail = excluded.thumbnail,
+    thumbnail = CASE WHEN TRIM(excluded.thumbnail) != '' THEN excluded.thumbnail ELSE channel_playlists.thumbnail END,
     video_count = excluded.video_count,
     updated_at = datetime('now')
 `);

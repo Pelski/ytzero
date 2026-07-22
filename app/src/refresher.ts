@@ -5,6 +5,7 @@ import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
 import { log } from "./logger";
 import { ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
+import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -12,7 +13,7 @@ const upsertVideo = db.prepare(`
   ON CONFLICT(video_id) DO UPDATE SET
     title = excluded.title,
     description = excluded.description,
-    thumbnail = excluded.thumbnail,
+    thumbnail = CASE WHEN TRIM(excluded.thumbnail) != '' THEN excluded.thumbnail ELSE videos.thumbnail END,
     published_at = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN excluded.published_at ELSE videos.published_at END,
     published_at_approximate = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN 0 ELSE videos.published_at_approximate END,
     views = COALESCE(excluded.views, views),
@@ -68,9 +69,10 @@ async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh 
   const about = await fetchChannelAbout(channelId);
   const watchSubscriber = about.subscriberCount ? null : await fetchChannelSubscriberCountFromWatch(channelId).catch(() => null);
   const subscriberCount = about.subscriberCount || watchSubscriber?.subscriberCount || null;
-  const aboutForStorage = subscriberCount && subscriberCount !== about.subscriberCount
+  const aboutWithSubscriber = subscriberCount && subscriberCount !== about.subscriberCount
     ? { ...about, subscriberCount }
     : about;
+  const aboutForStorage = await preserveChannelMedia(channelId, aboutWithSubscriber);
   db.prepare(
     `UPDATE channels SET
        about_json = ?,
@@ -82,8 +84,8 @@ async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh 
      WHERE channel_id = ?`
   ).run(
     JSON.stringify(aboutForStorage),
-    about.avatar || null,
-    about.title || null,
+    aboutForStorage.avatar || null,
+    aboutForStorage.title || null,
     forceSubscriberRefresh ? 1 : 0,
     subscriberCount,
     subscriberCount,
@@ -305,7 +307,7 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(video_id) DO UPDATE SET
       title = excluded.title,
-      thumbnail = excluded.thumbnail,
+      thumbnail = CASE WHEN TRIM(excluded.thumbnail) != '' THEN excluded.thumbnail ELSE videos.thumbnail END,
       published_at = CASE
         WHEN excluded.published_at IS NULL OR excluded.published_at = '' THEN videos.published_at
         WHEN excluded.published_at_approximate = 0 THEN excluded.published_at
@@ -387,7 +389,7 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   // Throttled and capped to stay under YouTube's rate limiting (429).
   let playlistsScanned = 0;
   try {
-    const allPlaylists = await fetchChannelPlaylists(channelId);
+    const allPlaylists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId));
     saveChannelPlaylists(channelId, allPlaylists);
     const playlists = allPlaylists.slice(0, MAX_SYNC_PLAYLISTS);
     for (let i = 0; i < playlists.length; i++) {
@@ -429,33 +431,41 @@ export function syncChannel(channelId: string): Promise<{ added: number }> {
  * Fetch and save avatar + subscriber count for a small batch of channels,
  * prioritising those not checked recently. Called on a slow background timer.
  */
-export async function refreshAvatarsBatch() {
+export async function refreshAvatarsBatch(limit = 4) {
   const rows = db
     .prepare(
       `SELECT channel_id FROM channels
        WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
-       ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT 2`
+         AND COALESCE(avatar_checked_at, '1970-01-01') <= datetime('now', '-7 days')
+         AND COALESCE(avatar_refresh_attempted_at, '1970-01-01') <= datetime('now', '-6 hours')
+       ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT ?`
     )
-    .all() as { channel_id: string }[];
+    .all(limit) as { channel_id: string }[];
 
-  const markChecked = db.prepare(
-    "UPDATE channels SET avatar_checked_at = datetime('now') WHERE channel_id = ?"
+  const markAttempted = db.prepare(
+    "UPDATE channels SET avatar_refresh_attempted_at = datetime('now') WHERE channel_id = ?"
   );
   const saveAvatar = db.prepare(
-    "UPDATE channels SET thumbnail = ?, title = ?, subscriber_count = ?, avatar_checked_at = datetime('now') WHERE channel_id = ?"
+    `UPDATE channels SET
+       thumbnail = COALESCE(NULLIF(?, ''), thumbnail),
+       title = COALESCE(NULLIF(?, ''), title),
+       subscriber_count = COALESCE(NULLIF(?, ''), subscriber_count),
+       avatar_checked_at = datetime('now'),
+       avatar_refresh_attempted_at = datetime('now')
+     WHERE channel_id = ?`
   );
 
   for (let i = 0; i < rows.length; i++) {
     const { channel_id } = rows[i];
+    markAttempted.run(channel_id);
     try {
-      const about = await fetchChannelAbout(channel_id);
-      saveAvatar.run(about.avatar || null, about.title || null, about.subscriberCount || null, channel_id);
+      const about = await preserveChannelMedia(channel_id, await fetchChannelAbout(channel_id));
+      saveAvatar.run(about.avatar, about.title, about.subscriberCount, channel_id);
       log.info("channel.avatar_refreshed", { channelId: channel_id, title: about.title });
     } catch (e) {
-      markChecked.run(channel_id);
       log.warn("channel.avatar_refresh_failed", { channelId: channel_id, error: e instanceof Error ? e.message : String(e) });
     }
-    if (i < rows.length - 1) await Bun.sleep(20_000);
+    if (i < rows.length - 1) await Bun.sleep(5_000);
   }
 }
 
@@ -677,6 +687,12 @@ export function startScheduler() {
   };
   setTimeout(runFullSync, 60_000);
   log.info("scheduler.channel_full_sync", { intervalMin: fullSyncIntervalMin, batchSize: 1 });
+
+  const avatarBatch = positiveNumber(process.env.AVATAR_REFRESH_BATCH_SIZE, 4);
+  const avatarIntervalMin = positiveNumber(process.env.AVATAR_REFRESH_INTERVAL_MINUTES, 60);
+  setTimeout(() => refreshAvatarsBatch(avatarBatch).catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 120_000);
+  setInterval(() => refreshAvatarsBatch(avatarBatch).catch((e) => log.error("avatars.cron_failed", { error: e instanceof Error ? e.message : String(e) })), avatarIntervalMin * 60_000);
+  log.info("scheduler.avatar_refresh", { intervalMin: avatarIntervalMin, batchSize: avatarBatch, maxAgeDays: 7 });
 
   const liveIntervalMin = positiveNumber(process.env.LIVE_INTERVAL_MINUTES, 3);
   setTimeout(() => refreshAllLiveStatuses().catch((e) => log.error("live.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 15_000);

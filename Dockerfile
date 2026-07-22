@@ -27,6 +27,7 @@ ENV PORT=3001 \
     IDLE_TIMEOUT_SECONDS=120 \
     DB_PATH=/data/db/ytzero.db \
     IMG_CACHE_DIR=/data/imgcache \
+    IMG_CACHE_TTL_DAYS=7 \
     DOWNLOADS_DIR=/data/downloads \
     AVATAR_DIR=/data/avatars \
     LOG_PATH=/data/logs/ytzero.log \

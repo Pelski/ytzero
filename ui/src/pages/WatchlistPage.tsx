@@ -8,6 +8,7 @@ import { BUCKET_ICONS } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { Badge, EmptyState, IconButton, PageHeader, SectionHeader } from "../components/ui";
+import { img } from "../img";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 const BUCKET_ACTION_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
@@ -83,7 +84,7 @@ export default function WatchlistPage() {
                   {items.map((v) => (
                     <article key={v.video_id} className="scheduled-item">
                       <Link to={`/watch/${v.video_id}`} className="scheduled-thumb-link" aria-label={v.title} title={v.title}>
-                        <VideoThumbnail src={v.thumbnail} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="scheduled" />
+                        <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="scheduled" />
                       </Link>
                       <div className="scheduled-info">
                         <Link to={`/watch/${v.video_id}`} className="scheduled-title" title={v.title}>{v.title}</Link>

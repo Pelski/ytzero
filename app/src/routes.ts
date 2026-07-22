@@ -17,6 +17,8 @@ import {
   searchYouTube,
 } from "./youtube";
 import { getCachedImage } from "./imgcache";
+import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
+import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel } from "./refresher";
@@ -1638,8 +1640,8 @@ function ageMs(ts: string | null): number {
   return Number.isFinite(t) ? Date.now() - t : Infinity;
 }
 
-const ABOUT_DB_TTL = 3 * 24 * 60 * 60_000;
-const PLAYLISTS_DB_TTL = 3 * 24 * 60 * 60_000;
+const ABOUT_DB_TTL = 7 * 24 * 60 * 60_000;
+const PLAYLISTS_DB_TTL = 7 * 24 * 60 * 60_000;
 const CHAPTERS_DB_TTL = 7 * 24 * 60 * 60_000;
 const CREATORS_DB_TTL = 7 * 24 * 60 * 60_000;
 
@@ -1662,9 +1664,10 @@ function normalizeCachedChannelAbout(about: ChannelAbout): ChannelAbout {
 async function refreshChannelAbout(channelId: string): Promise<ChannelAbout> {
   const about = await fetchChannelAbout(channelId);
   const watchSubscriber = about.subscriberCount ? null : await fetchChannelSubscriberCountFromWatch(channelId).catch(() => null);
-  const aboutForStorage = watchSubscriber?.subscriberCount
+  const aboutWithSubscriber = watchSubscriber?.subscriberCount
     ? { ...about, subscriberCount: watchSubscriber.subscriberCount }
     : about;
+  const aboutForStorage = await preserveChannelMedia(channelId, aboutWithSubscriber);
   persistChannelAbout(channelId, aboutForStorage);
   fetchChannelVideosDurations(channelId).then((durations) => {
     const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
@@ -1736,7 +1739,7 @@ api.get("/channels/:id/about", async (c) => {
 });
 
 async function refreshChannelPlaylists(channelId: string) {
-  const playlists = await fetchChannelPlaylists(channelId);
+  const playlists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId));
   saveChannelPlaylists(channelId, playlists);
   db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now') WHERE channel_id = ?")
     .run(JSON.stringify(playlists), channelId);
@@ -1753,7 +1756,7 @@ api.get("/channels/:id/playlists", async (c) => {
       const playlists = JSON.parse(cached.playlists_json);
       // Pre-pagination cache entries commonly contain exactly YouTube's first
       // page of 30 cards. Upgrade them synchronously so this request already
-      // shows the missing playlists instead of waiting up to three days.
+      // shows the missing playlists instead of waiting for the weekly refresh.
       if (Array.isArray(playlists) && playlists.length === 30) {
         return c.json({ playlists: await refreshChannelPlaylists(channelId) });
       }
@@ -2267,13 +2270,14 @@ api.delete("/filter-rules/:id", (c) => {
 api.get("/img", async (c) => {
   const url = c.req.query("u");
   if (!url) return c.json({ error: "u required" }, 400);
+  if (!isAllowedRemoteImageUrl(url)) return c.json({ error: "unsupported image origin" }, 400);
   const img = await getCachedImage(url);
   // Nothing cached and origin failed: redirect so the browser can try directly.
   if (!img) return c.redirect(url, 302);
   return new Response(Bun.file(img.path), {
     headers: {
       "Content-Type": img.contentType,
-      "Cache-Control": "public, max-age=86400",
+      "Cache-Control": "public, max-age=604800, stale-while-revalidate=604800, stale-if-error=2592000",
     },
   });
 });

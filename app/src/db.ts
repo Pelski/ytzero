@@ -395,6 +395,7 @@ try { db.exec("ALTER TABLE videos ADD COLUMN watch_position REAL"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN subscriber_count TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN avatar_checked_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN avatar_refresh_attempted_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN show_from TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN liked INTEGER"); } catch {}
 try { db.exec("ALTER TABLE user_videos ADD COLUMN watched INTEGER"); } catch {}

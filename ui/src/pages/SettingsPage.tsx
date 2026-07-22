@@ -1899,7 +1899,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                     <tr key={ch.channel_id}>
                       <td className="shrink">
                         {ch.thumbnail ? (
-                          <img className="ch-avatar" src={ch.thumbnail} alt="" />
+                          <img className="ch-avatar" src={img(ch.thumbnail)} alt="" />
                         ) : (
                           <div className="ch-avatar ch-avatar-fallback">
                             {(ch.title || ch.channel_id).charAt(0).toUpperCase()}
