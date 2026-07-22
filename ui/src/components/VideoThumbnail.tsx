@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
 import type { ReactNode } from "react";
+import { img } from "../img";
 
 export type VideoThumbnailVariant =
   | "card"
@@ -70,7 +71,7 @@ export function VideoThumbnail({
     <span className={`video-thumbnail watched-thumbnail ${classes.frame}${watchedClass}${progressClass}`}>
       <img
         className={`video-thumbnail-image watched-thumbnail-image ${classes.image}`.trim()}
-        src={src}
+        src={img(src)}
         alt={alt}
         loading={loading}
         draggable={draggable}
