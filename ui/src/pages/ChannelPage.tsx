@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
+import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
 import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
@@ -13,7 +13,7 @@ import { formatAddedVideos, formatPlaylistVideoCount, useI18n } from "../i18n";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
 import { Button, EmptyState, Input, MenuItem, MenuSeparator, SectionHeader, SplitButton, Tabs } from "../components/ui";
 
-type Tab = "videos" | "shorts" | "playlists";
+type Tab = "videos" | "shorts" | "playlists" | "processing";
 
 // Matches the server's default /feed page size.
 const CHANNEL_PAGE_SIZE = 40;
@@ -28,8 +28,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
   const [about, setAbout] = useState<ChannelAbout | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [processingVideos, setProcessingVideos] = useState<Video[]>([]);
   const [liveStreams, setLiveStreams] = useState<Video[]>([]);
   const [videosLoading, setVideosLoading] = useState(true);
+  const [processingLoading, setProcessingLoading] = useState(true);
   const [playlists, setPlaylists] = useState<PlaylistInfo[] | null>(null);
   const [descOpen, setDescOpen] = useState(false);
   const [followed, setFollowed] = useState(false);
@@ -55,6 +57,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [processingPage, setProcessingPage] = useState(0);
+  const [processingHasMore, setProcessingHasMore] = useState(true);
+  const [processingLoadingMore, setProcessingLoadingMore] = useState(false);
   const tagMenuRef = useRef<HTMLDivElement>(null);
   const technicalMenuRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -64,10 +69,14 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     if (!id) return;
     setAbout(null);
     setVideos([]);
+    setProcessingVideos([]);
     setLiveStreams([]);
     setVideosLoading(true);
     setPage(0);
     setHasMore(true);
+    setProcessingPage(0);
+    setProcessingHasMore(true);
+    setProcessingLoading(true);
     setPlaylists(null);
     setChannelSearch("");
     setSearchVideos([]);
@@ -100,6 +109,11 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       .then((r) => { setVideos(r.videos); setHasMore(r.videos.length === CHANNEL_PAGE_SIZE); })
       .catch(console.error)
       .finally(() => setVideosLoading(false));
+    api
+      .feed({ channel: id, status: "all", shorts: true, processing: true, page: 0 })
+      .then((r) => { setProcessingVideos(r.videos); setProcessingHasMore(r.videos.length === CHANNEL_PAGE_SIZE); })
+      .catch(console.error)
+      .finally(() => setProcessingLoading(false));
     api.channelLive(id).then((r) => setLiveStreams(r.videos)).catch(console.error);
     api.channelPlaylists(id).then((r) => setPlaylists(r.playlists)).catch(() => setPlaylists([]));
     api.tags().then((r) => setAllTags(r.tags)).catch(console.error);
@@ -139,17 +153,38 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       .finally(() => setLoadingMore(false));
   }, [page]);
 
+  useEffect(() => {
+    if (!id || processingPage === 0) return;
+    setProcessingLoadingMore(true);
+    api
+      .feed({ channel: id, status: "all", shorts: true, processing: true, page: processingPage })
+      .then((r) => {
+        setProcessingVideos((prev) => [...prev, ...r.videos]);
+        setProcessingHasMore(r.videos.length === CHANNEL_PAGE_SIZE);
+      })
+      .catch(console.error)
+      .finally(() => setProcessingLoadingMore(false));
+  }, [processingPage]);
+
   // Infinite scroll: bump the page when the sentinel enters the viewport.
   useEffect(() => {
     const el = loadMoreRef.current;
-    if (!el || !hasMore || videosLoading || loadingMore) return;
+    const isProcessing = tab === "processing";
+    const canLoad = isProcessing
+      ? processingHasMore && !processingLoading && !processingLoadingMore
+      : hasMore && !videosLoading && !loadingMore;
+    if (!el || !canLoad) return;
     const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setPage((p) => p + 1); },
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        if (isProcessing) setProcessingPage((p) => p + 1);
+        else setPage((p) => p + 1);
+      },
       { rootMargin: "300px" }
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [hasMore, videosLoading, loadingMore, videos.length]);
+  }, [tab, hasMore, videosLoading, loadingMore, videos.length, processingHasMore, processingLoading, processingLoadingMore, processingVideos.length]);
 
   useEffect(() => {
     if (!tagMenuOpen) return;
@@ -234,9 +269,15 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     if (!id) return;
     setHasMore(true);
     setPage(0);
+    setProcessingHasMore(true);
+    setProcessingPage(0);
     api
       .feed({ channel: id, status: "all", shorts: true, page: 0 })
       .then((r) => { setVideos(r.videos); setHasMore(r.videos.length === CHANNEL_PAGE_SIZE); })
+      .catch(console.error);
+    api
+      .feed({ channel: id, status: "all", shorts: true, processing: true, page: 0 })
+      .then((r) => { setProcessingVideos(r.videos); setProcessingHasMore(r.videos.length === CHANNEL_PAGE_SIZE); })
       .catch(console.error);
   };
 
@@ -312,6 +353,22 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     }
   };
 
+  const handleMetadataSync = async () => {
+    if (!id || syncing) return;
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const result = await api.syncChannelMetadata(id);
+      setSyncMsg(result.updated > 0 ? t("metadataSynced", { count: result.updated }) : t("metadataComplete"));
+      reload();
+      loadAbout();
+    } catch { setSyncMsg(t("syncError")); }
+    finally {
+      setSyncing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
+  };
+
   const toggleFollow = async () => {
     if (!id) return;
     setUnfollowPending(true);
@@ -330,6 +387,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   // Prefer the server's real counts; fall back to what's loaded until they arrive.
   const videoCount = about?.counts?.videos ?? regularVideos.length;
   const shortCount = about?.counts?.shorts ?? shorts.length;
+  const processingCount = about?.counts?.processing ?? processingVideos.length;
   const searchActive = channelSearch.trim().length > 0;
   const normalizedSearch = channelSearch.trim().toLocaleLowerCase(locale);
   const matchingPlaylists = (playlists ?? []).filter((playlist) =>
@@ -394,7 +452,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             disabled={syncing}
             title={t("syncTitle")}
             menuLabel={t("moreActions")}
-            menu={<MenuItem icon={<ListRestart />} onClick={handlePlaylistCatalogSync} title={t("syncPlaylistCatalogHint")}>{t("syncPlaylistCatalog")}</MenuItem>}
+            menu={<>
+              <MenuItem icon={<ListRestart />} onClick={handlePlaylistCatalogSync} title={t("syncPlaylistCatalogHint")}>{t("syncPlaylistCatalog")}</MenuItem>
+              <MenuItem icon={<FileClock />} onClick={handleMetadataSync} title={t("syncMetadataHint")}>{t("syncMetadata")}</MenuItem>
+            </>}
           >
             <RefreshCw size={15} className={syncing ? "spin" : ""} />
             {syncing ? t("syncing") : syncMsg ?? t("syncChannel")}
@@ -579,6 +640,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             { value: "videos", label: t("videos"), icon: <VideoIcon />, count: videoCount },
             ...(shortCount > 0 ? [{ value: "shorts" as const, label: "Shorts", icon: <Zap />, count: shortCount }] : []),
             { value: "playlists", label: t("playlists"), icon: <ListVideo />, count: playlists?.length },
+            ...(processingCount > 0 ? [{ value: "processing" as const, label: t("processing"), icon: <FileClock />, count: processingCount }] : []),
           ]}
         />
         <div className="channel-content-search">
@@ -640,6 +702,20 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         )
       )}
 
+      {!searchActive && tab === "processing" && (
+        processingLoading ? (
+          <VideoGridSkeleton />
+        ) : processingVideos.length === 0 ? (
+          <EmptyState title={t("processingEmpty")} description={t("processingEmptyHint")} />
+        ) : (
+          <div className="video-grid">
+            {processingVideos.map((v) => (
+              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} showChannelAvatar={false} />
+            ))}
+          </div>
+        )
+      )}
+
       {!searchActive && tab === "playlists" &&
         (playlists === null ? (
           <VideoGridSkeleton />
@@ -672,10 +748,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           </div>
         ))}
 
-      {!searchActive && (tab === "videos" || tab === "shorts") && !videosLoading && (
+      {!searchActive && (tab === "videos" || tab === "shorts" || tab === "processing") && (tab === "processing" ? !processingLoading : !videosLoading) && (
         <>
-          {loadingMore && <VideoGridSkeleton count={4} />}
-          {hasMore && <div ref={loadMoreRef} style={{ height: 1 }} />}
+          {(tab === "processing" ? processingLoadingMore : loadingMore) && <VideoGridSkeleton count={4} />}
+          {(tab === "processing" ? processingHasMore : hasMore) && <div ref={loadMoreRef} style={{ height: 1 }} />}
         </>
       )}
     </>

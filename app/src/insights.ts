@@ -1,4 +1,6 @@
 import { db } from "./db";
+import { effectiveVideoTagsCte } from "./insightTags";
+import { summarizeCompletion } from "./insightMetrics";
 
 export const INSIGHT_RANGES = [7, 30, 90, 365] as const;
 
@@ -8,13 +10,14 @@ type WatchRow = {
   day: string;
   hour: number;
   seconds: number;
-  video_title: string;
-  video_thumbnail: string;
   channel_id: string;
   channel_title: string;
   channel_thumbnail: string;
   is_short: number | null;
   live_status: string;
+  watch_position: number | null;
+  watch_duration: number | null;
+  watched: number | null;
 };
 
 type UserRow = {
@@ -39,6 +42,14 @@ type TagHourRow = {
   key: string;
   name: string;
   hour: number;
+  seconds: number;
+};
+
+type TagDayRow = {
+  key: string;
+  name: string;
+  color: string;
+  day: string;
   seconds: number;
 };
 
@@ -71,16 +82,18 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
   if (profileId != null && !users.some((user) => user.id === profileId)) throw new Error("profile not found");
 
   const modifier = `-${days - 1} days`;
+  const rangeStart = localDay(-days + 1);
   const scopeSql = profileId == null ? "" : " AND w.user_id = ?";
   const params = profileId == null ? [modifier] : [modifier, profileId];
   const rows = db.prepare(`
     SELECT w.user_id, w.video_id, w.day, w.hour, w.seconds,
-           v.title AS video_title, v.thumbnail AS video_thumbnail,
            v.channel_id, v.is_short, v.live_status,
+           uv.watch_position, uv.watch_duration, uv.watched,
            COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail
     FROM watch_time_log w
     JOIN videos v ON v.video_id = w.video_id
     JOIN channels c ON c.channel_id = v.channel_id
+    LEFT JOIN user_videos uv ON uv.user_id = w.user_id AND uv.video_id = w.video_id
     WHERE w.day >= date('now', 'localtime', ?)${scopeSql}
   `).all(...params) as WatchRow[];
 
@@ -96,25 +109,32 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
       AND w.day < date('now', 'localtime', ?)${scopeSql}
   `).get(...previousParams) as { seconds: number };
 
-  const tagRows = db.prepare(`
-    SELECT w.user_id, lower(t.name) AS key, t.name, t.color,
+  const tagRows = db.prepare(`${effectiveVideoTagsCte}
+    SELECT w.user_id, lower(evt.name) AS key, evt.name, evt.color,
            SUM(w.seconds) AS seconds, COUNT(DISTINCT w.video_id) AS video_count
     FROM watch_time_log w
-    JOIN video_tags vt ON vt.video_id = w.video_id
-    JOIN tags t ON t.id = vt.tag_id AND t.user_id = w.user_id
+    JOIN effective_video_tags evt ON evt.video_id = w.video_id AND evt.user_id = w.user_id
     WHERE w.day >= date('now', 'localtime', ?)${scopeSql}
-    GROUP BY w.user_id, lower(t.name)
+    GROUP BY w.user_id, lower(evt.name)
   `).all(...params) as TagRow[];
 
-  const tagHourRows = db.prepare(`
-    SELECT w.user_id, lower(t.name) AS key, t.name, w.hour,
+  const tagHourRows = db.prepare(`${effectiveVideoTagsCte}
+    SELECT w.user_id, lower(evt.name) AS key, evt.name, w.hour,
            SUM(w.seconds) AS seconds
     FROM watch_time_log w
-    JOIN video_tags vt ON vt.video_id = w.video_id
-    JOIN tags t ON t.id = vt.tag_id AND t.user_id = w.user_id
+    JOIN effective_video_tags evt ON evt.video_id = w.video_id AND evt.user_id = w.user_id
     WHERE w.day >= date('now', 'localtime', ?)${scopeSql}
-    GROUP BY w.user_id, lower(t.name), w.hour
+    GROUP BY w.user_id, lower(evt.name), w.hour
   `).all(...params) as TagHourRow[];
+
+  const tagDayRows = db.prepare(`${effectiveVideoTagsCte}
+    SELECT lower(evt.name) AS key, evt.name, evt.color, w.day,
+           SUM(w.seconds) AS seconds
+    FROM watch_time_log w
+    JOIN effective_video_tags evt ON evt.video_id = w.video_id AND evt.user_id = w.user_id
+    WHERE w.day >= date('now', 'localtime', ?)${scopeSql}
+    GROUP BY lower(evt.name), w.day
+  `).all(...params) as TagDayRow[];
 
   const totalSeconds = rows.reduce((sum, row) => sum + row.seconds, 0);
   const daysMap = new Map<string, number>();
@@ -130,11 +150,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
   const profileChannels = new Map<number, Map<string, number>>();
   const channelMap = new Map<string, {
     channel_id: string; title: string; thumbnail: string; seconds: number;
-    videos: Set<string>; profiles: Map<number, number>;
-  }>();
-  const videoMap = new Map<string, {
-    video_id: string; title: string; thumbnail: string; channel_id: string;
-    channel_title: string; seconds: number; profiles: Set<number>;
+    videos: Set<string>; profiles: Map<number, number>; days: Set<string>;
   }>();
 
   for (const row of rows) {
@@ -160,24 +176,14 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     if (!channel) {
       channel = {
         channel_id: row.channel_id, title: row.channel_title, thumbnail: row.channel_thumbnail,
-        seconds: 0, videos: new Set(), profiles: new Map(),
+        seconds: 0, videos: new Set(), profiles: new Map(), days: new Set(),
       };
       channelMap.set(row.channel_id, channel);
     }
     channel.seconds += row.seconds;
     channel.videos.add(row.video_id);
+    channel.days.add(row.day);
     addToMap(channel.profiles, row.user_id, row.seconds);
-
-    let video = videoMap.get(row.video_id);
-    if (!video) {
-      video = {
-        video_id: row.video_id, title: row.video_title, thumbnail: row.video_thumbnail,
-        channel_id: row.channel_id, channel_title: row.channel_title, seconds: 0, profiles: new Set(),
-      };
-      videoMap.set(row.video_id, video);
-    }
-    video.seconds += row.seconds;
-    video.profiles.add(row.user_id);
   }
 
   const tagMap = new Map<string, { name: string; color: string; seconds: number; video_count: number; profiles: Map<number, number> }>();
@@ -223,6 +229,100 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
         .map(([user_id, seconds]) => ({ user_id, seconds: round(seconds) }))
         .sort((a, b) => b.seconds - a.seconds),
     }));
+
+  const watchedVideoRows = new Map<string, WatchRow>();
+  for (const row of rows) watchedVideoRows.set(`${row.user_id}:${row.video_id}`, row);
+  const completionItems = [...watchedVideoRows.values()].flatMap((row) => {
+    if (row.watched === 1) return [{ ...row, progress: 1 }];
+    if (row.watch_position == null || row.watch_duration == null || row.watch_duration <= 30) return [];
+    return [{ ...row, progress: Math.max(0, Math.min(1, row.watch_position / row.watch_duration)) }];
+  });
+  const completion = summarizeCompletion(completionItems.map((item) => item.progress));
+
+  const channelCompletionMap = new Map<string, {
+    channel_id: string; title: string; thumbnail: string; completed: number; total: number;
+  }>();
+  for (const item of completionItems) {
+    let channel = channelCompletionMap.get(item.channel_id);
+    if (!channel) {
+      channel = { channel_id: item.channel_id, title: item.channel_title, thumbnail: item.channel_thumbnail, completed: 0, total: 0 };
+      channelCompletionMap.set(item.channel_id, channel);
+    }
+    channel.total += 1;
+    if (item.progress >= .9) channel.completed += 1;
+  }
+  const completionChannels = [...channelCompletionMap.values()]
+    .filter((channel) => channel.total >= 2)
+    .map((channel) => ({ ...channel, completion_percent: Math.round(channel.completed / channel.total * 100) }))
+    .sort((a, b) => b.completion_percent - a.completion_percent || b.total - a.total)
+    .slice(0, 5);
+
+  const regularChannels = [...channelMap.values()]
+    .filter((channel) => channel.days.size > 1)
+    .sort((a, b) => b.days.size - a.days.size || b.seconds - a.seconds)
+    .slice(0, 5)
+    .map((channel) => ({
+      channel_id: channel.channel_id,
+      title: channel.title,
+      thumbnail: channel.thumbnail,
+      active_days: channel.days.size,
+      seconds: round(channel.seconds),
+    }));
+  const regularTagMap = new Map<string, { name: string; color: string; seconds: number; days: Set<string> }>();
+  for (const row of tagDayRows) {
+    let tag = regularTagMap.get(row.key);
+    if (!tag) {
+      tag = { name: row.name, color: row.color, seconds: 0, days: new Set() };
+      regularTagMap.set(row.key, tag);
+    }
+    tag.seconds += row.seconds;
+    tag.days.add(row.day);
+  }
+  const regularTags = [...regularTagMap.values()]
+    .filter((tag) => tag.days.size > 1)
+    .sort((a, b) => b.days.size - a.days.size || b.seconds - a.seconds)
+    .slice(0, 5)
+    .map((tag) => ({ name: tag.name, color: tag.color, active_days: tag.days.size, seconds: round(tag.seconds) }));
+
+  const firstChannelRows = db.prepare(`
+    SELECT v.channel_id, MIN(date(h.watched_at, 'localtime')) AS first_day
+    FROM history h JOIN videos v ON v.video_id = h.video_id
+    ${profileId == null ? "" : "WHERE h.user_id = ?"}
+    GROUP BY v.channel_id
+  `).all(...(profileId == null ? [] : [profileId])) as { channel_id: string; first_day: string }[];
+  const discoveryChannels = firstChannelRows
+    .filter((item) => item.first_day >= rangeStart && channelMap.has(item.channel_id))
+    .map((item) => {
+      const channel = channelMap.get(item.channel_id)!;
+      return { channel_id: item.channel_id, title: channel.title, thumbnail: channel.thumbnail, first_day: item.first_day, seconds: round(channel.seconds) };
+    })
+    .sort((a, b) => b.seconds - a.seconds)
+    .slice(0, 5);
+  const firstTagRows = db.prepare(`${effectiveVideoTagsCte}
+    SELECT lower(evt.name) AS key, evt.name, evt.color, MIN(date(h.watched_at, 'localtime')) AS first_day
+    FROM history h
+    JOIN effective_video_tags evt ON evt.video_id = h.video_id AND evt.user_id = h.user_id
+    ${profileId == null ? "" : "WHERE h.user_id = ?"}
+    GROUP BY lower(evt.name)
+  `).all(...(profileId == null ? [] : [profileId])) as { key: string; name: string; color: string; first_day: string }[];
+  const discoveryTags = firstTagRows
+    .filter((item) => item.first_day >= rangeStart && regularTagMap.has(item.key))
+    .map((item) => ({
+      name: item.name,
+      color: item.color,
+      first_day: item.first_day,
+      seconds: round(regularTagMap.get(item.key)!.seconds),
+    }))
+    .sort((a, b) => b.seconds - a.seconds)
+    .slice(0, 5);
+
+  const sharedInterests = profileId == null ? {
+    channels: [...channelMap.values()]
+      .filter((channel) => channel.profiles.size > 1)
+      .sort((a, b) => b.profiles.size - a.profiles.size || b.seconds - a.seconds)
+      .slice(0, 5)
+      .map((channel) => ({ channel_id: channel.channel_id, title: channel.title, thumbnail: channel.thumbnail, profile_count: channel.profiles.size, seconds: round(channel.seconds) })),
+  } : { channels: [] };
 
   const profileBreakdown = users
     .filter((user) => profileId == null || user.id === profileId)
@@ -276,6 +376,13 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     FROM sponsorblock_skip_log
     WHERE day >= date('now', 'localtime', ?)${profileId == null ? "" : " AND user_id = ?"}
   `).get(...sponsorParams) as { seconds: number };
+  const sponsorblockCategories = db.prepare(`
+    SELECT category, SUM(skipped_seconds) AS seconds, COUNT(*) AS skip_count
+    FROM sponsorblock_skip_log
+    WHERE day >= date('now', 'localtime', ?)${profileId == null ? "" : " AND user_id = ?"}
+    GROUP BY category
+    ORDER BY seconds DESC
+  `).all(...sponsorParams) as { category: string; seconds: number; skip_count: number }[];
 
   const tagRhythmMap = new Map<number, Map<string, { name: string; hours: number[] }>>();
   for (const row of tagHourRows) {
@@ -341,17 +448,15 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     channels,
     tags,
     tag_rhythms: tagRhythms,
-    videos: [...videoMap.values()]
-      .sort((a, b) => b.seconds - a.seconds)
-      .slice(0, 10)
-      .map((video) => ({
-        video_id: video.video_id,
-        title: video.title,
-        thumbnail: video.thumbnail,
-        channel_id: video.channel_id,
-        channel_title: video.channel_title,
-        seconds: round(video.seconds),
-        profile_count: video.profiles.size,
-      })),
+    completion,
+    completion_channels: completionChannels,
+    regular_returns: { channels: regularChannels, tags: regularTags },
+    discoveries: { channels: discoveryChannels, tags: discoveryTags },
+    shared_interests: sharedInterests,
+    sponsorblock_categories: sponsorblockCategories.map((item) => ({
+      category: item.category,
+      seconds: round(item.seconds),
+      skip_count: item.skip_count,
+    })),
   };
 }

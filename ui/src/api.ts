@@ -114,7 +114,7 @@ export interface ChannelAbout {
   viewCount: string;
   handle: string;
   /** Real video/short counts from our DB (independent of UI pagination). */
-  counts?: { videos: number; shorts: number };
+  counts?: { videos: number; shorts: number; processing: number };
 }
 
 export interface PlaylistInfo {
@@ -598,15 +598,33 @@ export interface HouseholdInsights {
       hours: { hour: number; seconds: number }[];
     }[];
   })[];
-  videos: {
-    video_id: string;
+  completion: {
+    completed: number;
+    in_progress: number;
+    brief: number;
+    total: number;
+    average_percent: number;
+  };
+  completion_channels: {
+    channel_id: string;
     title: string;
     thumbnail: string;
-    channel_id: string;
-    channel_title: string;
-    seconds: number;
-    profile_count: number;
+    completed: number;
+    total: number;
+    completion_percent: number;
   }[];
+  regular_returns: {
+    channels: { channel_id: string; title: string; thumbnail: string; active_days: number; seconds: number }[];
+    tags: { name: string; color: string; active_days: number; seconds: number }[];
+  };
+  discoveries: {
+    channels: { channel_id: string; title: string; thumbnail: string; first_day: string; seconds: number }[];
+    tags: { name: string; color: string; first_day: string; seconds: number }[];
+  };
+  shared_interests: {
+    channels: { channel_id: string; title: string; thumbnail: string; profile_count: number; seconds: number }[];
+  };
+  sponsorblock_categories: { category: string; seconds: number; skip_count: number }[];
 }
 
 export const api = {
@@ -621,6 +639,7 @@ export const api = {
     liked?: boolean;
     all_sources?: boolean;
     show_all?: boolean;
+    processing?: boolean;
     limit?: number;
   }) => {
     const qs = new URLSearchParams();
@@ -634,6 +653,7 @@ export const api = {
     if (p.liked) qs.set("liked", "1");
     if (p.all_sources) qs.set("all_sources", "1");
     if (p.show_all) qs.set("show_all", "1");
+    if (p.processing) qs.set("processing", "1");
     if (p.limit) qs.set("limit", String(p.limit));
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },
@@ -695,13 +715,15 @@ export const api = {
     return http<HouseholdInsights>(`/insights?${qs}`);
   },
   recordSponsorBlockSkip: (videoId: string, segment: SponsorSegment, skippedSeconds: number) =>
-    http<{ ok: true }>(`/videos/${videoId}/sponsorblock-skip`, {
+    http<{ ok: true; recorded: boolean }>(`/videos/${videoId}/sponsorblock-skip`, {
       method: "POST",
       body: JSON.stringify({
         event_id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        segment_uuid: segment.UUID,
+        segment_uuid: segment.UUID || `${videoId}:${segment.category}:${segment.segment[0]}:${segment.segment[1]}`,
         category: segment.category,
         skipped_seconds: skippedSeconds,
+        segment_start: segment.segment[0],
+        segment_end: segment.segment[1],
       }),
     }),
 
@@ -797,6 +819,7 @@ export const api = {
   channelAbout: (id: string) => http<ChannelAbout>(`/channels/${id}/about`),
   channelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[] }>(`/channels/${id}/playlists`),
   syncChannelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[]; count: number; synced: number; added: number; errors: number }>(`/channels/${id}/playlists/sync`, { method: "POST" }),
+  syncChannelMetadata: (id: string) => http<{ checked: number; updated: number; dates: number; durations: number; shorts: number; failed: number; remaining: number }>(`/channels/${id}/metadata/sync`, { method: "POST" }),
   channelPlaylist: (id: string) => http<{ playlist: FollowedPlaylist }>(`/channel-playlists/${id}`),
   channelPlaylistVideos: (id: string) => http<{ videos: Video[] }>(`/channel-playlists/${id}/videos`),
   followPlaylist: (id: string, followed: boolean) => http<{ followed: boolean }>(`/channel-playlists/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),

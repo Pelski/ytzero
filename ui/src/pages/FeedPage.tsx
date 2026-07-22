@@ -302,6 +302,8 @@ export default function FeedPage({
       if (bucketDiff !== 0) return bucketDiff;
       return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
     });
+  const showQueuedSection = dueQueuedVideos.length > 0 && selectedTags.length === 0;
+  const showFeedPreludeDivider = inProgress.length > 0 || showQueuedSection;
 
   if (!loading && hasSubscriptions === false) {
     return (
@@ -357,7 +359,7 @@ export default function FeedPage({
         </div>
       )}
 
-      {dueQueuedVideos.length > 0 && selectedTags.length === 0 && (
+      {showQueuedSection && (
         <div className="time-section">
           <div className="time-section-header">
             <Clock size={16} />
@@ -372,9 +374,10 @@ export default function FeedPage({
               ))}
             </div>
           </div>
-          <Divider />
         </div>
       )}
+
+      {showFeedPreludeDivider && <Divider />}
 
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton gridSize={gridSize} />

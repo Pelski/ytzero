@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, CalendarDays, Clock3, FastForward, Film, Flame, Play, Tags, TrendingDown, TrendingUp, Users } from "lucide-react";
+import { Activity, CalendarDays, CheckCircle2, Clock3, Compass, FastForward, Film, Flame, Play, Repeat2, Tags, TrendingDown, TrendingUp, Users } from "lucide-react";
 import { Link } from "react-router-dom";
-import { api, type HouseholdInsights, type InsightProfileRef } from "../api";
+import { api, SB_CATEGORIES, type HouseholdInsights, type InsightProfileRef } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
 import { EmptyState } from "../components/ui";
@@ -33,6 +33,31 @@ function ProfileAvatar({ profile, small = false }: { profile: InsightProfileRef;
       {profile.name.slice(0, 1).toUpperCase()}
     </span>
   );
+}
+
+type InsightMiniItem = {
+  key: string;
+  title: string;
+  meta: string;
+  value: string;
+  href?: string;
+  thumbnail?: string;
+  color?: string;
+  progress?: number;
+};
+
+function InsightMiniList({ title, items, empty }: { title: string; items: InsightMiniItem[]; empty?: string }) {
+  const content = (item: InsightMiniItem) => <>
+    {item.thumbnail ? <img src={img(item.thumbnail)} alt="" /> : <i style={{ backgroundColor: item.color }} />}
+    <span><strong>{item.title}</strong><small>{item.meta}</small>{item.progress != null && <em><b style={{ width: `${item.progress}%` }} /></em>}</span>
+    <b>{item.value}</b>
+  </>;
+  return <div className="insights-mini-group">
+    <h3>{title}</h3>
+    {items.length === 0 ? (empty ? <p>{empty}</p> : null) : <div className="insights-mini-list">{items.map((item) => item.href
+      ? <Link className="insights-mini-row" to={item.href} key={item.key}>{content(item)}</Link>
+      : <div className="insights-mini-row" key={item.key}>{content(item)}</div>)}</div>}
+  </div>;
 }
 
 export default function InsightsPage() {
@@ -79,6 +104,15 @@ export default function InsightsPage() {
     night: t("insightsNight"), morning: t("insightsMorning"), afternoon: t("insightsAfternoon"), evening: t("insightsEvening"),
   };
   const contentLabels: Record<string, string> = { regular: t("insightsRegular"), shorts: "Shorts", live: "Live" };
+  const completionTotal = Math.max(data.completion.total, 1);
+  const completionParts = [
+    { key: "completed", label: t("insightsCompleted"), value: data.completion.completed },
+    { key: "progress", label: t("insightsInProgress"), value: data.completion.in_progress },
+    { key: "brief", label: t("insightsBrief"), value: data.completion.brief },
+  ];
+  const formatDiscoveryDate = (day: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(new Date(`${day}T12:00:00`));
+  const hasSharedInterests = data.shared_interests.channels.length > 0;
+  const sponsorCategory = (id: string) => SB_CATEGORIES.find((category) => category.id === id);
 
   return (
     <div className="insights-page">
@@ -196,7 +230,7 @@ export default function InsightsPage() {
           <article className="insights-card">
             <div className="insights-card-head"><div><h2>{t("insightsTopTags")}</h2><p>{t("insightsTopTagsHint")}</p></div></div>
             <div className="insights-ranking-list">{data.tags.slice(0, 10).map((tag, index) => <div className="insights-ranking insights-tag-ranking" key={tag.name}>
-              <span className="insights-rank">{index + 1}</span><span className="insights-tag-dot" />
+              <span className="insights-rank">{index + 1}</span><span className="insights-tag-dot" style={{ backgroundColor: tag.color }} />
               <div className="insights-ranking-main"><div><b>{tag.name}</b><span>{tag.profile_count} {t("insightsProfilesShort")}</span></div><i><b style={{ width: `${tag.seconds / maxTag * 100}%` }} /></i></div>
               <strong>{formatDuration(tag.seconds, locale)}</strong>
             </div>)}</div>
@@ -204,12 +238,70 @@ export default function InsightsPage() {
           </article>
         </section>
 
-        <section className="insights-card">
-          <div className="insights-card-head"><div><h2>{t("insightsTopVideos")}</h2><p>{t("insightsTopVideosHint")}</p></div></div>
-          <div className="insights-videos">{data.videos.map((video, index) => <Link to={`/watch/${video.video_id}`} key={video.video_id}>
-            <span className="insights-video-rank">{index + 1}</span><img src={img(video.thumbnail)} alt="" /><div><strong>{video.title}</strong><span>{video.channel_title} · {video.profile_count} {t("insightsProfilesShort")}</span></div><b>{formatDuration(video.seconds, locale)}</b>
-          </Link>)}</div>
+        <section className="insights-grid insights-behavior-grid">
+          <article className="insights-card insights-completion-card">
+            <div className="insights-card-head"><div><h2>{t("insightsWatchingStyle")}</h2><p>{t("insightsWatchingStyleHint")}</p></div><CheckCircle2 /></div>
+            <div className="insights-completion-summary"><span>{t("insightsAverageCompletion")}</span><strong>{data.completion.average_percent}%</strong></div>
+            <div className="insights-completion-bar" aria-hidden="true">{completionParts.map((part) => <i className={`is-${part.key}`} key={part.key} style={{ width: `${part.value / completionTotal * 100}%` }} />)}</div>
+            <div className="insights-completion-legend">{completionParts.map((part) => <div className={`is-${part.key}`} key={part.key}><i /><span>{part.label}</span><strong>{part.value}</strong></div>)}</div>
+          </article>
+
+          <article className="insights-card">
+            <div className="insights-card-head"><div><h2>{t("insightsRegularReturns")}</h2><p>{t("insightsRegularReturnsHint")}</p></div><Repeat2 /></div>
+            <div className="insights-paired-lists">
+              <InsightMiniList title={t("insightsChannels")} empty={t("insightsNoRegularReturns")} items={data.regular_returns.channels.map((channel) => ({
+                key: channel.channel_id, title: channel.title, thumbnail: channel.thumbnail, href: `/channel/${channel.channel_id}`,
+                meta: t("insightsActiveDaysCount", { count: channel.active_days }), value: formatDuration(channel.seconds, locale),
+              }))} />
+              <InsightMiniList title={t("insightsTopics")} items={data.regular_returns.tags.map((tag) => ({
+                key: tag.name, title: tag.name, color: tag.color,
+                meta: t("insightsActiveDaysCount", { count: tag.active_days }), value: formatDuration(tag.seconds, locale),
+              }))} />
+            </div>
+          </article>
         </section>
+
+        <section className="insights-grid insights-behavior-grid">
+          <article className="insights-card">
+            <div className="insights-card-head"><div><h2>{t("insightsCompletionChannels")}</h2><p>{t("insightsCompletionChannelsHint")}</p></div><CheckCircle2 /></div>
+            <InsightMiniList title={t("insightsChannels")} empty={t("insightsNotEnoughCompletionData")} items={data.completion_channels.map((channel) => ({
+              key: channel.channel_id, title: channel.title, thumbnail: channel.thumbnail, href: `/channel/${channel.channel_id}`,
+              meta: t("insightsCompletedCount", { completed: channel.completed, total: channel.total }), value: `${channel.completion_percent}%`, progress: channel.completion_percent,
+            }))} />
+          </article>
+
+          <article className="insights-card">
+            <div className="insights-card-head"><div><h2>{t("insightsDiscoveries")}</h2><p>{t("insightsDiscoveriesHint")}</p></div><Compass /></div>
+            <div className="insights-paired-lists">
+              <InsightMiniList title={t("insightsChannels")} empty={t("insightsNoDiscoveries")} items={data.discoveries.channels.map((channel) => ({
+                key: channel.channel_id, title: channel.title, thumbnail: channel.thumbnail, href: `/channel/${channel.channel_id}`,
+                meta: t("insightsFirstSeen", { date: formatDiscoveryDate(channel.first_day) }), value: formatDuration(channel.seconds, locale),
+              }))} />
+              <InsightMiniList title={t("insightsTopics")} items={data.discoveries.tags.map((tag) => ({
+                key: tag.name, title: tag.name, color: tag.color,
+                meta: t("insightsFirstSeen", { date: formatDiscoveryDate(tag.first_day) }), value: formatDuration(tag.seconds, locale),
+              }))} />
+            </div>
+          </article>
+        </section>
+
+        {hasSharedInterests && <section className="insights-card">
+          <div className="insights-card-head"><div><h2>{t("insightsSharedInterests")}</h2><p>{t("insightsSharedInterestsHint")}</p></div><Users /></div>
+          <div className="insights-shared-list">
+            <InsightMiniList title={t("insightsChannels")} items={data.shared_interests.channels.map((channel) => ({
+              key: channel.channel_id, title: channel.title, thumbnail: channel.thumbnail, href: `/channel/${channel.channel_id}`,
+              meta: t("insightsProfilesCount", { count: channel.profile_count }), value: formatDuration(channel.seconds, locale),
+            }))} />
+          </div>
+        </section>}
+
+        {data.sponsorblock_categories.length > 0 && <section className="insights-card insights-sponsor-details">
+          <div className="insights-card-head"><div><h2>{t("insightsSponsorblockDetails")}</h2><p>{t("insightsSponsorblockDetailsHint")}</p></div><FastForward /></div>
+          <div className="insights-sponsor-categories">{data.sponsorblock_categories.map((item) => {
+            const category = sponsorCategory(item.category);
+            return <div key={item.category}><i style={{ backgroundColor: category?.color ?? "var(--text-2)" }} /><span><strong>{category ? t(category.labelKey) : item.category}</strong><small>{t("insightsSkipsCount", { count: item.skip_count })}</small></span><b>{formatDuration(item.seconds, locale)}</b></div>;
+          })}</div>
+        </section>}
       </>}
     </div>
   );

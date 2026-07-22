@@ -41,7 +41,10 @@ async function backfillExactPublishedDates(channelId: string) {
     SELECT video_id FROM videos
     WHERE channel_id = ?
       AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
-    ORDER BY COALESCE(published_at, '1970-01-01') DESC
+    ORDER BY
+      CASE WHEN published_at IS NULL OR published_at = '' THEN 0 ELSE 1 END,
+      created_at DESC,
+      published_at DESC
     LIMIT ?
   `).all(channelId, EXACT_DATE_BACKFILL_LIMIT) as { video_id: string }[]).map((row) => row.video_id);
   const update = db.prepare(`
@@ -105,15 +108,21 @@ async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh 
 // Playlist snapshots are sparse, while RSS is rich but short. Preserve every
 // existing rich value and fill only fields that are still missing.
 const insertPlaylistVideo = db.prepare(`
-  INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes, duration)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(video_id) DO UPDATE SET
     title = CASE WHEN TRIM(videos.title) = '' THEN excluded.title ELSE videos.title END,
     description = CASE WHEN TRIM(videos.description) = '' THEN excluded.description ELSE videos.description END,
     thumbnail = CASE WHEN TRIM(videos.thumbnail) = '' THEN excluded.thumbnail ELSE videos.thumbnail END,
     published_at = COALESCE(videos.published_at, excluded.published_at),
     views = COALESCE(excluded.views, videos.views),
-    likes = COALESCE(excluded.likes, videos.likes)
+    likes = COALESCE(excluded.likes, videos.likes),
+    duration = CASE
+      WHEN (videos.duration IS NULL OR TRIM(videos.duration) = '')
+        AND excluded.duration IS NOT NULL AND TRIM(excluded.duration) != ''
+      THEN excluded.duration
+      ELSE videos.duration
+    END
 `);
 
 const ensureChannel = db.prepare(`
@@ -176,6 +185,7 @@ export async function importPlaylistVideos(playlistId: string, force = false): P
         rich?.publishedAt || null,
         rich?.views ?? null,
         rich?.likes ?? null,
+        v.duration || null,
       );
       if (isNew) {
         applyAutoTags(v.videoId, rich?.title || v.title, rich?.description || "");
@@ -267,16 +277,19 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
   const missingDuration = db.prepare(
     `SELECT 1 FROM videos
      WHERE channel_id = ?
-       AND duration IS NULL
+       AND (duration IS NULL OR TRIM(duration) = '')
        AND live_status IN ('none', 'was_live')
        AND COALESCE(published_at, created_at) >= datetime('now', ?)
      LIMIT 1`
   ).get(channelId, VIDEO_MAINTENANCE_CUTOFF);
   if (missingDuration) {
-    fetchChannelVideosDurations(channelId).then((durations) => {
-      const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
+    try {
+      const durations = await fetchChannelVideosDurations(channelId);
+      const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND (duration IS NULL OR TRIM(duration) = '')");
       for (const d of durations) upd.run(d.duration, d.videoId);
-    }).catch(() => {});
+    } catch (error) {
+      log.warn("channel.duration_refresh_failed", { channelId, error: error instanceof Error ? error.message : String(error) });
+    }
   }
 
   if (feed.channelTitle) {
@@ -320,6 +333,127 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
     log.info("video.short_checked", { videoId: r.video_id, isShort: short });
     await Bun.sleep(120);
   }
+}
+
+export interface ChannelMetadataSyncResult {
+  checked: number;
+  updated: number;
+  dates: number;
+  durations: number;
+  shorts: number;
+  failed: number;
+  remaining: number;
+}
+
+/** Force-repair only incomplete metadata for videos already stored locally. */
+export async function syncChannelMissingMetadata(channelId: string): Promise<ChannelMetadataSyncResult> {
+  const rows = db.prepare(`
+    SELECT video_id, title, live_status, duration, published_at,
+           published_at_approximate, is_short
+    FROM videos
+    WHERE channel_id = ? AND (
+      published_at IS NULL OR published_at = '' OR published_at_approximate = 1
+      OR duration IS NULL OR duration = '' OR is_short IS NULL
+    )
+    ORDER BY created_at DESC, COALESCE(published_at, '1970-01-01') DESC
+  `).all(channelId) as {
+    video_id: string;
+    title: string;
+    live_status: string;
+    duration: string | null;
+    published_at: string | null;
+    published_at_approximate: number;
+    is_short: number | null;
+  }[];
+
+  const saveInfo = db.prepare(`
+    UPDATE videos SET
+      duration = CASE
+        WHEN ? IS NOT NULL AND ? != '' THEN ?
+        ELSE duration
+      END,
+      published_at = CASE
+        WHEN ? IS NOT NULL AND ? != '' THEN ?
+        ELSE published_at
+      END,
+      published_at_approximate = CASE
+        WHEN ? IS NOT NULL AND ? != '' THEN 0
+        ELSE published_at_approximate
+      END
+    WHERE video_id = ?
+  `);
+  const savePublishedAt = db.prepare(`
+    UPDATE videos SET published_at = ?, published_at_approximate = 0
+    WHERE video_id = ? AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
+  `);
+  const saveShort = db.prepare("UPDATE videos SET is_short = ? WHERE video_id = ? AND is_short IS NULL");
+  const updatedVideos = new Set<string>();
+  let dates = 0;
+  let durations = 0;
+  let shorts = 0;
+  let failed = 0;
+  const concurrency = 3;
+
+  for (let offset = 0; offset < rows.length; offset += concurrency) {
+    await Promise.all(rows.slice(offset, offset + concurrency).map(async (row) => {
+      let rowFailed = false;
+      const needsDate = !row.published_at || row.published_at_approximate === 1;
+      const needsDuration = !row.duration && !['live', 'upcoming'].includes(row.live_status);
+      if (needsDate || needsDuration) {
+        try {
+          const info = await fetchVideoInfo(row.video_id);
+          const result = saveInfo.run(
+            needsDuration ? info.duration : null, needsDuration ? info.duration : null, needsDuration ? info.duration : null,
+            needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null,
+            needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null,
+            row.video_id,
+          );
+          if (result.changes > 0) {
+            if (needsDuration && info.duration) durations++;
+            if (needsDate && info.publishedAt) dates++;
+            if (info.duration || info.publishedAt) updatedVideos.add(row.video_id);
+          }
+        } catch {
+          try {
+            const publishedAt = needsDate ? await fetchVideoPublishedAt(row.video_id) : null;
+            if (publishedAt && savePublishedAt.run(publishedAt, row.video_id).changes > 0) {
+              dates++;
+              updatedVideos.add(row.video_id);
+            } else if (needsDuration) {
+              rowFailed = true;
+            }
+          } catch {
+            rowFailed = true;
+          }
+        }
+      }
+
+      if (row.is_short == null) {
+        try {
+          const isShort = await checkIsShort(row.video_id, row.title);
+          if (saveShort.run(isShort ? 1 : 0, row.video_id).changes > 0) {
+            shorts++;
+            updatedVideos.add(row.video_id);
+          }
+        } catch {
+          rowFailed = true;
+        }
+      }
+      if (rowFailed) failed++;
+    }));
+    if (offset + concurrency < rows.length) await Bun.sleep(180);
+  }
+
+  const remaining = (db.prepare(`
+    SELECT COUNT(*) AS count FROM videos
+    WHERE channel_id = ? AND (
+      published_at IS NULL OR published_at = '' OR published_at_approximate = 1
+      OR duration IS NULL OR is_short IS NULL
+    )
+  `).get(channelId) as { count: number }).count;
+  const result = { checked: rows.length, updated: updatedVideos.size, dates, durations, shorts, failed, remaining };
+  log.info("channel.metadata_sync_complete", { channelId, ...result });
+  return result;
 }
 
 export async function refreshLiveStatus(channelId: string) {
@@ -453,8 +587,6 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
     }
   }
 
-  await backfillExactPublishedDates(channelId);
-
   // Also add RSS-only videos (not in scraped list) to get description + published_at
   for (const v of feed.videos) {
     if (seen.has(v.videoId)) continue;
@@ -497,6 +629,10 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   } catch (e) {
     log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   }
+
+  // Playlist pages expose durations but not publication dates. Run this after
+  // importing them so newly discovered videos are repaired in the same sync.
+  await backfillExactPublishedDates(channelId);
 
   // Mark a just-synced current stream immediately, rather than waiting for
   // the periodic live-status refresh before it can appear on the channel page.
@@ -559,16 +695,15 @@ export async function refreshAvatarsBatch(limit = 4) {
 }
 
 /**
- * Backfill `duration` for videos that don't have it yet, one video at a time
- * via the watch page (reliable `lengthSeconds`). This is the backstop for
- * recent items the per-channel /videos scrape misses: RSS-only rows and
- * externally imported "related" videos. Automatic maintenance deliberately
- * ignores old rows; opening a video still resolves its metadata on demand.
- * Videos that already have a duration are never touched. Active/upcoming live
- * videos are skipped (no fixed length yet), but completed live videos are
- * included once YouTube exposes their final length. Shorts are fine to fill —
- * the UI just hides the badge for them. Most-recent first so the active feed
- * fills before the tail.
+ * Backfill `duration` and exact publication dates one video at a time via the
+ * watch page. This is the backstop for recent items the per-channel /videos
+ * scrape misses: RSS-only rows, playlist imports and external videos.
+ * Automatic maintenance deliberately ignores old, long-settled rows, while
+ * newly imported old videos remain eligible by their import date. Videos with
+ * complete metadata are untouched. Active/upcoming live videos are skipped,
+ * while completed live videos are included once YouTube exposes final data.
+ * Most-recent imports are handled first so the active feed fills before the
+ * tail.
  *
  * Failed fetches back off exponentially (15m, 30m, ... capped at 6h) so a
  * host whose IP YouTube bot-flags doesn't retry the same videos every cron
@@ -576,33 +711,95 @@ export async function refreshAvatarsBatch(limit = 4) {
  * every video a fresh chance without any schema bookkeeping.
  */
 const durationRetry = new Map<string, { attempts: number; nextAt: number }>();
+const durationPlaylistRetry = new Map<string, number>();
 const DURATION_RETRY_BASE_MS = 15 * 60_000;
 const DURATION_RETRY_MAX_MS = 6 * 60 * 60_000;
-export async function refreshDurationsBatch(limit = 10) {
+
+/**
+ * Repair missing durations in bulk from playlist pages before falling back to
+ * one watch-page request per video. A full channel sync can discover hundreds
+ * of old videos at once; repairing the playlist they came from is both much
+ * faster and considerably gentler on YouTube than fetching every watch page.
+ */
+async function refreshPlaylistDurations(): Promise<number> {
+  const now = Date.now();
+  const candidates = db.prepare(`
+    SELECT cpv.playlist_id, COUNT(*) AS missing_count,
+           MAX(v.created_at) AS newest_import
+    FROM channel_playlist_videos cpv
+    JOIN videos v ON v.video_id = cpv.video_id
+    WHERE v.duration IS NULL
+      AND v.live_status IN ('none', 'was_live')
+      AND (v.published_at >= datetime('now', ?) OR v.created_at >= datetime('now', ?))
+    GROUP BY cpv.playlist_id
+    ORDER BY newest_import DESC, missing_count DESC
+    LIMIT 25
+  `).all(VIDEO_MAINTENANCE_CUTOFF, VIDEO_MAINTENANCE_CUTOFF) as { playlist_id: string; missing_count: number }[];
+  const candidate = candidates.find((row) => (durationPlaylistRetry.get(row.playlist_id) ?? 0) <= now);
+  if (!candidate) return 0;
+
+  try {
+    const snapshot = await fetchPlaylistSnapshot(candidate.playlist_id, true);
+    const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND (duration IS NULL OR TRIM(duration) = '')");
+    let filled = 0;
+    db.transaction((videos: typeof snapshot.videos) => {
+      for (const video of videos) {
+        if (!video.duration) continue;
+        const result = save.run(video.duration, video.videoId);
+        filled += result.changes;
+      }
+    })(snapshot.videos);
+
+    // Avoid repeatedly downloading the same large playlist when a handful of
+    // unavailable/live entries genuinely have no duration.
+    durationPlaylistRetry.set(candidate.playlist_id, now + DURATION_RETRY_MAX_MS);
+    log.info("playlist.duration_refresh_complete", {
+      playlistId: candidate.playlist_id,
+      candidates: candidate.missing_count,
+      filled,
+    });
+    return filled;
+  } catch (error) {
+    durationPlaylistRetry.set(candidate.playlist_id, now + DURATION_RETRY_BASE_MS);
+    log.warn("playlist.duration_refresh_failed", {
+      playlistId: candidate.playlist_id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return 0;
+  }
+}
+
+export async function refreshVideoMetadataBatch(limit = 10) {
+  await refreshPlaylistDurations();
   const now = Date.now();
   const candidates = db
     .prepare(
       `SELECT video_id, live_status FROM videos
-       WHERE duration IS NULL
+       WHERE (duration IS NULL OR published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
          AND live_status IN ('none', 'was_live')
-         AND COALESCE(published_at, created_at) >= datetime('now', ?)
-       ORDER BY COALESCE(published_at, '1970-01-01') DESC
+         AND (published_at >= datetime('now', ?) OR created_at >= datetime('now', ?))
+       ORDER BY created_at DESC, COALESCE(published_at, '1970-01-01') DESC
        LIMIT ?`
     )
-    .all(VIDEO_MAINTENANCE_CUTOFF, limit * 3) as { video_id: string; live_status: string }[];
+    .all(VIDEO_MAINTENANCE_CUTOFF, VIDEO_MAINTENANCE_CUTOFF, limit * 3) as { video_id: string; live_status: string }[];
   const rows = candidates
     .filter((r) => (durationRetry.get(r.video_id)?.nextAt ?? 0) <= now)
     .slice(0, limit);
   if (rows.length === 0) return;
 
   const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
+  const savePublishedAt = db.prepare(`
+    UPDATE videos SET published_at = ?, published_at_approximate = 0
+    WHERE video_id = ? AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
+  `);
   // The fetch succeeded but the video genuinely has no fixed length (e.g. a
   // live/premiere/members video): write an empty string so it reads as
   // "checked, none" and isn't retried every cron tick. Transient fetch errors
   // are left NULL on purpose so they get another chance later.
   const markNone = db.prepare("UPDATE videos SET duration = '' WHERE video_id = ? AND duration IS NULL");
 
-  let filled = 0;
+  let durationsFilled = 0;
+  let datesFilled = 0;
   for (let i = 0; i < rows.length; i++) {
     const { video_id, live_status } = rows[i];
     try {
@@ -610,15 +807,28 @@ export async function refreshDurationsBatch(limit = 10) {
       durationRetry.delete(video_id);
       if (info.duration) {
         save.run(info.duration, video_id);
-        filled++;
+        durationsFilled++;
       } else if (live_status === "none") {
         markNone.run(video_id);
       }
+      if (info.publishedAt) datesFilled += savePublishedAt.run(info.publishedAt, video_id).changes;
     } catch (e) {
+      // Restricted videos may withhold player details while still exposing a
+      // publication date in the watch-page metadata.
+      try {
+        const publishedAt = await fetchVideoPublishedAt(video_id);
+        if (publishedAt) {
+          datesFilled += savePublishedAt.run(publishedAt, video_id).changes;
+          durationRetry.delete(video_id);
+          continue;
+        }
+      } catch {
+        // Fall through to the normal transient-error retry.
+      }
       const attempts = (durationRetry.get(video_id)?.attempts ?? 0) + 1;
       const delayMs = Math.min(DURATION_RETRY_BASE_MS * 2 ** (attempts - 1), DURATION_RETRY_MAX_MS);
       durationRetry.set(video_id, { attempts, nextAt: Date.now() + delayMs });
-      log.warn("video.duration_failed", {
+      log.warn("video.metadata_failed", {
         videoId: video_id,
         error: e instanceof Error ? e.message : String(e),
         attempts,
@@ -627,7 +837,7 @@ export async function refreshDurationsBatch(limit = 10) {
     }
     if (i < rows.length - 1) await Bun.sleep(800);
   }
-  log.info("durations.batch", { checked: rows.length, filled });
+  log.info("video.metadata_batch", { checked: rows.length, durationsFilled, datesFilled });
 }
 
 let refreshing = false;
@@ -822,13 +1032,13 @@ export function startScheduler() {
   log.info("scheduler.live_refresh", { intervalMin: liveIntervalMin });
 
 
-  // Duration backfill cron: fill `duration` for videos still missing it,
-  // most-recent first, a small polite batch every few minutes.
+  // Metadata backfill: fill missing duration and publication dates,
+  // most-recently imported first, in a polite batch every few minutes.
   const durationBatch = positiveNumber(process.env.DURATION_BATCH_SIZE, 20);
   const durationIntervalMin = positiveNumber(process.env.DURATION_INTERVAL_MINUTES, 3);
-  setTimeout(() => refreshDurationsBatch(durationBatch).catch((e) => log.error("durations.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 30_000);
-  setInterval(() => refreshDurationsBatch(durationBatch).catch((e) => log.error("durations.cron_failed", { error: e instanceof Error ? e.message : String(e) })), durationIntervalMin * 60_000);
-  log.info("scheduler.duration_backfill", {
+  setTimeout(() => refreshVideoMetadataBatch(durationBatch).catch((e) => log.error("video_metadata.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 30_000);
+  setInterval(() => refreshVideoMetadataBatch(durationBatch).catch((e) => log.error("video_metadata.cron_failed", { error: e instanceof Error ? e.message : String(e) })), durationIntervalMin * 60_000);
+  log.info("scheduler.video_metadata_backfill", {
     intervalMin: durationIntervalMin,
     batchSize: durationBatch,
     maxAgeDays: VIDEO_MAINTENANCE_MAX_AGE_DAYS,

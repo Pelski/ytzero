@@ -21,7 +21,7 @@ import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelPlaylists, syncPlaylist } from "./refresher";
+import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelMissingMetadata, syncChannelPlaylists, syncPlaylist } from "./refresher";
 import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
@@ -344,6 +344,17 @@ function attachTags(uid: number, videos: VideoRow[]) {
        JOIN tags t ON t.id = ct.tag_id AND t.user_id = ? WHERE ct.channel_id IN (${chPh})`
     )
     .all(uid, ...channelIds) as any[];
+  const playlistChannelTags = db
+    .prepare(
+      `SELECT DISTINCT cpv.video_id, t.id, t.name, t.color, t.filter_only
+       FROM channel_playlist_videos cpv
+       JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
+       JOIN user_followed_playlists ufp ON ufp.playlist_id = cp.playlist_id AND ufp.user_id = ?
+       JOIN channel_tags ct ON ct.channel_id = cp.channel_id
+       JOIN tags t ON t.id = ct.tag_id AND t.user_id = ?
+       WHERE cpv.video_id IN (${ph})`
+    )
+    .all(uid, uid, ...ids) as any[];
 
   return videos.map((v) => {
     const own = videoTags
@@ -352,10 +363,13 @@ function attachTags(uid: number, videos: VideoRow[]) {
     const inherited = channelTags
       .filter((t) => t.channel_id === v.channel_id && !own.some((o) => o.id === t.id))
       .map((t) => ({ id: t.id, name: t.name, color: t.color, filter_only: t.filter_only, source: "channel" }));
+    const playlistInherited = playlistChannelTags
+      .filter((t) => t.video_id === v.video_id && !own.some((o) => o.id === t.id) && !inherited.some((i) => i.id === t.id))
+      .map((t) => ({ id: t.id, name: t.name, color: t.color, filter_only: t.filter_only, source: "channel" }));
     const download_progress = (v as any).download_status === "downloading" && dlProgress?.video_id === v.video_id
       ? dlProgress.percent
       : null;
-    return { ...v, downloads_enabled: downloadsEnabled, downloads_allowed: downloadsAllowed, download_progress, tags: [...own, ...inherited] };
+    return { ...v, downloads_enabled: downloadsEnabled, downloads_allowed: downloadsAllowed, download_progress, tags: [...own, ...inherited, ...playlistInherited] };
   });
 }
 
@@ -367,12 +381,30 @@ function filterOnlySql(uid: number, tagIds: number[]) {
   // Channel-level: exclude only when channel has (user's) tags and every one of them is filter_only.
   const noChannelFO = `(NOT EXISTS (SELECT 1 FROM channel_tags ct2 JOIN tags t2 ON t2.id = ct2.tag_id AND t2.user_id = ${uid} WHERE ct2.channel_id = v.channel_id)
      OR EXISTS (SELECT 1 FROM channel_tags ct2 JOIN tags t2 ON t2.id = ct2.tag_id AND t2.user_id = ${uid} WHERE ct2.channel_id = v.channel_id AND t2.filter_only = 0))`;
-  const noFO = `(${noVideoFO} AND ${noChannelFO})`;
+  const noPlaylistChannelFO = `NOT EXISTS (
+    SELECT 1 FROM channel_playlist_videos cpv2
+    JOIN channel_playlists cp2 ON cp2.playlist_id = cpv2.playlist_id
+    JOIN user_followed_playlists ufp2 ON ufp2.playlist_id = cp2.playlist_id AND ufp2.user_id = ${uid}
+    WHERE cpv2.video_id = v.video_id
+      AND EXISTS (SELECT 1 FROM channel_tags ct4 JOIN tags t4 ON t4.id = ct4.tag_id AND t4.user_id = ${uid} WHERE ct4.channel_id = cp2.channel_id)
+      AND NOT EXISTS (SELECT 1 FROM channel_tags ct5 JOIN tags t5 ON t5.id = ct5.tag_id AND t5.user_id = ${uid} WHERE ct5.channel_id = cp2.channel_id AND t5.filter_only = 0)
+  )`;
+  const noFO = `(${noVideoFO} AND ${noChannelFO} AND ${noPlaylistChannelFO})`;
   if (tagIds.length === 0) return { sql: noFO, params: [] };
   const ph = tagIds.map(() => "?").join(",");
   return {
-    sql: `(${noFO} OR EXISTS (SELECT 1 FROM video_tags vt3 JOIN tags t3 ON t3.id = vt3.tag_id AND t3.user_id = ${uid} WHERE vt3.video_id = v.video_id AND t3.filter_only = 1 AND t3.id IN (${ph})) OR EXISTS (SELECT 1 FROM channel_tags ct3 JOIN tags t3 ON t3.id = ct3.tag_id AND t3.user_id = ${uid} WHERE ct3.channel_id = v.channel_id AND t3.filter_only = 1 AND t3.id IN (${ph})))`,
-    params: [...tagIds, ...tagIds],
+    sql: `(${noFO}
+      OR EXISTS (SELECT 1 FROM video_tags vt3 JOIN tags t3 ON t3.id = vt3.tag_id AND t3.user_id = ${uid} WHERE vt3.video_id = v.video_id AND t3.filter_only = 1 AND t3.id IN (${ph}))
+      OR EXISTS (SELECT 1 FROM channel_tags ct3 JOIN tags t3 ON t3.id = ct3.tag_id AND t3.user_id = ${uid} WHERE ct3.channel_id = v.channel_id AND t3.filter_only = 1 AND t3.id IN (${ph}))
+      OR EXISTS (
+        SELECT 1 FROM channel_playlist_videos cpv3
+        JOIN channel_playlists cp3 ON cp3.playlist_id = cpv3.playlist_id
+        JOIN user_followed_playlists ufp3 ON ufp3.playlist_id = cp3.playlist_id AND ufp3.user_id = ${uid}
+        JOIN channel_tags ct6 ON ct6.channel_id = cp3.channel_id
+        JOIN tags t6 ON t6.id = ct6.tag_id AND t6.user_id = ${uid}
+        WHERE cpv3.video_id = v.video_id AND t6.filter_only = 1 AND t6.id IN (${ph})
+      ))`,
+    params: [...tagIds, ...tagIds, ...tagIds],
   };
 }
 
@@ -381,8 +413,16 @@ function tagFilterSql(uid: number, tagIds: number[]) {
   const ph = tagIds.map(() => "?").join(",");
   return {
     sql: `(EXISTS (SELECT 1 FROM video_tags vt JOIN tags t ON t.id = vt.tag_id AND t.user_id = ${uid} WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
-       OR EXISTS (SELECT 1 FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id AND t.user_id = ${uid} WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))`,
-    params: [...tagIds, ...tagIds],
+       OR EXISTS (SELECT 1 FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id AND t.user_id = ${uid} WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph}))
+       OR EXISTS (
+         SELECT 1 FROM channel_playlist_videos cpv
+         JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
+         JOIN user_followed_playlists ufp ON ufp.playlist_id = cp.playlist_id AND ufp.user_id = ${uid}
+         JOIN channel_tags ct ON ct.channel_id = cp.channel_id
+         JOIN tags t ON t.id = ct.tag_id AND t.user_id = ${uid}
+         WHERE cpv.video_id = v.video_id AND ct.tag_id IN (${ph})
+       ))`,
+    params: [...tagIds, ...tagIds, ...tagIds],
   };
 }
 
@@ -400,13 +440,13 @@ function videoSelect(uid: number) {
           FROM channel_playlist_videos cpv
           JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
           JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id AND ufp.user_id = ${uid}
-          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
+          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1
           ORDER BY cpv.discovered_at DESC LIMIT 1) AS source_playlist_title,
          (SELECT cp.playlist_id
           FROM channel_playlist_videos cpv
           JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
           JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id AND ufp.user_id = ${uid}
-          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
+          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1
           ORDER BY cpv.discovered_at DESC LIMIT 1) AS source_playlist_id,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
          (SELECT d.status FROM downloads d WHERE d.video_id = v.video_id AND d.status != 'deleted') AS download_status,
@@ -425,17 +465,15 @@ function followedPlaylistExists(uid: number) {
     SELECT 1 FROM channel_playlist_videos cpv
     JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id
     WHERE cpv.video_id = v.video_id AND ufp.user_id = ${uid}
-      AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
+      AND ufp.include_in_feed = 1
   )`;
 }
 
-function feedSortSql(uid: number) {
-  return `COALESCE((
-    SELECT MAX(cpv.discovered_at) FROM channel_playlist_videos cpv
-    JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id
-    WHERE cpv.video_id = v.video_id AND ufp.user_id = ${uid}
-      AND ufp.include_in_feed = 1 AND cpv.discovered_at > ufp.feed_from
-  ), v.published_at, v.created_at)`;
+function feedSortSql() {
+  // Playlist membership must not make old videos look newly published. The
+  // feed already excludes incomplete rows, so the real publication date is
+  // always available here.
+  return "v.published_at";
 }
 
 function localSQLite(d: Date): string {
@@ -485,9 +523,17 @@ api.get("/feed", (c) => {
   const tagsParam = c.req.query("tags"); // comma-separated tag ids
   const status = c.req.query("status") ?? "inbox"; // inbox | all
   const allSources = c.req.query("all_sources") === "1";
+  const processing = c.req.query("processing") === "1";
+  if (processing && !channel) return c.json({ videos: [], page, limit });
 
   const where: string[] = [];
   const params: any[] = [];
+  // Videos without a publication date are incomplete imports. Never let them
+  // use created_at as a fake feed date; expose them only through the channel's
+  // dedicated processing tab.
+  where.push(processing
+    ? "(v.published_at IS NULL OR v.published_at = '')"
+    : "(v.published_at IS NOT NULL AND v.published_at != '')");
   if (status !== "all") {
     where.push("COALESCE(uv.status, 'inbox') = ?");
     params.push(status);
@@ -518,7 +564,7 @@ api.get("/feed", (c) => {
   }
   // This preference applies only to the main feed. Search, dedicated views and
   // the channel page keep members-only videos discoverable.
-  const isMainFeed = !channel && !allSources && !q && c.req.query("liked") !== "1" && c.req.query("only_shorts") !== "1";
+  const isMainFeed = !processing && !channel && !allSources && !q && c.req.query("liked") !== "1" && c.req.query("only_shorts") !== "1";
   if (isMainFeed) {
     where.push(`NOT (
       v.members_only = 1 AND COALESCE(
@@ -548,7 +594,7 @@ api.get("/feed", (c) => {
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = db
-    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${isMainFeed ? feedSortSql(uid) : "COALESCE(v.published_at, v.created_at)"} DESC LIMIT ? OFFSET ?`)
+    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${isMainFeed ? feedSortSql() : "COALESCE(v.published_at, v.created_at)"} DESC LIMIT ? OFFSET ?`)
     .all(...params, limit, page * limit) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows), page, limit });
 });
@@ -558,7 +604,8 @@ api.get("/in-progress", (c) => {
   const rows = db.prepare(`
     ${videoSelect(uid)}
     JOIN (SELECT video_id, MAX(watched_at) AS last_watched FROM history WHERE user_id = ${uid} GROUP BY video_id) lw ON lw.video_id = v.video_id
-    WHERE uv.watch_position IS NOT NULL AND uv.watch_duration IS NOT NULL
+    WHERE v.published_at IS NOT NULL AND v.published_at != ''
+      AND uv.watch_position IS NOT NULL AND uv.watch_duration IS NOT NULL
       AND uv.watch_duration > 30
       AND uv.watch_position >= 3
       AND CAST(uv.watch_position AS REAL) / uv.watch_duration < 0.92
@@ -736,20 +783,27 @@ api.get("/insights", (c) => {
 api.post("/videos/:id/sponsorblock-skip", async (c) => {
   const videoId = c.req.param("id");
   const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
-  const eventId = typeof body.event_id === "string" ? body.event_id : "";
-  const segmentUuid = typeof body.segment_uuid === "string" ? body.segment_uuid : "";
+  const uid = currentUserId(c);
   const category = typeof body.category === "string" ? body.category : "";
   const seconds = Number(body.skipped_seconds);
-  if (!eventId || eventId.length > 100 || !segmentUuid || segmentUuid.length > 100 ||
-      !category || category.length > 50 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 21_600) {
+  const segmentStart = Number(body.segment_start);
+  const segmentEnd = Number(body.segment_end);
+  const suppliedSegmentUuid = typeof body.segment_uuid === "string" ? body.segment_uuid.trim() : "";
+  const segmentUuid = suppliedSegmentUuid || `${videoId}:${category}:${segmentStart}:${segmentEnd}`;
+  const suppliedEventId = typeof body.event_id === "string" ? body.event_id.trim() : "";
+  const eventId = suppliedEventId || `${uid}:${videoId}:${segmentUuid}:${Date.now()}`;
+  if (!category || category.length > 50 || !Number.isFinite(seconds) || seconds <= 0 || seconds > 21_600 ||
+      segmentUuid.length > 240 || eventId.length > 400) {
     return c.json({ error: "invalid SponsorBlock skip" }, 400);
   }
-  db.prepare(`
+  const result = db.prepare(`
     INSERT OR IGNORE INTO sponsorblock_skip_log
       (event_id, user_id, video_id, segment_uuid, category, skipped_seconds)
     VALUES (?, ?, ?, ?, ?, ?)
-  `).run(eventId, currentUserId(c), videoId, segmentUuid, category, seconds);
-  return c.json({ ok: true });
+  `).run(eventId, uid, videoId, segmentUuid, category, seconds);
+  const recorded = result.changes > 0;
+  if (recorded) log.info("sponsorblock.skip_recorded", { userId: uid, videoId, category, seconds });
+  return c.json({ ok: true, recorded });
 });
 
 // ---------- built-in plugins ----------
@@ -1298,7 +1352,7 @@ api.get("/videos/:id", (c) => {
     const tagIds = tagRows.map((t) => t.tag_id);
     const ph = tagIds.map(() => "?").join(",");
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.video_id != ? AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
@@ -1308,7 +1362,7 @@ api.get("/videos/:id", (c) => {
   // Step 2 — same channel, fill what's missing
   if (need() > 0) {
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id != ? AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id != ? AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(row.channel_id, row.video_id, need() * 2) as VideoRow[]);
   }
@@ -1319,7 +1373,7 @@ api.get("/videos/:id", (c) => {
     const ph = tagIds.map(() => "?").join(",");
     const seenPh = [...seen].map(() => "?").join(",");
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
@@ -1330,7 +1384,7 @@ api.get("/videos/:id", (c) => {
   if (need() > 0) {
     const seenPh = [...seen].map(() => "?").join(",");
     fill(db.prepare(
-      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(...seen, need() * 2) as VideoRow[]);
   }
@@ -1715,10 +1769,14 @@ api.get("/channels/:id/about", async (c) => {
   const channelId = c.req.param("id");
   // Real counts from our own data — stable regardless of how many pages the
   // UI has loaded (NULL is_short counts as a regular video, matching the UI).
-  const row = db.prepare(
-    "SELECT COUNT(*) AS total, COALESCE(SUM(is_short = 1), 0) AS shorts FROM videos WHERE channel_id = ?"
-  ).get(channelId) as { total: number; shorts: number };
-  const counts = { videos: row.total - row.shorts, shorts: row.shorts };
+  const row = db.prepare(`
+    SELECT
+      COALESCE(SUM(published_at IS NOT NULL AND published_at != '' AND COALESCE(is_short, 0) = 0), 0) AS videos,
+      COALESCE(SUM(published_at IS NOT NULL AND published_at != '' AND is_short = 1), 0) AS shorts,
+      COALESCE(SUM(published_at IS NULL OR published_at = ''), 0) AS processing
+    FROM videos WHERE channel_id = ?
+  `).get(channelId) as { videos: number; shorts: number; processing: number };
+  const counts = row;
   // The channel page header shows the custom name too; the scraped about
   // payload keeps the original underneath.
   const customTitle = (db.prepare("SELECT custom_title FROM channels WHERE channel_id = ?").get(channelId) as { custom_title: string | null } | null)?.custom_title ?? null;
@@ -1840,6 +1898,16 @@ api.post("/channels/:id/playlists/sync", async (c) => {
       playlists: attachPlaylistFollowState(currentUserId(c), result.playlists),
     });
   } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
+  }
+});
+
+api.post("/channels/:id/metadata/sync", async (c) => {
+  const channelId = c.req.param("id");
+  try {
+    return c.json({ ok: true, ...(await syncChannelMissingMetadata(channelId)) });
+  } catch (e) {
+    log.error("channel.metadata_sync_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
 });
@@ -2059,7 +2127,7 @@ api.get("/channel-playlists/:id/videos", async (c) => {
   }
   const rows = db.prepare(`${videoSelect(uid)}
     JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
-    WHERE cpv.playlist_id = ?
+    WHERE cpv.playlist_id = ? AND v.published_at IS NOT NULL AND v.published_at != ''
     ORDER BY cpv.position ASC`).all(id) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows) });
 });
@@ -2126,6 +2194,7 @@ api.get("/followed-playlists/updates", (c) => {
     const rows = db.prepare(`${videoSelect(uid)}
       JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
       WHERE cpv.playlist_id = ?
+        AND v.published_at IS NOT NULL AND v.published_at != ''
         AND cpv.discovered_at > ?
         AND COALESCE(uv.watched, 0) = 0
         AND NOT EXISTS (
