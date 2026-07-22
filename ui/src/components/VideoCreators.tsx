@@ -18,42 +18,52 @@ export default function VideoCreators({ creators }: { creators: VideoCreator[] }
 
   const visibleAvatars = creators.slice(0, 3);
   const multiple = creators.length > 1;
+  const triggerContent = <>
+    <span className="video-creators-avatars" aria-hidden="true">
+      {visibleAvatars.map((creator, index) => (
+        <span
+          className="video-creators-avatar-link"
+          style={{ zIndex: visibleAvatars.length - index }}
+          key={creator.channelId}
+        >
+          {creator.avatar ? <img className="watch-ch-avatar" src={img(creator.avatar)} alt="" /> : <span className="watch-ch-avatar video-creators-avatar-placeholder" />}
+        </span>
+      ))}
+      {creators.length > visibleAvatars.length && (
+        <span className="video-creators-avatar-more">+{creators.length - visibleAvatars.length}</span>
+      )}
+    </span>
+    <span className="video-creators-copy">
+      <span className="video-creators-names">
+        {creators.map((creator, index) => (
+          <span key={creator.channelId}>
+            {separator(index, creators.length, language)}
+            <span className="name channel-link">{creator.title}</span>
+          </span>
+        ))}
+      </span>
+      {multiple ? (
+        <span className="sub">{t("videoCollaborators")}</span>
+      ) : creators[0].subscriberCount ? (
+        <span className="sub">{creators[0].subscriberCount} {t("subscribers")}</span>
+      ) : null}
+    </span>
+  </>;
+
+  if (!multiple) {
+    return <Link to={`/channel/${creators[0].channelId}`} className="watch-channel-top video-creators video-creators-trigger" aria-label={creators[0].title}>
+      {triggerContent}
+    </Link>;
+  }
+
   return <FloatingPopover
     open={open}
     onOpenChange={setOpen}
     align="start"
     className="video-creators-popover"
     trigger={(
-      <button type="button" className={`watch-channel-top video-creators video-creators-trigger${multiple ? " video-creators--multiple" : ""}`} aria-label={t("videoCreatorsTitle")}>
-        <span className="video-creators-avatars" aria-hidden="true">
-          {visibleAvatars.map((creator, index) => (
-            <span
-              className="video-creators-avatar-link"
-              style={{ zIndex: visibleAvatars.length - index }}
-              key={creator.channelId}
-            >
-              {creator.avatar ? <img className="watch-ch-avatar" src={img(creator.avatar)} alt="" /> : <span className="watch-ch-avatar video-creators-avatar-placeholder" />}
-            </span>
-          ))}
-          {creators.length > visibleAvatars.length && (
-            <span className="video-creators-avatar-more">+{creators.length - visibleAvatars.length}</span>
-          )}
-        </span>
-        <span className="video-creators-copy">
-          <span className="video-creators-names">
-            {creators.map((creator, index) => (
-              <span key={creator.channelId}>
-                {separator(index, creators.length, language)}
-                <span className="name channel-link">{creator.title}</span>
-              </span>
-            ))}
-          </span>
-          {multiple ? (
-            <span className="sub">{t("videoCollaborators")}</span>
-          ) : creators[0].subscriberCount ? (
-            <span className="sub">{creators[0].subscriberCount} {t("subscribers")}</span>
-          ) : null}
-        </span>
+      <button type="button" className="watch-channel-top video-creators video-creators-trigger video-creators--multiple" aria-label={t("videoCreatorsTitle")}>
+        {triggerContent}
       </button>
     )}
   >

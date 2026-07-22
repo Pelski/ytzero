@@ -2932,6 +2932,7 @@ button.video-card:disabled { cursor: default; }
   color: inherit;
   cursor: pointer;
   font: inherit;
+  text-decoration: none;
   text-align: left;
 }
 .video-creators-trigger:focus-visible {
