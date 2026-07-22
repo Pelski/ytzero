@@ -1,0 +1,34 @@
+/* ---------- child profiles: time lock & requests ---------- */
+.child-lock-screen {
+  position: fixed; inset: 0; z-index: 190; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 40px; padding: 24px; text-align: center;
+}
+.child-lock-center { display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 460px; }
+.child-lock-icon { color: var(--accent); opacity: 0.9; margin-bottom: 6px; }
+.child-lock-title { font-size: 24px; font-weight: 700; margin: 0; }
+.child-lock-text { font-size: 15px; color: var(--text-2); line-height: 1.55; margin: 0; }
+.child-lock-ask { margin-top: 10px; }
+.child-lock-sent { margin-top: 10px; font-size: 14px; color: var(--text-2); }
+.child-lock-profiles { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.child-lock-profiles-label { font-size: 13px; color: var(--text-2); }
+.child-lock-profiles-row { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+.child-lock-profile {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  background: none; border: none; cursor: pointer; color: var(--text);
+  padding: 10px; border-radius: 12px;
+}
+.child-lock-profile:hover { background: var(--surface); }
+.child-lock-profile-name { font-size: 13px; display: flex; align-items: center; gap: 4px; color: var(--text-2); }
+/* The lock overlay sits at z-index 190, so its PIN modal (z-index 200) stays on top. */
+
+.child-time-banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  background: var(--surface); border: 1px solid var(--accent);
+  border-radius: 12px; padding: 14px 16px; margin-bottom: 16px;
+}
+.child-time-banner-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.child-time-banner-title { font-size: 14px; font-weight: 600; }
+.child-time-banner-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.child-time-banner-close { flex-shrink: 0; }
+

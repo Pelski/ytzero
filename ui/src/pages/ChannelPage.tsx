@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import "./ChannelPage.css";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
-import { api, type ChannelAbout, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
+import { api, type ChannelAbout, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
+import TagPickerMenu from "../components/TagPickerMenu";
 import Tooltip from "../components/Tooltip";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
@@ -11,7 +13,7 @@ import { img } from "../img";
 import { emit } from "../events";
 import { formatAddedVideos, formatPlaylistVideoCount, useI18n } from "../i18n";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
-import { Button, EmptyState, Input, MenuItem, MenuSeparator, SectionHeader, SplitButton, Tabs } from "../components/ui";
+import { Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
 
 type Tab = "videos" | "shorts" | "playlists" | "processing";
 
@@ -41,11 +43,12 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [downloadsEnabled, setDownloadsEnabled] = useState(false);
   const [captionMode, setCaptionMode] = useState<"off" | "language" | null>(null);
   const [captionLanguage, setCaptionLanguage] = useState<string | null>(null);
-  const [hideMembersOnlyFromFeed, setHideMembersOnlyFromFeed] = useState<boolean | null>(null);
+  const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("default");
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "downloads" | "members">("root");
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
+  const [tagsLoading, setTagsLoading] = useState(true);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
@@ -60,8 +63,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [processingPage, setProcessingPage] = useState(0);
   const [processingHasMore, setProcessingHasMore] = useState(true);
   const [processingLoadingMore, setProcessingLoadingMore] = useState(false);
-  const tagMenuRef = useRef<HTMLDivElement>(null);
-  const technicalMenuRef = useRef<HTMLDivElement>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | undefined>(undefined);
 
@@ -92,7 +93,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     setAutoDownloadMinDuration(null);
     setCaptionMode(null);
     setCaptionLanguage(null);
-    setHideMembersOnlyFromFeed(null);
+    setMembersOnlyVisibility("default");
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
     api.channel(id).then((r) => {
@@ -102,7 +103,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setAutoDownloadMinDuration(r.channel.auto_download_min_duration_override ?? null);
       setCaptionMode(r.channel.caption_mode ?? null);
       setCaptionLanguage(r.channel.caption_language ?? null);
-      setHideMembersOnlyFromFeed(r.channel.hide_members_only_from_feed == null ? null : r.channel.hide_members_only_from_feed === 1);
+      setMembersOnlyVisibility(r.channel.members_only_visibility ?? "default");
     }).catch(console.error);
     api
       .feed({ channel: id, status: "all", shorts: true, page: 0 })
@@ -116,7 +117,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       .finally(() => setProcessingLoading(false));
     api.channelLive(id).then((r) => setLiveStreams(r.videos)).catch(console.error);
     api.channelPlaylists(id).then((r) => setPlaylists(r.playlists)).catch(() => setPlaylists([]));
-    api.tags().then((r) => setAllTags(r.tags)).catch(console.error);
+    setTagsLoading(true);
+    api.tags().then((r) => setAllTags(r.tags)).catch(console.error).finally(() => setTagsLoading(false));
     api.plugins().then((r) => setDownloadsEnabled(r.plugins.some((plugin) => plugin.id === "downloads" && plugin.enabled))).catch(console.error);
   }, [id]);
 
@@ -187,24 +189,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   }, [tab, hasMore, videosLoading, loadingMore, videos.length, processingHasMore, processingLoading, processingLoadingMore, processingVideos.length]);
 
   useEffect(() => {
-    if (!tagMenuOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!tagMenuRef.current?.contains(e.target as Node)) setTagMenuOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [tagMenuOpen]);
-
-  useEffect(() => {
-    if (!technicalOpen) return;
-    const close = (e: MouseEvent) => {
-      if (!technicalMenuRef.current?.contains(e.target as Node)) setTechnicalOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [technicalOpen]);
-
-  useEffect(() => {
     if (!technicalOpen) setTechnicalView("root");
   }, [technicalOpen]);
 
@@ -236,20 +220,23 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       ? subtitleLanguageLabel(captionLanguage)
       : t("channelSettingDefault");
 
-  const membersOnlyFeedLabel = hideMembersOnlyFromFeed == null
-    ? t("channelSettingDefault")
-    : hideMembersOnlyFromFeed
-      ? t("channelMembersOnlyHidden")
-      : t("channelMembersOnlyVisible");
+  const membersOnlyFeedLabel = {
+    default: t("channelSettingDefault"),
+    everywhere: t("channelMembersOnlyEverywhere"),
+    channel: t("channelMembersOnlyChannelOnly"),
+    hidden: t("channelMembersOnlyNowhere"),
+  }[membersOnlyVisibility];
 
-  const changeMembersOnlyFeed = (hide: boolean | null) => {
+  const changeMembersOnlyVisibility = (visibility: MembersOnlyVisibility) => {
     if (!id) return;
-    const previous = hideMembersOnlyFromFeed;
-    setHideMembersOnlyFromFeed(hide);
-    api.setChannelMembersOnlyFeed(id, hide).catch((error) => {
-      setHideMembersOnlyFromFeed(previous);
-      console.error(error);
-    });
+    const previous = membersOnlyVisibility;
+    setMembersOnlyVisibility(visibility);
+    api.setChannelMembersOnlyVisibility(id, visibility)
+      .then(reload)
+      .catch((error) => {
+        setMembersOnlyVisibility(previous);
+        console.error(error);
+      });
   };
 
   const changeCaptions = (mode: "off" | "language" | null, language?: string) => {
@@ -457,49 +444,46 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
               <MenuItem icon={<FileClock />} onClick={handleMetadataSync} title={t("syncMetadataHint")}>{t("syncMetadata")}</MenuItem>
             </>}
           >
-            <RefreshCw size={15} className={syncing ? "spin" : ""} />
+            <RefreshCw size={15} className={syncing ? "channel-spin" : ""} />
             {syncing ? t("syncing") : syncMsg ?? t("syncChannel")}
           </SplitButton>
-          <button
-            className={`btn${followed ? " danger" : " primary"}`}
+          <Button
+            variant={followed ? "danger" : "primary"}
             onClick={toggleFollow}
             disabled={unfollowPending}
             title={followed ? t("unfollow") : t("followAgain")}
           >
             {followed ? <UserMinus size={15} /> : <UserPlus size={15} />}
             {followed ? t("unfollow") : t("follow")}
-          </button>
-          <div className="dropdown" ref={technicalMenuRef}>
-            <button
-              className={`btn icon-only${technicalOpen ? " active" : ""}`}
-              onClick={() => setTechnicalOpen((open) => !open)}
-              title={t("channelTechnicalSettings")}
-              aria-label={t("channelTechnicalSettings")}
-              aria-expanded={technicalOpen}
-            >
-              <SlidersHorizontal size={16} />
-            </button>
-            {technicalOpen && (
-              <div className="dropdown-menu more-menu channel-technical-menu">
+          </Button>
+          <Popover
+            align="end"
+            surface="menu"
+            open={technicalOpen}
+            onOpenChange={setTechnicalOpen}
+            className="channel-technical-popover"
+            trigger={<IconButton variant={technicalOpen ? "secondary" : "default"} label={t("channelTechnicalSettings")}><SlidersHorizontal size={16} /></IconButton>}
+          >
+              <Menu className="channel-technical-menu">
                 {technicalView === "root" && (
                   <>
                     <div className="more-menu-section-label">{t("channelPlayback")}</div>
                     <button className="channel-technical-item" onClick={() => setTechnicalView("speed")}>
-                      <Gauge /> <span>{t("channelSpeed")}</span><span className="dropdown-menu-status">{channelSpeed ? `${channelSpeed}×` : t("channelSettingDefault")}</span><ChevronRight />
+                      <Gauge /> <span>{t("channelSpeed")}</span><MenuStatus>{channelSpeed ? `${channelSpeed}×` : t("channelSettingDefault")}</MenuStatus><ChevronRight />
                     </button>
                     <button className="channel-technical-item" onClick={() => setTechnicalView("captions")}>
-                      <Captions /> <span>{t("subtitles")}</span><span className="dropdown-menu-status">{captionsLabel}</span><ChevronRight />
+                      <Captions /> <span>{t("subtitles")}</span><MenuStatus>{captionsLabel}</MenuStatus><ChevronRight />
                     </button>
                     <MenuSeparator />
                     <div className="more-menu-section-label">{t("channelFeed")}</div>
                     <button className="channel-technical-item" onClick={() => setTechnicalView("members")}>
-                      <Star /> <span>{t("channelMembersOnlyFeed")}</span><span className="dropdown-menu-status">{membersOnlyFeedLabel}</span><ChevronRight />
+                      <Star /> <span>{t("channelMembersOnlyFeed")}</span><MenuStatus>{membersOnlyFeedLabel}</MenuStatus><ChevronRight />
                     </button>
                     {downloadsEnabled && <>
                       <MenuSeparator />
                       <div className="more-menu-section-label">{t("channelDownloads")}</div>
                       <button className="channel-technical-item" onClick={() => setTechnicalView("downloads")}>
-                        <Download /> <span>{t("autoDownloadMinimum")}</span><span className="dropdown-menu-status">{autoDownloadLabel}</span><ChevronRight />
+                        <Download /> <span>{t("autoDownloadMinimum")}</span><MenuStatus>{autoDownloadLabel}</MenuStatus><ChevronRight />
                       </button>
                     </>}
                   </>
@@ -507,54 +491,60 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                 {technicalView === "speed" && (
                   <>
                     <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("channelSpeed")}</div>
+                    <button className={!channelSpeed ? "is-selected" : undefined} onClick={() => changeSpeed(null)}>
+                      {t("channelSettingDefault")}
+                      {!channelSpeed && <MenuStatus><Check size={14} /></MenuStatus>}
+                    </button>
+                    <MenuSeparator className="channel-technical-spacer" />
                     {PLAYBACK_SPEEDS.map((speed) => (
                       <button key={speed} className={channelSpeed === speed ? "is-selected" : undefined} onClick={() => changeSpeed(speed)}>
                         {speed === "1" ? "1×" : `${speed}×`}
-                        {channelSpeed === speed && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                        {channelSpeed === speed && <MenuStatus><Check size={14} /></MenuStatus>}
                       </button>
                     ))}
-                    <button className={!channelSpeed ? "is-selected" : undefined} onClick={() => changeSpeed(null)}>
-                      {t("channelSettingDefault")}
-                      {!channelSpeed && <span className="dropdown-menu-status"><Check size={14} /></span>}
-                    </button>
                   </>
                 )}
                 {technicalView === "captions" && (
                   <>
                     <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("subtitles")}</div>
-                    <div className="channel-technical-scroll">
+                    <ScrollArea viewportClassName="channel-technical-scroll">
                       <button className={captionMode == null ? "is-selected" : undefined} onClick={() => changeCaptions(null)}>
                         {t("channelSettingDefault")}
-                        {captionMode == null && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                        {captionMode == null && <MenuStatus><Check size={14} /></MenuStatus>}
                       </button>
                       <button className={captionMode === "off" ? "is-selected" : undefined} onClick={() => changeCaptions("off")}>
                         {t("captionsOff")}
-                        {captionMode === "off" && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                        {captionMode === "off" && <MenuStatus><Check size={14} /></MenuStatus>}
                       </button>
                       <MenuSeparator />
                       {SUBTITLE_LANGUAGES.map((language) => (
                         <button key={language.code} className={captionMode === "language" && captionLanguage === language.code ? "is-selected" : undefined} onClick={() => changeCaptions("language", language.code)}>
                           {language.label}
-                          {captionMode === "language" && captionLanguage === language.code && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                          {captionMode === "language" && captionLanguage === language.code && <MenuStatus><Check size={14} /></MenuStatus>}
                         </button>
                       ))}
-                    </div>
+                    </ScrollArea>
                   </>
                 )}
                 {technicalView === "members" && (
                   <>
                     <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("channelMembersOnlyFeed")}</div>
-                    <button className={hideMembersOnlyFromFeed == null ? "is-selected" : undefined} onClick={() => changeMembersOnlyFeed(null)}>
+                    <button className={membersOnlyVisibility === "default" ? "is-selected" : undefined} onClick={() => changeMembersOnlyVisibility("default")}>
                       {t("channelSettingDefault")}
-                      {hideMembersOnlyFromFeed == null && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                      {membersOnlyVisibility === "default" && <MenuStatus><Check size={14} /></MenuStatus>}
                     </button>
-                    <button className={hideMembersOnlyFromFeed === false ? "is-selected" : undefined} onClick={() => changeMembersOnlyFeed(false)}>
-                      {t("channelMembersOnlyShow")}
-                      {hideMembersOnlyFromFeed === false && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    <MenuSeparator className="channel-technical-spacer" />
+                    <button className={membersOnlyVisibility === "everywhere" ? "is-selected" : undefined} onClick={() => changeMembersOnlyVisibility("everywhere")}>
+                      {t("channelMembersOnlyEverywhere")}
+                      {membersOnlyVisibility === "everywhere" && <MenuStatus><Check size={14} /></MenuStatus>}
                     </button>
-                    <button className={hideMembersOnlyFromFeed === true ? "is-selected" : undefined} onClick={() => changeMembersOnlyFeed(true)}>
-                      {t("channelMembersOnlyHide")}
-                      {hideMembersOnlyFromFeed === true && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                    <button className={membersOnlyVisibility === "channel" ? "is-selected" : undefined} onClick={() => changeMembersOnlyVisibility("channel")}>
+                      {t("channelMembersOnlyChannelOnly")}
+                      {membersOnlyVisibility === "channel" && <MenuStatus><Check size={14} /></MenuStatus>}
+                    </button>
+                    <button className={membersOnlyVisibility === "hidden" ? "is-selected" : undefined} onClick={() => changeMembersOnlyVisibility("hidden")}>
+                      {t("channelMembersOnlyNowhere")}
+                      {membersOnlyVisibility === "hidden" && <MenuStatus><Check size={14} /></MenuStatus>}
                     </button>
                   </>
                 )}
@@ -563,57 +553,38 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("autoDownloadMinimum")}</div>
                     <button className={autoDownloadMinDuration == null ? "is-selected" : undefined} onClick={() => changeAutoDownloadMinDuration(null)}>
                       {t("channelSettingDefault")}
-                      {autoDownloadMinDuration == null && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                      {autoDownloadMinDuration == null && <MenuStatus><Check size={14} /></MenuStatus>}
                     </button>
                     {AUTO_DOWNLOAD_MIN_DURATIONS.map((seconds) => (
                       <button key={seconds} className={autoDownloadMinDuration === seconds ? "is-selected" : undefined} onClick={() => changeAutoDownloadMinDuration(seconds)}>
                         {seconds === 0 ? t("autoDownloadOff") : `≥ ${seconds / 60} min`}
-                        {autoDownloadMinDuration === seconds && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                        {autoDownloadMinDuration === seconds && <MenuStatus><Check size={14} /></MenuStatus>}
                       </button>
                     ))}
                   </>
                 )}
-              </div>
-            )}
-          </div>
-          <a className="btn" href={`https://www.youtube.com/channel/${id}`} target="_blank" rel="noreferrer">
-            <ExternalLink /> YouTube
-          </a>
+              </Menu>
+          </Popover>
+          <ButtonAnchor href={`https://www.youtube.com/channel/${id}`} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink />}>YouTube</ButtonAnchor>
         </div>
       </div>
 
       {/* Channel tag management */}
       <div className="channel-tags-row">
-        <div className="dropdown" ref={tagMenuRef}>
-          <button className="btn-ghost" onClick={() => setTagMenuOpen((o) => !o)} title={t("addTag")}>
+        <Popover
+          align="start"
+          surface="menu"
+          open={tagMenuOpen}
+          onOpenChange={setTagMenuOpen}
+          trigger={<Button variant="ghost" size="sm" title={t("addTag")}>
             <Plus size={13} /> Tag
-          </button>
-          {tagMenuOpen && (
-            <div className="dropdown-menu" style={{ minWidth: 220 }}>
-              {allTags
-                .map((tag) => {
-                  const isSelected = channelTags.some((ct) => ct.id === tag.id);
-                  return (
-                    <button
-                      key={tag.id}
-                      className={isSelected ? "is-selected" : undefined}
-                      onClick={() => toggleTag(tag)}
-                      title={isSelected ? t("removeTagFromChannel") : t("tagToChannel")}
-                    >
-                      <span className="tag-picker-color-dot" style={{ background: tag.color }} />
-                      {tag.name}
-                      {isSelected && (
-                        <span className="dropdown-menu-status" aria-label={t("selectedTag")}>
-                          <Check size={14} />
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              <TagCreateForm title={t("newTag")} name={newTagName} color={newTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewTagName} onColorChange={setNewTagColor} onSubmit={createAndAddTag} />
-            </div>
-          )}
-        </div>
+          </Button>}
+          className="tag-picker-popover"
+        >
+          <TagPickerMenu tags={allTags} loading={tagsLoading} selectedTagIds={channelTags.map((tag) => tag.id)} onToggle={toggleTag}>
+            <TagCreateForm title={t("newTag")} name={newTagName} color={newTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewTagName} onColorChange={setNewTagColor} onSubmit={createAndAddTag} />
+          </TagPickerMenu>
+        </Popover>
         {channelTags.map((t) => (
           <TagChip key={t.id} tag={t} onRemove={() => removeTag(t)} />
         ))}
@@ -679,7 +650,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
           <EmptyState title={t("channelVideosEmpty")} description={t("channelVideosEmptyHint")} action={<Button variant="primary" onClick={handleSync} disabled={syncing}>
-              <RefreshCw size={15} className={syncing ? "spin" : undefined} />
+              <RefreshCw size={15} className={syncing ? "channel-spin" : undefined} />
               {syncing ? t("syncing") : t("syncChannelVideos")}
             </Button>} />
         ) : (

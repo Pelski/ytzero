@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import "./ChildProfiles.css";
 import { Hourglass, Lock, ShieldAlert, X } from "lucide-react";
 import { api, type ChildStatus, type Profile } from "../api";
 import { useI18n } from "../i18n";

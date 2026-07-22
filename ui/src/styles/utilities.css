@@ -8,3 +8,7 @@
   white-space: nowrap;
   width: 1px;
 }
+
+/* Shared by page actions and controls that use a Lucide loader. */
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+.spin { animation: ui-spin .75s linear infinite; }

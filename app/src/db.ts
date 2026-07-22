@@ -460,6 +460,45 @@ try { db.exec("ALTER TABLE user_channels ADD COLUMN caption_language TEXT"); } c
 // NULL inherits the profile setting; 0 always shows and 1 always hides this
 // channel's members-only uploads from the main feed.
 try { db.exec("ALTER TABLE user_channels ADD COLUMN hide_members_only_from_feed INTEGER"); } catch {}
+// NULL inherits the profile-wide visibility setting; 0 always shows and 1
+// always hides this channel's members-only uploads on the channel page.
+try { db.exec("ALTER TABLE user_channels ADD COLUMN hide_members_only_on_channel INTEGER"); } catch {}
+// Explicit mode avoids overloading NULL for inheritance. Some development
+// databases briefly received a NOT NULL channel flag, which made "default"
+// impossible to persist; this column is the source of truth going forward.
+try { db.exec("ALTER TABLE user_channels ADD COLUMN members_only_visibility TEXT"); } catch {}
+db.exec(`
+  UPDATE user_channels
+  SET members_only_visibility = CASE
+    WHEN hide_members_only_on_channel = 1 AND hide_members_only_from_feed = 1 THEN 'hidden'
+    WHEN hide_members_only_on_channel = 1 THEN 'feed'
+    WHEN hide_members_only_from_feed = 1 THEN 'channel'
+    WHEN hide_members_only_from_feed = 0 THEN 'everywhere'
+    ELSE 'default'
+  END
+  WHERE members_only_visibility IS NULL
+`);
+// "Feed only" inverted the channel/feed hierarchy and is no longer a valid
+// mode. Preserve feed visibility while restoring the video on its channel.
+db.exec(`
+  UPDATE user_channels
+  SET members_only_visibility = 'everywhere',
+      hide_members_only_from_feed = 0,
+      hide_members_only_on_channel = 0
+  WHERE members_only_visibility = 'feed'
+`);
+db.exec(`
+  UPDATE user_settings
+  SET value = '0'
+  WHERE key = 'hide_members_only_on_channel'
+    AND value = '1'
+    AND COALESCE((
+      SELECT feed.value
+      FROM user_settings AS feed
+      WHERE feed.user_id = user_settings.user_id
+        AND feed.key = 'hide_members_only_from_feed'
+    ), '0') <> '1'
+`);
 try { db.exec("ALTER TABLE videos ADD COLUMN duration TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_position REAL"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN watch_duration REAL"); } catch {}
@@ -558,6 +597,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   show_top_channels: "1",
   hide_live_from_feed: "0",
   hide_members_only_from_feed: "0",
+  hide_members_only_on_channel: "0",
   watched_style: "dimmed",
   sidebar_nav: "",
   sponsorblock_enabled: "0",

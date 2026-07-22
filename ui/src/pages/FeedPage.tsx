@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./FeedPage.css";
 import { subscribe } from "../events";
 import { Link } from "react-router-dom";
 import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
@@ -191,7 +192,7 @@ export default function FeedPage({
   }, []);
 
   const loadInProgress = useCallback(() => {
-    api.inProgress().then((r) => setInProgress(r.videos)).catch(console.error);
+    api.inProgress().then((r) => setInProgress(r.videos.filter((video) => video.is_short === 0))).catch(console.error);
   }, []);
 
   useEffect(() => {

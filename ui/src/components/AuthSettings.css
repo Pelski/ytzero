@@ -1,0 +1,107 @@
+/* ---------- authentication settings + login ---------- */
+.auth-step-title { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 22px 0 10px; }
+.auth-method-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.auth-method-card {
+  text-align: left; background: var(--surface); border: 1px solid var(--surface-3);
+  border-radius: var(--radius); padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px;
+  color: var(--text); transition: border-color .15s, background .15s;
+}
+.auth-method-card:hover { background: var(--surface-2); }
+.auth-method-card.selected { border-color: var(--accent); }
+.auth-method-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.auth-method-card-name { font-weight: 600; font-size: 14px; }
+.auth-method-card-desc { color: var(--text-2); font-size: 12.5px; line-height: 1.45; }
+.auth-method-active { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--accent); white-space: nowrap; }
+.auth-lockout-warn {
+  margin: 14px 0; padding: 10px 12px; border-radius: 8px; font-size: 12.5px; line-height: 1.5;
+  background: rgba(242, 41, 58, 0.12); border: 1px solid rgba(242, 41, 58, 0.4); color: var(--text);
+}
+.auth-config-block { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
+.settings-field { display: flex; flex-direction: column; gap: 6px; }
+.settings-field > span { font-size: 13px; color: var(--text-2); }
+.settings-field input, .settings-field select {
+  background: var(--bg); border: 1px solid var(--surface-3); border-radius: 8px;
+  padding: 0 12px; height: 36px; color: var(--text); outline: none; width: 100%;
+}
+.settings-field input:focus, .settings-field select:focus { border-color: var(--accent); }
+.settings-field input[readonly] { color: var(--text-2); }
+.settings-checkbox { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+.auth-profile-table { max-width: 100%; width: 100%; border-collapse: collapse; }
+.auth-profile-table th { text-align: left; font-size: 12px; color: var(--text-2); font-weight: 500; padding: 4px 8px; }
+.auth-profile-table td { padding: 4px 8px; }
+.auth-profile-table input {
+  width: 100%; background: var(--bg); border: 1px solid var(--surface-3); border-radius: 8px;
+  height: 34px; padding: 0 10px; color: var(--text); outline: none;
+}
+.auth-profile-table input:focus { border-color: var(--accent); }
+.auth-actions { margin-top: 18px; }
+.auth-test-ok { color: #4ade80; font-size: 12.5px; }
+.auth-test-fail { color: #ff6b76; font-size: 12.5px; }
+.auth-passkeys { border-top: 1px solid var(--surface-3); padding-top: 12px; }
+.auth-passkeys-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
+.auth-passkey-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.auth-passkey-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+.auth-passkey-list li span { flex: 1; }
+
+.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--bg); }
+.login-card {
+  width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--surface-3);
+  border-radius: var(--radius); padding: 32px 28px; display: flex; flex-direction: column; gap: 14px; align-items: stretch;
+}
+.login-logo { width: 48px; height: 48px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; align-self: center; background: var(--live); color: #fff; }
+.login-logo svg { width: 24px; height: 24px; }
+.login-title { text-align: center; font-size: 20px; margin: 0 0 6px; }
+.login-form { display: flex; flex-direction: column; gap: 10px; }
+.login-input { background: var(--bg); border: 1px solid var(--surface-3); border-radius: 8px; height: 40px; padding: 0 12px; color: var(--text); outline: none; }
+.login-input:focus { border-color: var(--accent); }
+.login-btn { width: 100%; justify-content: center; height: 40px; }
+.login-error { color: #ff6b76; font-size: 13px; text-align: center; }
+.login-proxy-error { display: flex; gap: 10px; align-items: flex-start; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+
+/* ---------- auth activation confirm modal ---------- */
+.auth-confirm-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  animation: auth-confirm-fade 0.12s ease-out;
+}
+@keyframes auth-confirm-fade { from { opacity: 0; } to { opacity: 1; } }
+.auth-confirm-card {
+  width: 100%; max-width: 420px;
+  background: var(--surface); border: 1px solid var(--surface-3);
+  border-radius: 16px; padding: 28px 26px 22px;
+  display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.ui-dialog.auth-confirm-dialog { max-width: 420px; width: calc(100vw - 32px); }
+.auth-confirm-content { align-items: center; display: flex; flex-direction: column; gap: 14px; text-align: center; }
+.auth-confirm-dialog .ui-dialog__footer .ui-form-actions { justify-content: center; width: 100%; }
+.auth-confirm-dialog .ui-dialog__footer .ui-button { min-width: 110px; }
+.auth-confirm-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--live);
+  background: rgba(242, 41, 58, 0.14);
+  border: 1px solid rgba(242, 41, 58, 0.35);
+}
+.auth-confirm-title { margin: 0; font-size: 18px; font-weight: 600; }
+.auth-confirm-msg { margin: 0; color: var(--text-2); font-size: 13.5px; line-height: 1.55; }
+.auth-confirm-note {
+  width: 100%; text-align: left;
+  background: var(--surface-2); border: 1px solid var(--surface-3);
+  border-radius: 10px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.auth-confirm-note-label { color: var(--text-2); font-size: 12.5px; line-height: 1.5; }
+.auth-confirm-code {
+  display: block; width: 100%; box-sizing: border-box; text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  background: var(--bg); border: 1px solid var(--surface-3); border-radius: 6px;
+  padding: 5px 9px; color: var(--text);
+  user-select: all;
+}
+.auth-confirm-actions { display: flex; justify-content: center; gap: 10px; margin-top: 4px; width: 100%; }
+.auth-confirm-actions .ui-button { min-width: 110px; justify-content: center; }
+.auth-confirm-actions .ui-button[disabled] { opacity: 0.55; cursor: not-allowed; }
+.auth-mapping-issues { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.auth-actions .ui-button[disabled] { opacity: 0.55; cursor: not-allowed; }

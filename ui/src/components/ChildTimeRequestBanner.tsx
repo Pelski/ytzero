@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import "./ChildProfiles.css";
 import { X } from "lucide-react";
 import { api, type ChildGrant, type ChildTimeRequest } from "../api";
 import { useI18n, type I18nKey } from "../i18n";

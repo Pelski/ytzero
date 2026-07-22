@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
+import "./WatchlistPage.css";
 import { Clock, Coffee, Sun, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Bucket, type Video } from "../api";
-import { emit, emitToast } from "../events";
+import { emit } from "../events";
 import { useI18n, type I18nKey } from "../i18n";
-import { BUCKET_ICONS } from "../components/VideoCard";
+import { SchedulePicker } from "../components/VideoScheduleActions";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
-import { Badge, EmptyState, IconButton, PageHeader, SectionHeader } from "../components/ui";
+import { Badge, EmptyState, IconButton, LocalToast, PageHeader, SectionHeader } from "../components/ui";
 import { img } from "../img";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
-const BUCKET_ACTION_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
-  { labelKey: "groupToday", buckets: ["today", "tonight"] },
-  { labelKey: "groupTomorrow", buckets: ["tomorrow", "tomorrow_evening"] },
-  { labelKey: "groupWeekend", buckets: ["weekend"] },
-];
 const BUCKET_SECTIONS: { id: string; labelKey: I18nKey; Icon: typeof Sun; buckets: Bucket[] }[] = [
   { id: "today", labelKey: "groupToday", Icon: Sun, buckets: ["today", "tonight"] },
   { id: "tomorrow", labelKey: "groupTomorrow", Icon: Sun, buckets: ["tomorrow", "tomorrow_evening"] },
@@ -44,6 +40,7 @@ export default function WatchlistPage() {
   const { t, bucketLabel, locale } = useI18n();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scheduleToast, setScheduleToast] = useState<{ videoId: string; id: number } | null>(null);
 
   const load = useCallback(() => {
     api
@@ -94,36 +91,15 @@ export default function WatchlistPage() {
                         {v.show_from ? formatShowFrom(v.show_from, t, locale) : ""}
                       </div>
                       <div className="scheduled-actions">
-                        {BUCKET_ACTION_GROUPS.map((group) => (
-                          <div
-                            key={group.labelKey}
-                            className={`scheduled-action-block${group.buckets.length === 1 ? " scheduled-action-block--single" : ""}`}
-                          >
-                            <div className="scheduled-action-label">{t(group.labelKey)}</div>
-                            <div className="scheduled-action-group">
-                              {group.buckets.map((bucket) => {
-                                const Icon = BUCKET_ICONS[bucket];
-                                const active = v.bucket === bucket;
-                                return (
-                                  <IconButton
-                                    key={bucket}
-                                    className={active ? "active" : undefined}
-                                    label={active ? bucketLabel(bucket) : `${t("moveTo")} ${bucketLabel(bucket)}`}
-                                    style={active ? { color: "var(--accent)" } : undefined}
-                                    onClick={() => api.queue(v.video_id, bucket).then(() => {
-                                      emit("queue-changed");
-                                      emitToast(t("scheduledFeedback"), "scheduled");
-                                      load();
-                                    })}
-                                  >
-                                    <Icon size={15} />
-                                  </IconButton>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                        <IconButton label={t("removeFromQueue")} onClick={() => api.dequeue(v.video_id).then(() => { emit("queue-changed"); load(); })}><X size={15} /></IconButton>
+                        <SchedulePicker
+                          layout="inline"
+                          activeBucket={v.bucket}
+                          onSelect={(bucket) => api.queue(v.video_id, bucket)
+                            .then(() => { emit("queue-changed"); setScheduleToast({ videoId: v.video_id, id: Date.now() }); load(); })
+                            .catch(console.error)}
+                        />
+                        <IconButton label={t("removeFromQueue")} onClick={() => api.dequeue(v.video_id).then(() => { emit("queue-changed"); load(); }).catch(console.error)}><X size={15} /></IconButton>
+                        {scheduleToast?.videoId === v.video_id && <LocalToast key={scheduleToast.id}>{t("scheduledFeedback")}</LocalToast>}
                       </div>
                     </article>
                   ))}

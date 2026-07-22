@@ -1,0 +1,10 @@
+.schedule-picker__group + .schedule-picker__group { margin-top: 6px; }
+.schedule-picker__label { color: var(--text-3); font-size: 10.5px; font-weight: 700; line-height: 1; margin: 0 2px 4px; text-align: center; }
+.schedule-picker__row { background: var(--surface); border-radius: 9px; display: grid; gap: 3px; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 2px; }
+.schedule-picker__choice { background: transparent; border: 0; border-radius: 7px; color: var(--text-2); cursor: pointer; display: grid; height: 36px; min-width: 0; place-items: center; }
+.schedule-picker__choice:only-child { grid-column: 1 / -1; }
+.schedule-picker__choice:hover { background: var(--surface-3); color: var(--text); }
+.schedule-picker__choice--active, .schedule-picker__choice--active:hover { background: color-mix(in srgb, var(--accent) 16%, var(--surface)); color: var(--accent); }
+.schedule-picker__choice svg { height: 18px; width: 18px; }
+.schedule-picker--inline { align-items: end; display: grid; gap: 7px; grid-template-columns: repeat(3, 72px); }
+.schedule-picker--inline .schedule-picker__group { margin: 0; width: 72px; }

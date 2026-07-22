@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import "./InsightsPage.css";
 import { Activity, CalendarDays, CheckCircle2, Clock3, Compass, FastForward, Film, Flame, Play, Repeat2, Tags, TrendingDown, TrendingUp, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, SB_CATEGORIES, type HouseholdInsights, type InsightProfileRef } from "../api";
@@ -125,8 +126,7 @@ export default function InsightsPage() {
         </div>
         <div className="insights-filters">
           <div className="settings-select-row insights-profile-filter">
-            <span className="switch-label">{t("insightsView")}</span>
-            <SelectMenu label={t("insightsView")} value={profileId ?? "all"} options={[{ value: "all" as const, label: t("insightsHousehold") }, ...data.available_profiles.map((profile) => ({ value: profile.id, label: profile.name }))]} onChange={(next) => setProfileId(next === "all" ? null : next)} />
+            <SelectMenu floating label={t("insightsView")} value={profileId ?? "all"} options={[{ value: "all" as const, label: t("insightsHousehold") }, ...data.available_profiles.map((profile) => ({ value: profile.id, label: profile.name }))]} onChange={(next) => setProfileId(next === "all" ? null : next)} />
           </div>
           <div className="insights-range" aria-label={t("insightsPeriod")}>{RANGES.map((value) => (
             <button className={days === value ? "active" : ""} key={value} onClick={() => setDays(value)}>{rangeLabels[value]}</button>

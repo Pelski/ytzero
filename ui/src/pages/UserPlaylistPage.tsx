@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import "./UserPlaylistPage.css";
 import { useNavigate, useParams } from "react-router-dom";
 import { Edit3, Save, Trash2, X } from "lucide-react";
 import { api, type UserPlaylist, type Video } from "../api";

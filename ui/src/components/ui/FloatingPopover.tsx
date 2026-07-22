@@ -11,6 +11,8 @@ export function FloatingPopover({ trigger, children, open, onOpenChange, align =
   const popoverId = useId();
   const branch = [...parentBranch, popoverId];
   const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
+  const [present, setPresent] = useState(open);
+  const [closing, setClosing] = useState(false);
 
   const position = () => {
     const triggerRect = triggerRef.current?.getBoundingClientRect();
@@ -26,7 +28,18 @@ export function FloatingPopover({ trigger, children, open, onOpenChange, align =
     setStyle({ left, top, visibility: "visible" });
   };
 
-  useLayoutEffect(position, [open, align, gap]);
+  useLayoutEffect(position, [open, present, align, gap]);
+  useEffect(() => {
+    if (open) {
+      setPresent(true);
+      setClosing(false);
+      return;
+    }
+    if (!present) return;
+    setClosing(true);
+    const timer = window.setTimeout(() => setPresent(false), 160);
+    return () => window.clearTimeout(timer);
+  }, [open, present]);
   useEffect(() => {
     if (!open) return;
     const close = (event: MouseEvent) => {
@@ -43,6 +56,6 @@ export function FloatingPopover({ trigger, children, open, onOpenChange, align =
   const triggerElement = isValidElement(trigger) ? cloneElement(trigger as ReactElement<Record<string, unknown>>, { "aria-expanded": open }) : createElement("span", null, trigger);
   return <PopoverBranchContext.Provider value={branch}>
     <span className="ui-floating-popover__trigger" ref={triggerRef} data-popover-branch={branch.join(" ")} onClick={() => onOpenChange(!open)}>{triggerElement}</span>
-    {open && createPortal(<div ref={contentRef} data-popover-branch={branch.join(" ")} className={cx("ui-floating-popover__content", className)} style={style} onMouseDown={(event) => event.stopPropagation()}>{children}</div>, document.body)}
+    {present && createPortal(<div ref={contentRef} data-popover-branch={branch.join(" ")} className={cx("ui-floating-popover__content", className)} style={style} data-state={closing ? "closed" : "open"} onMouseDown={(event) => event.stopPropagation()}>{children}</div>, document.body)}
   </PopoverBranchContext.Provider>;
 }

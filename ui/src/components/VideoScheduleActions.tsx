@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import type { Bucket, Video } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 import Tooltip from "./Tooltip";
+import "./VideoScheduleActions.css";
 
 export const BUCKET_ICONS: Record<Bucket, typeof CalendarDays> = {
   today: Sun,
@@ -18,22 +19,22 @@ const BUCKET_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
   { labelKey: "groupWeekend", buckets: ["weekend"] },
 ];
 
-export function SchedulePicker({ onSelect, activeBucket = null }: { onSelect: (bucket: Bucket) => void; activeBucket?: Bucket | null }) {
+export function SchedulePicker({ onSelect, activeBucket = null, layout = "stacked" }: { onSelect: (bucket: Bucket) => void; activeBucket?: Bucket | null; layout?: "stacked" | "inline" }) {
   const { t, bucketLabel } = useI18n();
-  return <>
+  return <div className={`schedule-picker schedule-picker--${layout}`}>
     {BUCKET_GROUPS.map((group) => (
-      <div key={group.labelKey} className="dropdown-menu-group">
-        <div className="dropdown-menu-label">{t(group.labelKey)}</div>
-        <div className="dropdown-menu-row">
+      <div key={group.labelKey} className="schedule-picker__group">
+        <div className="schedule-picker__label">{t(group.labelKey)}</div>
+        <div className="schedule-picker__row">
           {group.buckets.map((bucket) => {
             const Icon = BUCKET_ICONS[bucket];
             const active = activeBucket === bucket;
-            return <button type="button" key={bucket} className={`schedule-icon-choice${active ? " active" : ""}`} aria-pressed={active} title={bucketLabel(bucket)} onClick={() => onSelect(bucket)}><Icon /></button>;
+            return <button type="button" key={bucket} className={`schedule-picker__choice${active ? " schedule-picker__choice--active" : ""}`} aria-pressed={active} title={bucketLabel(bucket)} onClick={() => onSelect(bucket)}><Icon /></button>;
           })}
         </div>
       </div>
     ))}
-  </>;
+  </div>;
 }
 
 export function VideoScheduleActions({

@@ -5,7 +5,7 @@ import { api, type ChannelSearchResult } from "../api";
 import { emit } from "../events";
 import { img } from "../img";
 import { useI18n } from "../i18n";
-import { Button, Dialog, IconButton, Input, List, ListRow } from "./ui";
+import { Button, Dialog, IconButton, Input, List, ListRow, MenuLoading } from "./ui";
 import "./ChannelSearchPicker.css";
 
 const SEARCH_DEBOUNCE_MS = 1_800;
@@ -18,6 +18,7 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
   const [addingId, setAddingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [followedIds, setFollowedIds] = useState<Set<string>>(new Set());
+  const [followedLoading, setFollowedLoading] = useState(false);
   const [error, setError] = useState("");
   // Row with the optional "follow under a custom name" input open.
   const [namingId, setNamingId] = useState<string | null>(null);
@@ -26,9 +27,11 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
 
   useEffect(() => {
     if (!open) return;
+    setFollowedLoading(true);
     api.channels()
       .then((response) => setFollowedIds(new Set(response.channels.filter((channel) => channel.followed !== 0).map((channel) => channel.channel_id))))
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setFollowedLoading(false));
   }, [open]);
 
   useEffect(() => {
@@ -77,7 +80,8 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
               {loading && <span className="channel-search-picker-loading" />}
             </div>
             {error && <div className="channel-search-error">{error}</div>}
-            {results.length > 0 && (
+            {hasSearchQuery && (loading || followedLoading) && <MenuLoading label={t("loading")} />}
+            {results.length > 0 && !loading && !followedLoading && (
               <List className="channel-search-results">
                 {results.map((channel) => {
                   const followed = followedIds.has(channel.channelId);
@@ -132,7 +136,7 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
                 })}
               </List>
             )}
-            {hasSearchQuery && !loading && results.length === 0 && !error && <p className="channel-search-empty">{t("noMatchingChannels")}</p>}
+            {hasSearchQuery && !loading && !followedLoading && results.length === 0 && !error && <p className="channel-search-empty">{t("noMatchingChannels")}</p>}
       </Dialog>
     </>
   );

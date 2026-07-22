@@ -13,3 +13,7 @@
 .ui-button--sm.ui-button--icon { width: 30px; }
 .ui-button__icon { align-items: center; display: inline-flex; }
 .ui-button svg { height: 16px; stroke-width: 1.8; width: 16px; }
+
+.ui-button.like-btn { background: transparent; padding: 0 8px; position: relative; }
+.ui-button.like-btn:hover, .ui-button.like-btn[aria-pressed="true"] { background: transparent; }
+.ui-button.like-active { color: #ff4d6a; }

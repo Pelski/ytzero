@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { VideoSubtitle } from "../api";
 import { useI18n } from "../i18n";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
-import { FloatingPopover, Menu, MenuItem, MenuSeparator, Switch } from "./ui";
+import { FloatingPopover, Menu, MenuItem, MenuSeparator, ScrollArea, Switch } from "./ui";
 
 interface SubtitlePickerProps {
   videoId?: string;
@@ -76,7 +76,8 @@ export default function SubtitlePicker({
             <span>{t("subtitles")}</span>
             <Switch checked={Boolean(selectedLanguage)} onCheckedChange={toggle} />
           </div>
-          <Menu className="lp-sub-menu-list">
+          <ScrollArea className="lp-sub-menu-list-wrap" viewportClassName="lp-sub-menu-list">
+          <Menu>
             {preferred.map((language) => (
               <MenuItem
                 key={language}
@@ -110,6 +111,7 @@ export default function SubtitlePicker({
               </MenuItem>
             ))}
           </Menu>
+          </ScrollArea>
       </FloatingPopover>
     </div>
   );

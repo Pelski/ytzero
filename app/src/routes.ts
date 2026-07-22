@@ -564,16 +564,35 @@ api.get("/feed", (c) => {
   if (c.req.query("only_shorts") !== "1" && (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid))) {
     where.push("v.live_status NOT IN ('live', 'upcoming')");
   }
-  // This preference applies only to the main feed. Search, dedicated views and
-  // the channel page keep members-only videos discoverable.
+  // Channel defaults inherit the profile-wide visibility for each surface.
   const isMainFeed = !processing && !channel && !allSources && !q && c.req.query("liked") !== "1" && c.req.query("only_shorts") !== "1";
+  if (channel) {
+    where.push(`NOT (
+      v.members_only = 1 AND CASE COALESCE(
+        (SELECT member_pref.members_only_visibility FROM user_channels member_pref
+         WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
+      )
+        WHEN 'feed' THEN 0
+        WHEN 'hidden' THEN 1
+        WHEN 'everywhere' THEN 0
+        WHEN 'channel' THEN 0
+        ELSE ?
+      END = 1
+    )`);
+    params.push(getUserSetting(uid, "hide_members_only_on_channel") === "1" ? 1 : 0);
+  }
   if (isMainFeed) {
     where.push(`NOT (
-      v.members_only = 1 AND COALESCE(
-        (SELECT member_pref.hide_members_only_from_feed FROM user_channels member_pref
-         WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id),
-        ?
-      ) = 1
+      v.members_only = 1 AND CASE COALESCE(
+        (SELECT member_pref.members_only_visibility FROM user_channels member_pref
+         WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
+      )
+        WHEN 'channel' THEN 1
+        WHEN 'hidden' THEN 1
+        WHEN 'everywhere' THEN 0
+        WHEN 'feed' THEN 0
+        ELSE ?
+      END = 1
     )`);
     params.push(getUserSetting(uid, "hide_members_only_from_feed") === "1" ? 1 : 0);
   }
@@ -1981,19 +2000,26 @@ api.put("/channels/:id/captions", async (c) => {
   return c.json({ ok: true, mode, language: captionLanguage });
 });
 
-// Per-profile main-feed override for members-only uploads. NULL inherits the
-// profile-wide setting; false always shows and true always hides this channel.
+// Per-profile visibility of a channel's members-only uploads. The default
+// inherits the profile-wide main-feed preference and keeps the channel page
+// visible; every explicit mode owns both surfaces.
 api.put("/channels/:id/members-only-feed", async (c) => {
-  const { hide } = await c.req.json<{ hide: unknown }>();
-  if (hide !== null && typeof hide !== "boolean") {
-    return c.json({ error: "hide must be true, false, or null" }, 400);
+  const { visibility } = await c.req.json<{ visibility: unknown }>();
+  if (visibility !== "default" && visibility !== "everywhere" && visibility !== "channel" && visibility !== "hidden") {
+    return c.json({ error: "visibility must be default, everywhere, channel, or hidden" }, 400);
   }
-  const value = hide == null ? null : hide ? 1 : 0;
+  const values = {
+    default: [null, 0],
+    everywhere: [0, 0],
+    channel: [1, 0],
+    hidden: [1, 1],
+  } as const;
+  const [hideFromFeed, hideOnChannel] = values[visibility];
   db.prepare(
-    `INSERT INTO user_channels (user_id, channel_id, hide_members_only_from_feed) VALUES (?, ?, ?)
-     ON CONFLICT(user_id, channel_id) DO UPDATE SET hide_members_only_from_feed = excluded.hide_members_only_from_feed`
-  ).run(currentUserId(c), c.req.param("id"), value);
-  return c.json({ ok: true, hide });
+    `INSERT INTO user_channels (user_id, channel_id, hide_members_only_from_feed, hide_members_only_on_channel, members_only_visibility) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, channel_id) DO UPDATE SET hide_members_only_from_feed = excluded.hide_members_only_from_feed, hide_members_only_on_channel = excluded.hide_members_only_on_channel, members_only_visibility = excluded.members_only_visibility`
+  ).run(currentUserId(c), c.req.param("id"), hideFromFeed, hideOnChannel, visibility);
+  return c.json({ ok: true, visibility });
 });
 
 // Downloads are shared between profiles, therefore this is intentionally a
@@ -2072,8 +2098,8 @@ api.get("/channels/:id", (c) => {
     )
     .all(uid, c.req.param("id")) as any[];
   // followed reflects the active profile (null row = not subscribed).
-  const sub = db.prepare("SELECT followed, playback_speed, caption_mode, caption_language, hide_members_only_from_feed FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null; hide_members_only_from_feed: number | null } | null;
-  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, hide_members_only_from_feed: sub?.hide_members_only_from_feed ?? null, tags } });
+  const sub = db.prepare("SELECT followed, playback_speed, caption_mode, caption_language, hide_members_only_from_feed, hide_members_only_on_channel, members_only_visibility FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null; hide_members_only_from_feed: number | null; hide_members_only_on_channel: number | null; members_only_visibility: string | null } | null;
+  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, hide_members_only_from_feed: sub?.hide_members_only_from_feed ?? null, hide_members_only_on_channel: sub?.hide_members_only_on_channel ?? null, members_only_visibility: sub?.members_only_visibility === "feed" ? "everywhere" : sub?.members_only_visibility ?? "default", tags } });
 });
 
 api.post("/channels/:id/sync", async (c) => {

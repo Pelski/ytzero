@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import "./PlaylistIcon.css";
 import type { LucideIcon } from "lucide-react";
 import {
   Archive,
@@ -74,7 +75,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useI18n } from "../i18n";
-import { FloatingPopover, IconPicker, Input } from "./ui";
+import { FloatingPopover, IconPicker, Input, ScrollArea } from "./ui";
 
 type IconComponent = LucideIcon;
 
@@ -219,7 +220,9 @@ export function PlaylistIconPicker({
             placeholder={t("search")}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <IconPicker label={t("choosePlaylistIcon")} value={value} options={filtered.map((id) => { const Icon = getIcon(id); return { value: id, label: iconLabel(id), icon: <Icon /> }; })} onChange={(id) => { onChange(id); setOpen(false); setQuery(""); }} />
+          <ScrollArea viewportClassName="playlist-icon-picker-scroll">
+            <IconPicker label={t("choosePlaylistIcon")} value={value} options={filtered.map((id) => { const Icon = getIcon(id); return { value: id, label: iconLabel(id), icon: <Icon /> }; })} onChange={(id) => { onChange(id); setOpen(false); setQuery(""); }} />
+          </ScrollArea>
         </div>
     </FloatingPopover>
   );

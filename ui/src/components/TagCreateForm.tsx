@@ -1,4 +1,5 @@
 import { Button, ColorPicker, Input, Stack } from "./ui";
+import "./TagCreateForm.css";
 
 export default function TagCreateForm({ title, name, color, placeholder, submitLabel, disabled, onNameChange, onColorChange, onSubmit }: { title: string; name: string; color: string; placeholder: string; submitLabel: string; disabled?: boolean; onNameChange: (name: string) => void; onColorChange: (color: string) => void; onSubmit: () => void | Promise<void> }) {
   return <Stack as="form" gap={2} className="tag-create-form" onSubmit={(event) => { event.preventDefault(); void onSubmit(); }}>

@@ -14,13 +14,13 @@
 .channel-search-picker-input:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent); }
 .channel-search-picker-input input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: var(--text); }
 .channel-search-picker-input input:focus-visible { outline: none; }
-.channel-search-picker-loading { width: 14px; height: 14px; border: 2px solid var(--surface-3); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+.channel-search-picker-loading { width: 14px; height: 14px; border: 2px solid var(--surface-3); border-top-color: var(--accent); border-radius: 50%; animation: ui-spin .7s linear infinite; }
 .channel-search-modal-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, .62); backdrop-filter: blur(4px); }
 .channel-search-modal { width: min(640px, 100%); max-height: min(680px, calc(100vh - 40px)); overflow: auto; padding: 20px; border: 1px solid var(--surface-3); border-radius: 16px; background: var(--surface); box-shadow: 0 24px 60px rgba(0, 0, 0, .48); }
 .channel-search-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .channel-search-modal-header h2 { margin: 0; font-size: 18px; }
 .channel-search-modal-header p { margin: 4px 0 0; color: var(--text-2); font-size: 13px; }
-.ui-dialog.channel-search-dialog { border: 0; }
+.ui-dialog.channel-search-dialog { border: 0; width: min(640px, 100%); }
 .channel-search-dialog .ui-dialog__header { border-bottom: 0; }
 .channel-search-results { margin-top: 10px; border: 0; border-radius: 12px; overflow: hidden; }
 .channel-search-result { align-items: center; gap: 10px; padding: 9px 10px; background: var(--surface); }
@@ -45,10 +45,8 @@
   min-width: 0;
 }
 .channel-search-custom-name:focus-visible { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 32%, transparent); }
-.channel-search-result .btn { flex-shrink: 0; }
 .channel-search-result .ui-button { flex-shrink: 0; }
 .channel-search-result .ui-list-actions { justify-self: end; margin-left: auto; }
 .channel-search-error { margin-top: 10px; color: #ff7a85; font-size: 12px; }
 .channel-search-empty { color: var(--text-2); font-size: 13px; margin: 18px 10px 8px; text-align: center; }
-.ui-dialog.channel-search-dialog { width: min(640px, 100%); }
 .channel-search-modal-description { color: var(--text-2); font-size: 13px; margin: 0 0 14px; }

@@ -1,0 +1,88 @@
+/* ---------- playlist icon picker ---------- */
+.playlist-icon-trigger {
+  display: grid;
+  place-items: center;
+  height: 36px;
+  width: 42px;
+  border: 1px solid var(--surface-3);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0;
+  flex-shrink: 0;
+}
+.playlist-icon-trigger:hover { background: var(--surface); }
+.playlist-icon-trigger.compact { height: 30px; width: 30px; }
+.playlist-icon-trigger-mark {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.playlist-icon-trigger-mark svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 1.8;
+}
+.playlist-icon-popover {
+  position: fixed;
+  background: var(--surface-2);
+  border: 1px solid var(--surface-3);
+  border-radius: 12px;
+  padding: 8px;
+  z-index: 200;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+.playlist-icon-picker-popover { width: min(360px, calc(100vw - 16px)); }
+.playlist-icon-picker-scroll { max-height: min(284px, calc(100vh - 78px)); }
+.playlist-icon-search {
+  width: 100%;
+  height: 30px;
+  background: var(--bg);
+  border: 1px solid var(--surface-3);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0 10px;
+  outline: none;
+  margin-bottom: 7px;
+  font-size: 13px;
+}
+.playlist-icon-search:focus { border-color: var(--accent); }
+.playlist-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  max-height: 284px;
+  overflow-y: auto;
+  padding: 1px 2px 1px 1px;
+}
+.playlist-icon-choice {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-2);
+  padding: 0;
+}
+.playlist-icon-choice:hover {
+  border-color: var(--surface-3);
+  color: var(--text);
+  background: var(--chip-hover);
+}
+.playlist-icon-choice.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+.playlist-icon-choice svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 1.8;
+}

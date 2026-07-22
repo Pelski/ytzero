@@ -1,0 +1,17 @@
+.tag-picker-popover, .tag-picker-menu { min-width: 240px; }
+
+.tag-picker-menu__options {
+  display: grid;
+  max-height: min(260px, 42vh);
+  min-width: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.tag-picker-color-dot {
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 8px;
+  height: 8px;
+  width: 8px;
+}

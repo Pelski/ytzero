@@ -1,0 +1,10 @@
+.ui-scroll-area { min-height: 0; min-width: 0; overflow: hidden; position: relative; }
+.ui-scroll-area::before, .ui-scroll-area::after { content: ""; left: 0; opacity: 0; pointer-events: none; position: absolute; right: 0; transition: opacity 140ms ease; z-index: 5; }
+.ui-scroll-area::before { background: linear-gradient(to bottom, var(--ui-scroll-area-background, var(--surface-2)), transparent); height: 18px; top: 0; }
+.ui-scroll-area::after { background: linear-gradient(to top, var(--ui-scroll-area-background, var(--surface-2)), transparent); bottom: 0; height: 18px; }
+.ui-scroll-area--shadow-top::before, .ui-scroll-area--shadow-bottom::after { opacity: 1; }
+.ui-scroll-area__viewport { min-height: 0; overflow-y: auto; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-scroll-area::before, .ui-scroll-area::after { transition-duration: 1ms; }
+}

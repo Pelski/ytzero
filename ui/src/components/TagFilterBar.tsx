@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import "./TagFilterBar.css";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import type { Tag } from "../api";

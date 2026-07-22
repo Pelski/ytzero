@@ -6,6 +6,9 @@
 .ui-menu__icon svg, .ui-menu__check { height: 17px; width: 17px; }
 .ui-menu__label { flex: 1; min-width: 0; }
 .ui-menu__check { color: var(--accent); }
+.ui-menu__status { align-items: center; color: var(--accent); display: inline-flex; font-size: 12px; font-weight: 600; gap: 4px; margin-left: auto; }
+.ui-menu__status svg { color: currentColor; height: 14px; stroke-width: 1.8; width: 14px; }
+.ui-menu__loading { align-items: center; color: var(--text-2); display: flex; font-size: 13px; gap: 8px; justify-content: center; min-height: 44px; padding: 8px 12px; }
 .ui-menu__label-heading { color: var(--text-3); font-size: 10.5px; font-weight: 700; padding: 6px 10px 4px; text-transform: uppercase; }
 .ui-menu__separator { background: var(--surface-3); height: 1px; margin: 6px 4px; }
 .ui-menu__header { align-items: center; border-bottom: 1px solid var(--surface-3); display: flex; font-size: 13px; font-weight: 600; gap: 8px; margin-bottom: 4px; padding: 2px 4px 8px; }

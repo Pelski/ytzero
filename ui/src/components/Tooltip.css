@@ -1,0 +1,32 @@
+/* ---------- tooltip ---------- */
+.tooltip-wrap { position: relative; display: inline-flex; }
+.tooltip-wrap--block { display: block; }
+.tooltip-tip {
+  position: absolute;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.88);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s, transform 0.12s;
+  z-index: 200;
+}
+.tooltip-wrap:hover .tooltip-tip { opacity: 1; }
+.tooltip-wrap--delayed .tooltip-tip { transition-delay: 0ms; }
+.tooltip-wrap--delayed:hover .tooltip-tip { transition-delay: var(--tooltip-delay); }
+.tooltip-wrap--title .tooltip-tip { box-sizing: border-box; max-width: 100%; white-space: normal; width: max-content; }
+.video-card { container-type: inline-size; }
+.tooltip-wrap--card-title .tooltip-tip { max-width: calc(100cqw - 20px); }
+.tooltip-wrap--left .tooltip-tip  { right: calc(100% + 7px); top: 50%; transform: translateY(-50%) translateX(3px); }
+.tooltip-wrap--right .tooltip-tip { left: calc(100% + 7px);  top: 50%; transform: translateY(-50%) translateX(-3px); }
+.tooltip-wrap--top .tooltip-tip   { bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%) translateY(3px); }
+.tooltip-wrap--bottom .tooltip-tip{ top: calc(100% + 7px);   left: 50%; transform: translateX(-50%) translateY(-3px); }
+.tooltip-wrap--left:hover  .tooltip-tip { transform: translateY(-50%) translateX(0); }
+.tooltip-wrap--right:hover .tooltip-tip { transform: translateY(-50%) translateX(0); }
+.tooltip-wrap--top:hover   .tooltip-tip { transform: translateX(-50%) translateY(0); }
+.tooltip-wrap--bottom:hover .tooltip-tip{ transform: translateX(-50%) translateY(0); }
+

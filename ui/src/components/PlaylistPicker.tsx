@@ -2,10 +2,12 @@ import { Check } from "lucide-react";
 import type { UserPlaylist } from "../api";
 import { useI18n } from "../i18n";
 import { PlaylistIcon, PlaylistIconPicker } from "./PlaylistIcon";
-import { Button, Input, Stack } from "./ui";
+import { Button, Input, Menu, MenuItem, MenuLoading, MenuStatus, Stack } from "./ui";
+import "./PlaylistPicker.css";
 
 export interface PlaylistPickerProps {
   playlists: UserPlaylist[];
+  loading?: boolean;
   name: string;
   icon: string;
   onNameChange: (name: string) => void;
@@ -17,6 +19,7 @@ export interface PlaylistPickerProps {
 /** Shared contents for desktop and compact playlist menus. */
 export default function PlaylistPicker({
   playlists,
+  loading = false,
   name,
   icon,
   onNameChange,
@@ -26,24 +29,23 @@ export default function PlaylistPicker({
 }: PlaylistPickerProps) {
   const { t } = useI18n();
 
-  return (
-    <>
-      {playlists.length === 0 && <div className="dropdown-empty">{t("noPlaylists")}</div>}
+  return <Menu className="playlist-picker">
+      {loading ? <MenuLoading label={t("loading")} /> : <>
+      {playlists.length === 0 && <div className="playlist-picker__empty">{t("noPlaylists")}</div>}
       {playlists.map((playlist) => (
-        <button
-          type="button"
+        <MenuItem
           key={playlist.id}
-          className={playlist.has_video === 1 ? "is-selected" : undefined}
+          selected={playlist.has_video === 1}
           onClick={() => onToggle(playlist)}
+          icon={<span className="playlist-picker__icon"><PlaylistIcon icon={playlist.icon} /></span>}
+          suffix={playlist.has_video === 1 ? <MenuStatus><Check size={14} /></MenuStatus> : undefined}
         >
-          <span className="playlist-dot"><PlaylistIcon icon={playlist.icon} /></span>
           {playlist.name}
-          {playlist.has_video === 1 && <span className="dropdown-menu-status"><Check size={14} /></span>}
-        </button>
+        </MenuItem>
       ))}
-      <Stack as="form" gap={2} className="dropdown-form" onSubmit={(event) => { event.preventDefault(); onCreate(); }}>
-        <div className="dropdown-form-title">{t("newPlaylistDots")}</div>
-        <div className="dropdown-form-row">
+      <Stack as="form" gap={2} className="playlist-picker__form" onSubmit={(event) => { event.preventDefault(); onCreate(); }}>
+        <div className="playlist-picker__form-title">{t("newPlaylistDots")}</div>
+        <div className="playlist-picker__form-row">
           <PlaylistIconPicker value={icon} onChange={onIconChange} compact />
           <Input
             size="sm"
@@ -54,6 +56,6 @@ export default function PlaylistPicker({
         </div>
         <Button type="submit" size="sm" variant="primary" disabled={!name.trim()}>{t("createAndAdd")}</Button>
       </Stack>
-    </>
-  );
+      </>}
+  </Menu>;
 }

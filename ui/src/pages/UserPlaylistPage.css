@@ -1,0 +1,61 @@
+/* ---------- user playlist page ---------- */
+.playlist-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.playlist-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+.playlist-title-text {
+  min-width: 0;
+}
+.playlist-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.playlist-icon svg {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.7;
+}
+.playlist-title-edit {
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  pointer-events: none;
+}
+.playlist-title-wrap:hover .playlist-title-edit,
+.playlist-title-wrap:focus-within .playlist-title-edit {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+.playlist-actions,
+.playlist-edit-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.playlist-edit-row input,
+.playlist-edit-row select {
+  height: 36px;
+  background: var(--bg);
+  border: 1px solid var(--surface-3);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0 12px;
+}
+

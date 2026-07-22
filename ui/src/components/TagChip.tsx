@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import "./TagChip.css";
 import type { Tag } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 

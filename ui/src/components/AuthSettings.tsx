@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import "./AuthSettings.css";
 import { startRegistration } from "@simplewebauthn/browser";
 import { Check, KeyRound, TriangleAlert, Trash2 } from "lucide-react";
 import { api, type AuthConfig, type AuthConfigUpdate, type AuthMethod } from "../api";

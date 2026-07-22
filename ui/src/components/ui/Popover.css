@@ -1,6 +1,12 @@
 .ui-popover { display: inline-flex; position: relative; }
 .ui-popover__content { background: var(--surface-2); border: 0; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.55); min-width: 190px; padding: 12px; position: absolute; top: calc(100% + 6px); z-index: 60; }
+.ui-popover__content[data-state="open"] { animation: ui-popover-in 160ms cubic-bezier(.22, 1, .36, 1); transform-origin: top; }
+.ui-popover__content[data-state="closed"] { animation: ui-popover-out 120ms ease-in forwards; pointer-events: none; }
+.ui-popover__content--menu { padding: 6px; }
 .ui-popover__content--start { left: 0; }
 .ui-popover__content--center { left: 50%; transform: translateX(-50%); }
 .ui-popover__content--end { right: 0; }
 .ui-popover__title { color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .04em; margin-bottom: 9px; text-transform: uppercase; }
+@keyframes ui-popover-in { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes ui-popover-out { to { opacity: 0; transform: translateY(-3px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .ui-popover__content[data-state] { animation-duration: 1ms; } }

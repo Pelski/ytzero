@@ -29,14 +29,14 @@ import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
 import { applyVideoCardSize } from "./videoCardSize";
-import "./styles/App.css";
+import "./AppShell.css";
 
 // Routes owned by plugins — visible in the sidebar only while enabled.
 const PLUGIN_ROUTES = ["/discovery", "/downloads"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
-import { Badge, Toast } from "./components/ui";
+import { Badge, Button, Toast } from "./components/ui";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
@@ -186,7 +186,7 @@ function SidebarPlaylists() {
             <PlaylistIconPicker value={icon} onChange={setIcon} compact />
             <input value={name} placeholder={t("playlistName")} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} />
           </div>
-          <button className="btn primary" onClick={create} disabled={!name.trim()}>{t("create")}</button>
+          <Button variant="primary" onClick={create} disabled={!name.trim()}>{t("create")}</Button>
         </div>
       )}
     </div>

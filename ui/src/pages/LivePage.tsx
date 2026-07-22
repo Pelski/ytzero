@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import "./LivePage.css";
 import { Radio } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
@@ -41,7 +42,7 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
     .sort((a, b) => b.length - a.length);
 
   return (
-    <>
+    <div className="live-page">
       <PageHeader title={t("navLive")} />
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
@@ -92,6 +93,6 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
           )}
         </>
       )}
-    </>
+    </div>
   );
 }

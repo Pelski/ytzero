@@ -5,7 +5,7 @@ import { api, type AppNotification } from "../api";
 import { subscribe } from "../events";
 import { useI18n } from "../i18n";
 import { img } from "../img";
-import { Button, EmptyState, IconButton, List, ListButton, Popover } from "./ui";
+import { Button, EmptyState, IconButton, List, ListButton, Popover, ScrollArea } from "./ui";
 import "./NotificationCenter.css";
 
 function notificationTime(value: string, locale: string, justNow: string): string {
@@ -70,7 +70,8 @@ export default function NotificationCenter() {
         <EmptyState compact title={t("notificationsEmpty")} className="profile-notifications-empty" />
       ) : (
         <>
-          <List divided={false} className="profile-notifications-list">
+          <ScrollArea viewportClassName="profile-notifications-list">
+          <List divided={false}>
             {notifications.map((notification) => {
               const playlistVideo = notification.kind === "playlist_video";
               const media = playlistVideo
@@ -91,6 +92,7 @@ export default function NotificationCenter() {
                 </ListButton>;
             })}
           </List>
+          </ScrollArea>
           {unread > 0 && <Button type="button" size="sm" variant="ghost" className="profile-notifications-read-all" onClick={() => void readAll()}>{t("markAllNotificationsRead")}</Button>}
         </>
       )}

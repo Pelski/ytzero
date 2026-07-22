@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
+import TagPickerMenu from "../components/TagPickerMenu";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
 import Tooltip from "../components/Tooltip";
 import { PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -19,7 +21,7 @@ import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey } from
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { Alert, Badge, Button, ButtonAnchor, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, Popover, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -1113,7 +1115,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
-  const [hideMembersOnlyFromFeed, setHideMembersOnlyFromFeed] = useState(false);
+  const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("everywhere");
   const [watchedStyle, setWatchedStyle] = useState<WatchedStyle>("dimmed");
   const [videoCardSize, setVideoCardSize] = useState(248);
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
@@ -1136,7 +1138,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [newPin, setNewPin] = useState("");
   const [newPinConfirm, setNewPinConfirm] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
-  const tagMenuRef = useRef<HTMLDivElement>(null);
   const [tagMenuChannelId, setTagMenuChannelId] = useState<string | null>(null);
   const [newChannelTagName, setNewChannelTagName] = useState("");
   const [newChannelTagColor, setNewChannelTagColor] = useState("#3ea6ff");
@@ -1281,7 +1282,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
         setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
-        setHideMembersOnlyFromFeed(r.settings.hide_members_only_from_feed === "1");
+        setMembersOnlyVisibility(
+          r.settings.hide_members_only_from_feed === "1"
+            ? r.settings.hide_members_only_on_channel === "1" ? "hidden" : "channel"
+            : "everywhere"
+        );
         setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
         setVideoCardSize(parseVideoCardSize(r.settings.grid_size));
         const raw = r.settings.sidebar_nav;
@@ -1392,15 +1397,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     return () => document.removeEventListener("keydown", onKey);
   }, [pluginSettingsModalId]);
 
-  useEffect(() => {
-    if (!tagMenuChannelId) return;
-    const close = (e: MouseEvent) => {
-      if (!tagMenuRef.current?.contains(e.target as Node)) setTagMenuChannelId(null);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [tagMenuChannelId]);
-
   const toggleShorts = async () => {
     const next = !showShorts;
     setShowShorts(next);
@@ -1423,11 +1419,23 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     showToast(t("displaySettingsSaved"));
   };
 
-  const toggleMembersOnlyFromFeed = async () => {
-    const next = !hideMembersOnlyFromFeed;
-    setHideMembersOnlyFromFeed(next);
-    await api.updateSettings({ hide_members_only_from_feed: next ? "1" : "0" });
-    showToast(t("displaySettingsSaved"));
+  const changeMembersOnlyVisibility = async (next: MembersOnlyVisibility) => {
+    const previous = membersOnlyVisibility;
+    setMembersOnlyVisibility(next);
+    const values = {
+      everywhere: ["0", "0"],
+      channel: ["1", "0"],
+      hidden: ["1", "1"],
+      default: ["0", "0"],
+    } as const;
+    const [hideFromFeed, hideOnChannel] = values[next];
+    try {
+      await api.updateSettings({ hide_members_only_from_feed: hideFromFeed, hide_members_only_on_channel: hideOnChannel });
+      showToast(t("displaySettingsSaved"));
+    } catch (error) {
+      setMembersOnlyVisibility(previous);
+      showToast(error instanceof Error ? error.message : t("error"));
+    }
   };
 
   const changeWatchedStyle = async (next: WatchedStyle) => {
@@ -1935,39 +1943,20 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         )}
                       </td>
                       <td className="shrink">
-                        <div className="dropdown" ref={tagMenuChannelId === ch.channel_id ? tagMenuRef : undefined}>
-                          <button
-                            className="btn-ghost"
-                            onClick={() => setTagMenuChannelId((prev) => (prev === ch.channel_id ? null : ch.channel_id))}
-                            title={t("manageChannelTags")}
-                          >
+                        <Popover
+                          align="start"
+                          surface="menu"
+                          className="tag-picker-popover"
+                          open={tagMenuChannelId === ch.channel_id}
+                          onOpenChange={(open) => setTagMenuChannelId(open ? ch.channel_id : null)}
+                          trigger={<Button variant="ghost" size="sm" title={t("manageChannelTags")}>
                             <Plus size={13} /> Tag
-                          </button>
-                          {tagMenuChannelId === ch.channel_id && (
-                            <div className="dropdown-menu" style={{ minWidth: 220 }}>
-                              {tags.map((tag) => {
-                                const isSelected = ch.tags.some((ct) => ct.id === tag.id);
-                                return (
-                                  <button
-                                    key={tag.id}
-                                    className={isSelected ? "is-selected" : undefined}
-                                    onClick={() => toggleChannelTag(ch.channel_id, tag)}
-                                    title={isSelected ? t("removeTagFromChannel") : t("tagToChannel")}
-                                  >
-                                    <span className="dot" style={{ background: tag.color, width: 8, height: 8, borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
-                                    {tag.name}
-                                    {isSelected && (
-                                      <span className="dropdown-menu-status" aria-label={t("selectedTag")}>
-                                        <Check size={14} />
-                                      </span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                              <TagCreateForm title={t("newTag")} name={newChannelTagName} color={newChannelTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewChannelTagName} onColorChange={setNewChannelTagColor} onSubmit={() => createAndAddChannelTag(ch.channel_id)} />
-                            </div>
-                          )}
-                        </div>
+                          </Button>}
+                        >
+                          <TagPickerMenu tags={tags} selectedTagIds={ch.tags.map((tag) => tag.id)} onToggle={(tag) => void toggleChannelTag(ch.channel_id, tag)}>
+                            <TagCreateForm title={t("newTag")} name={newChannelTagName} color={newChannelTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewChannelTagName} onColorChange={setNewChannelTagColor} onSubmit={() => createAndAddChannelTag(ch.channel_id)} />
+                          </TagPickerMenu>
+                        </Popover>
                       </td>
                       <td className="shrink">
                         <Button
@@ -2213,8 +2202,17 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
           </SettingRow>
 
-          <SettingRow label={t("hideMembersOnlyFromFeed")} description={t("hideMembersOnlyFromFeedHint")}>
-            <Switch checked={hideMembersOnlyFromFeed} onCheckedChange={() => toggleMembersOnlyFromFeed()} />
+          <SettingRow label={t("membersOnlyVisibility")} description={t("membersOnlyVisibilityHint")}>
+            <SelectMenu
+              label={t("membersOnlyVisibility")}
+              value={membersOnlyVisibility}
+              onChange={changeMembersOnlyVisibility}
+              options={[
+                { value: "everywhere", label: t("channelMembersOnlyEverywhere") },
+                { value: "channel", label: t("channelMembersOnlyChannelOnly") },
+                { value: "hidden", label: t("channelMembersOnlyNowhere") },
+              ]}
+            />
           </SettingRow>
 
           <div className="watched-style-setting">

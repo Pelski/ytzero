@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "./SubscriptionsPage.css";
 import { Link } from "react-router-dom";
-import { Check, Plus, Search, Users } from "lucide-react";
+import { Plus, Search, Users } from "lucide-react";
 import { api, type Channel, type Tag } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
 import TagFilterBar from "../components/TagFilterBar";
+import TagPickerMenu from "../components/TagPickerMenu";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
 import { EmptyState, IconButton, PageHeader, Popover, SelectMenu } from "../components/ui";
@@ -50,22 +52,17 @@ function ChannelTagPicker({ channel, tags, onApply, onTagCreated }: { channel: C
 
   return (
     <div className="subs-card-tag-picker">
-      <Popover open={open} onOpenChange={setOpen} align="end" className="subs-card-tag-menu dropdown-menu" trigger={<IconButton variant="ghost" size="sm" label={t("manageChannelTags")} icon={<Plus size={13} />} />}>
-        {tags.map((tag) => {
-          const selected = channel.tags.some((item) => item.id === tag.id);
-          return <button
-            type="button"
-            key={tag.id}
-            className={selected ? "is-selected" : undefined}
-            onClick={() => onApply(selected ? channel.tags.filter((item) => item.id !== tag.id) : [...channel.tags, tag])}
-            title={selected ? t("removeTagFromChannel") : t("tagToChannel")}
-          >
-            <span className="tag-picker-color-dot" style={{ background: tag.color }} />
-            {tag.name}
-            {selected && <span className="dropdown-menu-status" aria-label={t("selectedTag")}><Check size={14} /></span>}
-          </button>;
-        })}
-        <TagCreateForm title={t("newTag")} name={newTagName} color={newTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} disabled={creating} onNameChange={setNewTagName} onColorChange={setNewTagColor} onSubmit={createAndApplyTag} />
+      <Popover open={open} onOpenChange={setOpen} align="end" surface="menu" className="tag-picker-popover subs-card-tag-menu" trigger={<IconButton variant="ghost" size="sm" label={t("manageChannelTags")} icon={<Plus size={13} />} />}>
+        <TagPickerMenu
+          tags={tags}
+          selectedTagIds={channel.tags.map((tag) => tag.id)}
+          onToggle={(tag) => {
+            const selected = channel.tags.some((item) => item.id === tag.id);
+            onApply(selected ? channel.tags.filter((item) => item.id !== tag.id) : [...channel.tags, tag]);
+          }}
+        >
+          <TagCreateForm title={t("newTag")} name={newTagName} color={newTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} disabled={creating} onNameChange={setNewTagName} onColorChange={setNewTagColor} onSubmit={createAndApplyTag} />
+        </TagPickerMenu>
       </Popover>
     </div>
   );

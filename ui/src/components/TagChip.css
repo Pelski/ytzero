@@ -1,0 +1,20 @@
+/* ---------- tiny tag pills on cards ---------- */
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--chip);
+  border: 1px solid transparent;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2.5px 9px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.tag-pill.clickable { cursor: pointer; }
+.tag-pill.clickable:hover { background: var(--chip-hover); }
+.tag-pill .x { display: inline-grid; place-items: center; cursor: pointer; opacity: 0.6; }
+.tag-pill .x:hover { opacity: 1; }
+.tag-pill .x svg { width: 11px; height: 11px; }
+

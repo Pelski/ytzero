@@ -1,0 +1,64 @@
+/* ---------- watchlist sections ---------- */
+.bucket-section { margin-bottom: 18px; }
+.bucket-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bucket-title svg { width: 18px; height: 18px; stroke-width: 1.8; color: var(--text-2); }
+.bucket-title .count { color: var(--text-3); font-weight: 500; font-size: 13px; }
+
+.scheduled-list {
+  border-top: 1px solid var(--surface-2);
+}
+.scheduled-item {
+  display: grid;
+  grid-template-columns: 88px minmax(180px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--surface-2);
+}
+.scheduled-thumb-link { display: block; border-radius: 4px; }
+.scheduled-thumb { width: 88px; border-radius: 4px; display: block; cursor: pointer; }
+.scheduled-info { min-width: 0; }
+.scheduled-title { display: block; color: inherit; text-decoration: none; font-weight: 500; margin-bottom: 2px; }
+.scheduled-title:hover { color: var(--accent); }
+.scheduled-channel { font-size: 12px; }
+.scheduled-when { display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.scheduled-date { font-size: 12px; margin-top: 2px; white-space: nowrap; }
+.scheduled-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 72px) 36px;
+  gap: 7px;
+  align-items: flex-end;
+  position: relative;
+}
+.scheduled-actions > .schedule-picker--inline { grid-column: 1 / span 3; }
+.scheduled-actions > .ui-button--icon svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.8;
+}
+.scheduled-actions > .ui-button--icon {
+  align-self: end;
+}
+
+@media (max-width: 980px) {
+  .scheduled-item {
+    grid-template-columns: 88px minmax(0, 1fr);
+    align-items: start;
+  }
+  .scheduled-date {
+    grid-column: 2;
+    margin-top: -2px;
+  }
+  .scheduled-actions {
+    grid-column: 1 / -1;
+    justify-content: start;
+    margin-top: 2px;
+  }
+}

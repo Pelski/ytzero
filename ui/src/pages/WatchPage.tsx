@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
+import "./WatchPage.css";
 import { emit, emitToast } from "../events";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
@@ -42,7 +43,7 @@ import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
 import { img } from "../img";
 import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
-import { Alert, Button, ButtonAnchor, Checkbox, LocalToast, MenuSeparator, Switch } from "../components/ui";
+import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, MenuItem, MenuSeparator, MenuStatus, Popover, ScrollArea, Switch } from "../components/ui";
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
 import { normalizeSponsorSegments } from "../sponsorblock";
@@ -207,6 +208,7 @@ export default function WatchPage() {
   const [moreOpen, setMoreOpen] = useState(false);
   const [moreView, setMoreView] = useState<"root" | "speed" | "watchlater" | "playlist">("root");
   const [playlists, setPlaylists] = useState<UserPlaylist[]>([]);
+  const [playlistsLoading, setPlaylistsLoading] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState("");
   const [newPlaylistIcon, setNewPlaylistIcon] = useState("ListMusic");
   const [cinemaMode, setCinemaMode] = useState(() => localStorage.getItem(CINEMA_MODE_KEY) === "1");
@@ -237,13 +239,8 @@ export default function WatchPage() {
   // Path to the next playlist video, read by the player's onStateChange when a
   // video ends. A ref keeps the player effect free of playlist dependencies.
   const nextInPlaylistRef = useRef<string | null>(null);
-  const scheduleMenuRef = useRef<HTMLDivElement>(null);
-  const playlistMenuRef = useRef<HTMLDivElement>(null);
   const playlistItemsRef = useRef<HTMLDivElement>(null);
   const activePlaylistItemRef = useRef<HTMLAnchorElement>(null);
-  const speedMenuRef = useRef<HTMLDivElement>(null);
-  const moreMenuRef = useRef<HTMLDivElement>(null);
-  const shareMenuRef = useRef<HTMLDivElement>(null);
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
@@ -282,19 +279,6 @@ export default function WatchPage() {
     observer.observe(element);
     return () => observer.disconnect();
   }, [video?.description, video?.views, video?.likes, video?.published_at, videoInfo?.description, videoInfo?.viewCount, videoInfo?.publishedAt, videoMissing, isChildProfile]);
-
-  useEffect(() => {
-    if (!scheduleOpen && !playlistOpen && !speedOpen && !shareOpen) return;
-    const close = (e: MouseEvent) => {
-      const target = e.target as Element;
-      if (scheduleOpen && !scheduleMenuRef.current?.contains(target)) setScheduleOpen(false);
-      if (playlistOpen && !playlistMenuRef.current?.contains(target) && !target.closest?.(".playlist-icon-popover")) setPlaylistOpen(false);
-      if (speedOpen && !speedMenuRef.current?.contains(target)) setSpeedOpen(false);
-      if (shareOpen && !shareMenuRef.current?.contains(target)) setShareOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [scheduleOpen, playlistOpen, speedOpen, shareOpen]);
 
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
@@ -749,19 +733,6 @@ export default function WatchPage() {
   }, [playerKind, id, membersOnlyNotice]);
 
   useEffect(() => {
-    if (!moreOpen) return;
-    const close = (e: MouseEvent) => {
-      const target = e.target as Element;
-      if (moreMenuRef.current?.contains(target)) return;
-      if (target.closest?.(".playlist-icon-popover")) return;
-      if (target.closest?.(".popconfirm-popover")) return;
-      setMoreOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [moreOpen]);
-
-  useEffect(() => {
     if (!moreOpen) setMoreView("root");
   }, [moreOpen]);
 
@@ -1050,17 +1021,30 @@ export default function WatchPage() {
   const openPlaylistMenu = async () => {
     if (!video) return;
     setMoreView("playlist");
-    const r = await api.userPlaylists(video.video_id);
-    setPlaylists(r.playlists);
-  };
-
-  const toggleDesktopPlaylist = async () => {
-    if (!video) return;
-    const next = !playlistOpen;
-    setPlaylistOpen(next);
-    if (next) {
+    setPlaylistsLoading(true);
+    try {
       const r = await api.userPlaylists(video.video_id);
       setPlaylists(r.playlists);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setPlaylistsLoading(false);
+    }
+  };
+
+  const setDesktopPlaylistOpen = async (open: boolean) => {
+    if (!video) return;
+    setPlaylistOpen(open);
+    if (open) {
+      setPlaylistsLoading(true);
+      try {
+        const r = await api.userPlaylists(video.video_id);
+        setPlaylists(r.playlists);
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setPlaylistsLoading(false);
+      }
     }
   };
 
@@ -1207,12 +1191,12 @@ export default function WatchPage() {
                     <div className="wp-panel-content">
                       <h3>{t("watchChoiceTitle")}</h3>
                       <div className="wp-choice-buttons">
-                        <button className="btn primary" onClick={() => setSourceChoice("wait")}>
+                        <Button variant="primary" onClick={() => setSourceChoice("wait")}>
                           <ArrowDownToLine size={15} /> {t("watchChoiceWait")}
-                        </button>
-                        <button className="btn" onClick={chooseYouTube}>
+                        </Button>
+                        <Button onClick={chooseYouTube}>
                           <MonitorPlay size={15} /> {t("watchChoiceYouTube")}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -1238,9 +1222,9 @@ export default function WatchPage() {
                           <p className="wp-panel-hint">{t("watchWaitingHint")}</p>
                         </>
                       )}
-                      <button className="btn" onClick={chooseYouTube}>
+                      <Button onClick={chooseYouTube}>
                         <MonitorPlay size={15} /> {t("watchChoiceYouTube")}
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -1260,9 +1244,9 @@ export default function WatchPage() {
               })()}
               {playerKind === "youtube" && youtubeAutoplayBlocked && (
                 <div className="wp-autoplay-blocked">
-                  <button className="btn primary" onClick={requestYouTubePlayback}>
+                  <Button variant="primary" onClick={requestYouTubePlayback}>
                     <Play size={16} /> {t("playerPlay")}
-                  </button>
+                  </Button>
                 </div>
               )}
             </div>
@@ -1286,15 +1270,12 @@ export default function WatchPage() {
               </div>
             </div>
             {!isChildProfile && (
-              <a
-                className="btn"
+              <ButtonAnchor
                 href={`https://www.youtube.com/watch?v=${videoInfo.videoId}`}
                 target="_blank"
                 rel="noreferrer"
-              >
-                <ExternalLink size={15} />
-                YouTube
-              </a>
+                leadingIcon={<ExternalLink size={15} />}
+              >YouTube</ButtonAnchor>
             )}
           </div>
         )}
@@ -1337,127 +1318,129 @@ export default function WatchPage() {
             }]} />
           </div>
           <div className="watch-actions">
-            <button
+            <Button
               ref={likeButtonRef}
-              className={`btn like-btn${video.liked === 1 ? " active like-active" : ""}`}
+              className={`like-btn${video.liked === 1 ? " like-active" : ""}`}
               title={video.liked === 1 ? t("unlike") : t("like")}
               aria-pressed={video.liked === 1}
               onClick={toggleLiked}
             >
               <ThumbsUp fill={video.liked === 1 ? "currentColor" : "none"} />
               <span className="btn-label">{t("like")}</span>
-            </button>
+            </Button>
             <div className="watch-action-group watch-action-group--playback">
-            <button
-              className={`btn icon-only watch-action-desktop watch-action-medium${cinemaMode ? " active" : ""}`}
+            <IconButton
+              className="watch-action-desktop watch-action-medium"
+              variant={cinemaMode ? "secondary" : "default"}
+              label={t("cinemaMode")}
               onClick={() => setCinemaMode((m) => !m)}
-              title={t("cinemaMode")}
               aria-pressed={cinemaMode}
             >
               <Clapperboard size={15} />
-            </button>
-            <div className="dropdown watch-action-desktop watch-action-medium" ref={speedMenuRef}>
-              <button
-                className={`btn${speed !== "1" ? " active" : ""}`}
-                onClick={() => setSpeedOpen((open) => !open)}
-                title={t("playbackSpeed")}
-                aria-expanded={speedOpen}
-              >
+            </IconButton>
+            <Popover
+              rootClassName="watch-action-desktop watch-action-medium"
+              align="end"
+              surface="menu"
+              open={speedOpen}
+              onOpenChange={setSpeedOpen}
+              className="watch-speed-popover"
+              trigger={<Button variant={speed !== "1" ? "secondary" : "default"} title={t("playbackSpeed")}>
                 <Gauge size={15} /> {speed}×
-              </button>
-              {speedOpen && (
-                <div className="dropdown-menu speed-menu">
+              </Button>}
+            >
+                <Menu className="watch-speed-menu">
                   {PLAYBACK_SPEEDS.map((s) => (
-                    <button
-                      key={s}
-                      className={speed === s ? "is-selected" : undefined}
-                      onClick={() => changeSpeed(s)}
-                    >
+                    <MenuItem key={s} selected={speed === s} onClick={() => changeSpeed(s)}>
                       {s === "1" ? "1×" : `${s}×`}
-                      {speed === s && <span className="dropdown-menu-status"><Check size={14} /></span>}
-                    </button>
+                    </MenuItem>
                   ))}
                   {video.channel_playback_speed != null && (
-                    <button onClick={() => changeSpeed(null)}>{t("speedDefault")}</button>
+                    <MenuItem onClick={() => changeSpeed(null)}>{t("speedDefault")}</MenuItem>
                   )}
-                </div>
-              )}
-            </div>
+                </Menu>
+            </Popover>
             </div>
             <div className="watch-action-group watch-action-group--organize watch-action-desktop">
-            <div className="dropdown watch-action-desktop watch-action-medium" ref={scheduleMenuRef}>
-              <button
-                className="btn"
-                onClick={() => setScheduleOpen((open) => !open)}
-                aria-expanded={scheduleOpen}
-              >
+            <div className="watch-action-desktop watch-action-medium watch-schedule-anchor">
+              <Popover
+                align="start"
+                surface="menu"
+                open={scheduleOpen}
+                onOpenChange={setScheduleOpen}
+                className="watch-schedule-popover"
+                trigger={<Button>
                 <Clock /> {t("watchLater")}
-              </button>
-              {scheduleOpen && (
-                <div className="dropdown-menu schedule-menu">
+                </Button>}
+              >
                   <SchedulePicker onSelect={(bucket) => void queue(bucket, "desktop")} activeBucket={video.bucket} />
-                </div>
-              )}
+              </Popover>
               {scheduleToast?.anchor === "desktop" && <LocalToast key={scheduleToast.id} variant={scheduleToast.variant}>{scheduleToast.message}</LocalToast>}
             </div>
-            <div className="dropdown watch-action-desktop watch-action-wide" ref={playlistMenuRef}>
-              <button className="btn" title={t("addToPlaylist")} onClick={toggleDesktopPlaylist} aria-expanded={playlistOpen}>
+            <Popover
+              rootClassName="watch-action-desktop watch-action-wide"
+              align="end"
+              surface="menu"
+              open={playlistOpen}
+              onOpenChange={(open) => void setDesktopPlaylistOpen(open)}
+              trigger={<Button title={t("addToPlaylist")}>
                 <BookmarkPlus /> {t("addToPlaylist")}
-              </button>
-              {playlistOpen && (
-                <div className="dropdown-menu playlist-picker-menu">
-                  <PlaylistPicker playlists={playlists} name={newPlaylistName} icon={newPlaylistIcon} onNameChange={setNewPlaylistName} onIconChange={setNewPlaylistIcon} onToggle={togglePlaylist} onCreate={createPlaylist} />
-                </div>
-              )}
-            </div>
+              </Button>}
+            >
+              <PlaylistPicker playlists={playlists} loading={playlistsLoading} name={newPlaylistName} icon={newPlaylistIcon} onNameChange={setNewPlaylistName} onIconChange={setNewPlaylistIcon} onToggle={togglePlaylist} onCreate={createPlaylist} />
+            </Popover>
             </div>
             <div className="watch-action-group watch-action-group--utility">
-            <div className="dropdown share-btn-wrap" ref={shareMenuRef}>
-              <button
-                className={`btn icon-only${shareOpen ? " active" : ""}`}
-                title={t("share")}
-                aria-expanded={shareOpen}
-                onClick={() => setShareOpen((open) => !open)}
-              >
+            <div className="share-btn-wrap">
+              <Popover
+                align="end"
+                surface="menu"
+                open={shareOpen}
+                onOpenChange={setShareOpen}
+                className="watch-share-popover"
+                trigger={<IconButton variant={shareOpen ? "secondary" : "default"} label={t("share")}>
                 <Share2 />
-              </button>
-              {shareOpen && (
-                <div className="dropdown-menu share-menu">
+                </IconButton>}
+              >
+                <div className="share-menu">
                   <div className="share-menu-title">{t("share")}</div>
                   <label className="share-link-label">{settings?.app_name || "YT Zero"}</label>
                   <div className="share-link-field">
                     <input readOnly value={shareLink("webpage") ?? ""} aria-label={settings?.app_name || "YT Zero"} />
-                    <button className="icon-only" title={t("copyLink")} onClick={() => copyShareLink("webpage")}><Copy /></button>
+                    <IconButton variant="ghost" label={t("copyLink")} onClick={() => copyShareLink("webpage")}><Copy /></IconButton>
                   </div>
                   <label className="share-link-label">YouTube</label>
                   <div className="share-link-field">
                     <input readOnly value={shareLink("youtube") ?? ""} aria-label="YouTube" />
-                    <button className="icon-only" title={t("copyLink")} onClick={() => copyShareLink("youtube")}><Copy /></button>
+                    <IconButton variant="ghost" label={t("copyLink")} onClick={() => copyShareLink("youtube")}><Copy /></IconButton>
                   </div>
                   <Checkbox className="share-timestamp-option" label={t("includeCurrentTime")} checked={shareWithTimestamp} onChange={(event) => setShareWithTimestamp(event.target.checked)} />
                 </div>
-              )}
+              </Popover>
               {copyKey > 0 && <LocalToast key={copyKey}>{t("copied")}</LocalToast>}
             </div>
-            <div className="dropdown watch-action-overflow" ref={moreMenuRef}>
-              <button
-                className={`btn icon-only${moreOpen ? " active" : ""}`}
-                title={t("moreActions")}
-                onClick={() => setMoreOpen((o) => !o)}
-              >
+            <Popover
+              rootClassName="watch-action-overflow"
+              align="end"
+              surface="menu"
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+              className="watch-more-popover"
+              trigger={<IconButton variant={moreOpen ? "secondary" : "default"} label={t("moreActions")}>
                 <EllipsisVertical />
-              </button>
-              {moreOpen && (
-                <div className={`dropdown-menu more-menu more-menu--${moreView}`}>
+              </IconButton>}
+            >
+              <ScrollArea viewportClassName="watch-more-scroll">
+                <div className={`watch-more-menu more-menu--${moreView}`}>
                   {moreView === "root" && (
                     <>
                       <button className="more-item-medium" onClick={() => { setCinemaMode((m) => !m); setMoreOpen(false); }}>
                         <Clapperboard /> {t("cinemaMode")}
-                        {cinemaMode && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                        {cinemaMode && <MenuStatus><Check size={14} /></MenuStatus>}
                       </button>
                       <button className="more-item-medium" onClick={() => setMoreView("speed")}>
                         <Gauge /> {t("channelSpeed")}
-                        <span className="dropdown-menu-status">{speed}×</span>
+                        <MenuStatus>{speed}×</MenuStatus>
                       </button>
                       <button className="more-item-medium" onClick={() => setMoreView("watchlater")}>
                         <Clock /> {t("watchLater")}
@@ -1514,7 +1497,7 @@ export default function WatchPage() {
                           onClick={() => changeSpeed(s)}
                         >
                           {s === "1" ? "1×" : `${s}×`}
-                          {speed === s && <span className="dropdown-menu-status"><Check size={14} /></span>}
+                          {speed === s && <MenuStatus><Check size={14} /></MenuStatus>}
                         </button>
                       ))}
                       {video?.channel_playback_speed != null && (
@@ -1541,16 +1524,17 @@ export default function WatchPage() {
                         </button>
                         {t("addToPlaylist")}
                       </div>
-                      <PlaylistPicker playlists={playlists} name={newPlaylistName} icon={newPlaylistIcon} onNameChange={setNewPlaylistName} onIconChange={setNewPlaylistIcon} onToggle={togglePlaylist} onCreate={createPlaylist} />
+                      <PlaylistPicker playlists={playlists} loading={playlistsLoading} name={newPlaylistName} icon={newPlaylistIcon} onNameChange={setNewPlaylistName} onIconChange={setNewPlaylistIcon} onToggle={togglePlaylist} onCreate={createPlaylist} />
                     </>
                   )}
                 </div>
-              )}
+              </ScrollArea>
+            </Popover>
               {scheduleToast?.anchor === "overflow" && <LocalToast key={scheduleToast.id} variant={scheduleToast.variant}>{scheduleToast.message}</LocalToast>}
             </div>
             </div>
           </div>
-        </div>}
+        }
         {video && (video.live_status === "live" || video.tags.length > 0) && (
           <div className="watch-tags">
             {video.live_status === "live" && (
@@ -1700,7 +1684,6 @@ export default function WatchPage() {
           </div>
         )}
       </div>
-
       <aside>
         {playlistId && playlistVideos.length > 0 && (
           <div className="watch-playlist-panel">

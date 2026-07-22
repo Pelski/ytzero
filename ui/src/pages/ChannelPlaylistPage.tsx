@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import "./ChannelPlaylistPage.css";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronRight, ListMinus, ListPlus, ListVideo, RefreshCw } from "lucide-react";
 import { api, type FollowedPlaylist, type Video } from "../api";

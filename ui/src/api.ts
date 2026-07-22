@@ -54,6 +54,8 @@ export interface Video {
   source_playlist_id?: string | null;
 }
 
+export type MembersOnlyVisibility = "default" | "everywhere" | "channel" | "hidden";
+
 export interface Channel {
   channel_id: string;
   title: string;
@@ -69,6 +71,8 @@ export interface Channel {
   caption_mode?: "off" | "language" | null;
   caption_language?: string | null;
   hide_members_only_from_feed?: number | null;
+  hide_members_only_on_channel?: number | null;
+  members_only_visibility?: MembersOnlyVisibility;
   auto_download_min_duration_override?: number | null;
   subscribed_at?: string | null;
   latest_video_at?: string | null;
@@ -208,6 +212,7 @@ export interface AppSettings {
   show_top_channels: string;
   hide_live_from_feed: string;
   hide_members_only_from_feed: string;
+  hide_members_only_on_channel: string;
   watched_style: string;
   sidebar_nav: string;
   sponsorblock_enabled: string;
@@ -834,8 +839,8 @@ export const api = {
     http(`/channels/${id}/speed`, { method: "PUT", body: JSON.stringify({ speed }) }),
   setChannelCaptions: (id: string, mode: "off" | "language" | null, language?: string) =>
     http(`/channels/${id}/captions`, { method: "PUT", body: JSON.stringify({ mode, language }) }),
-  setChannelMembersOnlyFeed: (id: string, hide: boolean | null) =>
-    http(`/channels/${id}/members-only-feed`, { method: "PUT", body: JSON.stringify({ hide }) }),
+  setChannelMembersOnlyVisibility: (id: string, visibility: MembersOnlyVisibility) =>
+    http(`/channels/${id}/members-only-feed`, { method: "PUT", body: JSON.stringify({ visibility }) }),
   setChannelDownloadMinDuration: (id: string, seconds: number | null) =>
     http(`/channels/${id}/download-min-duration`, { method: "PUT", body: JSON.stringify({ seconds }) }),
   unfollowedChannels: () => http<{ channels: Channel[] }>("/channels/unfollowed"),

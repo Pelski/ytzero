@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import "./DownloadsPage.css";
 import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowDownToLine, Check, ChevronDown, HardDrive, LoaderCircle, Pin, PinOff, RotateCw, Trash2 } from "lucide-react";
 import { api, type DownloadsResponse, type DownloadItem } from "../api";

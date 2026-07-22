@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from "react";
+import "./Tooltip.css";
 
 export default function Tooltip({ text, pos = "left", delay, className, children }: {
   text: string;
