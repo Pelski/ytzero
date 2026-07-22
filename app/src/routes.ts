@@ -24,7 +24,7 @@ import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
-import { COMMIT, VERSION } from "./version";
+import { COMMIT, isReleaseNewer, VERSION } from "./version";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, fetchSubtitles, getDownload, listDownloads, listSubtitleFiles, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
@@ -2934,4 +2934,42 @@ api.post("/refresh", async (c) => {
 api.get("/logs", (c) => {
   const limit = Math.min(1000, Math.max(1, Number(c.req.query("limit") ?? 300)));
   return c.json({ ...readRecentLogs(limit), version: VERSION, commit: COMMIT });
+});
+
+api.get("/version", (c) => c.json({ version: VERSION, commit: COMMIT }));
+
+interface GitHubRelease {
+  tag_name?: unknown;
+  published_at?: unknown;
+  html_url?: unknown;
+}
+
+api.post("/updates/check", async (c) => {
+  try {
+    const response = await fetch("https://api.github.com/repos/Pelski/ytzero/releases/latest", {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "YT-Zero-update-check",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+
+    const release = await response.json() as GitHubRelease;
+    const latestVersion = typeof release.tag_name === "string" ? release.tag_name : null;
+    log.info("updates.manual_check", { currentVersion: VERSION, latestVersion });
+    return c.json({
+      currentVersion: VERSION,
+      commit: COMMIT,
+      latestVersion,
+      updateAvailable: latestVersion ? isReleaseNewer(VERSION, latestVersion) : null,
+      checkedAt: new Date().toISOString(),
+      latestUrl: typeof release.html_url === "string" ? release.html_url : "https://github.com/Pelski/ytzero/releases/latest",
+      publishedAt: typeof release.published_at === "string" ? release.published_at : "",
+    });
+  } catch (error) {
+    log.warn("updates.manual_check_failed", { error: error instanceof Error ? error.message : String(error) });
+    return c.json({ error: "GitHub update check failed" }, 502);
+  }
 });

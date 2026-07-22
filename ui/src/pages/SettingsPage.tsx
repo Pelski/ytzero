@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
-import { Camera, Check, ChevronDown, ChevronUp, Clock, Download, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppLogs, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -19,7 +19,7 @@ import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type 
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { Alert, Badge, Button, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, SectionHeader, Select, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, SectionHeader, Select, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -72,6 +72,15 @@ function LogLine({ line }: { line: string }) {
       ) : null}
     </div>
   );
+}
+
+function ChangelogNote({ children }: { children: string }) {
+  return <>{children.split(/(#\d+)/g).map((part, index) => {
+    const issue = part.match(/^#(\d+)$/);
+    return issue ? (
+      <a className="settings-release-note-link" href={`https://github.com/Pelski/ytzero/issues/${issue[1]}`} target="_blank" rel="noreferrer" key={`${part}-${index}`}>{part}</a>
+    ) : part;
+  })}</>;
 }
 
 function PlaylistSettingsItem({
@@ -1070,11 +1079,22 @@ function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage, locale } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get("tab") as Tab) ?? "channels";
-  const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
-  const [channelSubTab, setChannelSubTab] = useState<"list" | "filters">("list");
-  const [tagSubTab, setTagSubTab] = useState<"list" | "rules">("list");
-  const [advancedSubTab, setAdvancedSubTab] = useState<"external" | "logs">("external");
+  const requestedTab = searchParams.get("tab");
+  const tab: Tab = TABS.some((item) => item.id === requestedTab) ? requestedTab as Tab : "channels";
+  const section = searchParams.get("section");
+  const channelSubTab: "list" | "filters" = section === "filters" ? "filters" : "list";
+  const tagSubTab: "list" | "rules" = section === "rules" ? "rules" : "list";
+  const advancedSubTab: "external" | "logs" | "changelog" = section === "logs" || section === "changelog" ? section : "external";
+  const setSettingsRoute = (nextTab: Tab, nextSection?: string) => {
+    const next = new URLSearchParams();
+    next.set("tab", nextTab);
+    if (nextSection) next.set("section", nextSection);
+    setSearchParams(next, { replace: true });
+  };
+  const setTab = (nextTab: Tab) => setSettingsRoute(nextTab);
+  const setChannelSubTab = (nextSection: "list" | "filters") => setSettingsRoute("channels", nextSection === "list" ? undefined : nextSection);
+  const setTagSubTab = (nextSection: "list" | "rules") => setSettingsRoute("tags", nextSection === "list" ? undefined : nextSection);
+  const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog") => setSettingsRoute("advanced", nextSection === "external" ? undefined : nextSection);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -1093,6 +1113,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [clearingExternal, setClearingExternal] = useState(false);
   const [logs, setLogs] = useState<AppLogs | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
+  const [changelog, setChangelog] = useState<AppChangelog | null>(null);
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  const [updateCheckError, setUpdateCheckError] = useState(false);
 
   const [channelUrl, setChannelUrl] = useState("");
   const [channelCustomName, setChannelCustomName] = useState("");
@@ -1182,6 +1207,27 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       .finally(() => setLoadingLogs(false));
   }, []);
 
+  const loadChangelog = useCallback(() => {
+    Promise.all([api.version(), api.changelog()])
+      .then(([version, bundledChangelog]) => {
+        setAppVersion(version);
+        setChangelog(bundledChangelog);
+      })
+      .catch(console.error);
+  }, []);
+
+  const checkForUpdates = async () => {
+    setCheckingUpdates(true);
+    setUpdateCheckError(false);
+    try {
+      setUpdateCheck(await api.checkUpdates());
+    } catch {
+      setUpdateCheckError(true);
+    } finally {
+      setCheckingUpdates(false);
+    }
+  };
+
   const loadPlugins = useCallback(() => {
     api.plugins()
       .then(async (r) => {
@@ -1195,7 +1241,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   useEffect(() => {
     if (tab === "advanced" && advancedSubTab === "external") loadExternal();
     if (tab === "advanced" && advancedSubTab === "logs") loadLogs();
-  }, [tab, advancedSubTab, loadExternal, loadLogs]);
+    if (tab === "advanced" && advancedSubTab === "changelog") loadChangelog();
+  }, [tab, advancedSubTab, loadExternal, loadLogs, loadChangelog]);
 
   const clearExternal = async () => {
     setClearingExternal(true);
@@ -2686,7 +2733,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isSettingsLocked && tab === "advanced" && (
         <SettingsSection>
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "logs", label: t("logs") }]} />
+          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "logs", label: t("logs") }, { value: "changelog", label: t("changelog") }]} />
 
           {advancedSubTab === "external" && (
             <>
@@ -2800,6 +2847,79 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </>
           )}
             </>
+          )}
+
+          {advancedSubTab === "changelog" && (
+            <div className="settings-changelog">
+              <SectionHeader
+                className="settings-changelog-head"
+                title={t("currentVersion")}
+                description={appVersion ? <code className="settings-version-code">{appVersion.version} ({appVersion.commit})</code> : <LoaderCircle size={15} className="spin" />}
+                actions={<Button onClick={checkForUpdates} disabled={checkingUpdates}>
+                  {checkingUpdates ? <LoaderCircle size={15} className="spin" /> : <RefreshCw size={15} />}
+                  {checkingUpdates ? t("checkingUpdates") : t("checkForUpdates")}
+                </Button>}
+              />
+
+              {updateCheckError && (
+                <Alert variant="danger" title={t("updateCheckFailed")}>{t("updateCheckFailedHint")}</Alert>
+              )}
+
+              {updateCheck && (
+                <Alert
+                  className="settings-update-status"
+                  variant={updateCheck.updateAvailable === true ? "warning" : updateCheck.updateAvailable === false ? "success" : "info"}
+                  icon={updateCheck.updateAvailable === true ? <Sparkles /> : updateCheck.updateAvailable === false ? <CheckCircle2 /> : <Info />}
+                  title={updateCheck.updateAvailable === true ? t("updateAvailable") : updateCheck.updateAvailable === false ? t("upToDate") : t("developmentVersion")}
+                >
+                  {updateCheck.updateAvailable === true && (
+                    <div className="settings-version-comparison" aria-label={`${updateCheck.currentVersion} → ${updateCheck.latestVersion ?? "—"}`}>
+                      <code>{updateCheck.currentVersion}</code>
+                      <ArrowRight aria-hidden="true" />
+                      <code>{updateCheck.latestVersion ?? "—"}</code>
+                    </div>
+                  )}
+                  {updateCheck.updateAvailable === false && <span>{t("noNewerVersionHint", { version: updateCheck.currentVersion })}</span>}
+                  {updateCheck.updateAvailable === null && (
+                    <span>{t("developmentVersionHint")} {t("latestVersion")}: <strong>{updateCheck.latestVersion ?? "—"}</strong></span>
+                  )}
+                  {updateCheck.latestVersion && (
+                    <ButtonAnchor className="settings-update-link" size="sm" href={updateCheck.latestUrl} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink size={14} />}>
+                      {t("viewOnGitHub")}
+                    </ButtonAnchor>
+                  )}
+                </Alert>
+              )}
+
+              <SectionHeader className="settings-changelog-list-head" title={t("changelog")} description={t("changelogHint")} variant="subtle" />
+
+              {!changelog ? (
+                <TableSkeleton rows={4} columns={1} />
+              ) : changelog.releases.length === 0 ? (
+                <EmptyState icon={<FileText />} title={t("changelogEmpty")} />
+              ) : (
+                <div className="settings-release-list">
+                  {changelog.releases.map((release) => (
+                    <article className="settings-release" key={release.version}>
+                      <header className="settings-release-head">
+                        <div>
+                          <strong>{release.name}</strong>
+                          {release.publishedAt && <span>{new Date(release.publishedAt).toLocaleDateString(locale)}</span>}
+                        </div>
+                        <div className="settings-release-actions">
+                          <ButtonAnchor size="sm" variant="ghost" href={release.url} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink size={13} />}>
+                            GitHub
+                          </ButtonAnchor>
+                        </div>
+                      </header>
+                      {release.notes.length > 0 && (
+                        <ul>{release.notes.map((note, noteIndex) => <li key={`${release.version}-${noteIndex}`}><ChangelogNote>{note}</ChangelogNote></li>)}</ul>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </SettingsSection>
       )}

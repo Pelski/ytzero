@@ -18,3 +18,29 @@ function detectCommit(): string {
 
 /** Short commit hash the running build was made from, or "unknown". */
 export const COMMIT = detectCommit().slice(0, 7);
+
+interface ParsedVersion {
+  parts: [number, number, number];
+  prerelease: boolean;
+}
+
+function parseVersion(value: string): ParsedVersion | null {
+  const match = value.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(-.+)?$/);
+  if (!match) return null;
+  return {
+    parts: [Number(match[1]), Number(match[2]), Number(match[3])],
+    prerelease: Boolean(match[4]),
+  };
+}
+
+/** Whether a stable GitHub release is newer than the running build. `null`
+ * means the local label (for example `dev` or `edge`) is not comparable. */
+export function isReleaseNewer(current: string, latest: string): boolean | null {
+  const a = parseVersion(current);
+  const b = parseVersion(latest);
+  if (!a || !b) return null;
+  for (let index = 0; index < a.parts.length; index++) {
+    if (b.parts[index] !== a.parts[index]) return b.parts[index] > a.parts[index];
+  }
+  return a.prerelease && !b.prerelease;
+}

@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "generate:changelog": "bun scripts/generate-changelog.ts",
+    "build": "bun run generate:changelog && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

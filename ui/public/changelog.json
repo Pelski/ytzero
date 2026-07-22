@@ -1,0 +1,108 @@
+{
+  "releases": [
+    {
+      "version": "v0.9.1",
+      "name": "v0.9.1",
+      "publishedAt": "2026-07-21T23:48:07Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.9.1",
+      "notes": [
+        "Design fixes for sponsor block widget and support for collab feature (`8a40c36`)"
+      ]
+    },
+    {
+      "version": "v0.9.0",
+      "name": "v0.9.0",
+      "publishedAt": "2026-07-21T22:50:40Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.9.0",
+      "notes": [
+        "Huge refactor and fixed #43 - missing published date (`7b74153`)",
+        "Grouped history by date (`2aba198`)",
+        "Global grid size #42 (`8c136fc`)",
+        "Added tooltip to video title #42 (`3b832ee`)",
+        "Added share video popover with more details #41 (`6da9fde`)",
+        "Pull request template (`e131f42`)",
+        "Code of conduct (`30b006c`)",
+        "Add Contributor Covenant Code of Conduct (`13c8f10`)",
+        "Issues templates (`ede597f`)",
+        "Issues templates (`b72c013`)",
+        "Issues templates (`69527c3`)",
+        "Fixed useless pipelines runs (`ec2ba0b`)",
+        "Fixed useless pipelines runs (`4527c63`)",
+        "Auto label and assign new issues (`b84100f`)"
+      ]
+    },
+    {
+      "version": "v0.8.3",
+      "name": "v0.8.3",
+      "publishedAt": "2026-07-20T22:04:38Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.8.3",
+      "notes": [
+        "Download video condition - minimum video length #39 (`885c110`)"
+      ]
+    },
+    {
+      "version": "v0.8.2",
+      "name": "v0.8.2",
+      "publishedAt": "2026-07-20T21:54:10Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.8.2",
+      "notes": [
+        "Onboarding and fixed few bugs on subscriptions page (`c288649`)",
+        "Info about 153 error of embedded player (`39af583`)"
+      ]
+    },
+    {
+      "version": "v0.8.1",
+      "name": "v0.8.1",
+      "publishedAt": "2026-07-20T19:59:14Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.8.1",
+      "notes": [
+        "Allow PIP mode on embedded video (`a811210`)"
+      ]
+    },
+    {
+      "version": "v0.8.0",
+      "name": "v0.8.0",
+      "publishedAt": "2026-07-19T23:47:01Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.8.0",
+      "notes": [
+        "Improved search and subscription views (`c51e4ac`)"
+      ]
+    },
+    {
+      "version": "v0.7.3",
+      "name": "v0.7.3",
+      "publishedAt": "2026-07-19T22:54:33Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.3",
+      "notes": [
+        "Fixed: #32, #33, #34, #35 (`cdb2350`)"
+      ]
+    },
+    {
+      "version": "v0.7.2",
+      "name": "v0.7.2",
+      "publishedAt": "2026-07-18T20:24:06Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.2",
+      "notes": [
+        "Better logging and details fetch backoff (`0db66c3`)"
+      ]
+    },
+    {
+      "version": "v0.7.1",
+      "name": "v0.7.1",
+      "publishedAt": "2026-07-17T23:12:26Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.1",
+      "notes": [
+        "Fixed live videos with local only playback - disabled this option (`98fe785`)"
+      ]
+    },
+    {
+      "version": "v0.7.0",
+      "name": "v0.7.0",
+      "publishedAt": "2026-07-17T22:56:39Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.7.0",
+      "notes": [
+        "yt-dlp improvements, subtitles and more (`895905c`)"
+      ]
+    }
+  ]
+}

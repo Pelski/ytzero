@@ -465,6 +465,33 @@ export interface AppLogs {
   commit: string;
 }
 
+export interface AppVersion {
+  version: string;
+  commit: string;
+}
+
+export interface AppRelease {
+  version: string;
+  name: string;
+  publishedAt: string;
+  url: string;
+  notes: string[];
+}
+
+export interface AppChangelog {
+  releases: AppRelease[];
+}
+
+export interface UpdateCheck {
+  currentVersion: string;
+  commit: string;
+  latestVersion: string | null;
+  updateAvailable: boolean | null;
+  checkedAt: string;
+  latestUrl: string;
+  publishedAt: string;
+}
+
 export type Bucket = "today" | "tonight" | "tomorrow" | "tomorrow_evening" | "weekend";
 
 export const BUCKET_LABELS: Record<Bucket, string> = {
@@ -628,6 +655,13 @@ export const api = {
   clearExternal: () => http<{ deleted: number }>("/external", { method: "DELETE" }),
   removeExternal: (id: string) => http<{ deleted: number }>(`/external/${id}`, { method: "DELETE" }),
   logs: (limit = 300) => http<AppLogs>(`/logs?limit=${limit}`),
+  version: () => http<AppVersion>("/version"),
+  changelog: async () => {
+    const response = await fetch("/changelog.json");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json() as Promise<AppChangelog>;
+  },
+  checkUpdates: () => http<UpdateCheck>("/updates/check", { method: "POST", body: "{}" }),
   live: () => http<{ videos: Video[] }>("/live"),
   channelLive: (id: string) => http<{ videos: Video[] }>(`/channels/${id}/live`),
   video: (id: string) => http<{ video: Video; related: Video[] }>(`/videos/${id}`),
