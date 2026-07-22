@@ -2023,6 +2023,7 @@ button.video-card:disabled { cursor: default; }
 .tag-create-form__fields { align-items: center; display: grid; gap: 8px; grid-template-columns: 30px minmax(0, 1fr); min-width: 0; }
 .tag-create-form__fields .ui-input { box-sizing: border-box; width: 100%; }
 .tag-create-form > .ui-button { width: 100%; }
+.tag-picker-color-dot { border-radius: 50%; display: inline-block; flex: 0 0 8px; height: 8px; width: 8px; }
 .schedule-menu {
   min-width: 162px;
   padding: 7px;
@@ -4663,6 +4664,7 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   gap: 12px;
 }
 .subs-card {
+  position: relative;
   min-width: 0;
   min-height: 86px;
   border-radius: 8px;
@@ -4674,6 +4676,9 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   align-items: stretch;
   gap: 10px;
   transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.subs-card:has(.subs-card-tag-menu) {
+  z-index: 100;
 }
 .subs-card:hover {
   background: var(--surface-2);
@@ -4690,7 +4695,7 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .subs-card-tags-scroll.shadow-left::before, .subs-card-tags-scroll.shadow-right::after { opacity: 1; }
 .subs-card-tags-list { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .subs-card-tags-list::-webkit-scrollbar { display: none; }
-.subs-card-tag-menu { min-width: 200px; right: 0; left: auto; }
+.subs-card-tag-menu { min-width: 200px; right: 0; left: auto; z-index: 120; }
 .subs-card-avatar {
   width: 52px;
   height: 52px;

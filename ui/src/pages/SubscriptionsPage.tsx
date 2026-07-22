@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, Search, Users } from "lucide-react";
+import { Check, Plus, Search, Users } from "lucide-react";
 import { api, type Channel, type Tag } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
 import TagChip from "../components/TagChip";
+import TagCreateForm from "../components/TagCreateForm";
 import TagFilterBar from "../components/TagFilterBar";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
 import { EmptyState, IconButton, OptionPicker, PageHeader, Popover } from "../components/ui";
+import { emit } from "../events";
 
 type SubscriptionSort = "name-asc" | "name-desc" | "latest-video" | "subscribed-recent" | "subscribers-desc" | "videos-desc";
 
@@ -21,27 +23,55 @@ function subscriberNumber(value: string | null | undefined): number {
   return Number(match[1]) * multiplier || 0;
 }
 
-function ChannelTagPicker({ channel, tags, onApply }: { channel: Channel; tags: Tag[]; onApply: (tags: Tag[]) => void }) {
+function ChannelTagPicker({ channel, tags, onApply, onTagCreated }: { channel: Channel; tags: Tag[]; onApply: (tags: Tag[]) => void; onTagCreated: (tag: Tag) => void }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<Tag[]>(channel.tags);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#3ea6ff");
+  const [creating, setCreating] = useState(false);
 
-  const applyAndClose = () => {
-    if (!open) return;
-    setOpen(false);
-    if (draft.map((tag) => tag.id).sort().join(",") !== channel.tags.map((tag) => tag.id).sort().join(",")) onApply(draft);
+  const createAndApplyTag = async () => {
+    if (!newTagName.trim() || creating) return;
+    setCreating(true);
+    try {
+      const response = await api.addTag(newTagName.trim(), newTagColor);
+      const next = channel.tags.some((tag) => tag.id === response.tag.id) ? channel.tags : [...channel.tags, response.tag];
+      onTagCreated(response.tag);
+      setNewTagName("");
+      setOpen(false);
+      onApply(next);
+      emit("tags-changed");
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
     <div className="subs-card-tag-picker">
-      <Popover open={open} onOpenChange={(next) => { if (next) { setDraft(channel.tags); setOpen(true); } else applyAndClose(); }} align="end" className="subs-card-tag-menu" trigger={<IconButton variant="ghost" size="sm" label={t("manageChannelTags")} icon={<Plus size={13} />} />}>
-        {tags.length === 0 ? <div className="dropdown-empty">{t("noTags")}</div> : <OptionPicker label={t("manageChannelTags")} value={draft.map((tag) => tag.id)} options={tags.map((tag) => ({ value: tag.id, label: tag.name, icon: <span className="dot" style={{ background: tag.color }} /> }))} onChange={(id) => setDraft((current) => current.some((tag) => tag.id === id) ? current.filter((tag) => tag.id !== id) : [...current, tags.find((tag) => tag.id === id)!])} />}
+      <Popover open={open} onOpenChange={setOpen} align="end" className="subs-card-tag-menu dropdown-menu" trigger={<IconButton variant="ghost" size="sm" label={t("manageChannelTags")} icon={<Plus size={13} />} />}>
+        {tags.map((tag) => {
+          const selected = channel.tags.some((item) => item.id === tag.id);
+          return <button
+            type="button"
+            key={tag.id}
+            className={selected ? "is-selected" : undefined}
+            onClick={() => onApply(selected ? channel.tags.filter((item) => item.id !== tag.id) : [...channel.tags, tag])}
+            title={selected ? t("removeTagFromChannel") : t("tagToChannel")}
+          >
+            <span className="tag-picker-color-dot" style={{ background: tag.color }} />
+            {tag.name}
+            {selected && <span className="dropdown-menu-status" aria-label={t("selectedTag")}><Check size={14} /></span>}
+          </button>;
+        })}
+        <TagCreateForm title={t("newTag")} name={newTagName} color={newTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} disabled={creating} onNameChange={setNewTagName} onColorChange={setNewTagColor} onSubmit={createAndApplyTag} />
       </Popover>
     </div>
   );
 }
 
-function ChannelTagsRow({ channel, tags, onApply }: { channel: Channel; tags: Tag[]; onApply: (tags: Tag[]) => void }) {
+function ChannelTagsRow({ channel, tags, onApply, onTagCreated }: { channel: Channel; tags: Tag[]; onApply: (tags: Tag[]) => void; onTagCreated: (tag: Tag) => void }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [shadowLeft, setShadowLeft] = useState(false);
   const [shadowRight, setShadowRight] = useState(false);
@@ -70,7 +100,7 @@ function ChannelTagsRow({ channel, tags, onApply }: { channel: Channel; tags: Ta
           {channel.tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
         </div>
       </div>
-      <ChannelTagPicker channel={channel} tags={tags} onApply={onApply} />
+      <ChannelTagPicker channel={channel} tags={tags} onApply={onApply} onTagCreated={onTagCreated} />
     </div>
   );
 }
@@ -137,13 +167,26 @@ export default function SubscriptionsPage() {
   };
 
   const applyChannelTags = (channel: Channel, nextTags: Tag[]) => {
+    const previousTags = channel.tags;
     const previousIds = new Set(channel.tags.map((tag) => tag.id));
     const nextIds = new Set(nextTags.map((tag) => tag.id));
+    // Reflect the choice immediately. Network completion should not be needed
+    // for chips and tag filters on this page to update.
+    setChannels((current) => current.map((item) => item.channel_id === channel.channel_id ? { ...item, tags: nextTags } : item));
     Promise.all([
       ...nextTags.filter((tag) => !previousIds.has(tag.id)).map((tag) => api.tagChannel(channel.channel_id, tag.id)),
       ...channel.tags.filter((tag) => !nextIds.has(tag.id)).map((tag) => api.untagChannel(channel.channel_id, tag.id)),
-    ]).then(() => setChannels((current) => current.map((item) => item.channel_id === channel.channel_id ? { ...item, tags: nextTags } : item)))
-      .catch(console.error);
+    ]).then(() => emit("tags-changed"))
+      .catch((error) => {
+        console.error(error);
+        // Do not overwrite a newer edit if another change happened meanwhile.
+        const expected = [...nextIds].sort().join(",");
+        setChannels((current) => current.map((item) =>
+          item.channel_id === channel.channel_id && item.tags.map((tag) => tag.id).sort().join(",") === expected
+            ? { ...item, tags: previousTags }
+            : item
+        ));
+      });
   };
 
   return (
@@ -206,7 +249,7 @@ export default function SubscriptionsPage() {
                   {ch.subscriber_count && <div className="subs-card-meta">{ch.subscriber_count} {t("subscribers")}</div>}
                 </div>
               </Link>
-              <ChannelTagsRow channel={ch} tags={tags} onApply={(nextTags) => applyChannelTags(ch, nextTags)} />
+              <ChannelTagsRow channel={ch} tags={tags} onApply={(nextTags) => applyChannelTags(ch, nextTags)} onTagCreated={(tag) => setTags((current) => current.some((item) => item.id === tag.id) ? current : [...current, tag])} />
             </div>
           ))}
         </div>

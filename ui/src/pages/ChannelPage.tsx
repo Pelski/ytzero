@@ -600,7 +600,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                       onClick={() => toggleTag(tag)}
                       title={isSelected ? t("removeTagFromChannel") : t("tagToChannel")}
                     >
-                      <span className="dot" style={{ background: tag.color, width: 8, height: 8, borderRadius: "50%", display: "inline-block", flexShrink: 0 }} />
+                      <span className="tag-picker-color-dot" style={{ background: tag.color }} />
                       {tag.name}
                       {isSelected && (
                         <span className="dropdown-menu-status" aria-label={t("selectedTag")}>
