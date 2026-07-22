@@ -18,7 +18,7 @@ const BUCKET_GROUPS: { labelKey: I18nKey; buckets: Bucket[] }[] = [
   { labelKey: "groupWeekend", buckets: ["weekend"] },
 ];
 
-export function SchedulePicker({ onSelect }: { onSelect: (bucket: Bucket) => void }) {
+export function SchedulePicker({ onSelect, activeBucket = null }: { onSelect: (bucket: Bucket) => void; activeBucket?: Bucket | null }) {
   const { t, bucketLabel } = useI18n();
   return <>
     {BUCKET_GROUPS.map((group) => (
@@ -27,7 +27,8 @@ export function SchedulePicker({ onSelect }: { onSelect: (bucket: Bucket) => voi
         <div className="dropdown-menu-row">
           {group.buckets.map((bucket) => {
             const Icon = BUCKET_ICONS[bucket];
-            return <button type="button" key={bucket} className="schedule-icon-choice" title={bucketLabel(bucket)} onClick={() => onSelect(bucket)}><Icon /></button>;
+            const active = activeBucket === bucket;
+            return <button type="button" key={bucket} className={`schedule-icon-choice${active ? " active" : ""}`} aria-pressed={active} title={bucketLabel(bucket)} onClick={() => onSelect(bucket)}><Icon /></button>;
           })}
         </div>
       </div>

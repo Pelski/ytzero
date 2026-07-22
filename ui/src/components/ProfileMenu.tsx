@@ -7,6 +7,7 @@ import { emit, subscribe } from "../events";
 import { useI18n } from "../i18n";
 import { parseVideoCardSize, persistVideoCardSize } from "../videoCardSize";
 import { IconButton, Popover, SteppedSlider } from "./ui";
+import NotificationCenter from "./NotificationCenter";
 
 /** Round avatar: uploaded image, or a colored circle with the name initial. */
 export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
@@ -45,6 +46,7 @@ export default function ProfileMenu() {
   }, []);
   useEffect(load, [load]);
   useEffect(() => subscribe("profiles-changed", load), [load]);
+
 
   // Close on outside click / Escape.
   useEffect(() => {
@@ -139,6 +141,7 @@ export default function ProfileMenu() {
           <output>{cardSize}px</output>
         </Popover>
       </div>
+      <NotificationCenter />
 
       {open && (
         <div className="profile-dropdown" role="menu">

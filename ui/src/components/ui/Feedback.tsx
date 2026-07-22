@@ -24,3 +24,7 @@ export function Badge({ variant = "neutral", size = "md", className, ...props }:
 export function Toast({ message, variant = "default" }: { message: ReactNode; variant?: "default" | "scheduled" | "success" | "danger" }) {
   return <div className={cx("ui-toast", `ui-toast--${variant}`)} role="status" aria-live="polite">{message}</div>;
 }
+
+export function LocalToast({ children, variant = "default", className }: { children: ReactNode; variant?: "default" | "danger"; className?: string }) {
+  return <span className={cx("ui-local-toast", `ui-local-toast--${variant}`, className)} role="status" aria-live="polite">{children}</span>;
+}

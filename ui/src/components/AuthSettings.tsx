@@ -4,7 +4,7 @@ import { Check, KeyRound, TriangleAlert, Trash2 } from "lucide-react";
 import { api, type AuthConfig, type AuthConfigUpdate, type AuthMethod } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 import Popconfirm from "./Popconfirm";
-import { Button, Checkbox, Dialog, Field, FormActions, IconButton, Input, Select, SettingsSection, Text } from "./ui";
+import { Button, Checkbox, Dialog, Field, FormActions, IconButton, Input, SelectMenu, SettingsSection, Text } from "./ui";
 
 const METHODS: { id: AuthMethod; label: I18nKey; desc: I18nKey }[] = [
   { id: "none", label: "authMethodNone", desc: "authMethodNoneDesc" },
@@ -244,10 +244,8 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
           <Field label={t("authOidcRedirectUri")}><Input readOnly value={cfg.oidc.redirect_uri} onFocus={(e) => e.target.select()} /></Field>
           <Text tone="secondary">{t("authOidcRedirectUriHint")}</Text>
           <Field label={t("authOidcMode")}>
-            <Select value={oidc.mode} onChange={(e) => setOidc({ ...oidc, mode: e.target.value as "mapped" | "gateway" })}>
-              <option value="mapped">{t("authOidcModeMapped")}</option>
-              <option value="gateway">{t("authOidcModeGateway")}</option>
-            </Select></Field>
+            <SelectMenu label={t("authOidcMode")} value={oidc.mode} options={[{ value: "mapped", label: t("authOidcModeMapped") }, { value: "gateway", label: t("authOidcModeGateway") }]} onChange={(mode) => setOidc({ ...oidc, mode })} />
+          </Field>
           {oidc.mode === "mapped" && (
             <>
               <Field label={t("authOidcClaim")}><Input value={oidc.claim} onChange={(e) => setOidc({ ...oidc, claim: e.target.value })} /></Field>

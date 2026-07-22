@@ -9,7 +9,7 @@ import TagCreateForm from "../components/TagCreateForm";
 import TagFilterBar from "../components/TagFilterBar";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
-import { EmptyState, IconButton, OptionPicker, PageHeader, Popover } from "../components/ui";
+import { EmptyState, IconButton, PageHeader, Popover, SelectMenu } from "../components/ui";
 import { emit } from "../events";
 
 type SubscriptionSort = "name-asc" | "name-desc" | "latest-video" | "subscribed-recent" | "subscribers-desc" | "videos-desc";
@@ -202,23 +202,23 @@ export default function SubscriptionsPage() {
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <select
-          className="select subs-sort"
+        <SelectMenu
+          className="subs-sort"
           value={sort}
-          aria-label={t("subscriptionSort")}
-          onChange={(event) => {
-            const next = event.target.value as SubscriptionSort;
+          label={t("subscriptionSort")}
+          options={[
+            { value: "name-asc", label: t("subscriptionSortNameAsc") },
+            { value: "name-desc", label: t("subscriptionSortNameDesc") },
+            { value: "latest-video", label: t("subscriptionSortLatestVideo") },
+            { value: "subscribed-recent", label: t("subscriptionSortRecentlyAdded") },
+            { value: "subscribers-desc", label: t("subscriptionSortSubscribers") },
+            { value: "videos-desc", label: t("subscriptionSortVideos") },
+          ] as const}
+          onChange={(next: SubscriptionSort) => {
             setSort(next);
             sessionStorage.setItem("subscriptionSort", next);
           }}
-        >
-          <option value="name-asc">{t("subscriptionSortNameAsc")}</option>
-          <option value="name-desc">{t("subscriptionSortNameDesc")}</option>
-          <option value="latest-video">{t("subscriptionSortLatestVideo")}</option>
-          <option value="subscribed-recent">{t("subscriptionSortRecentlyAdded")}</option>
-          <option value="subscribers-desc">{t("subscriptionSortSubscribers")}</option>
-          <option value="videos-desc">{t("subscriptionSortVideos")}</option>
-        </select>
+        />
       </div>
 
       <TagFilterBar

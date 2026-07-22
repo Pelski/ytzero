@@ -280,6 +280,25 @@ CREATE TABLE IF NOT EXISTS user_settings (
   PRIMARY KEY (user_id, key)
 );
 
+CREATE TABLE IF NOT EXISTS update_check_state (
+  user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_checked_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind       TEXT NOT NULL,
+  dedupe_key TEXT NOT NULL,
+  payload    TEXT NOT NULL DEFAULT '{}',
+  target     TEXT NOT NULL DEFAULT '',
+  read_at    TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, dedupe_key)
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at);
+
 -- ---------- Watch-time log & child profiles ----------
 -- Seconds of actual playback for every profile, per video / local day / hour.
 -- Feeds the child-profile daily limits and the (future) stats pages: channel
@@ -543,6 +562,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   sidebar_nav: "",
   sponsorblock_enabled: "0",
   sponsorblock_categories: '["sponsor"]',
+  update_check_interval: "off",
   // ---------- authentication (all app-wide, owned by the primary profile) ----------
   // none | shared | per_profile | oidc | proxy_header
   auth_method: "none",

@@ -42,7 +42,7 @@ import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
 import { img } from "../img";
 import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
-import { Alert, Button, ButtonAnchor, Checkbox, MenuSeparator, Switch } from "../components/ui";
+import { Alert, Button, ButtonAnchor, Checkbox, LocalToast, MenuSeparator, Switch } from "../components/ui";
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
 import { normalizeSponsorSegments } from "../sponsorblock";
@@ -174,6 +174,7 @@ export default function WatchPage() {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [related, setRelated] = useState<Video[]>([]);
   const [copyKey, setCopyKey] = useState(0);
+  const [scheduleToast, setScheduleToast] = useState<{ id: number; message: string; variant: "default" | "danger"; anchor: "desktop" | "overflow" } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareWithTimestamp, setShareWithTimestamp] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -286,15 +287,10 @@ export default function WatchPage() {
     if (!scheduleOpen && !playlistOpen && !speedOpen && !shareOpen) return;
     const close = (e: MouseEvent) => {
       const target = e.target as Element;
-      if (scheduleMenuRef.current?.contains(target)) return;
-      if (playlistMenuRef.current?.contains(target)) return;
-      if (speedMenuRef.current?.contains(target)) return;
-      if (shareMenuRef.current?.contains(target)) return;
-      if (target.closest?.(".playlist-icon-popover")) return;
-      setScheduleOpen(false);
-      setPlaylistOpen(false);
-      setSpeedOpen(false);
-      setShareOpen(false);
+      if (scheduleOpen && !scheduleMenuRef.current?.contains(target)) setScheduleOpen(false);
+      if (playlistOpen && !playlistMenuRef.current?.contains(target) && !target.closest?.(".playlist-icon-popover")) setPlaylistOpen(false);
+      if (speedOpen && !speedMenuRef.current?.contains(target)) setSpeedOpen(false);
+      if (shareOpen && !shareMenuRef.current?.contains(target)) setShareOpen(false);
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
@@ -994,13 +990,22 @@ export default function WatchPage() {
   const reload = () => video && api.video(video.video_id).then((r) => setVideo(r.video));
 
   const toggleRelatedSchedule = async (relatedVideo: Video, bucket: Bucket, active: boolean) => {
-    if (active) await api.dequeue(relatedVideo.video_id);
-    else await api.queue(relatedVideo.video_id, bucket);
+    const nextStatus = active ? "inbox" : "queued";
+    const nextBucket = active ? null : bucket;
     setRelated((current) => current.map((item) => item.video_id === relatedVideo.video_id
-      ? { ...item, status: active ? "inbox" : "queued", bucket: active ? null : bucket }
+      ? { ...item, status: nextStatus, bucket: nextBucket }
       : item));
-    emit("queue-changed");
-    emitToast(t(active ? "scheduleRemovedFeedback" : "scheduledFeedback"), active ? "default" : "scheduled");
+    try {
+      if (active) await api.dequeue(relatedVideo.video_id);
+      else await api.queue(relatedVideo.video_id, bucket);
+      emit("queue-changed");
+      emitToast(t(active ? "scheduleRemovedFeedback" : "scheduledFeedback"), active ? "default" : "scheduled");
+    } catch {
+      setRelated((current) => current.map((item) => item.video_id === relatedVideo.video_id && item.bucket === nextBucket
+        ? { ...item, status: relatedVideo.status, bucket: relatedVideo.bucket }
+        : item));
+      emitToast(t("scheduleSaveFailed"), "danger");
+    }
   };
 
   const shareLink = (destination: "webpage" | "youtube") => {
@@ -1018,18 +1023,28 @@ export default function WatchPage() {
     const link = shareLink(destination);
     if (!link) return;
     navigator.clipboard.writeText(link).then(() => {
-      setCopyKey((k) => k + 1);
+      setCopyKey((key) => key + 1);
     });
   };
 
-  const queue = async (bucket: Bucket) => {
+  const queue = async (bucket: Bucket, anchor: "desktop" | "overflow") => {
     if (!video) return;
+    const videoId = video.video_id;
+    const previousStatus = video.status;
+    const previousBucket = video.bucket;
     setMoreOpen(false);
     setScheduleOpen(false);
-    await api.queue(video.video_id, bucket);
-    emit("queue-changed");
-    emitToast(t("scheduledFeedback"), "scheduled");
-    reload();
+    setVideo((current) => current?.video_id === videoId ? { ...current, status: "queued", bucket } : current);
+    try {
+      await api.queue(videoId, bucket);
+      emit("queue-changed");
+      setScheduleToast({ id: Date.now(), message: t("scheduledFeedback"), variant: "default", anchor });
+    } catch {
+      setVideo((current) => current?.video_id === videoId && current.bucket === bucket
+        ? { ...current, status: previousStatus, bucket: previousBucket }
+        : current);
+      setScheduleToast({ id: Date.now(), message: t("scheduleSaveFailed"), variant: "danger", anchor });
+    }
   };
 
   const openPlaylistMenu = async () => {
@@ -1380,9 +1395,10 @@ export default function WatchPage() {
               </button>
               {scheduleOpen && (
                 <div className="dropdown-menu schedule-menu">
-                  <SchedulePicker onSelect={queue} />
+                  <SchedulePicker onSelect={(bucket) => void queue(bucket, "desktop")} activeBucket={video.bucket} />
                 </div>
               )}
+              {scheduleToast?.anchor === "desktop" && <LocalToast key={scheduleToast.id} variant={scheduleToast.variant}>{scheduleToast.message}</LocalToast>}
             </div>
             <div className="dropdown watch-action-desktop watch-action-wide" ref={playlistMenuRef}>
               <button className="btn" title={t("addToPlaylist")} onClick={toggleDesktopPlaylist} aria-expanded={playlistOpen}>
@@ -1421,9 +1437,7 @@ export default function WatchPage() {
                   <Checkbox className="share-timestamp-option" label={t("includeCurrentTime")} checked={shareWithTimestamp} onChange={(event) => setShareWithTimestamp(event.target.checked)} />
                 </div>
               )}
-              {copyKey > 0 && (
-                <span key={copyKey} className="copy-toast">{t("copied")}</span>
-              )}
+              {copyKey > 0 && <LocalToast key={copyKey}>{t("copied")}</LocalToast>}
             </div>
             <div className="dropdown watch-action-overflow" ref={moreMenuRef}>
               <button
@@ -1434,7 +1448,7 @@ export default function WatchPage() {
                 <EllipsisVertical />
               </button>
               {moreOpen && (
-                <div className="dropdown-menu more-menu">
+                <div className={`dropdown-menu more-menu more-menu--${moreView}`}>
                   {moreView === "root" && (
                     <>
                       <button className="more-item-medium" onClick={() => { setCinemaMode((m) => !m); setMoreOpen(false); }}>
@@ -1516,7 +1530,7 @@ export default function WatchPage() {
                         </button>
                         {t("watchLater")}
                       </div>
-                      <SchedulePicker onSelect={queue} />
+                      <SchedulePicker onSelect={(bucket) => void queue(bucket, "overflow")} activeBucket={video?.bucket} />
                     </>
                   )}
                   {moreView === "playlist" && (
@@ -1532,6 +1546,7 @@ export default function WatchPage() {
                   )}
                 </div>
               )}
+              {scheduleToast?.anchor === "overflow" && <LocalToast key={scheduleToast.id} variant={scheduleToast.variant}>{scheduleToast.message}</LocalToast>}
             </div>
             </div>
           </div>

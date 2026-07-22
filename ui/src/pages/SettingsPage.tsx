@@ -15,11 +15,11 @@ import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
-import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey, type Language } from "../i18n";
+import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey } from "../i18n";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { Alert, Badge, Button, ButtonAnchor, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, SectionHeader, Select, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -150,15 +150,8 @@ function PlaylistSettingsItem({
             onChange={(e) => setPattern(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && addRule()}
           />
-          <Select value={matchType} onChange={(e) => setMatchType(e.target.value)}>
-            <option value="contains">{t("contains")}</option>
-            <option value="regex">regex</option>
-          </Select>
-          <Select value={field} onChange={(e) => setField(e.target.value)}>
-            <option value="title">{t("inTitle")}</option>
-            <option value="description">{t("inDescription")}</option>
-            <option value="both">{t("titleOrDescription")}</option>
-          </Select>
+          <SelectMenu label={t("contains")} value={matchType} options={[{ value: "contains", label: t("contains") }, { value: "regex", label: "regex" }]} onChange={setMatchType} />
+          <SelectMenu label={t("inTitle")} value={field} options={[{ value: "title", label: t("inTitle") }, { value: "description", label: t("inDescription") }, { value: "both", label: t("titleOrDescription") }]} onChange={setField} />
           <Button variant="primary" onClick={addRule}>
             <Plus /> {t("addRule")}
           </Button>
@@ -282,18 +275,9 @@ function RuleRow({ rule, tags, onSave, onRemove }: { rule: Rule; tags: Tag[]; on
         <td colSpan={3}>
           <div className="form-row" style={{ margin: 0, flexWrap: "wrap" }}>
             <Input type="text" value={pattern} onChange={(e) => setPattern(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} style={{ flex: 1, minWidth: 120 }} />
-            <Select value={matchType} onChange={(e) => setMatchType(e.target.value as "contains" | "regex")}>
-              <option value="contains">{t("contains")}</option>
-              <option value="regex">regex</option>
-            </Select>
-            <Select value={field} onChange={(e) => setField(e.target.value as "title" | "description" | "both")}>
-              <option value="title">{t("inTitle")}</option>
-              <option value="description">{t("inDescription")}</option>
-              <option value="both">{t("titleOrDescription")}</option>
-            </Select>
-            <Select value={tagId} onChange={(e) => setTagId(Number(e.target.value))}>
-              {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </Select>
+            <SelectMenu label={t("contains")} value={matchType} options={[{ value: "contains", label: t("contains") }, { value: "regex", label: "regex" }]} onChange={setMatchType} />
+            <SelectMenu label={t("inTitle")} value={field} options={[{ value: "title", label: t("inTitle") }, { value: "description", label: t("inDescription") }, { value: "both", label: t("titleOrDescription") }]} onChange={setField} />
+            <SelectMenu label={t("chooseTag")} value={tagId} options={tags.map((tag) => ({ value: tag.id, label: tag.name }))} onChange={setTagId} searchable searchPlaceholder={t("search")} />
             <IconButton label={t("save")} onClick={save}><Check /></IconButton>
             <IconButton label={t("cancel")} onClick={() => setEditing(false)}><X /></IconButton>
           </div>
@@ -482,25 +466,10 @@ function FilterRuleRow({ rule, channels, onSave, onRemove }: { rule: FilterRule;
         <td colSpan={4}>
           <div className="form-row" style={{ margin: 0, flexWrap: "wrap" }}>
             <Input type="text" value={pattern} onChange={(e) => setPattern(e.target.value)} onKeyDown={(e) => e.key === "Enter" && save()} style={{ flex: 1, minWidth: 120 }} />
-            <Select value={matchType} onChange={(e) => setMatchType(e.target.value as "contains" | "regex")}>
-              <option value="contains">{t("contains")}</option>
-              <option value="regex">regex</option>
-            </Select>
-            <Select value={field} onChange={(e) => setField(e.target.value as "title" | "description" | "both")}>
-              <option value="title">{t("inTitle")}</option>
-              <option value="description">{t("inDescription")}</option>
-              <option value="both">{t("titleOrDescription")}</option>
-            </Select>
-            <Select value={action} onChange={(e) => setAction(e.target.value as "reject" | "whitelist")}>
-              <option value="reject">{t("rejectMatching")}</option>
-              <option value="whitelist">{t("onlyMatching")}</option>
-            </Select>
-            <Select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
-              <option value="">{t("allChannels")}</option>
-              {channels.filter(c => c.followed !== 0).map((c) => (
-                <option key={c.channel_id} value={c.channel_id}>{c.title || c.channel_id}</option>
-              ))}
-            </Select>
+            <SelectMenu label={t("contains")} value={matchType} options={[{ value: "contains", label: t("contains") }, { value: "regex", label: "regex" }]} onChange={setMatchType} />
+            <SelectMenu label={t("inTitle")} value={field} options={[{ value: "title", label: t("inTitle") }, { value: "description", label: t("inDescription") }, { value: "both", label: t("titleOrDescription") }]} onChange={setField} />
+            <SelectMenu label={t("rejectMatching")} value={action} options={[{ value: "reject", label: t("rejectMatching") }, { value: "whitelist", label: t("onlyMatching") }]} onChange={setAction} />
+            <SelectMenu label={t("allChannels")} value={channelId} options={[{ value: "", label: t("allChannels") }, ...channels.filter((channel) => channel.followed !== 0).map((channel) => ({ value: channel.channel_id, label: channel.title || channel.channel_id }))]} onChange={setChannelId} searchable searchPlaceholder={t("searchChannelPlaceholder")} />
             <IconButton label={t("save")} onClick={save}><Check /></IconButton>
             <IconButton label={t("cancel")} onClick={() => setEditing(false)}><X /></IconButton>
           </div>
@@ -1061,12 +1030,7 @@ function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
     <SettingsSection title={t("assignChannelsTitle")}>
       <Text tone="secondary">{t("assignChannelsHint")}</Text>
       <div className="form-row">
-        <Select value={target} onChange={(e) => setTarget(e.target.value ? Number(e.target.value) : "")}>
-          <option value="">{t("assignChannelsSelect")}</option>
-          {profiles.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </Select>
+        <SelectMenu label={t("assignChannelsSelect")} value={target} options={[{ value: "" as const, label: t("assignChannelsSelect") }, ...profiles.map((profile) => ({ value: profile.id, label: profile.name }))]} onChange={setTarget} />
         <Button variant="primary" disabled={typeof target !== "number" || busy} onClick={assign}>
           {busy ? <LoaderCircle size={15} className="spin" /> : <Tv size={15} />}
           {t("assignChannelsButton")}
@@ -1119,6 +1083,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateCheckError, setUpdateCheckError] = useState(false);
+  const [updateCheckInterval, setUpdateCheckInterval] = useState("off");
 
   const [channelUrl, setChannelUrl] = useState("");
   const [channelCustomName, setChannelCustomName] = useState("");
@@ -1312,6 +1277,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setAppName(name);
         setAppNameInput(name);
         setAppIconColor(r.settings.app_icon_color || "#0a5fff");
+        setUpdateCheckInterval(r.settings.update_check_interval || "off");
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
         setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
@@ -2068,25 +2034,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   onChange={(e) => setFilterPattern(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addFilterRule()}
                 />
-                <Select value={filterMatch} onChange={(e) => setFilterMatch(e.target.value)}>
-                  <option value="contains">{t("contains")}</option>
-                  <option value="regex">regex</option>
-                </Select>
-                <Select value={filterField} onChange={(e) => setFilterField(e.target.value)}>
-                  <option value="title">{t("inTitle")}</option>
-                  <option value="description">{t("inDescription")}</option>
-                  <option value="both">{t("titleOrDescription")}</option>
-                </Select>
-                <Select value={filterAction} onChange={(e) => setFilterAction(e.target.value)}>
-                  <option value="reject">{t("rejectMatching")}</option>
-                  <option value="whitelist">{t("onlyMatching")}</option>
-                </Select>
-                <Select value={filterChannel} onChange={(e) => setFilterChannel(e.target.value)}>
-                  <option value="">{t("allChannels")}</option>
-                  {channels.filter(c => c.followed !== 0).map((c) => (
-                    <option key={c.channel_id} value={c.channel_id}>{c.title || c.channel_id}</option>
-                  ))}
-                </Select>
+                <SelectMenu label={t("contains")} value={filterMatch} options={[{ value: "contains", label: t("contains") }, { value: "regex", label: "regex" }]} onChange={setFilterMatch} />
+                <SelectMenu label={t("inTitle")} value={filterField} options={[{ value: "title", label: t("inTitle") }, { value: "description", label: t("inDescription") }, { value: "both", label: t("titleOrDescription") }]} onChange={setFilterField} />
+                <SelectMenu label={t("rejectMatching")} value={filterAction} options={[{ value: "reject", label: t("rejectMatching") }, { value: "whitelist", label: t("onlyMatching") }]} onChange={setFilterAction} />
+                <SelectMenu label={t("allChannels")} value={filterChannel} options={[{ value: "", label: t("allChannels") }, ...channels.filter((channel) => channel.followed !== 0).map((channel) => ({ value: channel.channel_id, label: channel.title || channel.channel_id }))]} onChange={setFilterChannel} searchable searchPlaceholder={t("searchChannelPlaceholder")} />
                 <Button variant="primary" onClick={addFilterRule} disabled={!filterPattern.trim()}>
                   <Plus /> {t("addFilter")}
                 </Button>
@@ -2152,22 +2103,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   value={rulePattern}
                   onChange={(e) => setRulePattern(e.target.value)}
                 />
-                <Select value={ruleMatch} onChange={(e) => setRuleMatch(e.target.value)}>
-                  <option value="contains">{t("contains")}</option>
-                  <option value="regex">regex</option>
-                </Select>
-                <Select value={ruleField} onChange={(e) => setRuleField(e.target.value)}>
-                  <option value="title">{t("inTitle")}</option>
-                  <option value="description">{t("inDescription")}</option>
-                  <option value="both">{t("titleOrDescription")}</option>
-                </Select>
+                <SelectMenu label={t("contains")} value={ruleMatch} options={[{ value: "contains", label: t("contains") }, { value: "regex", label: "regex" }]} onChange={setRuleMatch} />
+                <SelectMenu label={t("inTitle")} value={ruleField} options={[{ value: "title", label: t("inTitle") }, { value: "description", label: t("inDescription") }, { value: "both", label: t("titleOrDescription") }]} onChange={setRuleField} />
                 <span className="muted">-&gt; tag:</span>
-                <Select value={ruleTag} onChange={(e) => setRuleTag(Number(e.target.value) || "")}>
-                  <option value="">{t("chooseTag")}</option>
-                  {tags.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </Select>
+                <SelectMenu label={t("chooseTag")} value={ruleTag} options={[{ value: "" as const, label: t("chooseTag") }, ...tags.map((tag) => ({ value: tag.id, label: tag.name }))]} onChange={setRuleTag} searchable searchPlaceholder={t("search")} />
                 <Button variant="primary" onClick={addRule}>
                   <Plus /> {t("addRule")}
                 </Button>
@@ -2312,20 +2251,15 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingsSection>
 
           <SettingsSection title={t("displayLanguage")} className="settings-display-group">
-          <SettingRow label={t("uiLanguage")} htmlFor="ui-language">
-            <Select
-              id="ui-language"
-              className="select"
+          <SettingRow label={t("uiLanguage")}>
+            <SelectMenu
+              label={t("uiLanguage")}
               value={language}
-              onChange={(e) => {
-                const next = e.target.value as Language;
+              options={LANGUAGES.map((code) => ({ value: code, label: languageName(code) }))}
+              onChange={(next) => {
                 setLanguage(next).then(() => showToast(t("displaySettingsSaved"))).catch(console.error);
               }}
-            >
-              {LANGUAGES.map((code) => (
-                <option key={code} value={code}>{languageName(code)}</option>
-              ))}
-            </Select>
+            />
           </SettingRow>
           </SettingsSection>
 
@@ -2339,24 +2273,16 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               }}
             />
           </SettingRow>
-          <SettingRow label={t("playerLanguage")} htmlFor="player-language">
-            <Select
-              id="player-language"
-              className="select"
+          <SettingRow label={t("playerLanguage")}>
+            <SelectMenu
+              label={t("playerLanguage")}
               value={playerHl}
-              onChange={(e) => {
-                setPlayerHl(e.target.value);
-                savePlayer({ player_hl: e.target.value, player_cc_lang: e.target.value });
+              options={[{ value: "pl", label: "polski" }, { value: "en", label: "English" }, { value: "de", label: "Deutsch" }, { value: "es", label: "español" }, { value: "fr", label: "français" }, { value: "uk", label: "українська" }, { value: "ja", label: "日本語" }]}
+              onChange={(next) => {
+                setPlayerHl(next);
+                savePlayer({ player_hl: next, player_cc_lang: next });
               }}
-            >
-              <option value="pl">polski</option>
-              <option value="en">English</option>
-              <option value="de">Deutsch</option>
-              <option value="es">español</option>
-              <option value="fr">français</option>
-              <option value="uk">українська</option>
-              <option value="ja">日本語</option>
-            </Select>
+            />
           </SettingRow>
 
           <div className="sub-style-panel">
@@ -2406,56 +2332,40 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </div>
           </div>
 
-          <SettingRow label={t("quality")} description={t("qualityHint")} htmlFor="player-quality">
-            <Select
-              id="player-quality"
-              className="select"
+          <SettingRow label={t("quality")} description={t("qualityHint")}>
+            <SelectMenu
+              label={t("quality")}
               value={playerQuality}
-              onChange={(e) => {
-                setPlayerQuality(e.target.value);
-                savePlayer({ player_quality: e.target.value });
+              options={[{ value: "auto", label: t("autoQuality") }, { value: "hd2160", label: "4K (2160p)" }, { value: "hd1440", label: "1440p" }, { value: "hd1080", label: "1080p" }, { value: "hd720", label: "720p" }, { value: "large", label: "480p" }, { value: "medium", label: "360p" }]}
+              onChange={(next) => {
+                setPlayerQuality(next);
+                savePlayer({ player_quality: next });
               }}
-            >
-              <option value="auto">{t("autoQuality")}</option>
-              <option value="hd2160">4K (2160p)</option>
-              <option value="hd1440">1440p</option>
-              <option value="hd1080">1080p</option>
-              <option value="hd720">720p</option>
-              <option value="large">480p</option>
-              <option value="medium">360p</option>
-            </Select>
+            />
           </SettingRow>
 
-          <SettingRow label={t("playbackSpeed")} description={t("playbackSpeedHint")} htmlFor="player-speed">
-            <Select
-              id="player-speed"
-              className="select"
+          <SettingRow label={t("playbackSpeed")} description={t("playbackSpeedHint")}>
+            <SelectMenu
+              label={t("playbackSpeed")}
               value={playerSpeed}
-              onChange={(e) => {
-                setPlayerSpeed(e.target.value);
-                savePlayer({ player_speed: e.target.value });
+              options={PLAYBACK_SPEEDS.map((speed) => ({ value: String(speed), label: `${speed}×` }))}
+              onChange={(next) => {
+                setPlayerSpeed(next);
+                savePlayer({ player_speed: next });
               }}
-            >
-              {PLAYBACK_SPEEDS.map((s) => (
-                <option key={s} value={s}>{`${s}×`}</option>
-              ))}
-            </Select>
+            />
           </SettingRow>
 
-          <SettingRow label={t("keyboardSeekSeconds")} description={t("keyboardSeekSecondsHint")} htmlFor="keyboard-seek-seconds">
-            <Select
-              id="keyboard-seek-seconds"
-              className="select"
+          <SettingRow label={t("keyboardSeekSeconds")} description={t("keyboardSeekSecondsHint")}>
+            <SelectMenu
+              label={t("keyboardSeekSeconds")}
               value={keyboardSeekSeconds}
-              onChange={(e) => {
-                setKeyboardSeekSeconds(e.target.value);
-                savePlayer({ keyboard_seek_seconds: e.target.value });
+              options={[3, 5, 10, 15, 30].map((seconds) => ({ value: String(seconds), label: `${seconds} s` }))}
+              onChange={(next) => {
+                setKeyboardSeekSeconds(next);
+                savePlayer({ keyboard_seek_seconds: next });
               }}
-            >
-              {[3, 5, 10, 15, 30].map((seconds) => (
-                <option key={seconds} value={seconds}>{`${seconds} s`}</option>
-              ))}
-            </Select>
+            />
           </SettingRow>
 
           <SettingRow
@@ -2665,15 +2575,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                                     }}
                                   />
                                 ) : def.type === "select" ? (
-                                  <Select
-                                    className="plugin-select"
+                                  <SelectMenu
+                                    label={def.label}
                                     value={String(value)}
-                                    onChange={(e) => updatePluginSetting(plugin.id, def.key, e.target.value)}
-                                  >
-                                    {def.options?.map((option) => (
-                                      <option key={option.value} value={option.value}>{option.label}</option>
-                                    ))}
-                                  </Select>
+                                    options={def.options?.map((option) => ({ value: option.value, label: option.label })) ?? []}
+                                    onChange={(next) => updatePluginSetting(plugin.id, def.key, next)}
+                                  />
                                 ) : (
                                   <div className="plugin-slider-control">
                                     <Slider min={def.min ?? 0} max={def.max ?? 100} step={def.step} value={Number(value)} onChange={(next) => updatePluginSetting(plugin.id, def.key, next)} />
@@ -2884,6 +2791,30 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   {checkingUpdates ? t("checkingUpdates") : t("checkForUpdates")}
                 </Button>}
               />
+
+              <SettingRow label={t("automaticUpdateChecks")} description={t("automaticUpdateChecksHint")}>
+                <SelectMenu
+                  label={t("automaticUpdateChecks")}
+                  value={updateCheckInterval}
+                  options={[
+                    { value: "off", label: t("automaticUpdateChecksOff") },
+                    { value: "1", label: t("everyHour") },
+                    { value: "3", label: t("everyHours", { count: 3 }) },
+                    { value: "6", label: t("everyHours", { count: 6 }) },
+                    { value: "12", label: t("everyHours", { count: 12 }) },
+                    { value: "24", label: t("everyDay") },
+                    { value: "72", label: t("everyDays", { count: 3 }) },
+                    { value: "168", label: t("everyDays", { count: 7 }) },
+                  ]}
+                  onChange={(next) => {
+                    const previous = updateCheckInterval;
+                    setUpdateCheckInterval(next);
+                    api.updateSettings({ update_check_interval: next })
+                      .then(() => emit("update-check-settings-changed"))
+                      .catch((error) => { setUpdateCheckInterval(previous); console.error(error); });
+                  }}
+                />
+              </SettingRow>
 
               {updateCheckError && (
                 <Alert variant="danger" title={t("updateCheckFailed")}>{t("updateCheckFailedHint")}</Alert>

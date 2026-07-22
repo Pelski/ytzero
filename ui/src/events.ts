@@ -3,7 +3,7 @@ const PREFIX = "__ytz:";
 export const emit = (name: string) =>
   window.dispatchEvent(new CustomEvent(PREFIX + name));
 
-export type ToastVariant = "default" | "scheduled";
+export type ToastVariant = "default" | "scheduled" | "success" | "danger";
 
 export const emitToast = (message: string, variant: ToastVariant = "default") =>
   window.dispatchEvent(new CustomEvent(PREFIX + "toast", { detail: { message, variant } }));

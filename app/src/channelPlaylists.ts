@@ -46,7 +46,9 @@ export function saveChannelPlaylists(channelId: string, playlists: PlaylistInfo[
   })(playlists);
 }
 
-export function savePlaylistMemberships(playlistId: string, videoIds: string[], complete = false) {
+export function savePlaylistMemberships(playlistId: string, videoIds: string[], complete = false): string[] {
+  const existing = new Set((db.prepare("SELECT video_id FROM channel_playlist_videos WHERE playlist_id = ?").all(playlistId) as { video_id: string }[]).map((row) => row.video_id));
+  const discovered = videoIds.filter((videoId) => !existing.has(videoId));
   db.transaction((ids: string[]) => {
     for (const [position, videoId] of ids.entries()) addMembership.run(playlistId, videoId, position);
     if (complete) {
@@ -56,6 +58,7 @@ export function savePlaylistMemberships(playlistId: string, videoIds: string[], 
       for (const row of current) if (!seen.has(row.video_id)) remove.run(playlistId, row.video_id);
     }
   })(videoIds);
+  return discovered;
 }
 
 export function ensureChannelPlaylist(playlistId: string, channelId: string) {

@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import { cx } from "./utils";
 
 export function List({ divided = true, className, ...props }: HTMLAttributes<HTMLDivElement> & { divided?: boolean }) {
@@ -12,6 +12,14 @@ export function ListRow({ media, title, description, meta, actions, className, c
     {meta && <div className="ui-list-row__meta">{meta}</div>}
     {actions && <ListActions>{actions}</ListActions>}
   </div>;
+}
+
+export function ListButton({ media, title, description, meta, className, children, type = "button", ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "title"> & { media?: ReactNode; title?: ReactNode; description?: ReactNode; meta?: ReactNode; children?: ReactNode }) {
+  return <button {...props} type={type} role="listitem" className={cx("ui-list-row", "ui-list-row--button", className)}>
+    {media && <span className="ui-list-row__media">{media}</span>}
+    <span className="ui-list-row__content">{title && <span className="ui-list-row__title">{title}</span>}{description && <span className="ui-list-row__description">{description}</span>}{children}</span>
+    {meta && <span className="ui-list-row__meta">{meta}</span>}
+  </button>;
 }
 
 export function ListActions({ className, ...props }: HTMLAttributes<HTMLDivElement>) {

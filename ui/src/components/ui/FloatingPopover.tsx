@@ -1,10 +1,14 @@
-import { cloneElement, createElement, isValidElement, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { cloneElement, createElement, isValidElement, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cx } from "./utils";
+import { isInPopoverBranch, PopoverBranchContext } from "./PopoverTree";
 
 export function FloatingPopover({ trigger, children, open, onOpenChange, align = "start", className, gap = 8 }: { trigger: ReactElement; children: ReactNode; open: boolean; onOpenChange: (open: boolean) => void; align?: "start" | "center" | "end"; className?: string; gap?: number }) {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const parentBranch = useContext(PopoverBranchContext);
+  const popoverId = useId();
+  const branch = [...parentBranch, popoverId];
   const [style, setStyle] = useState<CSSProperties>({ visibility: "hidden" });
 
   const position = () => {
@@ -24,7 +28,9 @@ export function FloatingPopover({ trigger, children, open, onOpenChange, align =
   useLayoutEffect(position, [open, align, gap]);
   useEffect(() => {
     if (!open) return;
-    const close = (event: MouseEvent) => { if (!triggerRef.current?.contains(event.target as Node) && !contentRef.current?.contains(event.target as Node)) onOpenChange(false); };
+    const close = (event: MouseEvent) => {
+      if (!triggerRef.current?.contains(event.target as Node) && !contentRef.current?.contains(event.target as Node) && !isInPopoverBranch(event.target, popoverId)) onOpenChange(false);
+    };
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onOpenChange(false); };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);
@@ -34,5 +40,8 @@ export function FloatingPopover({ trigger, children, open, onOpenChange, align =
   }, [open, onOpenChange]);
 
   const triggerElement = isValidElement(trigger) ? cloneElement(trigger as ReactElement<Record<string, unknown>>, { "aria-expanded": open }) : createElement("span", null, trigger);
-  return <><span className="ui-floating-popover__trigger" ref={triggerRef} onClick={() => onOpenChange(!open)}>{triggerElement}</span>{open && createPortal(<div ref={contentRef} className={cx("ui-floating-popover__content", className)} style={style} onMouseDown={(event) => event.stopPropagation()}>{children}</div>, document.body)}</>;
+  return <PopoverBranchContext.Provider value={branch}>
+    <span className="ui-floating-popover__trigger" ref={triggerRef} data-popover-branch={branch.join(" ")} onClick={() => onOpenChange(!open)}>{triggerElement}</span>
+    {open && createPortal(<div ref={contentRef} data-popover-branch={branch.join(" ")} className={cx("ui-floating-popover__content", className)} style={style} onMouseDown={(event) => event.stopPropagation()}>{children}</div>, document.body)}
+  </PopoverBranchContext.Provider>;
 }

@@ -26,7 +26,8 @@ import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
-import { COMMIT, isReleaseNewer, VERSION } from "./version";
+import { COMMIT, VERSION } from "./version";
+import { checkLatestRelease } from "./updates";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, fetchSubtitles, getDownload, listDownloads, listSubtitleFiles, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
@@ -3204,38 +3205,34 @@ api.get("/logs", (c) => {
 
 api.get("/version", (c) => c.json({ version: VERSION, commit: COMMIT }));
 
-interface GitHubRelease {
-  tag_name?: unknown;
-  published_at?: unknown;
-  html_url?: unknown;
-}
-
 api.post("/updates/check", async (c) => {
   try {
-    const response = await fetch("https://api.github.com/repos/Pelski/ytzero/releases/latest", {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "YT-Zero-update-check",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
-
-    const release = await response.json() as GitHubRelease;
-    const latestVersion = typeof release.tag_name === "string" ? release.tag_name : null;
-    log.info("updates.manual_check", { currentVersion: VERSION, latestVersion });
-    return c.json({
-      currentVersion: VERSION,
-      commit: COMMIT,
-      latestVersion,
-      updateAvailable: latestVersion ? isReleaseNewer(VERSION, latestVersion) : null,
-      checkedAt: new Date().toISOString(),
-      latestUrl: typeof release.html_url === "string" ? release.html_url : "https://github.com/Pelski/ytzero/releases/latest",
-      publishedAt: typeof release.published_at === "string" ? release.published_at : "",
-    });
+    const result = await checkLatestRelease();
+    log.info("updates.manual_check", { currentVersion: VERSION, latestVersion: result.latestVersion });
+    return c.json(result);
   } catch (error) {
     log.warn("updates.manual_check_failed", { error: error instanceof Error ? error.message : String(error) });
     return c.json({ error: "GitHub update check failed" }, 502);
   }
+});
+
+api.get("/notifications", (c) => {
+  const uid = currentUserId(c);
+  const rows = db.prepare(`
+    SELECT id, kind, payload, target, read_at, created_at
+    FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 30
+  `).all(uid) as { id: number; kind: string; payload: string; target: string; read_at: string | null; created_at: string }[];
+  const unread = (db.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ? AND read_at IS NULL").get(uid) as { count: number }).count;
+  return c.json({ notifications: rows.map((row) => ({ ...row, payload: JSON.parse(row.payload || "{}") })), unread });
+});
+
+api.post("/notifications/:id/read", (c) => {
+  const uid = currentUserId(c);
+  db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE id = ? AND user_id = ?").run(Number(c.req.param("id")), uid);
+  return c.json({ ok: true });
+});
+
+api.post("/notifications/read-all", (c) => {
+  db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE user_id = ?").run(currentUserId(c));
+  return c.json({ ok: true });
 });

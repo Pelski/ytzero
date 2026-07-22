@@ -6,6 +6,8 @@ import { applyFilterRules } from "./filterRules";
 import { log } from "./logger";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
+import { runAutomaticUpdateChecks } from "./updates";
+import { notifyFollowedPlaylistVideos } from "./notifications";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -197,13 +199,15 @@ export async function importPlaylistVideos(playlistId: string, force = false): P
     }
   });
   importAll(snapshot.videos);
-  savePlaylistMemberships(playlistId, snapshot.videos.map((video) => video.videoId), snapshot.complete);
+  const discoveredVideoIds = savePlaylistMemberships(playlistId, snapshot.videos.map((video) => video.videoId), snapshot.complete);
+  const notificationsCreated = notifyFollowedPlaylistVideos(playlistId, discoveredVideoIds);
   db.prepare("UPDATE channel_playlists SET last_synced_at = datetime('now'), sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
 
   if (added > 0) {
     backfillShorts(snapshot.videos.map((v) => v.videoId)).catch(() => {});
     log.info("playlist.import.added", { playlistId, channelId: feed.channelId, added });
   }
+  if (notificationsCreated > 0) log.info("playlist.notifications_created", { playlistId, videos: discoveredVideoIds.length, notifications: notificationsCreated });
   return { added, channelId: feed.channelId };
 }
 
@@ -997,6 +1001,10 @@ export async function refreshAllLiveStatuses(): Promise<void> {
 }
 
 export function startScheduler() {
+  setTimeout(() => runAutomaticUpdateChecks().catch(() => {}), 60_000);
+  setInterval(() => runAutomaticUpdateChecks().catch(() => {}), 60_000);
+  log.info("scheduler.update_checks", { pollIntervalMin: 1 });
+
   const refreshIntervalMin = positiveNumber(process.env.REFRESH_INTERVAL_MINUTES, 5);
   setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
   setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), refreshIntervalMin * 60_000);

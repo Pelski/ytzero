@@ -212,6 +212,27 @@ export interface AppSettings {
   sidebar_nav: string;
   sponsorblock_enabled: string;
   sponsorblock_categories: string;
+  update_check_interval: string;
+}
+
+export interface AppNotification {
+  id: number;
+  kind: "app_update" | string;
+  payload: {
+    version?: string;
+    url?: string;
+    publishedAt?: string;
+    videoId?: string;
+    videoTitle?: string;
+    thumbnail?: string;
+    playlistId?: string;
+    playlistTitle?: string;
+    channelTitle?: string;
+    channelThumbnail?: string;
+  };
+  target: string;
+  read_at: string | null;
+  created_at: string;
 }
 
 export interface SearchResult {
@@ -704,6 +725,9 @@ export const api = {
     return response.json() as Promise<AppChangelog>;
   },
   checkUpdates: () => http<UpdateCheck>("/updates/check", { method: "POST", body: "{}" }),
+  notifications: () => http<{ notifications: AppNotification[]; unread: number }>("/notifications"),
+  readNotification: (id: number) => http<{ ok: true }>(`/notifications/${id}/read`, { method: "POST", body: "{}" }),
+  readAllNotifications: () => http<{ ok: true }>("/notifications/read-all", { method: "POST", body: "{}" }),
   live: () => http<{ videos: Video[] }>("/live"),
   channelLive: (id: string) => http<{ videos: Video[] }>(`/channels/${id}/live`),
   video: (id: string) => http<{ video: Video; related: Video[] }>(`/videos/${id}`),
