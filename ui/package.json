@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:css": "bun scripts/check-css-ownership.ts",
     "generate:changelog": "bun scripts/generate-changelog.ts",
-    "build": "bun run generate:changelog && vite build",
+    "build": "bun run check:css && bun run generate:changelog && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

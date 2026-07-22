@@ -3,6 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { Button, type ButtonProps } from "./Button";
 import { FloatingPopover } from "./FloatingPopover";
 import { Menu } from "./Menu";
+import "./SplitButton.css";
 
 export interface SplitButtonProps extends Omit<ButtonProps, "trailingIcon"> {
   menu: ReactNode;

@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Check, ChevronLeft } from "lucide-react";
 import { cx } from "./utils";
+import "./Menu.css";
 
 export function Menu({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx("ui-menu", className)} role="menu">{children}</div>;

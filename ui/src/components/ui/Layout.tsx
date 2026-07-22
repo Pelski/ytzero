@@ -1,5 +1,6 @@
 import { createElement, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
 import { cx } from "./utils";
+import "./Layout.css";
 
 type Gap = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 

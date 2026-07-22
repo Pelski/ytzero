@@ -1,6 +1,7 @@
 import { forwardRef, type AnchorHTMLAttributes, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Link, type LinkProps } from "react-router-dom";
 import { cx } from "./utils";
+import "./Button.css";
 
 export type ButtonVariant = "default" | "primary" | "secondary" | "danger" | "ghost";
 export type ButtonSize = "sm" | "md";

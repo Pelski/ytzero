@@ -1,0 +1,9 @@
+@layer components {
+  .stepped-slider { height: 22px; position: relative; }
+  .stepped-slider input { appearance: none; background: linear-gradient(to right, var(--accent) 0 var(--stepped-slider-progress), var(--surface-3) var(--stepped-slider-progress) 100%); border-radius: 999px; cursor: pointer; height: 6px; left: 0; margin: 8px 0; outline: none; position: absolute; top: 0; width: 100%; z-index: 2; }
+  .stepped-slider input::-webkit-slider-thumb { appearance: none; background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 45%, transparent); height: 18px; width: 18px; }
+  .stepped-slider input::-moz-range-thumb { background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 45%, transparent); height: 18px; width: 18px; }
+  .stepped-slider-ticks { inset: 0 9px; pointer-events: none; position: absolute; z-index: 3; }
+  .stepped-slider-ticks span { background: color-mix(in srgb, var(--surface-3) 82%, white); border-radius: 999px; height: 10px; position: absolute; top: 6px; transform: translateX(-1px); width: 2px; }
+  .stepped-slider-ticks span.is-active { background: var(--accent); }
+}

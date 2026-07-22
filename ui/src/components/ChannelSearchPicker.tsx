@@ -1,10 +1,14 @@
 import { Check, Pencil, Search, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, type ChannelSearchResult } from "../api";
 import { emit } from "../events";
 import { img } from "../img";
 import { useI18n } from "../i18n";
 import { Button, Dialog, IconButton, Input, List, ListRow } from "./ui";
+import "./ChannelSearchPicker.css";
+
+const SEARCH_DEBOUNCE_MS = 1_800;
 
 export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: string) => void }) {
   const { t } = useI18n();
@@ -18,6 +22,7 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
   // Row with the optional "follow under a custom name" input open.
   const [namingId, setNamingId] = useState<string | null>(null);
   const [customName, setCustomName] = useState("");
+  const hasSearchQuery = query.trim().length >= 2;
 
   useEffect(() => {
     if (!open) return;
@@ -40,7 +45,7 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
         .then((response) => setResults(response.channels))
         .catch(() => setResults([]))
         .finally(() => setLoading(false));
-    }, 1200);
+    }, SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
   }, [open, query]);
 
@@ -79,9 +84,9 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
                   const naming = namingId === channel.channelId;
                   return (
                     <ListRow key={channel.channelId} className="channel-search-result" media={channel.thumbnail ? (
-                        <img className="channel-search-result-avatar-media" src={img(channel.thumbnail)} alt="" />
+                        <Link className="channel-search-result-link" to={`/channel/${channel.channelId}`} aria-label={channel.title} onClick={() => setOpen(false)}><img className="channel-search-result-avatar-media" src={img(channel.thumbnail)} alt="" /></Link>
                       ) : (
-                        <span className="channel-search-result-avatar">{channel.title.charAt(0).toUpperCase()}</span>
+                        <Link className="channel-search-result-avatar channel-search-result-link" to={`/channel/${channel.channelId}`} aria-label={channel.title} onClick={() => setOpen(false)}>{channel.title.charAt(0).toUpperCase()}</Link>
                       )} actions={<>
                       {!followed && (
                         <IconButton
@@ -105,7 +110,7 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
                       </Button>
                       </>}>
                       <div className="channel-search-result-copy">
-                        <strong>{channel.title}</strong>
+                        <Link className="channel-search-result-title" to={`/channel/${channel.channelId}`} onClick={() => setOpen(false)}>{channel.title}</Link>
                         {naming ? (
                           <Input
                             className="channel-search-custom-name"
@@ -127,6 +132,7 @@ export default function ChannelSearchPicker({ onAdded }: { onAdded?: (name: stri
                 })}
               </List>
             )}
+            {hasSearchQuery && !loading && results.length === 0 && !error && <p className="channel-search-empty">{t("noMatchingChannels")}</p>}
       </Dialog>
     </>
   );

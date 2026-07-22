@@ -29,6 +29,7 @@ import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
 import { applyVideoCardSize } from "./videoCardSize";
+import "./styles/App.css";
 
 // Routes owned by plugins — visible in the sidebar only while enabled.
 const PLUGIN_ROUTES = ["/discovery", "/downloads"];

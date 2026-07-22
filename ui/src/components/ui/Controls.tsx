@@ -1,6 +1,7 @@
 import { forwardRef, type InputHTMLAttributes, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import { cx } from "./utils";
+import "./Controls.css";
 
 export function Checkbox({ label, description, className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { label: ReactNode; description?: ReactNode }) {
   return <label className={cx("ui-checkbox", props.disabled && "ui-checkbox--disabled", className)}>

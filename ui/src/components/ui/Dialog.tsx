@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { IconButton } from "./Button";
 import { cx } from "./utils";
+import "./Dialog.css";
 
 export function Dialog({ open, onOpenChange, title, children, footer, closeLabel, className }: { open: boolean; onOpenChange: (open: boolean) => void; title: ReactNode; children: ReactNode; footer?: ReactNode; closeLabel: string; className?: string }) {
   useEffect(() => {

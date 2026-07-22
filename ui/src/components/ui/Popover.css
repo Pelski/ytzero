@@ -1,0 +1,6 @@
+.ui-popover { display: inline-flex; position: relative; }
+.ui-popover__content { background: var(--surface-2); border: 0; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.55); min-width: 190px; padding: 12px; position: absolute; top: calc(100% + 6px); z-index: 60; }
+.ui-popover__content--start { left: 0; }
+.ui-popover__content--center { left: 50%; transform: translateX(-50%); }
+.ui-popover__content--end { right: 0; }
+.ui-popover__title { color: var(--text-2); font-size: 11px; font-weight: 700; letter-spacing: .04em; margin-bottom: 9px; text-transform: uppercase; }

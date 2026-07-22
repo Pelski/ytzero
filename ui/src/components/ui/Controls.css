@@ -1,0 +1,20 @@
+.ui-checkbox { align-items: flex-start; color: var(--text); cursor: pointer; display: flex; font-size: 13.5px; gap: 9px; min-width: 0; position: relative; }
+.ui-checkbox input { height: 1px; opacity: 0; pointer-events: none; position: absolute; width: 1px; }
+.ui-checkbox__control { align-items: center; background: var(--bg); border: 1px solid var(--surface-3); border-radius: 5px; box-sizing: border-box; color: #fff; display: inline-flex; flex: 0 0 18px; height: 18px; justify-content: center; margin-top: 1px; transition: background .15s, border-color .15s, box-shadow .15s; width: 18px; }
+.ui-checkbox__control svg { height: 13px; opacity: 0; stroke-width: 3; transform: scale(.65); transition: opacity .12s, transform .15s ease; width: 13px; }
+.ui-checkbox input:checked + .ui-checkbox__control { background: var(--accent); border-color: var(--accent); }
+.ui-checkbox input:checked + .ui-checkbox__control svg { opacity: 1; transform: scale(1); }
+.ui-checkbox input:focus-visible + .ui-checkbox__control { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.ui-checkbox:hover .ui-checkbox__control { border-color: color-mix(in srgb,var(--accent) 60%,var(--surface-3)); }
+.ui-checkbox--disabled { cursor: default; opacity: .55; }
+.ui-checkbox__copy { min-width: 0; }
+.ui-checkbox__label { display: block; }
+.ui-labeled-control, .ui-setting-row { align-items: center; display: flex; gap: 16px; justify-content: space-between; }
+.ui-switch { align-items: center; background: var(--surface-3); border: 0; border-radius: 999px; box-sizing: border-box; cursor: pointer; display: inline-flex; flex: 0 0 42px; height: 24px; overflow: hidden; padding: 3px; transition: background .15s; width: 42px; }
+.ui-switch__thumb { background: var(--text-2); border-radius: 50%; display: block; flex: 0 0 18px; height: 18px; transform: translateX(0); transition: transform .15s ease, background .15s; width: 18px; }
+.ui-switch--checked { background: var(--accent); }
+.ui-switch--checked .ui-switch__thumb { background: #fff; transform: translateX(18px); }
+.ui-switch:disabled { cursor: default; opacity: .55; }
+.ui-slider { appearance: none; background: linear-gradient(to right, var(--accent) 0 var(--ui-slider-progress), var(--surface-3) var(--ui-slider-progress) 100%); border-radius: 999px; cursor: pointer; height: 6px; }
+.ui-slider::-webkit-slider-thumb { appearance: none; background: var(--accent); border: 0; border-radius: 50%; box-shadow: 0 3px 10px color-mix(in srgb, var(--accent) 45%, transparent); height: 18px; width: 18px; }
+.ui-slider::-moz-range-thumb { background: var(--accent); border: 0; border-radius: 50%; height: 18px; width: 18px; }

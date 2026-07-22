@@ -4,6 +4,7 @@ import { cx } from "./utils";
 import { Button, type ButtonSize } from "./Button";
 import { Menu, MenuItem } from "./Menu";
 import { Popover } from "./Popover";
+import "./Selection.css";
 
 export function SelectMenu<T extends string | number>({ value, options, onChange, label, size = "md", disabled, searchable = false, searchPlaceholder = "Search…", emptyLabel = "—", className }: { value: T; options: readonly { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean; searchText?: string }[]; onChange: (value: T) => void; label: string; size?: ButtonSize; disabled?: boolean; searchable?: boolean; searchPlaceholder?: string; emptyLabel?: ReactNode; className?: string }) {
   const [open, setOpen] = useState(false);

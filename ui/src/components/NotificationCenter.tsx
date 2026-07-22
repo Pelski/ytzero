@@ -6,6 +6,7 @@ import { subscribe } from "../events";
 import { useI18n } from "../i18n";
 import { img } from "../img";
 import { Button, EmptyState, IconButton, List, ListButton, Popover } from "./ui";
+import "./NotificationCenter.css";
 
 function notificationTime(value: string, locale: string, justNow: string): string {
   const date = new Date(`${value.replace(" ", "T")}Z`);

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { cx } from "./utils";
 import { SectionHeader, Text } from "./Layout";
+import "./Settings.css";
 
 export function SettingsSection({ title, description, children, className }: { title?: ReactNode; description?: ReactNode; children: ReactNode; className?: string }) {
   return <section className={cx("ui-settings-section", className)}>{title ? <SectionHeader title={title} description={description} /> : description ? <Text tone="secondary" className="ui-settings-section__description">{description}</Text> : null}<div className="ui-settings-section__body">{children}</div></section>;

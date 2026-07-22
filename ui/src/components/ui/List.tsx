@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react";
 import { cx } from "./utils";
+import "./List.css";
 
 export function List({ divided = true, className, ...props }: HTMLAttributes<HTMLDivElement> & { divided?: boolean }) {
   return <div {...props} role="list" className={cx("ui-list", divided && "ui-list--divided", className)} />;

@@ -1,6 +1,7 @@
 import { cloneElement, isValidElement, useContext, useEffect, useId, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { cx } from "./utils";
 import { isInPopoverBranch, PopoverBranchContext } from "./PopoverTree";
+import "./Popover.css";
 
 export function Popover({ trigger, children, title, align = "end", open, onOpenChange, className }: {
   trigger: ReactElement;

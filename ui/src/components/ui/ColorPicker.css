@@ -1,0 +1,21 @@
+.ui-color-picker__trigger { align-items: center; background: var(--bg); border: 1px solid var(--surface-3); border-radius: 8px; box-sizing: border-box; color: var(--text-2); cursor: pointer; display: inline-flex; font: inherit; gap: 8px; height: 36px; padding: 4px 9px 4px 5px; }
+.ui-color-picker__trigger:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--surface-3)); }
+.ui-color-picker__trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ui-color-picker__trigger:disabled { cursor: default; opacity: .55; }
+.ui-color-picker__trigger > span:first-child { border: 1px solid rgba(255,255,255,.18); border-radius: 5px; height: 24px; width: 24px; }
+.ui-color-picker__trigger--swatch { height: 30px; padding: 3px; width: 30px; }
+.ui-color-picker__trigger--swatch > span:first-child { border-radius: 5px; height: 22px; width: 22px; }
+.ui-color-picker__value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.ui-floating-popover__content.ui-color-picker__popover { box-sizing: border-box; width: min(232px, calc(100vw - 16px)); }
+.ui-color-picker__spectrum { background-color: hsl(var(--ui-picker-hue) 100% 50%); background-image: linear-gradient(to bottom, transparent, #000), linear-gradient(to right, #fff, transparent); border-radius: 8px; cursor: crosshair; height: 128px; overflow: hidden; position: relative; touch-action: none; width: 100%; }
+.ui-color-picker__cursor { border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.85); height: 12px; left: var(--ui-picker-saturation); pointer-events: none; position: absolute; top: var(--ui-picker-value); transform: translate(-50%, -50%); width: 12px; }
+.ui-color-picker__hue { appearance: none; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); border: 0; border-radius: 999px; cursor: pointer; height: 10px; margin: 9px 0 10px; padding: 0; width: 100%; }
+.ui-color-picker__hue::-webkit-slider-thumb { appearance: none; background: hsl(var(--ui-picker-hue) 100% 50%); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.7); height: 16px; width: 16px; }
+.ui-color-picker__hue::-moz-range-thumb { background: hsl(var(--ui-picker-hue) 100% 50%); border: 2px solid #fff; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.7); height: 14px; width: 14px; }
+.ui-color-picker__grid { display: grid; gap: 5px; grid-template-columns: repeat(6, 1fr); }
+.ui-color-picker__swatch { align-items: center; aspect-ratio: 1; border: 2px solid transparent; border-radius: 6px; color: #fff; cursor: pointer; display: flex; justify-content: center; min-width: 0; padding: 0; }
+.ui-color-picker__swatch:hover { border-color: rgba(255,255,255,.65); transform: scale(1.06); }
+.ui-color-picker__swatch[aria-selected="true"] { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+.ui-color-picker__swatch svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,.7)); height: 15px; width: 15px; }
+.ui-color-picker__hex { align-items: center; border-top: 1px solid var(--surface-3); color: var(--text-2); display: flex; font-size: 10px; font-weight: 700; gap: 8px; letter-spacing: .08em; margin-top: 9px; padding-top: 9px; }
+.ui-color-picker__hex .ui-input { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; width: 0; }

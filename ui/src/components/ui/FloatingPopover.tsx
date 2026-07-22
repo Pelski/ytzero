@@ -2,6 +2,7 @@ import { cloneElement, createElement, isValidElement, useContext, useEffect, use
 import { createPortal } from "react-dom";
 import { cx } from "./utils";
 import { isInPopoverBranch, PopoverBranchContext } from "./PopoverTree";
+import "./FloatingPopover.css";
 
 export function FloatingPopover({ trigger, children, open, onOpenChange, align = "start", className, gap = 8 }: { trigger: ReactElement; children: ReactNode; open: boolean; onOpenChange: (open: boolean) => void; align?: "start" | "center" | "end"; className?: string; gap?: number }) {
   const triggerRef = useRef<HTMLSpanElement>(null);

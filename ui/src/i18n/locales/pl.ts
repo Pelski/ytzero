@@ -306,7 +306,7 @@ export const pl: Locale = {
     searchYouTubeChannels: "Szukaj kanału na YouTube, aby go obserwować",
     searchYouTube: "Szukaj na YouTube",
     channelFollowed: "Obserwujesz",
-    noMatchingChannels: "Brak kanałów pasujących do wyszukiwania.",
+    noMatchingChannels: "Nie znaleziono kanałów. Wpisz więcej albo spróbuj wyszukać inaczej.",
     manageChannelTags: "Zarządzaj tagami kanału",
     addTag: "Dodaj tag",
     newTag: "Nowy tag",

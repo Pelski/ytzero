@@ -1,0 +1,6 @@
+.ui-dialog-backdrop { align-items: center; background: rgba(0,0,0,.72); display: flex; inset: 0; justify-content: center; padding: 16px; position: fixed; z-index: 1000; }
+.ui-dialog { background: var(--surface-2); border: 1px solid var(--surface-3); border-radius: 14px; box-shadow: 0 16px 48px rgba(0,0,0,.55); max-height: min(85vh,720px); max-width: 100%; overflow: auto; width: 520px; }
+.ui-dialog__header { align-items: center; border-bottom: 1px solid var(--surface-3); display: flex; justify-content: space-between; padding: 14px 16px; }
+.ui-dialog__header h2 { font-size: 16px; margin: 0; }
+.ui-dialog__body { padding: 16px; }
+.ui-dialog__footer { align-items: center; border-top: 1px solid var(--surface-3); display: flex; gap: 8px; justify-content: flex-end; padding: 12px 16px; }

@@ -1,4 +1,5 @@
 import type { CSSProperties, KeyboardEvent } from "react";
+import "./SteppedSlider.css";
 
 export interface SteppedSliderProps {
   value: number;
@@ -30,7 +31,7 @@ export default function SteppedSlider({ value, steps, onChange, ariaLabel, showT
   return (
     <div className="stepped-slider" style={{ "--stepped-slider-progress": `${progress}%` } as CSSProperties}>
       <input type="range" min={min} max={max} step={1} value={selected} aria-label={ariaLabel} onChange={(event) => onChange(nearestStep(Number(event.target.value)))} onKeyDown={onKeyDown} />
-      {showTicks && <div className="stepped-slider-ticks" aria-hidden="true">{orderedSteps.map((step) => <span key={step} style={{ left: `${((step - min) / (max - min)) * 100}%` }} />)}</div>}
+      {showTicks && <div className="stepped-slider-ticks" aria-hidden="true">{orderedSteps.map((step) => <span key={step} className={step <= selected ? "is-active" : undefined} style={{ left: `${((step - min) / (max - min)) * 100}%` }} />)}</div>}
     </div>
   );
 }

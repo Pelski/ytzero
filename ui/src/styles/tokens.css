@@ -1,0 +1,26 @@
+:root {
+  --bg: #0f0f0f;
+  --surface: #1f1f1f;
+  --surface-2: #272727;
+  --surface-3: #3f3f3f;
+  --text: #f1f1f1;
+  --text-2: #aaaaaa;
+  --text-3: #717171;
+  --accent: #3ea6ff;
+  --live: #f2293a;
+  --chip: #272727;
+  --chip-hover: #3f3f3f;
+  --radius: 12px;
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --topbar-h: 58px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}

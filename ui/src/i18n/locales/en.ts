@@ -305,7 +305,7 @@ export const en = {
     searchYouTubeChannels: "Search YouTube channels to follow",
     searchYouTube: "Search YouTube",
     channelFollowed: "Following",
-    noMatchingChannels: "No channels match the search.",
+    noMatchingChannels: "No channels found. Try a more specific or different search.",
     manageChannelTags: "Manage channel tags",
     addTag: "Add tag",
     newTag: "New tag",

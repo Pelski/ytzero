@@ -1,0 +1,2 @@
+.ui-floating-popover__trigger { display: inline-flex; }
+.ui-floating-popover__content { background: var(--surface-2); border: 0; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.58); padding: 12px; position: fixed; z-index: 1000; }

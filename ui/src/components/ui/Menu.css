@@ -1,0 +1,12 @@
+.ui-menu { display: grid; margin: -6px; min-width: 190px; padding: 6px; }
+.ui-menu__item { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--text); cursor: pointer; display: flex; font-size: 13.5px; gap: 10px; padding: 9px 10px; text-align: left; width: 100%; }
+.ui-menu__item:hover { background: var(--surface-3); }
+.ui-menu__item--selected { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ui-menu__icon { align-items: center; color: var(--text-2); display: flex; }
+.ui-menu__icon svg, .ui-menu__check { height: 17px; width: 17px; }
+.ui-menu__label { flex: 1; min-width: 0; }
+.ui-menu__check { color: var(--accent); }
+.ui-menu__label-heading { color: var(--text-3); font-size: 10.5px; font-weight: 700; padding: 6px 10px 4px; text-transform: uppercase; }
+.ui-menu__separator { background: var(--surface-3); height: 1px; margin: 6px 4px; }
+.ui-menu__header { align-items: center; border-bottom: 1px solid var(--surface-3); display: flex; font-size: 13px; font-weight: 600; gap: 8px; margin-bottom: 4px; padding: 2px 4px 8px; }
+.ui-menu__header button { background: transparent; border: 0; border-radius: 6px; color: var(--text); display: grid; height: 26px; place-items: center; width: 26px; }

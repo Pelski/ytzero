@@ -1,5 +1,6 @@
 import type { HTMLAttributes, ReactNode } from "react";
 import { cx } from "./utils";
+import "./Feedback.css";
 
 export function Alert({ variant = "info", icon, title, children, className, ...props }: HTMLAttributes<HTMLDivElement> & { variant?: "info" | "warning" | "danger" | "success"; icon?: ReactNode; title?: ReactNode }) {
   return <div {...props} className={cx("ui-alert", `ui-alert--${variant}`, className)} role={variant === "danger" ? "alert" : "status"}>

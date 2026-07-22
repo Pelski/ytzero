@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { FloatingPopover } from "./FloatingPopover";
 import { Input } from "./Fields";
 import { cx } from "./utils";
+import "./ColorPicker.css";
 
 const DEFAULT_COLORS = [
   "#f2293a", "#ff6b6b", "#e84393", "#9b59b6", "#7c5cff", "#3ea6ff",

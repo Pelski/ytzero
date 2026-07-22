@@ -1,0 +1,5 @@
+.ui-split-button { display: inline-flex; }
+.ui-split-button .ui-button { border-radius: 0; }
+.ui-split-button__main { border-radius: 999px 0 0 999px !important; padding-right: 12px; }
+.ui-split-button__toggle { border-radius: 0 999px 999px 0 !important; position: relative; width: 32px; }
+.ui-split-button__toggle::before { background: currentColor; content: ""; height: 18px; left: 0; opacity: .16; position: absolute; width: 1px; }
