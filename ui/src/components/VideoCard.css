@@ -1,0 +1,12 @@
+.private-video-badge {
+  bottom: 8px;
+  gap: 4px;
+  left: 8px;
+  pointer-events: none;
+  position: absolute;
+  z-index: 3;
+}
+
+.private-video-badge svg {
+  flex: 0 0 auto;
+}

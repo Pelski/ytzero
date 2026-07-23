@@ -1,11 +1,13 @@
 import { useState } from "react";
 import type { MouseEvent } from "react";
-import { Archive, Check, Eye, Heart, Star } from "lucide-react";
+import { Archive, Check, Eye, Heart, Lock, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import { img } from "../img";
 import Tooltip from "./Tooltip";
+import { Badge } from "./ui";
+import "./VideoCard.css";
 
 const EXIT_MS = 320;
 
@@ -81,6 +83,11 @@ export default function ShortCard({
         <span className={`members-only-marker__icon short-card-members-only${isWatched ? " short-card-members-only--stacked" : ""}`} title={t("membersOnly")} aria-label={t("membersOnly")}>
           <Star size={15} fill="currentColor" />
         </span>
+      )}
+      {video.is_private === 1 && (
+        <Badge variant="warning" size="sm" className="private-video-badge">
+          <Lock size={11} /> {t("privateVideoBadge")}
+        </Badge>
       )}
 
       {isWatched && (

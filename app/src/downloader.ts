@@ -330,7 +330,7 @@ export function enqueueDownload(videoId: string, source: "manual" | "scheduled" 
       .run(source, priority ? 1 : 0, videoId);
     return true;
   }
-  const exists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?").get(videoId);
+  const exists = db.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId);
   if (!exists) return false;
   db.prepare("INSERT INTO downloads (video_id, status, source, priority) VALUES (?, 'queued', ?, ?)").run(videoId, source, priority ? 1 : 0);
   return true;
@@ -457,6 +457,7 @@ function autoEnqueue(s: DlSettings) {
       JOIN videos v ON v.video_id = uv.video_id
       WHERE uv.status = 'queued'
         AND v.live_status = 'none'
+        AND v.is_private = 0
         AND COALESCE(uv.watched, 0) = 0
         AND COALESCE(uv.queued_at, datetime('now')) >= datetime('now', '-30 days')
         AND NOT EXISTS (
@@ -477,7 +478,7 @@ function autoEnqueue(s: DlSettings) {
              COALESCE(c.auto_download_min_duration_override, ?) AS min_duration
       FROM videos v
       JOIN channels c ON c.channel_id = v.channel_id
-      WHERE v.live_status = 'none' AND v.external = 0
+      WHERE v.live_status = 'none' AND v.external = 0 AND v.is_private = 0
         ${shortsFilter}
         AND v.published_at >= datetime('now', ?)
         AND EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id = v.channel_id AND uc.followed = 1)
@@ -624,9 +625,10 @@ function pruneAllEmptyDirs(dir: string, isRoot = true) {
 
 function pickNext(): string | null {
   const row = db.prepare(`
-    SELECT video_id FROM downloads
-    WHERE status = 'queued'
-    ORDER BY priority DESC, CASE source WHEN 'manual' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END, created_at ASC
+    SELECT d.video_id FROM downloads d
+    JOIN videos v ON v.video_id = d.video_id
+    WHERE d.status = 'queued' AND v.is_private = 0
+    ORDER BY d.priority DESC, CASE d.source WHEN 'manual' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END, d.created_at ASC
     LIMIT 1
   `).get() as { video_id: string } | null;
   return row?.video_id ?? null;
@@ -695,6 +697,7 @@ async function runDownload(videoId: string, s: DlSettings) {
     "--newline",
     "--no-warnings",
     "--no-mtime",
+    "--retry-sleep", "http:exp=1:20",
     "-f", format,
     "--merge-output-format", "mp4",
     "-o", join(DOWNLOADS_DIR, `${base}.%(ext)s`),
@@ -702,6 +705,7 @@ async function runDownload(videoId: string, s: DlSettings) {
   if (s.write_thumbnail === 1) args.push("--write-thumbnail");
   if (s.embed_metadata === 1) args.push("--embed-metadata");
   if (s.write_info_json === 1) args.push("--write-info-json");
+  if (downloadCookiesConfigured()) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
 
   db.prepare("UPDATE downloads SET status = 'downloading', quality = ?, output_base = ?, error = NULL, attempts = attempts + 1, started_at = datetime('now') WHERE video_id = ?")
     .run(s.quality, base, videoId);

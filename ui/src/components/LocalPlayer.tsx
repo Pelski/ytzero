@@ -57,7 +57,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   onToggleCinema?: () => void;
   onEnded?: () => void;
   keyboardSeekSeconds?: number;
-  onShortcut?: (kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed", seconds?: number) => void;
+  onShortcut?: (kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff", seconds?: number) => void;
   videoId?: string;
   ccDefaultOn?: boolean;
   ccDefaultLang?: string;
@@ -343,7 +343,12 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         case "c":
         case "C":
           e.preventDefault();
-          if (!e.repeat) toggleSubtitles();
+          if (!e.repeat) {
+            const captionsWereOn = Boolean(subLang);
+            const preferred = subs.find((sub) => sub.lang === ccDefaultLang)?.lang ?? subs[0]?.lang ?? ccDefaultLang;
+            toggleSubtitles();
+            if (captionsWereOn || preferred) onShortcut?.(captionsWereOn ? "captionsOff" : "captionsOn");
+          }
           break;
         case "k":
         case "K":
@@ -362,17 +367,20 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
             return next;
           });
           onShortcut?.("volumeUp");
+          showControls();
           break;
         case "ArrowDown":
           e.preventDefault();
           setVolume((current) => Math.max(0, current - 0.05));
           onShortcut?.("volumeDown");
+          showControls();
           break;
-        case "m": case "M": setMuted((m) => !m); break;
+        case "m": case "M": setMuted((m) => !m); showControls(); break;
         default: {
           if (/^[0-9]$/.test(e.key)) {
             const v = videoRef.current;
             if (v && Number.isFinite(v.duration)) v.currentTime = (Number(e.key) / 10) * v.duration;
+            showControls();
           }
         }
       }
@@ -400,7 +408,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [togglePlay, seekBy, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId]);
+  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId]);
 
   // Media Session: system-level controls (keyboard media keys, lock screen).
   useEffect(() => {

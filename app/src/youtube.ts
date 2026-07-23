@@ -1111,6 +1111,20 @@ export async function fetchVideoCreators(videoId: string): Promise<VideoCreatorI
 const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
 const VIDEO_INFO_TTL = 10 * 60_000;
 
+export class PrivateVideoError extends Error {
+  readonly code = "PRIVATE_VIDEO";
+
+  constructor(message = "Private video") {
+    super(message);
+    this.name = "PrivateVideoError";
+  }
+}
+
+export function isPrivateVideoError(error: unknown): boolean {
+  return error instanceof PrivateVideoError
+    || (error instanceof Error && /\bprivate video\b/i.test(error.message));
+}
+
 function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
   const vd = pr?.videoDetails;
   if (!vd?.videoId) {
@@ -1123,6 +1137,7 @@ function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
     const detail = pr == null
       ? "no player response"
       : [ps?.status, reason].filter(Boolean).join(": ") || "no playabilityStatus";
+    if (/\bprivate video\b/i.test(detail)) throw new PrivateVideoError(detail);
     throw new Error(`videoDetails missing (${detail})`);
   }
 
@@ -1185,6 +1200,9 @@ export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
       try {
         result = await fetchVideoInfoFromEmbed(videoId);
       } catch (embedError) {
+        if ([htmlError, innerTubeError, embedError].some(isPrivateVideoError)) {
+          throw new PrivateVideoError();
+        }
         const primary = htmlError instanceof Error ? htmlError.message : String(htmlError);
         const fallback = innerTubeError instanceof Error ? innerTubeError.message : String(innerTubeError);
         const embed = embedError instanceof Error ? embedError.message : String(embedError);

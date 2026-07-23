@@ -570,6 +570,10 @@ try { db.exec("ALTER TABLE video_creators ADD COLUMN handle TEXT NOT NULL DEFAUL
 try { db.exec("ALTER TABLE videos ADD COLUMN published_at_approximate INTEGER NOT NULL DEFAULT 0"); } catch {}
 // YouTube exposes members-only status as a badge on channel video cards.
 try { db.exec("ALTER TABLE videos ADD COLUMN members_only INTEGER NOT NULL DEFAULT 0"); } catch {}
+// Permanent unavailability discovered from YouTube's player response. Private
+// videos are kept in the library (Takeout history/playlists still reference
+// them), but background jobs must not keep probing them.
+try { db.exec("ALTER TABLE videos ADD COLUMN is_private INTEGER NOT NULL DEFAULT 0"); } catch {}
 db.exec("UPDATE videos SET bucket = 'today' WHERE bucket = 'morning';");
 db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
 

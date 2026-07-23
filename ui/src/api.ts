@@ -23,6 +23,7 @@ export interface Video {
   published_at: string | null;
   published_at_approximate: number;
   members_only: number;
+  is_private: number;
   live_status: "none" | "upcoming" | "live" | "was_live";
   status: "inbox" | "queued" | "archived";
   bucket: Bucket | null;

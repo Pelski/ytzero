@@ -51,8 +51,8 @@
 }
 .watch-player iframe { width: 100%; height: 100%; border: none; display: block; }
 .watch-player-yt { width: 100%; height: 100%; }
-.shortcut-feedback { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 999px; background: rgba(10, 10, 10, 0.62); color: #fff; backdrop-filter: blur(7px); pointer-events: none; z-index: 8; font-size: 13px; font-weight: 650; animation: shortcut-feedback-in 520ms ease-out both; }
-.shortcut-feedback--sponsorblock { animation-duration: 1.4s; }
+.shortcut-feedback { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 999px; background: rgba(10, 10, 10, 0.62); color: #fff; backdrop-filter: blur(7px); pointer-events: none; z-index: 8; font-size: 13px; font-weight: 650; animation: shortcut-feedback-in 1.56s ease-out both; }
+.shortcut-feedback--sponsorblock { animation-duration: 4.2s; }
 @keyframes shortcut-feedback-in { 0% { opacity: 0; transform: translate(-50%, 5px) scale(.94); } 20% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, -4px) scale(.98); } }
 @media (prefers-reduced-motion: reduce) { .shortcut-feedback { animation: none; } }
 
@@ -63,7 +63,10 @@
   height: 100%;
   background: #000;
 }
-.lp-root.lp-hide-cursor { cursor: none; }
+/* The child video's own cursor (pointer) would win over the root's, so hide
+   the cursor on every descendant while the controls are faded out. */
+.lp-root.lp-hide-cursor,
+.lp-root.lp-hide-cursor * { cursor: none; }
 .lp-video {
   width: 100%;
   height: 100%;

@@ -20,6 +20,7 @@ import {
   Eye,
   Gauge,
   LoaderCircle,
+  Lock,
   MonitorPlay,
   Pause,
   Play,
@@ -228,7 +229,7 @@ export default function WatchPage() {
   );
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
   const [speed, setSpeed] = useState("1");
-  const [shortcutFeedback, setShortcutFeedback] = useState<{ kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "sponsorblock"; id: number; seconds?: number; category?: string } | null>(null);
+  const [shortcutFeedback, setShortcutFeedback] = useState<{ kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff" | "sponsorblock"; id: number; seconds?: number; category?: string } | null>(null);
   // "auto" plays the local file when one exists; "youtube" forces the iframe.
   const [playerSource, setPlayerSource] = useState<"auto" | "youtube">("auto");
   // watch_source_mode = "ask"/"download": what the viewer decided for THIS video.
@@ -262,10 +263,10 @@ export default function WatchPage() {
   const disabledSegsRef = useRef<Set<string>>(new Set());
   const recordedSbSegsRef = useRef<Set<string>>(new Set());
 
-  const showShortcutFeedback = useCallback((kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "sponsorblock", seconds?: number, category?: string) => {
+  const showShortcutFeedback = useCallback((kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff" | "sponsorblock", seconds?: number, category?: string) => {
     if (shortcutFeedbackTimerRef.current) window.clearTimeout(shortcutFeedbackTimerRef.current);
     setShortcutFeedback({ kind, id: Date.now(), seconds, category });
-    shortcutFeedbackTimerRef.current = window.setTimeout(() => setShortcutFeedback(null), kind === "sponsorblock" ? 1_400 : 520);
+    shortcutFeedbackTimerRef.current = window.setTimeout(() => setShortcutFeedback(null), kind === "sponsorblock" ? 4_200 : 1_560);
   }, []);
 
   useLayoutEffect(() => {
@@ -328,8 +329,9 @@ export default function WatchPage() {
     sourceChoice,
     watchMode,
   });
-  const membersOnlyNotice = video?.members_only === 1 && !isChildProfile;
-  const usingLocal = playerKind === "local" && !membersOnlyNotice;
+  const privateVideoNotice = video?.is_private === 1;
+  const membersOnlyNotice = video?.members_only === 1 && !isChildProfile && !privateVideoNotice;
+  const usingLocal = playerKind === "local" && !membersOnlyNotice && !privateVideoNotice;
   const sharedTimestamp = Number(new URLSearchParams(location.search).get("t"));
   const sharedStartSeconds = Number.isFinite(sharedTimestamp) ? Math.max(0, Math.floor(sharedTimestamp)) : 0;
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
@@ -400,26 +402,26 @@ export default function WatchPage() {
 
   useEffect(() => {
     setVideoCreators([]);
-    if (!video?.video_id) return;
+    if (!video?.video_id || video.is_private === 1) return;
     let cancelled = false;
     api.videoCreators(video.video_id)
       .then((result) => { if (!cancelled) setVideoCreators(result.creators); })
       .catch(() => { if (!cancelled) setVideoCreators([]); });
     return () => { cancelled = true; };
-  }, [video?.video_id]);
+  }, [video?.video_id, video?.is_private]);
 
   useEffect(() => {
     setChapters([]);
     setVideoPlaylists([]);
     if (!id) return;
     let cancelled = false;
-    Promise.allSettled([api.chapters(id), api.videoPlaylists(id)]).then(([chapterResult, playlistResult]) => {
+    Promise.allSettled([video?.is_private === 1 ? Promise.resolve({ chapters: [] }) : api.chapters(id), api.videoPlaylists(id)]).then(([chapterResult, playlistResult]) => {
       if (cancelled) return;
       setChapters(chapterResult.status === "fulfilled" ? chapterResult.value.chapters : []);
       setVideoPlaylists(playlistResult.status === "fulfilled" ? playlistResult.value.playlists : []);
     });
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, video?.is_private]);
 
   useEffect(() => {
     if (!playlistId) { setPlaylistVideos([]); return; }
@@ -1110,7 +1112,16 @@ export default function WatchPage() {
           )}
           <div className="watch-player-shell">
             <div ref={playerWrapRef} className={`watch-player${usingLocal ? " watch-player--local" : ""}`}>
-              {membersOnlyNotice && video ? (
+              {privateVideoNotice && video ? (
+                <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
+                  <div className="wp-panel-scrim" />
+                  <div className="wp-panel-content">
+                    <span className="wp-members-icon" aria-hidden="true"><Lock /></span>
+                    <h3>{t("privateVideoWatchTitle")}</h3>
+                    <p className="wp-panel-sub">{t("privateVideoWatchDescription")}</p>
+                  </div>
+                </div>
+              ) : membersOnlyNotice && video ? (
                 <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
                   <div className="wp-panel-scrim" />
                   <div className="wp-panel-content">
@@ -1232,12 +1243,15 @@ export default function WatchPage() {
                   : shortcutFeedback.kind === "forward" ? FastForward
                     : shortcutFeedback.kind === "volumeUp" ? Volume2
                       : shortcutFeedback.kind === "volumeDown" ? Volume1
-                        : shortcutFeedback.kind === "sponsorblock" ? FastForward : Gauge;
+                        : shortcutFeedback.kind === "sponsorblock" ? FastForward
+                          : shortcutFeedback.kind === "captionsOn" || shortcutFeedback.kind === "captionsOff" ? Clapperboard : Gauge;
                 const sponsorCategory = shortcutFeedback.category ? SB_CATEGORIES.find((category) => category.id === shortcutFeedback.category) : undefined;
                 const label = shortcutFeedback.kind === "back" ? `−${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
                   : shortcutFeedback.kind === "forward" ? `+${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
                     : shortcutFeedback.kind === "speed" ? "2×"
-                      : shortcutFeedback.kind === "sponsorblock" ? t("sponsorblockSkipped", { category: sponsorCategory ? t(sponsorCategory.labelKey) : shortcutFeedback.category ?? "SponsorBlock" }) : "";
+                      : shortcutFeedback.kind === "captionsOn" ? t("captionsOn")
+                        : shortcutFeedback.kind === "captionsOff" ? t("captionsOff")
+                          : shortcutFeedback.kind === "sponsorblock" ? t("sponsorblockSkipped", { category: sponsorCategory ? t(sponsorCategory.labelKey) : shortcutFeedback.category ?? "SponsorBlock" }) : "";
                 return <div key={shortcutFeedback.id} className={`shortcut-feedback${shortcutFeedback.kind === "sponsorblock" ? " shortcut-feedback--sponsorblock" : ""}`}><Icon size={19} />{label && <span>{label}</span>}</div>;
               })()}
               {playerKind === "youtube" && youtubeAutoplayBlocked && (
@@ -1455,7 +1469,7 @@ export default function WatchPage() {
                           <Undo2 /> {t("restoreRejectedVideo")}
                         </button>
                       )}
-                      {downloadsEnabled && !isChildProfile && video.live_status !== "live" && video.live_status !== "upcoming" && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
+                      {downloadsEnabled && !isChildProfile && video.is_private !== 1 && video.live_status !== "live" && video.live_status !== "upcoming" && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
                         <div className="more-menu-section">
                           <MenuSeparator />
                           <div className="more-menu-section-label">{t("localDownload")}</div>

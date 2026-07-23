@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchPlaylistSnapshot, fetchVideoInfo, fetchVideoPublishedAt } from "./youtube";
+import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchPlaylistSnapshot, fetchVideoInfo, fetchVideoPublishedAt, isPrivateVideoError } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -20,7 +20,8 @@ const upsertVideo = db.prepare(`
     published_at = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN excluded.published_at ELSE videos.published_at END,
     published_at_approximate = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN 0 ELSE videos.published_at_approximate END,
     views = COALESCE(excluded.views, views),
-    likes = COALESCE(excluded.likes, likes)
+    likes = COALESCE(excluded.likes, likes),
+    is_private = 0
 `);
 
 const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
@@ -43,6 +44,7 @@ async function backfillExactPublishedDates(channelId: string) {
   const ids = (db.prepare(`
     SELECT video_id FROM videos
     WHERE channel_id = ?
+      AND is_private = 0
       AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
     ORDER BY
       CASE WHEN published_at IS NULL OR published_at = '' THEN 0 ELSE 1 END,
@@ -125,7 +127,8 @@ const insertPlaylistVideo = db.prepare(`
         AND excluded.duration IS NOT NULL AND TRIM(excluded.duration) != ''
       THEN excluded.duration
       ELSE videos.duration
-    END
+    END,
+    is_private = 0
 `);
 
 const ensureChannel = db.prepare(`
@@ -282,6 +285,7 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
   const missingDuration = db.prepare(
     `SELECT 1 FROM videos
      WHERE channel_id = ?
+       AND is_private = 0
        AND (duration IS NULL OR TRIM(duration) = '')
        AND live_status IN ('none', 'was_live')
        AND COALESCE(published_at, created_at) >= datetime('now', ?)
@@ -320,12 +324,13 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
   if (videoIds && videoIds.length > 0) {
     const ph = videoIds.map(() => "?").join(",");
     rows = db
-      .prepare(`SELECT video_id, title FROM videos WHERE is_short IS NULL AND video_id IN (${ph})`)
+      .prepare(`SELECT video_id, title FROM videos WHERE is_short IS NULL AND is_private = 0 AND video_id IN (${ph})`)
       .all(...videoIds) as any[];
   } else {
     rows = db
       .prepare(`SELECT video_id, title FROM videos
                 WHERE is_short IS NULL
+                  AND is_private = 0
                   AND COALESCE(published_at, created_at) >= datetime('now', ?)
                 ORDER BY COALESCE(published_at, created_at) DESC
                 LIMIT ?`)
@@ -356,7 +361,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
     SELECT video_id, title, live_status, duration, published_at,
            published_at_approximate, is_short
     FROM videos
-    WHERE channel_id = ? AND (
+    WHERE channel_id = ? AND is_private = 0 AND (
       published_at IS NULL OR published_at = '' OR published_at_approximate = 1
       OR duration IS NULL OR duration = '' OR is_short IS NULL
     )
@@ -451,7 +456,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
 
   const remaining = (db.prepare(`
     SELECT COUNT(*) AS count FROM videos
-    WHERE channel_id = ? AND (
+    WHERE channel_id = ? AND is_private = 0 AND (
       published_at IS NULL OR published_at = '' OR published_at_approximate = 1
       OR duration IS NULL OR is_short IS NULL
     )
@@ -547,7 +552,8 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
       END,
       members_only = excluded.members_only,
       views = COALESCE(excluded.views, views),
-      duration = COALESCE(excluded.duration, duration)
+      duration = COALESCE(excluded.duration, duration),
+      is_private = 0
   `);
   const markArchivedStream = db.prepare(
     "UPDATE videos SET live_status = 'was_live' WHERE video_id = ? AND live_status = 'none'"
@@ -734,6 +740,7 @@ async function refreshPlaylistDurations(): Promise<number> {
     FROM channel_playlist_videos cpv
     JOIN videos v ON v.video_id = cpv.video_id
     WHERE v.duration IS NULL
+      AND v.is_private = 0
       AND v.live_status IN ('none', 'was_live')
       AND (v.published_at >= datetime('now', ?) OR v.created_at >= datetime('now', ?))
     GROUP BY cpv.playlist_id
@@ -781,6 +788,7 @@ export async function refreshVideoMetadataBatch(limit = 10) {
     .prepare(
       `SELECT video_id, live_status FROM videos
        WHERE (duration IS NULL OR published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
+         AND is_private = 0
          AND live_status IN ('none', 'was_live')
          AND (published_at >= datetime('now', ?) OR created_at >= datetime('now', ?))
        ORDER BY created_at DESC, COALESCE(published_at, '1970-01-01') DESC
@@ -818,6 +826,22 @@ export async function refreshVideoMetadataBatch(limit = 10) {
       }
       if (info.publishedAt) datesFilled += savePublishedAt.run(info.publishedAt, video_id).changes;
     } catch (e) {
+      if (isPrivateVideoError(e)) {
+        durationRetry.delete(video_id);
+        db.prepare(`
+          UPDATE videos SET is_private = 1, duration = COALESCE(duration, ''),
+            chapters_json = COALESCE(chapters_json, '[]'),
+            chapters_fetched_at = datetime('now'), creators_fetched_at = datetime('now')
+          WHERE video_id = ?
+        `).run(video_id);
+        db.prepare(`
+          UPDATE downloads SET status = 'deleted', error = NULL, priority = 0,
+            finished_at = datetime('now')
+          WHERE video_id = ? AND status != 'done'
+        `).run(video_id);
+        log.info("video.marked_private", { videoId: video_id, source: "metadata" });
+        continue;
+      }
       // Restricted videos may withhold player details while still exposing a
       // publication date in the watch-page metadata.
       try {
@@ -866,7 +890,7 @@ export async function backfillImportedVideos(limit = 15) {
   // titleless videos first — a titled history row is already presentable.
   const candidates = db.prepare(`
     SELECT video_id FROM videos
-    WHERE channel_id = ?
+    WHERE channel_id = ? AND is_private = 0
     ORDER BY (video_id IN (SELECT video_id FROM user_playlist_videos)) DESC,
              (title IS NULL OR title = '') DESC, created_at ASC
     LIMIT ?
@@ -897,6 +921,22 @@ export async function backfillImportedVideos(limit = 15) {
       );
       enriched++;
     } catch (e) {
+      if (isPrivateVideoError(e)) {
+        importRetry.delete(videoId);
+        db.prepare(`
+          UPDATE videos SET is_private = 1, duration = COALESCE(duration, ''),
+            chapters_json = COALESCE(chapters_json, '[]'),
+            chapters_fetched_at = datetime('now'), creators_fetched_at = datetime('now')
+          WHERE video_id = ?
+        `).run(videoId);
+        db.prepare(`
+          UPDATE downloads SET status = 'deleted', error = NULL, priority = 0,
+            finished_at = datetime('now')
+          WHERE video_id = ? AND status != 'done'
+        `).run(videoId);
+        log.info("video.marked_private", { videoId, source: "import" });
+        continue;
+      }
       const attempts = (importRetry.get(videoId)?.attempts ?? 0) + 1;
       const delayMs = Math.min(IMPORT_RETRY_BASE_MS * 2 ** (attempts - 1), IMPORT_RETRY_MAX_MS);
       importRetry.set(videoId, { attempts, nextAt: Date.now() + delayMs });

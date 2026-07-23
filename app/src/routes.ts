@@ -289,6 +289,7 @@ interface VideoRow {
   published_at: string | null;
   published_at_approximate: number;
   members_only: number;
+  is_private: number;
   live_status: string;
   status: string;
   bucket: string | null;
@@ -436,7 +437,7 @@ function tagFilterSql(uid: number, tagIds: number[]) {
 function videoSelect(uid: number) {
   return `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
-         v.published_at, v.published_at_approximate, v.members_only,
+         v.published_at, v.published_at_approximate, v.members_only, v.is_private,
          v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
          v.is_short, v.views, v.likes, uv.liked, uv.watched,
          v.duration, uv.watch_position, uv.watch_duration, v.external,
@@ -911,8 +912,9 @@ api.post("/videos/:id/download", async (c) => {
   if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
   const id = c.req.param("id");
-  const video = db.prepare("SELECT live_status FROM videos WHERE video_id = ?").get(id) as { live_status: string } | null;
+  const video = db.prepare("SELECT live_status, is_private FROM videos WHERE video_id = ?").get(id) as { live_status: string; is_private: number } | null;
   if (!video) return c.json({ error: "not found" }, 404);
+  if (video.is_private === 1) return c.json({ error: "private videos cannot be downloaded" }, 409);
   if (video.live_status === "live" || video.live_status === "upcoming") {
     return c.json({ error: "live streams cannot be downloaded while they are active" }, 409);
   }
@@ -1224,8 +1226,9 @@ async function refreshVideoChapters(videoId: string) {
 
 api.get("/videos/:id/chapters", async (c) => {
   const videoId = c.req.param("id");
-  const cached = db.prepare("SELECT chapters_json, chapters_fetched_at FROM videos WHERE video_id = ?")
-    .get(videoId) as { chapters_json: string | null; chapters_fetched_at: string | null } | null;
+  const cached = db.prepare("SELECT chapters_json, chapters_fetched_at, is_private FROM videos WHERE video_id = ?")
+    .get(videoId) as { chapters_json: string | null; chapters_fetched_at: string | null; is_private: number } | null;
+  if (cached?.is_private === 1) return c.json({ chapters: [] });
 
   if (cached?.chapters_json) {
     if (ageMs(cached.chapters_fetched_at) > CHAPTERS_DB_TTL) {
@@ -1275,7 +1278,7 @@ api.get("/videos/:id/creators", async (c) => {
            COALESCE(NULLIF(c.custom_title, ''), c.title) AS title,
            c.thumbnail AS avatar,
            COALESCE(c.subscriber_count, '') AS subscriberCount,
-           v.creators_fetched_at
+           v.creators_fetched_at, v.is_private
     FROM videos v JOIN channels c ON c.channel_id = v.channel_id
     WHERE v.video_id = ?
   `).get(videoId) as {
@@ -1285,6 +1288,7 @@ api.get("/videos/:id/creators", async (c) => {
     avatar: string;
     subscriberCount: string;
     creators_fetched_at: string | null;
+    is_private: number;
   } | null;
   if (!video) return c.json({ error: "not found" }, 404);
 
@@ -1296,6 +1300,7 @@ api.get("/videos/:id/creators", async (c) => {
     handle: "",
     isOwner: true,
   };
+  if (video.is_private === 1) return c.json({ creators: [fallback] });
   const cached = storedVideoCreators(videoId);
   const missingCollaboratorHandles = cached.length > 1 && cached.some((creator) => !creator.handle);
   if (cached.length > 0 && !missingCollaboratorHandles && ageMs(video.creators_fetched_at) <= CREATORS_DB_TTL) {
@@ -2622,7 +2627,7 @@ api.post("/import/commit", async (c) => {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
-  const enrichPending = (db.prepare("SELECT COUNT(*) AS n FROM videos WHERE channel_id = ?").get(IMPORTED_CHANNEL_ID) as { n: number }).n;
+  const enrichPending = (db.prepare("SELECT COUNT(*) AS n FROM videos WHERE channel_id = ? AND is_private = 0").get(IMPORTED_CHANNEL_ID) as { n: number }).n;
   const enrichBatch = num(process.env.IMPORT_ENRICH_BATCH_SIZE, 15);
   const enrichIntervalMin = num(process.env.IMPORT_ENRICH_INTERVAL_MINUTES, 2);
   const refreshIntervalMin = num(process.env.REFRESH_INTERVAL_MINUTES, 5);

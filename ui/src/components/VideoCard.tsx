@@ -5,6 +5,7 @@ import {
   CalendarX,
   Eye,
   Heart,
+  Lock,
   Star,
   Trash2,
   Undo2,
@@ -21,6 +22,8 @@ import { img } from "../img";
 import Tooltip from "./Tooltip";
 import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
+import { Badge } from "./ui";
+import "./VideoCard.css";
 
 export { BUCKET_ICONS } from "./VideoScheduleActions";
 const SWIPE_THRESHOLD = 90;
@@ -399,8 +402,13 @@ export default function VideoCard({
             </span>
           )}
           {video.live_status === "upcoming" && <span className="live-badge upcoming">{t("upcomingBadge")}</span>}
-          {video.is_short === 1 && video.live_status === "none" && <span className="short-badge">{t("shortBadge")}</span>}
-          {video.duration && video.is_short !== 1 && (
+          {video.is_private === 1 && (
+            <Badge variant="warning" size="sm" className="private-video-badge">
+              <Lock size={11} /> {t("privateVideoBadge")}
+            </Badge>
+          )}
+          {video.is_private !== 1 && video.is_short === 1 && video.live_status === "none" && <span className="short-badge">{t("shortBadge")}</span>}
+          {video.is_private !== 1 && video.duration && video.is_short !== 1 && (
             <span className="duration-badge">{formatVideoDuration(video.duration)}</span>
           )}
           {(downloadStatus === "downloading" || downloadStatus === "queued") && (
@@ -428,14 +436,14 @@ export default function VideoCard({
                 )}
               />
               <div className="thumb-actions-row secondary">
-                {canDownloadLocally && video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading") && (
+                {video.is_private !== 1 && canDownloadLocally && video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading") && (
                   <Tooltip text={t("cancelDownload")}>
                     <button className="action-btn" onClick={cancelLocalDownload}>
                       <X />
                     </button>
                   </Tooltip>
                 )}
-                {canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
+                {video.is_private !== 1 && canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
                   <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")}>
                     <button className="action-btn" onClick={requestLocalDownload}>
                       <ArrowDownToLine />
