@@ -3,6 +3,10 @@ import { deflateRawSync } from "node:zlib";
 import { classifyCsv, isPlaylistCsvName, isZip, parseTakeoutFiles, parseTakeoutPlaylistCsv, parseWatchHistoryHtml, parseWatchHistoryJson, unzipEntries } from "./takeout";
 
 describe("parseTakeoutPlaylistCsv", () => {
+  test("strips the localized -filmy suffix from Polish exports", () => {
+    expect(parseTakeoutPlaylistCsv("Druk 3D-filmy.csv", "Video Id\ndQw4w9WgXcQ\n").name).toBe("Druk 3D");
+  });
+
   test("reads video ids after the header and names the playlist from the file", () => {
     const csv = "Video Id,Playlist Video Creation Timestamp\ndQw4w9WgXcQ,2021-06-01T12:00:00+00:00\naaaaaaaaaaa,2021-06-02T12:00:00+00:00\n";
     const pl = parseTakeoutPlaylistCsv("Takeout/YouTube and YouTube Music/playlists/Favorites-videos.csv", csv);
@@ -81,6 +85,49 @@ describe("parseWatchHistoryHtml", () => {
 
   test("returns nothing for pages without watch links", () => {
     expect(parseWatchHistoryHtml("<html><body>search history</body></html>")).toEqual([]);
+  });
+
+  const localized = (date: string) => `
+    <div class="outer-cell mdl-cell"><div class="mdl-grid">
+      <div class="content-cell">Obejrzano:&nbsp;<a href="https://www.youtube.com/watch?v=dQw4w9WgXcQ">Tytuł</a><br>
+      <a href="https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw">Kanał</a><br>${date}</div>
+    </div></div>`;
+
+  test("parses Polish abbreviated-month dates", () => {
+    const [e] = parseWatchHistoryHtml(localized("5 mar 2024, 17:45:37 CET"));
+    expect(e.watchedAt).toMatch(/^2024-03-05 /);
+  });
+
+  test("parses dates followed by a trailing <br> before </div> (real export shape)", () => {
+    const [e] = parseWatchHistoryHtml(localized("23 lip 2026, 01:16:36 CEST<br>"));
+    expect(e.watchedAt).toMatch(/^2026-07-2[23] /);
+  });
+
+  test("parses Polish genitive full-month dates", () => {
+    const [e] = parseWatchHistoryHtml(localized("15 października 2023, 08:01:02 CEST"));
+    expect(e.watchedAt).toMatch(/^2023-10-1[45] /);
+  });
+
+  test("parses German dotted dates", () => {
+    const [e] = parseWatchHistoryHtml(localized("23. Juli 2026, 14:30:05 MESZ"));
+    expect(e.watchedAt).toMatch(/^2026-07-2[23] /);
+    const [n] = parseWatchHistoryHtml(localized("23.07.2026, 14:30:05 MESZ"));
+    expect(n.watchedAt).toMatch(/^2026-07-2[23] /);
+  });
+
+  test("parses dates with non-breaking spaces and entities", () => {
+    const [e] = parseWatchHistoryHtml(localized("5&nbsp;mar&nbsp;2024, 17:45:37 CET"));
+    expect(e.watchedAt).toMatch(/^2024-03-05 /);
+  });
+
+  test("still yields undated entries for unknown formats", () => {
+    const [e] = parseWatchHistoryHtml(localized("5 xyzmonth 2024, 17:45:37"));
+    expect(e.watchedAt).toBeNull();
+  });
+
+  test("rejects implausible years Date.parse invents from garbage", () => {
+    const [e] = parseWatchHistoryHtml(localized("data nieczytelna 999"));
+    expect(e.watchedAt).toBeNull();
   });
 });
 

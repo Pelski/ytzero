@@ -5,6 +5,29 @@
 .search-results-header { margin-bottom: 12px; color: var(--text-2); font-size: 14px; font-weight: 600; }
 .search-local-video-list { display: flex; flex-direction: column; gap: 14px; }
 .search-local-load-more { display: flex; justify-content: center; margin-top: 18px; }
+
+/* Collapsible result lists: first rows shown, the rest revealed with a smooth
+   height animation (grid-template-rows 0fr -> 1fr) behind a show more/less toggle. */
+.reveal-list { margin-bottom: 22px; }
+.reveal-list .yt-channel-results-list { margin-bottom: 0; }
+.reveal-more {
+  display: grid;
+  /* minmax(0,1fr) keeps the revealed rows at full width (a plain auto column
+     would shrink to max-content and the inner's margin:auto would center it). */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition: grid-template-rows 0.32s ease, opacity 0.24s ease;
+}
+.reveal-more--open { grid-template-rows: 1fr; opacity: 1; }
+/* Full width + left aligned: the list classes carry `margin: 0 auto` which, on
+   a grid item, would shrink it to content width and center it. */
+.reveal-more__inner { overflow: hidden; min-height: 0; padding-top: 12px; margin-inline: 0; max-width: none; width: 100%; }
+.search-local-video-list.reveal-more__inner { padding-top: 14px; }
+.reveal-toggle { display: flex; justify-content: center; margin-top: 12px; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal-more { transition: none; }
+}
 .search-channel-loading { height: 84px; }
 .yt-results-list { display: flex; flex-direction: column; gap: 12px; max-width: 800px; margin: 0 auto; }
 .yt-result-row {

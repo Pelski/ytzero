@@ -1,10 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle2, FolderUp, History, ListMusic, LoaderCircle, Tv } from "lucide-react";
+import {
+  CheckCircle2, Clock, FileArchive, FileText, FolderUp, History, ListMusic,
+  LoaderCircle, Plus, ScanSearch, Tv, X,
+} from "lucide-react";
 import "./ImportPage.css";
 import { api, type ImportCommitResult, type ImportManifest } from "../api";
 import { emit } from "../events";
-import { useI18n } from "../i18n";
+import { formatChannelCount, formatHistoryEntryCount, formatPlaylistCount, formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import {
   Alert, Badge, Button, Checkbox, Inline, Input, PageHeader, SectionHeader,
@@ -17,12 +20,21 @@ function defaultHistoryFrom(): string {
   return d.toISOString().slice(0, 10);
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
+const fileKey = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+
 export default function ImportPage({ showToast }: { showToast: (msg: string) => void }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   useDocumentTitle(t("importTakeout"));
   const navigate = useNavigate();
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [manifest, setManifest] = useState<ImportManifest | null>(null);
@@ -38,18 +50,40 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
   const [historyMode, setHistoryMode] = useState<"since" | "all">("since");
   const [historyFrom, setHistoryFrom] = useState(defaultHistoryFrom);
 
-  const analyze = async (files: File[]) => {
-    if (files.length === 0 || analyzing) return;
+  const addFiles = (files: File[]) => {
+    if (files.length === 0) return;
+    setPendingFiles((prev) => {
+      const known = new Set(prev.map(fileKey));
+      return [...prev, ...files.filter((f) => !known.has(fileKey(f)))];
+    });
+  };
+
+  const removeFile = (key: string) => {
+    setPendingFiles((prev) => prev.filter((f) => fileKey(f) !== key));
+  };
+
+  const analyze = async () => {
+    if (pendingFiles.length === 0 || analyzing) return;
     setAnalyzing(true);
     try {
-      const m = await api.importAnalyze(files);
+      const m = await api.importAnalyze(pendingFiles);
       setManifest(m);
+      // Keep the default cutoff inside the export's actual range, otherwise
+      // the estimate starts at 0 and looks broken.
+      setHistoryFrom((prev) => {
+        const from = m.history.from?.slice(0, 10);
+        const to = m.history.to?.slice(0, 10);
+        if (to && prev > to) return from ?? prev;
+        if (from && prev < from) return from;
+        return prev;
+      });
       setChannelsEnabled(m.channels.length > 0);
       setPlaylistsEnabled(m.playlists.length > 0);
       setHistoryEnabled(m.history.total > 0);
       setExcludedChannels(new Set());
       setExcludedPlaylists(new Set());
       setResult(null);
+      setPendingFiles([]);
     } catch (e) {
       showToast(`${t("importError")}: ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -113,37 +147,87 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
     setManifest(null);
     setResult(null);
     setChannelQuery("");
+    setPendingFiles([]);
   };
+
+  // Enrichment and channel refresh run in parallel schedulers, so the wait is
+  // whichever finishes last.
+  const estimateMin = result?.background
+    ? Math.max(result.background.enrichEstimateMin, result.background.channelRefreshEstimateMin)
+    : 0;
+  const estimateLabel = estimateMin >= 60
+    ? t("importEstimateHours", { h: Math.floor(estimateMin / 60), m: estimateMin % 60 })
+    : t("importEstimateMinutes", { n: Math.max(estimateMin, 1) });
 
   return (
     <div className="import-page">
       <PageHeader title={t("importTakeout")} description={t("importPageDescription")} />
 
       {!manifest && !result && (
-        <div
-          className={`import-dropzone${dragOver ? " import-dropzone--over" : ""}`}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOver(false); analyze(Array.from(e.dataTransfer.files)); }}
-        >
-          {analyzing ? <LoaderCircle className="spin" size={32} /> : <FolderUp size={32} />}
-          <Text as="div" size="lg">{analyzing ? t("importAnalyzing") : t("importUploadTitle")}</Text>
-          <Text as="div" tone="secondary">{t("importUploadDescription")}</Text>
-          <Button variant="primary" disabled={analyzing} onClick={() => fileRef.current?.click()}>
-            {t("importChooseFiles")}
-          </Button>
-          <Input
-            ref={fileRef}
-            type="file"
-            accept=".zip,.csv,.json,.html"
-            multiple
-            hidden
-            onChange={(e) => {
-              analyze(Array.from(e.target.files ?? []));
-              e.target.value = "";
-            }}
-          />
-        </div>
+        <Stack gap={4}>
+          <div
+            className={`import-dropzone${dragOver ? " import-dropzone--over" : ""}`}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(Array.from(e.dataTransfer.files)); }}
+          >
+            <FolderUp size={32} />
+            <Text as="div" size="lg">{t("importUploadTitle")}</Text>
+            <Text as="div" tone="secondary">{t("importUploadDescription")}</Text>
+            <Button variant={pendingFiles.length === 0 ? "primary" : "default"} onClick={() => fileRef.current?.click()}>
+              {pendingFiles.length === 0 ? null : <Plus />}
+              {pendingFiles.length === 0 ? t("importChooseFiles") : t("importAddMoreFiles")}
+            </Button>
+            <Input
+              ref={fileRef}
+              type="file"
+              accept=".zip,.csv,.json,.html"
+              multiple
+              hidden
+              onChange={(e) => {
+                addFiles(Array.from(e.target.files ?? []));
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          {pendingFiles.length > 0 && (
+            <SettingsSection className="import-section import-staged">
+              <SectionHeader
+                icon={<FileText />}
+                title={t("importFilesReady")}
+                description={t("importDropMoreHint")}
+              />
+              <ul className="import-file-list">
+                {pendingFiles.map((f) => {
+                  const key = fileKey(f);
+                  const isZip = /\.zip$/i.test(f.name);
+                  return (
+                    <li className="import-file-row" key={key}>
+                      {isZip ? <FileArchive size={16} /> : <FileText size={16} />}
+                      <span className="import-file-name" title={f.name}>{f.name}</span>
+                      <span className="import-file-size">{formatFileSize(f.size)}</span>
+                      <button
+                        type="button"
+                        className="import-file-remove"
+                        aria-label={t("importRemoveFile", { name: f.name })}
+                        onClick={() => removeFile(key)}
+                      >
+                        <X size={14} />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Inline gap={3} justify="end" className="import-staged-actions">
+                <Button variant="primary" disabled={analyzing} onClick={analyze}>
+                  {analyzing ? <LoaderCircle className="spin" /> : <ScanSearch />}
+                  {analyzing ? t("importAnalyzing") : t("importAnalyzeFiles", { n: pendingFiles.length })}
+                </Button>
+              </Inline>
+            </SettingsSection>
+          )}
+        </Stack>
       )}
 
       {manifest && (
@@ -153,11 +237,11 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
               <SectionHeader
                 icon={<Tv />}
                 title={t("importSubscriptionsSection")}
-                description={t("tagChannelCount", { n: manifest.channels.length })}
+                description={formatChannelCount(manifest.channels.length, language)}
                 actions={<Switch checked={channelsEnabled} onCheckedChange={setChannelsEnabled} ariaLabel={t("importSubscriptionsSection")} />}
               />
               {channelsEnabled && (
-                <>
+                <Stack gap={3} className="import-section-body">
                   <Inline gap={2}>
                     <Input
                       type="text"
@@ -187,7 +271,7 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
                       />
                     ))}
                   </div>
-                </>
+                </Stack>
               )}
             </SettingsSection>
           )}
@@ -197,11 +281,11 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
               <SectionHeader
                 icon={<ListMusic />}
                 title={t("importPlaylistsSection")}
-                description={t("importPlaylistsCount", { n: manifest.playlists.length })}
+                description={formatPlaylistCount(manifest.playlists.length, language)}
                 actions={<Switch checked={playlistsEnabled} onCheckedChange={setPlaylistsEnabled} ariaLabel={t("importPlaylistsSection")} />}
               />
               {playlistsEnabled && (
-                <div className="import-check-list import-check-list--single" role="group" aria-label={t("importPlaylistsSection")}>
+                <div className="import-check-list import-check-list--single import-section-body" role="group" aria-label={t("importPlaylistsSection")}>
                   {manifest.playlists.map((p) => (
                     <div className="import-playlist-row" key={p.name}>
                       <Checkbox
@@ -209,7 +293,7 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
                         checked={!excludedPlaylists.has(p.name)}
                         onChange={() => toggleSet(excludedPlaylists, p.name, setExcludedPlaylists)}
                       />
-                      <Badge size="sm">{t("importVideosCount", { n: p.videoCount })}</Badge>
+                      <Badge size="sm">{formatVideoCount(p.videoCount, language)}</Badge>
                     </div>
                   ))}
                 </div>
@@ -222,15 +306,16 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
               <SectionHeader
                 icon={<History />}
                 title={t("importHistorySection")}
-                description={t("importHistoryRange", {
-                  n: manifest.history.total,
-                  from: manifest.history.from?.slice(0, 10) ?? "?",
-                  to: manifest.history.to?.slice(0, 10) ?? "?",
-                })}
+                description={[
+                  formatHistoryEntryCount(manifest.history.total, language),
+                  manifest.history.from && manifest.history.to
+                    ? `${manifest.history.from.slice(0, 10)} – ${manifest.history.to.slice(0, 10)}`
+                    : null,
+                ].filter(Boolean).join(" · ")}
                 actions={<Switch checked={historyEnabled} onCheckedChange={setHistoryEnabled} ariaLabel={t("importHistorySection")} />}
               />
               {historyEnabled && (
-                <Stack gap={3}>
+                <Stack gap={3} className="import-section-body">
                   <Inline gap={3}>
                     <SegmentedControl
                       value={historyMode}
@@ -250,10 +335,14 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
                         onChange={(e) => e.target.value && setHistoryFrom(e.target.value)}
                       />
                     )}
-                    <Badge variant="accent">{t("importHistoryEstimate", { n: historyEstimate })}</Badge>
+                    <Badge variant="accent">{t("importHistoryEstimate", { count: formatHistoryEntryCount(historyEstimate, language) })}</Badge>
                   </Inline>
-                  {historyMode === "all" && manifest.history.undated > 0 && (
-                    <Text tone="secondary" size="sm">{t("importHistoryUndatedNote", { n: manifest.history.undated })}</Text>
+                  {manifest.history.undated > 0 && (
+                    <Text tone="secondary" size="sm">
+                      {historyMode === "all"
+                        ? t("importHistoryUndatedNote", { count: formatHistoryEntryCount(manifest.history.undated, language) })
+                        : t("importHistoryUndatedSkipNote", { count: formatHistoryEntryCount(manifest.history.undated, language) })}
+                    </Text>
                   )}
                   {historyEstimate > 5000 && (
                     <Alert variant="warning">{t("importHistoryAllWarning")}</Alert>
@@ -276,14 +365,29 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
       {result && (
         <SettingsSection className="import-section import-result">
           <SectionHeader icon={<CheckCircle2 />} title={t("importDoneTitle")} description={t("importDoneSubtitle")} />
-          <dl className="import-result-stats">
-            {result.channelsAdded > 0 && <><dt>{t("importDoneChannels")}</dt><dd>{result.channelsAdded}</dd></>}
-            {result.playlistsCreated > 0 && <><dt>{t("importDoneNewPlaylists")}</dt><dd>{result.playlistsCreated}</dd></>}
-            {result.playlistVideosAdded > 0 && <><dt>{t("importDonePlaylistVideos")}</dt><dd>{result.playlistVideosAdded}</dd></>}
-            {result.historyAdded > 0 && <><dt>{t("importDoneHistory")}</dt><dd>{result.historyAdded}</dd></>}
-            {result.watchedMarked > 0 && <><dt>{t("importDoneWatched")}</dt><dd>{result.watchedMarked}</dd></>}
-          </dl>
-          <Inline gap={2}>
+          <div className="import-result-stats">
+            {([
+              [t("importDoneChannels"), result.channelsAdded],
+              [t("importDoneNewPlaylists"), result.playlistsCreated],
+              [t("importDonePlaylistVideos"), result.playlistVideosAdded],
+              [t("importDoneHistory"), result.historyAdded],
+              [t("importDoneWatched"), result.watchedMarked],
+            ] as const).filter(([, n]) => n > 0).map(([label, n]) => (
+              <div className="import-stat" key={label}>
+                <span className="import-stat-value">{n}</span>
+                <span className="import-stat-label">{label}</span>
+              </div>
+            ))}
+          </div>
+          <Alert variant="info" icon={<Clock size={16} />}>
+            <Stack gap={2}>
+              <span>{t("importDoneBackgroundInfo")}</span>
+              {result.background && result.background.enrichPending > 0 && (
+                <strong>{t("importDoneEstimate", { time: estimateLabel, count: formatVideoCount(result.background.enrichPending, language) })}</strong>
+              )}
+            </Stack>
+          </Alert>
+          <Inline gap={2} className="import-result-actions">
             {result.channelsAdded > 0 && <Button onClick={() => navigate("/subscriptions")}>{t("importGoSubscriptions")}</Button>}
             {result.historyAdded > 0 && <Button onClick={() => navigate("/history")}>{t("importGoHistory")}</Button>}
             <Button variant="primary" onClick={reset}>{t("importStartOver")}</Button>

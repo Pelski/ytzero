@@ -17,6 +17,12 @@ export type LocaleFormat = {
   videoCount: (n: number) => string;
   /** e.g. "Added 5 new videos" / "Dodano 5 nowych filmów" */
   addedVideos: (n: number) => string;
+  /** e.g. "5 channels" / "5 kanałów" */
+  channelCount: (n: number) => string;
+  /** e.g. "5 playlists" / "5 playlist" */
+  playlistCount: (n: number) => string;
+  /** e.g. "5 entries" / "5 wpisów" (watch-history entries) */
+  historyEntryCount: (n: number) => string;
 };
 
 export type Locale = {

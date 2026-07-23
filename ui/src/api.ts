@@ -679,6 +679,11 @@ export interface ImportCommitResult {
   playlistVideosAdded: number;
   historyAdded: number;
   watchedMarked: number;
+  background: {
+    enrichPending: number;
+    enrichEstimateMin: number;
+    channelRefreshEstimateMin: number;
+  };
 }
 
 export const api = {

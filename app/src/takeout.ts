@@ -13,10 +13,11 @@ export interface TakeoutPlaylist {
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 
-/** Playlist name from a Takeout CSV filename ("Favorites-videos.csv" -> "Favorites"). */
+/** Playlist name from a Takeout CSV filename ("Favorites-videos.csv" -> "Favorites").
+ * The "-videos" suffix is localized by Takeout ("-filmy" in Polish). */
 function playlistNameFromFilename(filename: string): string {
   const base = filename.split(/[\\/]/).pop() ?? filename;
-  return base.replace(/\.csv$/i, "").replace(/-videos$/i, "").trim() || "Imported playlist";
+  return base.replace(/\.csv$/i, "").replace(/-(videos|filmy)$/i, "").trim() || "Imported playlist";
 }
 
 /**
@@ -87,10 +88,60 @@ export interface TakeoutBundle {
 
 const CHANNEL_ID = /UC[\w-]{22}/;
 
-function toSqliteUtc(value: string | number): string | null {
-  const ms = typeof value === "number" ? value : Date.parse(value);
+// Date.parse happily reads stray digits in garbage text as ancient years, so
+// anything outside YouTube's lifetime is treated as unparseable.
+function plausibleUtc(ms: number): string | null {
   if (!Number.isFinite(ms)) return null;
-  return new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+  const iso = new Date(ms).toISOString();
+  const year = Number(iso.slice(0, 4));
+  if (year < 2005 || year > new Date().getUTCFullYear() + 1) return null;
+  return iso.slice(0, 19).replace("T", " ");
+}
+
+function toSqliteUtc(value: string | number): string | null {
+  const direct = plausibleUtc(typeof value === "number" ? value : Date.parse(value));
+  if (direct) return direct;
+  return typeof value === "string" ? parseLocalizedDate(value) : null;
+}
+
+// Takeout HTML exports localize timestamps ("23 lip 2026, 14:30:05 CEST");
+// Date.parse only understands English, so map the month names we support.
+// Same-month abbreviations across languages agree on the number, so one flat
+// table is safe.
+const LOCALIZED_MONTHS: Record<string, number> = {
+  // Polish (abbreviated + genitive + nominative)
+  sty: 1, lut: 2, kwi: 4, cze: 6, lip: 7, sie: 8, wrz: 9, "paź": 10, paz: 10, lis: 11, gru: 12,
+  stycznia: 1, lutego: 2, marca: 3, kwietnia: 4, maja: 5, czerwca: 6, lipca: 7,
+  sierpnia: 8, "września": 9, "października": 10, listopada: 11, grudnia: 12,
+  "styczeń": 1, luty: 2, marzec: 3, "kwiecień": 4, maj: 5, czerwiec: 6, lipiec: 7,
+  "sierpień": 8, "wrzesień": 9, "październik": 10, listopad: 11, "grudzień": 12,
+  // German
+  januar: 1, februar: 2, "märz": 3, mrz: 3, mai: 5, juni: 6, juli: 7,
+  okt: 10, oktober: 10, dez: 12, dezember: 12,
+  // English full names double as German where they coincide (April, August...)
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+  january: 1, february: 2, march: 3, april: 4, june: 6, july: 7,
+  august: 8, september: 9, october: 10, november: 11, december: 12,
+};
+
+// Matches Date.parse's behavior for English dates: no timezone in the string
+// means server-local time, then converted to UTC.
+function localizedUtc(y: number, mo: number, d: number, h: number, mi: number, s: number): string | null {
+  return plausibleUtc(new Date(y, mo - 1, d, h, mi, s).getTime());
+}
+
+function parseLocalizedDate(raw: string): string | null {
+  const s = raw.replace(/[\u00a0\u202f]/g, " ").trim();
+  // "23 lip 2026, 14:30:05" / "23. Juli 2026, 14:30:05"
+  let m = s.match(/^(\d{1,2})\.?\s+([\p{L}]+)\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})/u);
+  if (m) {
+    const month = LOCALIZED_MONTHS[m[2].toLowerCase()];
+    return month ? localizedUtc(+m[3], month, +m[1], +m[4], +m[5], +m[6]) : null;
+  }
+  // "23.07.2026, 14:30:05" (numeric day-first)
+  m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})/);
+  if (m) return localizedUtc(+m[3], +m[2], +m[1], +m[4], +m[5], +m[6]);
+  return null;
 }
 
 // Takeout localizes the "Watched " prefix on history titles; strip the common
@@ -150,8 +201,12 @@ export function parseWatchHistoryHtml(content: string): TakeoutHistoryEntry[] {
     if (!watch) continue;
     const channel = block.match(/<a href="[^"]*\/channel\/(UC[\w-]{22})[^"]*"\s*>([^<]*)<\/a>/);
     // The timestamp is the last text line of the content cell, after a <br>.
-    const when = block.match(/<br\s*\/?>([^<>]+?)\s*<\/div>/);
-    const rawDate = when ? when[1].trim().replace(/\s+[A-Z]{2,5}$/, "") : "";
+    // The timestamp is the last text of the content cell — followed by either
+    // "</div>" directly or a trailing "<br></div>" (newer exports).
+    const when = block.match(/<br\s*\/?>([^<>]+?)\s*(?:<br\s*\/?>\s*)?<\/div>/);
+    const rawDate = when
+      ? decodeHtmlEntities(when[1]).replace(/[\u00a0\u202f]/g, " ").trim().replace(/\s+[A-Z]{2,5}$/, "")
+      : "";
     entries.push({
       videoId: watch[1],
       watchedAt: rawDate ? toSqliteUtc(rawDate) : null,

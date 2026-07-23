@@ -2614,7 +2614,25 @@ api.post("/import/commit", async (c) => {
   if (result.playlistVideosAdded > 0 || result.watchedMarked > 0) {
     backfillImportedVideos().catch((e) => log.error("import.enrich_failed", { error: e instanceof Error ? e.message : String(e) }));
   }
-  return c.json({ ok: true, ...result });
+
+  // Background-work forecast for the result screen. Enrichment and channel
+  // refresh run in parallel on their own schedulers (see startScheduler), so
+  // the UI can show how long until everything is filled in.
+  const num = (v: string | undefined, fallback: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const enrichPending = (db.prepare("SELECT COUNT(*) AS n FROM videos WHERE channel_id = ?").get(IMPORTED_CHANNEL_ID) as { n: number }).n;
+  const enrichBatch = num(process.env.IMPORT_ENRICH_BATCH_SIZE, 15);
+  const enrichIntervalMin = num(process.env.IMPORT_ENRICH_INTERVAL_MINUTES, 2);
+  const refreshIntervalMin = num(process.env.REFRESH_INTERVAL_MINUTES, 5);
+  const background = {
+    enrichPending,
+    enrichEstimateMin: Math.ceil(enrichPending / enrichBatch) * enrichIntervalMin,
+    channelRefreshEstimateMin: Math.ceil(result.channelsAdded / 10) * refreshIntervalMin,
+  };
+
+  return c.json({ ok: true, ...result, background });
 });
 
 // ---------- tags ----------

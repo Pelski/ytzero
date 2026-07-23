@@ -28,7 +28,7 @@ function FeedOnboarding() {
       </div>
       <div className="feed-onboarding-actions">
         <ButtonLink variant="primary" to="/subscriptions" leadingIcon={<Plus size={16} />}>{t("feedOnboardingAddChannels")}</ButtonLink>
-        <ButtonLink to="/settings?tab=channels" leadingIcon={<Upload size={16} />}>{t("feedOnboardingImportSubscriptions")}</ButtonLink>
+        <ButtonLink to="/import" leadingIcon={<Upload size={16} />}>{t("feedOnboardingImportTakeout")}</ButtonLink>
       </div>
       <div className="feed-onboarding-steps" aria-label={t("feedOnboardingHowItWorks")}>
         <div><span className="feed-onboarding-step-number">1</span><p>{t("feedOnboardingStepOne")}</p></div>

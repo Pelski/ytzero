@@ -127,6 +127,18 @@ export function formatAddedVideos(n: number, language: Language): string {
   return locales[language].format.addedVideos(n);
 }
 
+export function formatChannelCount(n: number, language: Language): string {
+  return locales[language].format.channelCount(n);
+}
+
+export function formatPlaylistCount(n: number, language: Language): string {
+  return locales[language].format.playlistCount(n);
+}
+
+export function formatHistoryEntryCount(n: number, language: Language): string {
+  return locales[language].format.historyEntryCount(n);
+}
+
 export function compactNumber(value: number | null, language: Language): string {
   if (value == null) return "";
   return new Intl.NumberFormat(LOCALE_TAGS[language], { notation: "compact", maximumFractionDigits: 1 }).format(value);
