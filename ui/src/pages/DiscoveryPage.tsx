@@ -4,11 +4,13 @@ import { api, type DiscoveryRecommendation, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 import { Button, EmptyState, IconButton, PageHeader } from "../components/ui";
 
 export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
+  useDocumentTitle(t("discoveryTitle"));
   const [recommendations, setRecommendations] = useState<DiscoveryRecommendation[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);

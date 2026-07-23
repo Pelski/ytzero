@@ -5,6 +5,7 @@ import { Plus, Search, Users } from "lucide-react";
 import { api, type Channel, type Tag } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
 import TagFilterBar from "../components/TagFilterBar";
@@ -104,6 +105,7 @@ function ChannelTagsRow({ channel, tags, onApply, onTagCreated }: { channel: Cha
 
 export default function SubscriptionsPage() {
   const { t } = useI18n();
+  useDocumentTitle(t("subscriptions"));
   const [channels, setChannels] = useState<Channel[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [loading, setLoading] = useState(true);

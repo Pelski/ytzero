@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import TagChip from "../components/TagChip";
 import LocalPlayer from "../components/LocalPlayer";
 import Popconfirm from "../components/Popconfirm";
@@ -951,10 +952,7 @@ export default function WatchPage() {
     api.removeDownload(video.video_id).catch(() => {});
   };
 
-  useEffect(() => {
-    const title = (video?.title ?? videoInfo?.title ?? "").trim();
-    document.title = title || (id ? `YouTube video ${id}` : "YouTube video");
-  }, [id, video?.title, videoInfo?.title]);
+  useDocumentTitle((video?.title ?? videoInfo?.title ?? "").trim() || (id ? `Video ${id}` : "Video"));
 
   if (!video && !videoMissing) return null;
 

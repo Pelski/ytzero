@@ -3,6 +3,7 @@ import { startAuthentication } from "@simplewebauthn/browser";
 import { KeyRound, LogIn, Play, ShieldAlert } from "lucide-react";
 import { api, type AuthStatus } from "../api";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, ButtonAnchor, Input } from "../components/ui";
 
 /**
@@ -12,6 +13,7 @@ import { Button, ButtonAnchor, Input } from "../components/ui";
  */
 export default function LoginPage({ status }: { status: AuthStatus }) {
   const { t } = useI18n();
+  useDocumentTitle(t("loginTitle"));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);

@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { img } from "../img";
 import ChildTimeRequestBanner from "../components/ChildTimeRequestBanner";
 import TagFilterBar from "../components/TagFilterBar";
@@ -117,6 +118,7 @@ export default function FeedPage({
   showToast: (m: string) => void;
 }) {
   const { t } = useI18n();
+  useDocumentTitle();
   const [videos, setVideos] = useState<Video[]>([]);
   const [queued, setQueued] = useState<Video[]>([]);
   const [inProgress, setInProgress] = useState<Video[]>([]);

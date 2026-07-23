@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, ArrowDownToLine, Check, ChevronDown, HardDrive, LoaderCircle, Pin, PinOff, RotateCw, Trash2 } from "lucide-react";
 import { api, type DownloadsResponse, type DownloadItem } from "../api";
 import { formatTimeAgo, useI18n, type I18nKey } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { img } from "../img";
 import { formatVideoDuration } from "../components/VideoCard";
 import Popconfirm from "../components/Popconfirm";
@@ -42,6 +43,7 @@ const SOURCE_KEYS: Record<string, I18nKey> = {
 
 export default function DownloadsPage() {
   const { t, language } = useI18n();
+  useDocumentTitle(t("downloadsTitle"));
   const [data, setData] = useState<DownloadsResponse | null>(null);
   const [queueExpanded, setQueueExpanded] = useState(false);
 

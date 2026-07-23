@@ -4,6 +4,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
 import { api, type Channel, type ChannelSearchResult, type SearchResult, type Video } from "../api";
 import { formatPublishedAgo, useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { img } from "../img";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
@@ -22,6 +23,7 @@ export default function SearchPage({ onPlay, hideExternalSearch = false }: { onP
   const { t, locale, language } = useI18n();
   const [params] = useSearchParams();
   const q = params.get("q")?.trim() ?? "";
+  useDocumentTitle(q || t("searchTitle"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [localChannels, setLocalChannels] = useState<Channel[]>([]);
   const [ytResults, setYtResults] = useState<SearchResult[]>([]);

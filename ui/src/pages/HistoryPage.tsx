@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { History } from "lucide-react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, EmptyState, PageHeader, SectionHeader } from "../components/ui";
@@ -13,6 +14,7 @@ function historyDayKey(value: string) {
 
 export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t, locale } = useI18n();
+  useDocumentTitle(t("historyTitle"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);

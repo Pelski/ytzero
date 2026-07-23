@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { api, SB_CATEGORIES, type HouseholdInsights, type InsightProfileRef } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { EmptyState, SelectMenu } from "../components/ui";
 
 const RANGES = [7, 30, 90, 365];
@@ -65,6 +66,7 @@ function InsightMiniList({ title, items, empty }: { title: string; items: Insigh
 
 export default function InsightsPage() {
   const { t, locale } = useI18n();
+  useDocumentTitle(t("insightsTitle"));
   const [days, setDays] = useState(30);
   const [profileId, setProfileId] = useState<number | null>(null);
   const [data, setData] = useState<HouseholdInsights | null>(null);

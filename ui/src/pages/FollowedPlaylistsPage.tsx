@@ -4,12 +4,14 @@ import { Link } from "react-router-dom";
 import { api, type FollowedPlaylistUpdates } from "../api";
 import { img } from "../img";
 import { formatPlaylistVideoCount, formatTimeAgo, useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Badge, EmptyState, PageHeader } from "../components/ui";
 
 export default function FollowedPlaylistsPage() {
   const { t, language } = useI18n();
+  useDocumentTitle(t("navFollowedPlaylists"));
   const [playlists, setPlaylists] = useState<FollowedPlaylistUpdates[]>([]);
   const [loading, setLoading] = useState(true);
 

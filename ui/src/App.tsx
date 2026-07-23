@@ -15,6 +15,7 @@ import WatchlistPage from "./pages/WatchlistPage";
 import HistoryPage from "./pages/HistoryPage";
 import ArchivePage from "./pages/ArchivePage";
 import SettingsPage from "./pages/SettingsPage";
+import ImportPage from "./pages/ImportPage";
 import WatchPage from "./pages/WatchPage";
 import ChannelPage from "./pages/ChannelPage";
 import UserPlaylistPage from "./pages/UserPlaylistPage";
@@ -29,6 +30,7 @@ import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
 import { applyVideoCardSize } from "./videoCardSize";
+import { AppNameContext } from "./useDocumentTitle";
 import "./AppShell.css";
 
 // Routes owned by plugins — visible in the sidebar only while enabled.
@@ -347,10 +349,6 @@ function AppShell() {
     }
   }, [enabledPluginRoutes, location.pathname, navigate]);
 
-  useEffect(() => {
-    if (!location.pathname.startsWith("/watch/")) document.title = appName;
-  }, [appName, location.pathname]);
-
   // Re-skin the tab favicon live (the OS-cached PWA icon only refreshes on reinstall).
   useEffect(() => {
     const href = `/favicon.svg?color=${encodeURIComponent(appIconColor)}`;
@@ -440,6 +438,7 @@ function AppShell() {
   };
 
   return (
+    <AppNameContext.Provider value={appName}>
     <div className="layout">
       <TopBar appName={appName} appIconColor={appIconColor} />
       <div className="layout-body">
@@ -484,6 +483,7 @@ function AppShell() {
               <Route path="/archive" element={<ArchivePage onPlay={play} />} />
               <Route path="/insights" element={<InsightsPage />} />
               <Route path="/settings" element={<SettingsPage showToast={showToast} />} />
+              <Route path="/import" element={<ImportPage showToast={showToast} />} />
             </Routes>
           </div>
         </main>
@@ -492,5 +492,6 @@ function AppShell() {
       <ChildNowWatching />
       {childStatus?.locked && <ChildLockScreen status={childStatus} />}
     </div>
+    </AppNameContext.Provider>
   );
 }

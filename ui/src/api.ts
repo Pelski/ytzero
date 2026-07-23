@@ -653,6 +653,34 @@ export interface HouseholdInsights {
   sponsorblock_categories: { category: string; seconds: number; skip_count: number }[];
 }
 
+export interface ImportManifest {
+  sessionId: string;
+  channels: { channelId: string; title: string }[];
+  playlists: { name: string; videoCount: number }[];
+  history: {
+    total: number;
+    undated: number;
+    from: string | null;
+    to: string | null;
+    months: { month: string; count: number }[];
+  };
+}
+
+export interface ImportCommitPayload {
+  sessionId: string;
+  channels?: { enabled: boolean; excludedIds?: string[] };
+  playlists?: { enabled: boolean; excludedNames?: string[] };
+  history?: { enabled: boolean; from?: string | null };
+}
+
+export interface ImportCommitResult {
+  channelsAdded: number;
+  playlistsCreated: number;
+  playlistVideosAdded: number;
+  historyAdded: number;
+  watchedMarked: number;
+}
+
 export const api = {
   feed: (p: {
     page?: number;
@@ -792,6 +820,13 @@ export const api = {
     fd.append("file", file);
     return http<{ found: number; added: number }>("/channels/import", { method: "POST", body: fd });
   },
+  importAnalyze: (files: File[]) => {
+    const fd = new FormData();
+    for (const file of files) fd.append("file", file);
+    return http<ImportManifest>("/import/analyze", { method: "POST", body: fd });
+  },
+  importCommit: (payload: ImportCommitPayload) =>
+    http<ImportCommitResult>("/import/commit", { method: "POST", body: JSON.stringify(payload) }),
 
   tags: () => http<{ tags: Tag[] }>("/tags"),
   addTag: (name: string, color: string) =>

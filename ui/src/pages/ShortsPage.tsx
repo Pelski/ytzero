@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { subscribe } from "../events";
 import { api, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import TagFilterBar from "../components/TagFilterBar";
 import ShortCard from "../components/ShortCard";
 import { Button, Chip, EmptyState } from "../components/ui";
@@ -12,6 +13,7 @@ import { ShortsGridSkeleton } from "../components/LoadingState";
 
 export default function ShortsPage() {
   const { t } = useI18n();
+  useDocumentTitle(t("navShorts"));
   const { videoId } = useParams<{ videoId?: string }>();
   const navigate = useNavigate();
   const [videos, setVideos] = useState<Video[]>([]);

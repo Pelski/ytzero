@@ -4,6 +4,7 @@ import { Radio } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
@@ -11,6 +12,7 @@ import { Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 
 export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
+  useDocumentTitle(t("navLive"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
 

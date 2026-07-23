@@ -21,7 +21,9 @@ import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelMissingMetadata, syncChannelPlaylists, syncPlaylist } from "./refresher";
+import { backfillImportedVideos, importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelMissingMetadata, syncChannelPlaylists, syncPlaylist } from "./refresher";
+import { IMPORTED_CHANNEL_ID, isRelevantEntryName, isZip, parseTakeoutFiles, unzipEntries, type TakeoutBundle, type TakeoutHistoryEntry, type TakeoutPlaylist } from "./takeout";
+import { createImportSession, deleteImportSession, getImportSession } from "./importSession";
 import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
@@ -2420,6 +2422,199 @@ api.post("/channels/import", async (c) => {
   log.info("channels.imported", { fileName: file.name, found: entries.length, added });
   refreshAll().catch((e) => log.error("channels.import_refresh_failed", { error: e instanceof Error ? e.message : String(e) }));
   return c.json({ ok: true, found: entries.length, added });
+});
+
+// ---------- Google Takeout import wizard ----------
+// Two phases: /import/analyze parses the upload (zip or loose files) and holds
+// it in an in-memory session; /import/commit applies only what the user picked.
+
+const MAX_ZIP_BYTES = 300 * 1024 * 1024;
+
+const ensureImportedChannel = db.prepare(
+  `INSERT INTO channels (channel_id, title, url, followed, external) VALUES (?, ?, ?, 0, 1)
+   ON CONFLICT(channel_id) DO NOTHING`
+);
+// Placeholder rows for videos we only know from the export. When the video is
+// already in the library, fill only what's missing (title, real channel).
+const ensureImportedVideo = db.prepare(
+  `INSERT INTO videos (video_id, channel_id, title, thumbnail, status, external)
+   VALUES (?, ?, ?, ?, 'inbox', 1)
+   ON CONFLICT(video_id) DO UPDATE SET
+     title = CASE WHEN TRIM(videos.title) = '' THEN excluded.title ELSE videos.title END,
+     channel_id = CASE WHEN videos.channel_id = '${IMPORTED_CHANNEL_ID}' AND excluded.channel_id != '${IMPORTED_CHANNEL_ID}'
+                       THEN excluded.channel_id ELSE videos.channel_id END`
+);
+
+function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[]): { playlistsCreated: number; videosAdded: number } {
+  const findPlaylist = db.prepare("SELECT id FROM user_playlists WHERE user_id = ? AND name = ? COLLATE NOCASE");
+  const createPlaylist = db.prepare("INSERT INTO user_playlists (name, sort_order, user_id) VALUES (?, ?, ?) RETURNING id");
+  const nextOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM user_playlists WHERE user_id = ?");
+  const addMembership = db.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)");
+
+  let playlistsCreated = 0;
+  let videosAdded = 0;
+  db.transaction(() => {
+    ensureImportedChannel.run(IMPORTED_CHANNEL_ID, "Imported", "");
+    for (const pl of playlists) {
+      let row = findPlaylist.get(uid, pl.name) as { id: number } | undefined;
+      if (!row) {
+        const order = (nextOrder.get(uid) as { n: number }).n;
+        row = createPlaylist.get(pl.name, order, uid) as { id: number };
+        playlistsCreated++;
+      }
+      for (const videoId of pl.videoIds) {
+        ensureImportedVideo.run(videoId, IMPORTED_CHANNEL_ID, "", `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+        if (addMembership.run(row.id, videoId).changes > 0) videosAdded++;
+      }
+    }
+  })();
+  return { playlistsCreated, videosAdded };
+}
+
+// History rows carry the original watch date; undated entries (localized HTML
+// exports) only mark the video as watched instead of faking a timestamp.
+function importTakeoutHistory(uid: number, entries: TakeoutHistoryEntry[], from: string | null): { historyAdded: number; watchedMarked: number } {
+  const existing = new Set(
+    (db.prepare("SELECT video_id, watched_at FROM history WHERE user_id = ?").all(uid) as { video_id: string; watched_at: string }[])
+      .map((r) => `${r.video_id}@${r.watched_at}`)
+  );
+  const addHistory = db.prepare("INSERT INTO history (video_id, user_id, watched_at) VALUES (?, ?, ?)");
+  const markWatched = db.prepare(
+    `INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1`
+  );
+
+  let historyAdded = 0;
+  let watchedMarked = 0;
+  db.transaction(() => {
+    ensureImportedChannel.run(IMPORTED_CHANNEL_ID, "Imported", "");
+    for (const entry of entries) {
+      if (entry.watchedAt ? (from !== null && entry.watchedAt < from) : from !== null) continue;
+      const channelId = entry.channelId || IMPORTED_CHANNEL_ID;
+      if (entry.channelId) {
+        ensureImportedChannel.run(entry.channelId, entry.channelTitle, `https://www.youtube.com/channel/${entry.channelId}`);
+      }
+      ensureImportedVideo.run(entry.videoId, channelId, entry.title, `https://i.ytimg.com/vi/${entry.videoId}/hqdefault.jpg`);
+      markWatched.run(uid, entry.videoId);
+      watchedMarked++;
+      if (entry.watchedAt && !existing.has(`${entry.videoId}@${entry.watchedAt}`)) {
+        existing.add(`${entry.videoId}@${entry.watchedAt}`);
+        addHistory.run(entry.videoId, uid, entry.watchedAt);
+        historyAdded++;
+      }
+    }
+  })();
+  return { historyAdded, watchedMarked };
+}
+
+api.post("/import/analyze", async (c) => {
+  const uid = currentUserId(c);
+  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  const body = await c.req.parseBody({ all: true });
+  const raw = body["file"] ?? body["file[]"];
+  const uploads = (Array.isArray(raw) ? raw : [raw]).filter((f): f is File => f instanceof File);
+  if (uploads.length === 0) return c.json({ error: "file required" }, 400);
+
+  const files: { name: string; content: string }[] = [];
+  for (const file of uploads) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (isZip(bytes)) {
+      if (bytes.byteLength > MAX_ZIP_BYTES) return c.json({ error: "zip too large" }, 413);
+      try {
+        for (const entry of unzipEntries(bytes, isRelevantEntryName)) {
+          files.push({ name: entry.name, content: new TextDecoder().decode(entry.bytes) });
+        }
+      } catch (e) {
+        return c.json({ error: `could not read zip: ${e instanceof Error ? e.message : String(e)}` }, 400);
+      }
+    } else if (isRelevantEntryName(file.name)) {
+      files.push({ name: file.name, content: new TextDecoder().decode(bytes) });
+    }
+  }
+
+  const bundle = parseTakeoutFiles(files);
+  if (bundle.channels.length === 0 && bundle.playlists.length === 0 && bundle.history.length === 0) {
+    return c.json({ error: "nothing recognized in the upload" }, 400);
+  }
+
+  // Monthly histogram lets the UI show live counts for any date cutoff without
+  // shipping the (potentially huge) entry list to the client.
+  const months = new Map<string, number>();
+  let undated = 0;
+  for (const entry of bundle.history) {
+    if (!entry.watchedAt) { undated++; continue; }
+    const month = entry.watchedAt.slice(0, 7);
+    months.set(month, (months.get(month) ?? 0) + 1);
+  }
+  const dated = bundle.history.filter((e) => e.watchedAt);
+
+  const sessionId = createImportSession(uid, bundle);
+  log.info("import.analyzed", { files: files.length, channels: bundle.channels.length, playlists: bundle.playlists.length, history: bundle.history.length });
+  return c.json({
+    sessionId,
+    channels: bundle.channels,
+    playlists: bundle.playlists.map((p) => ({ name: p.name, videoCount: p.videoIds.length })),
+    history: {
+      total: bundle.history.length,
+      undated,
+      from: dated.at(-1)?.watchedAt ?? null,
+      to: dated[0]?.watchedAt ?? null,
+      months: [...months.entries()].sort().map(([month, count]) => ({ month, count })),
+    },
+  });
+});
+
+api.post("/import/commit", async (c) => {
+  const uid = currentUserId(c);
+  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  const body = await c.req.json();
+  const bundle: TakeoutBundle | null = typeof body.sessionId === "string" ? getImportSession(body.sessionId, uid) : null;
+  if (!bundle) return c.json({ error: "session expired, upload the file again" }, 410);
+
+  const result = { channelsAdded: 0, playlistsCreated: 0, playlistVideosAdded: 0, historyAdded: 0, watchedMarked: 0 };
+
+  if (body.channels?.enabled) {
+    const excluded = new Set<string>(Array.isArray(body.channels.excludedIds) ? body.channels.excludedIds : []);
+    const insert = db.prepare("INSERT OR IGNORE INTO channels (channel_id, title, url) VALUES (?, ?, ?)");
+    const subscribe = db.prepare(
+      `INSERT INTO user_channels (user_id, channel_id, followed) VALUES (?, ?, 1)
+       ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = 1`
+    );
+    for (const ch of bundle.channels) {
+      if (excluded.has(ch.channelId)) continue;
+      insert.run(ch.channelId, ch.title, `https://www.youtube.com/channel/${ch.channelId}`);
+      subscribe.run(uid, ch.channelId);
+      result.channelsAdded++;
+    }
+    if (result.channelsAdded > 0) db.prepare("UPDATE channels SET external = 0 WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE user_id = ? AND followed = 1)").run(uid);
+  }
+
+  if (body.playlists?.enabled) {
+    const excluded = new Set<string>(Array.isArray(body.playlists.excludedNames) ? body.playlists.excludedNames : []);
+    const picked = bundle.playlists.filter((p) => !excluded.has(p.name));
+    const r = importTakeoutPlaylists(uid, picked);
+    result.playlistsCreated = r.playlistsCreated;
+    result.playlistVideosAdded = r.videosAdded;
+  }
+
+  if (body.history?.enabled) {
+    // "from" arrives as YYYY-MM-DD; entries are YYYY-MM-DD HH:MM:SS so plain
+    // string comparison works.
+    const from = typeof body.history.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.history.from) ? body.history.from : null;
+    const r = importTakeoutHistory(uid, bundle.history, from);
+    result.historyAdded = r.historyAdded;
+    result.watchedMarked = r.watchedMarked;
+  }
+
+  deleteImportSession(body.sessionId);
+  log.info("import.committed", { ...result });
+  if (result.channelsAdded > 0) {
+    refreshAll().catch((e) => log.error("import.refresh_failed", { error: e instanceof Error ? e.message : String(e) }));
+  }
+  if (result.playlistVideosAdded > 0 || result.watchedMarked > 0) {
+    backfillImportedVideos().catch((e) => log.error("import.enrich_failed", { error: e instanceof Error ? e.message : String(e) }));
+  }
+  return c.json({ ok: true, ...result });
 });
 
 // ---------- tags ----------

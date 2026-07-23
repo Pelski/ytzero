@@ -12,6 +12,7 @@ import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { emit } from "../events";
 import { formatAddedVideos, formatPlaylistVideoCount, useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
 import { Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
 
@@ -29,6 +30,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const tab = (searchParams.get("tab") as Tab) ?? "videos";
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
   const [about, setAbout] = useState<ChannelAbout | null>(null);
+  useDocumentTitle(about?.title);
   const [videos, setVideos] = useState<Video[]>([]);
   const [processingVideos, setProcessingVideos] = useState<Video[]>([]);
   const [liveStreams, setLiveStreams] = useState<Video[]>([]);

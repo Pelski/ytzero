@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { api, type Bucket, type Video } from "../api";
 import { emit } from "../events";
 import { useI18n, type I18nKey } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { SchedulePicker } from "../components/VideoScheduleActions";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
@@ -38,6 +39,7 @@ function formatShowFrom(showFrom: string, t: TranslateFn, locale: string): strin
 
 export default function WatchlistPage() {
   const { t, bucketLabel, locale } = useI18n();
+  useDocumentTitle(t("navWatchlist"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [scheduleToast, setScheduleToast] = useState<{ videoId: string; id: number } | null>(null);

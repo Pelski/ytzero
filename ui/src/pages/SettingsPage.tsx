@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./SettingsPage.css";
 import { createPortal } from "react-dom";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
@@ -18,6 +18,7 @@ import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
@@ -1044,6 +1045,7 @@ function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
 
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage, locale } = useI18n();
+  useDocumentTitle(t("settingsTitle"));
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const tab: Tab = TABS.some((item) => item.id === requestedTab) ? requestedTab as Tab : "channels";
@@ -1138,6 +1140,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [newPin, setNewPin] = useState("");
   const [newPinConfirm, setNewPinConfirm] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   const [tagMenuChannelId, setTagMenuChannelId] = useState<string | null>(null);
   const [newChannelTagName, setNewChannelTagName] = useState("");
   const [newChannelTagColor, setNewChannelTagColor] = useState("#3ea6ff");
@@ -2149,7 +2152,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             <Button variant="primary" onClick={addPlaylist}>
               <Plus /> {t("newPlaylist")}
             </Button>
+            <Button onClick={() => navigate("/import")}>
+              <FolderUp /> {t("importTakeout")}
+            </Button>
           </div>
+          <Text tone="secondary">{t("importTakeoutHint")}</Text>
         </SettingsSection>
       )}
 

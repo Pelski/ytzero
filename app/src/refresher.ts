@@ -8,6 +8,7 @@ import { CHANNEL_PLAYLIST_CACHE_VERSION, ensureChannelPlaylist, saveChannelPlayl
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { runAutomaticUpdateChecks } from "./updates";
 import { notifyFollowedPlaylistVideos } from "./notifications";
+import { IMPORTED_CHANNEL_ID } from "./takeout";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -844,6 +845,68 @@ export async function refreshVideoMetadataBatch(limit = 10) {
   log.info("video.metadata_batch", { checked: rows.length, durationsFilled, datesFilled });
 }
 
+// Imported (Takeout) videos land on a placeholder channel with an empty title;
+// this fills their real metadata one polite batch at a time. Transient failures
+// back off in memory so removed/private videos don't get hammered every tick.
+const importRetry = new Map<string, { attempts: number; nextAt: number }>();
+const IMPORT_RETRY_BASE_MS = 5 * 60_000;
+const IMPORT_RETRY_MAX_MS = 6 * 60 * 60_000;
+
+const enrichImportedVideo = db.prepare(`
+  UPDATE videos SET
+    channel_id = ?, title = ?, description = ?, thumbnail = ?,
+    published_at = COALESCE(?, published_at), duration = ?, views = COALESCE(?, views)
+  WHERE video_id = ?
+`);
+
+export async function backfillImportedVideos(limit = 15) {
+  const now = Date.now();
+  // Anything still parked on the placeholder channel needs enrichment, even
+  // when the export supplied a title (history entries). Playlist members and
+  // titleless videos first — a titled history row is already presentable.
+  const candidates = db.prepare(`
+    SELECT video_id FROM videos
+    WHERE channel_id = ?
+    ORDER BY (video_id IN (SELECT video_id FROM user_playlist_videos)) DESC,
+             (title IS NULL OR title = '') DESC, created_at ASC
+    LIMIT ?
+  `).all(IMPORTED_CHANNEL_ID, limit * 3) as { video_id: string }[];
+  const rows = candidates.filter((r) => (importRetry.get(r.video_id)?.nextAt ?? 0) <= now).slice(0, limit);
+  if (rows.length === 0) return;
+
+  let enriched = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const videoId = rows[i].video_id;
+    try {
+      const info = await fetchVideoInfo(videoId);
+      // Without an owner the row would stay on the placeholder channel and be
+      // re-picked every tick; back off like a failure instead.
+      if (!info.channelId) throw new Error("video info has no channelId");
+      importRetry.delete(videoId);
+      const channelId = info.channelId;
+      ensureChannel.run(channelId, info.channelTitle, `https://www.youtube.com/channel/${channelId}`);
+      enrichImportedVideo.run(
+        channelId,
+        info.title,
+        info.description,
+        info.thumbnail,
+        info.publishedAt || null,
+        info.duration || null,
+        info.viewCount ?? null,
+        videoId,
+      );
+      enriched++;
+    } catch (e) {
+      const attempts = (importRetry.get(videoId)?.attempts ?? 0) + 1;
+      const delayMs = Math.min(IMPORT_RETRY_BASE_MS * 2 ** (attempts - 1), IMPORT_RETRY_MAX_MS);
+      importRetry.set(videoId, { attempts, nextAt: Date.now() + delayMs });
+      log.warn("import.enrich_failed", { videoId, error: e instanceof Error ? e.message : String(e), attempts });
+    }
+    if (i < rows.length - 1) await Bun.sleep(800);
+  }
+  log.info("import.enrich_batch", { checked: rows.length, enriched });
+}
+
 let refreshing = false;
 
 export async function refreshAll(): Promise<{ channels: number; added: number; errors: string[] }> {
@@ -1051,4 +1114,11 @@ export function startScheduler() {
     batchSize: durationBatch,
     maxAgeDays: VIDEO_MAINTENANCE_MAX_AGE_DAYS,
   });
+
+  // Fill real metadata for videos brought in by a Takeout import.
+  const importBatch = positiveNumber(process.env.IMPORT_ENRICH_BATCH_SIZE, 15);
+  const importIntervalMin = positiveNumber(process.env.IMPORT_ENRICH_INTERVAL_MINUTES, 2);
+  setTimeout(() => backfillImportedVideos(importBatch).catch((e) => log.error("import.enrich_cron_failed", { error: e instanceof Error ? e.message : String(e) })), 45_000);
+  setInterval(() => backfillImportedVideos(importBatch).catch((e) => log.error("import.enrich_cron_failed", { error: e instanceof Error ? e.message : String(e) })), importIntervalMin * 60_000);
+  log.info("scheduler.import_enrich", { intervalMin: importIntervalMin, batchSize: importBatch });
 }

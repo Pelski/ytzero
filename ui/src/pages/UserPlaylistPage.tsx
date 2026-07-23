@@ -9,6 +9,7 @@ import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, EmptyState, IconButton, Input, PageHeader } from "../components/ui";
 
 export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => void }) {
@@ -17,6 +18,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
   const navigate = useNavigate();
   const playlistId = Number(id);
   const [playlist, setPlaylist] = useState<UserPlaylist | null>(null);
+  useDocumentTitle(playlist?.name);
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);

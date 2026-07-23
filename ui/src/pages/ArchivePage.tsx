@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Archive } from "lucide-react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { EmptyState, PageHeader } from "../components/ui";
 
 export default function ArchivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
+  useDocumentTitle(t("navArchive"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [showShorts, setShowShorts] = useState(true);
   const [loading, setLoading] = useState(true);

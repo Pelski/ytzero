@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { Clapperboard, ThumbsUp } from "lucide-react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, Chip, EmptyState, PageHeader } from "../components/ui";
 
 export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
+  useDocumentTitle(t("navLiked"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);

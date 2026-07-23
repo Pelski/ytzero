@@ -7,6 +7,7 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { formatPlaylistVideoCount, useI18n } from "../i18n";
+import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, EmptyState } from "../components/ui";
 
 export default function ChannelPlaylistPage() {
@@ -14,6 +15,7 @@ export default function ChannelPlaylistPage() {
   const navigate = useNavigate();
   const { t, language } = useI18n();
   const [playlist, setPlaylist] = useState<FollowedPlaylist | null>(null);
+  useDocumentTitle(playlist?.title);
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
