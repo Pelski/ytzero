@@ -16,6 +16,8 @@ YT Zero is configured through environment variables. All of them are optional an
 | `LIVE_INTERVAL_MINUTES` | `3` | Followed-channel live-status check interval. This does not refetch old video metadata. |
 | `DURATION_INTERVAL_MINUTES` | `3` | Interval for the background job that backfills missing video durations. |
 | `DURATION_BATCH_SIZE` | `20` | Videos processed per duration-backfill run. |
+| `IMPORT_ENRICH_INTERVAL_MINUTES` | `2` | Interval for the background job that fills in real metadata for videos brought in by a [Takeout import](Importing-from-Google-Takeout). |
+| `IMPORT_ENRICH_BATCH_SIZE` | `15` | Videos processed per import-enrichment run. Together with the interval, this sets the pace shown in the import wizard's time estimate. |
 | `VIDEO_MAINTENANCE_MAX_AGE_DAYS` | `90` | Maximum video age considered by automatic Shorts and duration backfills. Older videos are resolved only when accessed or manually synchronized. |
 | `UI_DIST` | `./public` | Built frontend directory served by the backend. |
 | `DOWNLOADS_DIR` | `./data/downloads` | Where the [YT-DLP Integration](YT-DLP-Integration) plugin stores downloaded video files. |

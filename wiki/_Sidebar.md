@@ -6,6 +6,7 @@
 
 **Using the app**
 - [Features](Features)
+- [Importing from Google Takeout](Importing-from-Google-Takeout)
 - [Importing Subscriptions](Importing-Subscriptions)
 - [Profiles](Profiles)
 - [Authentication](Authentication)

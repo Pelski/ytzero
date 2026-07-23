@@ -1,5 +1,7 @@
 You add channels in **Settings → Channels**.
 
+> Coming from YouTube with a full Takeout export? The [Takeout import wizard](Importing-from-Google-Takeout) brings in subscriptions, playlists, and watch history in one go — this page covers adding individual channels and plain subscription lists.
+
 ## Supported inputs
 
 - A YouTube channel URL, for example `https://www.youtube.com/@handle`
