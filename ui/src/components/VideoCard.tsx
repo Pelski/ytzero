@@ -30,6 +30,26 @@ const SWIPE_FEEDBACK_MS = 720;
 const FINAL_EXIT_MS = 280;
 type CardFeedback = "watched" | "rejected" | "scheduled" | "unscheduled";
 
+/** Duration in seconds for sorting/comparing; null when the string is unparseable. */
+export function parseVideoDurationSeconds(duration: string | null): number | null {
+  if (!duration) return null;
+  const raw = duration.trim();
+  if (!raw) return null;
+  const colonParts = raw.split(":").map((part) => part.trim());
+  if (colonParts.length >= 2 && colonParts.every((part) => /^\d+$/.test(part))) {
+    let seconds = 0;
+    for (const part of colonParts) seconds = seconds * 60 + Number(part);
+    return seconds;
+  }
+  const hourMatch = raw.match(/(\d+)\s*(?:h|hr|hrs|hour|hours|godz\.?|godzin|godziny)/i);
+  const minuteMatch = raw.match(/(\d+)\s*(?:m|min|mins|minute|minutes|minut|minuty)/i);
+  const secondMatch = raw.match(/(\d+)\s*(?:s|sec|secs|second|seconds|sek|sekund|sekundy)/i);
+  if (hourMatch || minuteMatch || secondMatch) {
+    return Number(hourMatch?.[1] ?? 0) * 3600 + Number(minuteMatch?.[1] ?? 0) * 60 + Number(secondMatch?.[1] ?? 0);
+  }
+  return /^\d+$/.test(raw) ? Number(raw) : null;
+}
+
 export function formatVideoDuration(duration: string | null): string {
   if (!duration) return "";
   const raw = duration.trim();

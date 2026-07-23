@@ -7,9 +7,10 @@ import { emit } from "../events";
 import { useI18n, type I18nKey } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { SchedulePicker } from "../components/VideoScheduleActions";
+import { formatVideoDuration, parseVideoDurationSeconds } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
-import { Badge, EmptyState, IconButton, LocalToast, PageHeader, SectionHeader } from "../components/ui";
+import { EmptyState, IconButton, LocalToast, PageHeader, SectionHeader, SelectMenu } from "../components/ui";
 import { img } from "../img";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
@@ -20,6 +21,9 @@ const BUCKET_SECTIONS: { id: string; labelKey: I18nKey; Icon: typeof Sun; bucket
 ];
 
 type TranslateFn = ReturnType<typeof useI18n>["t"];
+
+const WATCHLIST_SORTS = ["schedule", "duration-asc", "duration-desc", "title-asc", "channel-asc"] as const;
+type WatchlistSort = (typeof WATCHLIST_SORTS)[number];
 
 function formatShowFrom(showFrom: string, t: TranslateFn, locale: string): string {
   const d = new Date(showFrom);
@@ -43,6 +47,10 @@ export default function WatchlistPage() {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [scheduleToast, setScheduleToast] = useState<{ videoId: string; id: number } | null>(null);
+  const [sort, setSort] = useState<WatchlistSort>(() => {
+    const stored = sessionStorage.getItem("watchlistSort") as WatchlistSort | null;
+    return stored && WATCHLIST_SORTS.includes(stored) ? stored : "schedule";
+  });
 
   const load = useCallback(() => {
     api
@@ -54,12 +62,28 @@ export default function WatchlistPage() {
 
   useEffect(load, [load]);
 
-  const sortScheduled = (items: Video[]) =>
-    [...items].sort((a, b) => {
-      const bucketDiff = BUCKET_ORDER.indexOf(a.bucket!) - BUCKET_ORDER.indexOf(b.bucket!);
-      if (bucketDiff !== 0) return bucketDiff;
-      return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
-    });
+  const bySchedule = (a: Video, b: Video) => {
+    const bucketDiff = BUCKET_ORDER.indexOf(a.bucket!) - BUCKET_ORDER.indexOf(b.bucket!);
+    if (bucketDiff !== 0) return bucketDiff;
+    return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
+  };
+  // Videos without a known duration sort to the end in both directions.
+  const byDuration = (direction: 1 | -1) => (a: Video, b: Video) => {
+    const da = parseVideoDurationSeconds(a.duration);
+    const db = parseVideoDurationSeconds(b.duration);
+    if (da == null && db == null) return bySchedule(a, b);
+    if (da == null) return 1;
+    if (db == null) return -1;
+    return (da - db) * direction;
+  };
+  const COMPARATORS: Record<WatchlistSort, (a: Video, b: Video) => number> = {
+    schedule: bySchedule,
+    "duration-asc": byDuration(1),
+    "duration-desc": byDuration(-1),
+    "title-asc": (a, b) => a.title.localeCompare(b.title, locale),
+    "channel-asc": (a, b) => (a.channel_title ?? "").localeCompare(b.channel_title ?? "", locale),
+  };
+  const sortScheduled = (items: Video[]) => [...items].sort(COMPARATORS[sort]);
 
   const sections = BUCKET_SECTIONS.map((section) => ({
     ...section,
@@ -68,7 +92,26 @@ export default function WatchlistPage() {
 
   return (
     <>
-      <PageHeader title={t("navWatchlist")} />
+      <PageHeader
+        title={t("navWatchlist")}
+        actions={videos.length > 0 && (
+          <SelectMenu
+            value={sort}
+            label={t("watchlistSort")}
+            options={[
+              { value: "schedule", label: t("watchlistSortSchedule") },
+              { value: "duration-asc", label: t("watchlistSortShortest") },
+              { value: "duration-desc", label: t("watchlistSortLongest") },
+              { value: "title-asc", label: t("watchlistSortTitle") },
+              { value: "channel-asc", label: t("watchlistSortChannel") },
+            ] as const}
+            onChange={(next: WatchlistSort) => {
+              setSort(next);
+              sessionStorage.setItem("watchlistSort", next);
+            }}
+          />
+        )}
+      />
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
@@ -78,12 +121,14 @@ export default function WatchlistPage() {
           {sections.map(({ id, labelKey, Icon, items }) => {
             return (
               <section key={id} className="bucket-section">
-                <SectionHeader icon={<Icon />} title={t(labelKey)} actions={<Badge>{items.length}</Badge>} />
+                <SectionHeader icon={<Icon />} title={t(labelKey)} />
                 <div className="scheduled-list">
                   {items.map((v) => (
                     <article key={v.video_id} className="scheduled-item">
                       <Link to={`/watch/${v.video_id}`} className="scheduled-thumb-link" aria-label={v.title} title={v.title}>
-                        <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="scheduled" />
+                        <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="scheduled">
+                          {v.duration && v.is_short !== 1 && <span className="duration-badge">{formatVideoDuration(v.duration)}</span>}
+                        </VideoThumbnail>
                       </Link>
                       <div className="scheduled-info">
                         <Link to={`/watch/${v.video_id}`} className="scheduled-title" title={v.title}>{v.title}</Link>

@@ -12,18 +12,34 @@
 .bucket-title .count { color: var(--text-3); font-weight: 500; font-size: 13px; }
 
 .scheduled-list {
+  /* Follows the global video-card size slider, but 4x gentler: at the
+     slider minimum (180px) the thumb is the classic 88px. */
+  --scheduled-thumb-w: calc(88px + (var(--video-card-min, 248px) - 180px) / 4);
   border-top: 1px solid var(--surface-2);
 }
 .scheduled-item {
   display: grid;
-  grid-template-columns: 88px minmax(180px, 1fr) auto auto;
+  grid-template-columns: var(--scheduled-thumb-w, 88px) minmax(180px, 1fr) auto auto;
   gap: 12px;
   align-items: center;
   padding: 9px 0;
   border-bottom: 1px solid var(--surface-2);
 }
 .scheduled-thumb-link { display: block; border-radius: 4px; }
-.scheduled-thumb { width: 88px; border-radius: 4px; display: block; cursor: pointer; }
+.scheduled-thumb {
+  width: var(--scheduled-thumb-w, 88px);
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+  cursor: pointer;
+}
+.scheduled-thumb-frame .duration-badge {
+  bottom: 4px;
+  right: 4px;
+  font-size: 10px;
+  padding: 1px 4px;
+}
 .scheduled-info { min-width: 0; }
 .scheduled-title { display: block; color: inherit; text-decoration: none; font-weight: 500; margin-bottom: 2px; }
 .scheduled-title:hover { color: var(--accent); }
@@ -49,7 +65,7 @@
 
 @media (max-width: 980px) {
   .scheduled-item {
-    grid-template-columns: 88px minmax(0, 1fr);
+    grid-template-columns: var(--scheduled-thumb-w, 88px) minmax(0, 1fr);
     align-items: start;
   }
   .scheduled-date {
