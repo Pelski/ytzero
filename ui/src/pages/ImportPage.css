@@ -2,29 +2,6 @@
   max-width: 860px;
 }
 
-.import-dropzone {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 48px 32px;
-  border: 2px dashed var(--surface-3);
-  border-radius: 14px;
-  background: var(--surface);
-  text-align: center;
-  color: var(--text-2);
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-
-.import-dropzone--over {
-  border-color: var(--accent);
-  background: var(--surface-2);
-}
-
-.import-dropzone > .ui-button {
-  margin-top: 8px;
-}
-
 /* Staged files awaiting analysis */
 
 .import-file-list {

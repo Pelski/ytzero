@@ -3,6 +3,7 @@ export * from "./SplitButton";
 export * from "./Controls";
 export * from "./ColorPicker";
 export * from "./Fields";
+export * from "./FileDropzone";
 export * from "./FloatingPopover";
 export * from "./Feedback";
 export * from "./Layout";

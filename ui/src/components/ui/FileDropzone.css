@@ -1,0 +1,32 @@
+.ui-file-dropzone {
+  display: flex;
+  min-height: 220px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 48px 32px;
+  border: 2px dashed var(--surface-3);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text-2);
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.ui-file-dropzone--over {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+
+.ui-file-dropzone--disabled {
+  opacity: 0.65;
+}
+
+.ui-file-dropzone__icon {
+  display: inline-flex;
+}
+
+.ui-file-dropzone > .ui-button {
+  margin-top: var(--space-2);
+}

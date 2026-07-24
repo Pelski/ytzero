@@ -61,6 +61,8 @@ describe("portable backup classification and restore", () => {
     const profile = options.profiles[0];
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
+    db.prepare("UPDATE channels SET external=1 WHERE channel_id='UCportable'").run();
+    db.prepare("DELETE FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").run();
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
@@ -70,5 +72,6 @@ describe("portable backup classification and restore", () => {
     const planAgain = backup.planPortableRestore(1, again.sessionId, { mappings, sections: again.manifest.sections.map((section) => section.id), strategy: "merge" });
     await backup.commitPortableRestore(1, again.sessionId, planAgain.planRevision);
     expect((db.prepare("SELECT count(*) n FROM history WHERE user_id=1 AND video_id='portable001' AND watched_at='2026-07-25 10:00:00'").get() as { n: number }).n).toBe(1);
+    expect(db.prepare("SELECT uc.followed, c.external FROM user_channels uc JOIN channels c USING(channel_id) WHERE uc.user_id=1 AND uc.channel_id='UCportable'").get()).toEqual({ followed: 1, external: 0 });
   });
 });

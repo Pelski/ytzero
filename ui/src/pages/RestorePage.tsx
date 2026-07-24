@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArchiveRestore, CheckCircle2, Download, FileArchive, LoaderCircle, ShieldCheck, Upload } from "lucide-react";
 import { api, type BackupOptions, type RestoreAnalysis } from "../api";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { useI18n } from "../i18n";
-import { Alert, Badge, Button, ButtonAnchor, Checkbox, Field, Inline, Input, PageHeader, SelectMenu, SettingRow, SettingsSection, Stack, Tabs, Text } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, Checkbox, FileDropzone, Inline, PageHeader, SelectMenu, SettingRow, SettingsSection, Stack, Tabs } from "../components/ui";
 import "./RestorePage.css";
 
 type RestoreTab = "export" | "restore";
@@ -41,7 +41,6 @@ export default function RestorePage({ showToast }: { showToast: (message: string
   const tx = (en: string, pl: string) => language === "pl" ? pl : en;
   const sectionLabel = (id: string) => language === "pl" ? (LABELS_PL[id] ?? id) : (LABELS[id] ?? id);
   useDocumentTitle(tx("Backup and restore", "Kopia zapasowa i przywracanie"));
-  const inputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<RestoreTab>("export");
   const [options, setOptions] = useState<BackupOptions | null>(null);
   const [error, setError] = useState("");
@@ -139,12 +138,16 @@ export default function RestorePage({ showToast }: { showToast: (message: string
 
     {tab === "restore" && <Stack gap={4}>
       {!analysis && !result && <SettingsSection title={tx("Upload a portable backup", "Wczytaj przenośną kopię")} description={tx("The archive is checked and analyzed without changing application data.", "Archiwum zostanie sprawdzone i przeanalizowane bez zmiany danych aplikacji.")}>
-        <div className="restore-upload">
-          <FileArchive size={30} />
-          <Text tone="secondary">{tx("Choose a .zip or .ytzero-backup file.", "Wybierz plik .zip lub .ytzero-backup.")}</Text>
-          <Button variant="primary" leadingIcon={busy ? <LoaderCircle className="spin" /> : <Upload />} disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? tx("Analyzing…", "Analizowanie…") : tx("Choose backup", "Wybierz kopię")}</Button>
-          <Input ref={inputRef} type="file" accept=".zip,.ytzero-backup" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void analyze(file); event.target.value = ""; }} />
-        </div>
+        <FileDropzone
+          accept=".zip,.ytzero-backup"
+          disabled={busy}
+          icon={<FileArchive size={30} />}
+          title={tx("Drop a portable backup here", "Upuść tutaj przenośną kopię")}
+          description={tx("Choose or drop a .zip or .ytzero-backup file.", "Wybierz lub upuść plik .zip albo .ytzero-backup.")}
+          actionLabel={busy ? tx("Analyzing…", "Analizowanie…") : tx("Choose backup", "Wybierz kopię")}
+          actionIcon={busy ? <LoaderCircle className="spin" /> : <Upload />}
+          onFiles={(files) => { if (files[0]) void analyze(files[0]); }}
+        />
       </SettingsSection>}
 
       {analysis && !dryRun && <>

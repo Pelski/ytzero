@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2, Clock, FileArchive, FileText, FolderUp, History, ListMusic,
@@ -10,7 +10,7 @@ import { emit } from "../events";
 import { formatChannelCount, formatHistoryEntryCount, formatPlaylistCount, formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import {
-  Alert, Badge, Button, Checkbox, Inline, Input, PageHeader, SectionHeader,
+  Alert, Badge, Button, Checkbox, FileDropzone, Inline, Input, PageHeader, SectionHeader,
   SegmentedControl, SettingsSection, Stack, Switch, Text,
 } from "../components/ui";
 
@@ -32,11 +32,8 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
   const { t, language } = useI18n();
   useDocumentTitle(t("importTakeout"));
   const navigate = useNavigate();
-  const fileRef = useRef<HTMLInputElement>(null);
-
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [analyzing, setAnalyzing] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
   const [manifest, setManifest] = useState<ImportManifest | null>(null);
   const [committing, setCommitting] = useState(false);
   const [result, setResult] = useState<ImportCommitResult | null>(null);
@@ -165,31 +162,17 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
 
       {!manifest && !result && (
         <Stack gap={4}>
-          <div
-            className={`import-dropzone${dragOver ? " import-dropzone--over" : ""}`}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(false); addFiles(Array.from(e.dataTransfer.files)); }}
-          >
-            <FolderUp size={32} />
-            <Text as="div" size="lg">{t("importUploadTitle")}</Text>
-            <Text as="div" tone="secondary">{t("importUploadDescription")}</Text>
-            <Button variant={pendingFiles.length === 0 ? "primary" : "default"} onClick={() => fileRef.current?.click()}>
-              {pendingFiles.length === 0 ? null : <Plus />}
-              {pendingFiles.length === 0 ? t("importChooseFiles") : t("importAddMoreFiles")}
-            </Button>
-            <Input
-              ref={fileRef}
-              type="file"
-              accept=".zip,.csv,.json,.html"
-              multiple
-              hidden
-              onChange={(e) => {
-                addFiles(Array.from(e.target.files ?? []));
-                e.target.value = "";
-              }}
-            />
-          </div>
+          <FileDropzone
+            accept=".zip,.csv,.json,.html"
+            multiple
+            icon={<FolderUp size={32} />}
+            title={t("importUploadTitle")}
+            description={t("importUploadDescription")}
+            actionLabel={pendingFiles.length === 0 ? t("importChooseFiles") : t("importAddMoreFiles")}
+            actionIcon={pendingFiles.length === 0 ? undefined : <Plus />}
+            actionVariant={pendingFiles.length === 0 ? "primary" : "default"}
+            onFiles={addFiles}
+          />
 
           {pendingFiles.length > 0 && (
             <SettingsSection className="import-section import-staged">

@@ -1762,7 +1762,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       <PageHeader
         title={t("settingsTitle")}
         actions={isChildProfile === false ? <>
-          {isPrimary && <ButtonLink to="/restore" leadingIcon={<ArchiveRestore size={16} />}>{t("backupRestore")}</ButtonLink>}
           <ButtonLink to="/import" leadingIcon={<FolderUp size={16} />}>{t("importDataButton")}</ButtonLink>
         </> : undefined}
       />
