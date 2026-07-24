@@ -1701,6 +1701,9 @@ api.get("/channels", (c) => {
   return c.json({
     channels: channels.map((ch) => ({
       ...serializeChannel(ch),
+      // This endpoint only returns subscriptions of the active profile. Do not
+      // leak the legacy global channels.followed value into profile UI state.
+      followed: 1,
       ...(() => {
         try {
           const about = JSON.parse(ch.about_json ?? "{}") as { handle?: unknown; description?: unknown };
@@ -2123,7 +2126,18 @@ api.get("/channels/unfollowed", (c) => {
      JOIN user_channels uc ON uc.channel_id = ch.channel_id AND uc.user_id = ? AND uc.followed = 0
      WHERE ch.external = 0 ORDER BY COALESCE(ch.custom_title, ch.title) COLLATE NOCASE`
   ).all(uid) as any[];
-  return c.json({ channels: channels.map(serializeChannel) });
+  const tags = db.prepare(
+    `SELECT ct.channel_id, t.id, t.name, t.color
+     FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id AND t.user_id = ?`
+  ).all(uid) as any[];
+  return c.json({
+    channels: channels.map((channel) => ({
+      ...serializeChannel(channel),
+      followed: 0,
+      tags: tags.filter((tag) => tag.channel_id === channel.channel_id)
+        .map((tag) => ({ id: tag.id, name: tag.name, color: tag.color })),
+    })),
+  });
 });
 
 api.get("/channels/top", (c) => {

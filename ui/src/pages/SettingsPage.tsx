@@ -1086,6 +1086,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [resettingPluginId, setResettingPluginId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [addingChannel, setAddingChannel] = useState(false);
+  const [updatingChannelId, setUpdatingChannelId] = useState<string | null>(null);
   const [addingTag, setAddingTag] = useState(false);
   const [externalVideos, setExternalVideos] = useState<Video[]>([]);
   const [loadingExternal, setLoadingExternal] = useState(false);
@@ -1163,8 +1164,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [ch, tg, rl, fr, pl] = await Promise.all([api.channels(), api.tags(), api.rules(), api.filterRules(), api.userPlaylists()]);
-      setChannels(ch.channels);
+      const [ch, unfollowed, tg, rl, fr, pl] = await Promise.all([api.channels(), api.unfollowedChannels(), api.tags(), api.rules(), api.filterRules(), api.userPlaylists()]);
+      setChannels([...ch.channels, ...unfollowed.channels]
+        .map((channel) => ({ ...channel, tags: channel.tags ?? [] }))
+        .sort((a, b) => a.title.localeCompare(b.title, locale)));
       setTags(tg.tags);
       setRules(rl.rules);
       setFilterRules(fr.rules);
@@ -1174,7 +1177,22 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [locale]);
+
+  const toggleChannelFollow = async (channel: Channel) => {
+    if (updatingChannelId) return;
+    const followed = channel.followed === 0;
+    setUpdatingChannelId(channel.channel_id);
+    try {
+      await api.followChannel(channel.channel_id, followed);
+      emit("channels-changed");
+      await load();
+    } catch (error) {
+      showToast(`${t("error")}: ${error instanceof Error ? error.message : error}`);
+    } finally {
+      setUpdatingChannelId(null);
+    }
+  };
 
   const loadExternal = useCallback(() => {
     setLoadingExternal(true);
@@ -1985,9 +2003,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             )}
                           </>
                         )}
-                        {ch.tags.length > 0 && (
+                        {(ch.tags ?? []).length > 0 && (
                           <div className="ch-tags">
-                            {ch.tags.map((t) => (
+                            {(ch.tags ?? []).map((t) => (
                               <TagChip
                                 key={t.id}
                                 tag={t}
@@ -2008,7 +2026,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             <Plus size={13} /> Tag
                           </Button>}
                         >
-                          <TagPickerMenu tags={tags} selectedTagIds={ch.tags.map((tag) => tag.id)} onToggle={(tag) => void toggleChannelTag(ch.channel_id, tag)}>
+                          <TagPickerMenu tags={tags} selectedTagIds={(ch.tags ?? []).map((tag) => tag.id)} onToggle={(tag) => void toggleChannelTag(ch.channel_id, tag)}>
                             <TagCreateForm title={t("newTag")} name={newChannelTagName} color={newChannelTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewChannelTagName} onColorChange={setNewChannelTagColor} onSubmit={() => createAndAddChannelTag(ch.channel_id)} />
                           </TagPickerMenu>
                         </Popover>
@@ -2017,12 +2035,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         <Button
                           variant={ch.followed === 0 ? "primary" : "danger"}
                           title={ch.followed === 0 ? t("followAgain") : t("unfollow")}
-                          onClick={async () => {
-                            await api.followChannel(ch.channel_id, ch.followed === 0);
-                            load();
-                          }}
+                          disabled={updatingChannelId !== null}
+                          onClick={() => toggleChannelFollow(ch)}
                         >
-                          {ch.followed === 0 ? <UserPlus size={15} /> : <UserMinus size={15} />}
+                          {updatingChannelId === ch.channel_id
+                            ? <LoaderCircle size={15} className="spin" />
+                            : ch.followed === 0 ? <UserPlus size={15} /> : <UserMinus size={15} />}
                           {ch.followed === 0 ? t("follow") : t("unfollow")}
                         </Button>
                       </td>
