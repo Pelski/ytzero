@@ -7,6 +7,7 @@ import { startDownloader } from "./downloader";
 import { log } from "./logger";
 import { COMMIT, VERSION } from "./version";
 import { createAppIconPng, createAppIconSvg } from "./app-icon";
+import { createAppManifest } from "./app-manifest";
 
 const app = new Hono();
 
@@ -32,6 +33,14 @@ app.route("/api", api);
 const iconColor = () => getSetting("app_icon_color") || "#0a5fff";
 const svgHeaders = { "Content-Type": "image/svg+xml", "Cache-Control": "no-cache" };
 const pngHeaders = { "Content-Type": "image/png", "Cache-Control": "no-cache, no-store, must-revalidate" };
+const manifestHeaders = {
+  "Content-Type": "application/manifest+json",
+  "Cache-Control": "no-cache, no-store, must-revalidate",
+};
+
+app.get("/manifest.webmanifest", (c) =>
+  c.body(JSON.stringify(createAppManifest(getSetting("app_name"))), 200, manifestHeaders),
+);
 
 app.get("/favicon.svg", (c) =>
   c.body(createAppIconSvg(iconColor()), 200, svgHeaders),

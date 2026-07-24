@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { subscribe, subscribeToast, emit, type ToastVariant } from "./events";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
@@ -223,7 +223,9 @@ function TopBar({ appName, appIconColor }: { appName: string; appIconColor: stri
         aria-label="Menu"
         onClick={() => {
           const hidden = document.body.classList.toggle("sidebar-hidden");
-          localStorage.setItem(SIDEBAR_KEY, hidden ? "0" : "1");
+          if (!window.matchMedia(MOBILE_SIDEBAR_QUERY).matches) {
+            localStorage.setItem(SIDEBAR_KEY, hidden ? "0" : "1");
+          }
         }}
       >
         <Menu size={20} />
@@ -250,6 +252,7 @@ function TopBar({ appName, appIconColor }: { appName: string; appIconColor: stri
 }
 
 const SIDEBAR_KEY = "sidebar_open";
+const MOBILE_SIDEBAR_QUERY = "(max-width: 760px)";
 
 export default function App() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
@@ -294,10 +297,20 @@ function AppShell() {
     if (toastTimeoutRef.current != null) window.clearTimeout(toastTimeoutRef.current);
   }, []);
 
-  useEffect(() => {
-    const saved = localStorage.getItem(SIDEBAR_KEY);
-    if (saved === "0") document.body.classList.add("sidebar-hidden");
+  useLayoutEffect(() => {
+    const media = window.matchMedia(MOBILE_SIDEBAR_QUERY);
+    const syncSidebar = () => {
+      if (media.matches) document.body.classList.add("sidebar-hidden");
+      else document.body.classList.toggle("sidebar-hidden", localStorage.getItem(SIDEBAR_KEY) === "0");
+    };
+    syncSidebar();
+    media.addEventListener("change", syncSidebar);
+    return () => media.removeEventListener("change", syncSidebar);
   }, []);
+
+  useEffect(() => {
+    if (window.matchMedia(MOBILE_SIDEBAR_QUERY).matches) document.body.classList.add("sidebar-hidden");
+  }, [location.pathname]);
 
   const loadSettings = useCallback(() => {
     api.settings().then((r) => {
@@ -461,6 +474,12 @@ function AppShell() {
           <SidebarSubscriptions />
           <SidebarPlaylists />
         </aside>
+        <button
+          type="button"
+          className="sidebar-backdrop"
+          aria-label={t("close")}
+          onClick={() => document.body.classList.add("sidebar-hidden")}
+        />
         <main className="main">
           <div className="content">
             <Routes>

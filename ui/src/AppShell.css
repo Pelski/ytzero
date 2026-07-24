@@ -27,6 +27,67 @@
 .sidebar:focus-within::-webkit-scrollbar-thumb { background: var(--surface-3); }
 .sidebar::-webkit-scrollbar-track { background: transparent; }
 body.sidebar-hidden .sidebar { width: 0; padding: 0; }
+.sidebar-backdrop { display: none; }
+
+@media (max-width: 760px) {
+  .sidebar,
+  body.sidebar-hidden .sidebar {
+    position: fixed;
+    top: calc(var(--topbar-h) + var(--safe-top));
+    left: 0;
+    z-index: 46;
+    width: min(286px, calc(100vw - 42px));
+    height: calc(100dvh - var(--topbar-h) - var(--safe-top));
+    padding: 10px 10px calc(20px + var(--safe-bottom)) calc(10px + var(--safe-left));
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    backdrop-filter: blur(18px);
+    box-shadow: 14px 0 34px rgba(0, 0, 0, 0.42);
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(0);
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease, visibility 0s;
+  }
+  body.sidebar-hidden .sidebar {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(calc(-100% - var(--safe-left)));
+    transition: transform 180ms ease, opacity 140ms ease, visibility 0s linear 180ms;
+  }
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: calc(var(--topbar-h) + var(--safe-top)) 0 0;
+    z-index: 45;
+    padding: 0;
+    border: 0;
+    background: rgba(0, 0, 0, 0.48);
+    opacity: 1;
+    visibility: visible;
+    cursor: default;
+    transition: opacity 160ms ease, visibility 0s;
+  }
+  body.sidebar-hidden .sidebar-backdrop {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 140ms ease, visibility 0s linear 140ms;
+  }
+  .topbar-logo .logo-text { display: none; }
+  .content { padding: 14px calc(14px + var(--safe-right)) calc(60px + var(--safe-bottom)) calc(14px + var(--safe-left)); }
+}
+
+@media (max-width: 480px) {
+  .topbar {
+    gap: 6px;
+    padding-right: calc(10px + var(--safe-right));
+    padding-left: calc(10px + var(--safe-left));
+  }
+  .topbar-logo { padding-inline: 0; }
+  .search-wrap { margin-inline: 0; }
+  .search-wrap input { padding-inline: 12px; }
+  .profile-menu { margin-left: 0; }
+}
 
 .logo-mark {
   width: 30px;
@@ -430,4 +491,3 @@ body.cinema .topbar.topbar--solid {
 .toolbar .chip-bar-wrap { flex: 1; min-width: 0; }
 .toolbar-right { margin-left: auto; }
 .search-info { color: var(--text-2); margin: 0 0 16px; }
-
