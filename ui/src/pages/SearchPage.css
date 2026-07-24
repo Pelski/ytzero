@@ -322,7 +322,10 @@ button.video-card:disabled { cursor: default; }
   border-radius: 9px;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(4px);
-  pointer-events: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
   display: flex;
   gap: 2px;
   align-items: center;
@@ -347,6 +350,7 @@ button.video-card:disabled { cursor: default; }
 .thumb-actions-zone:focus-within .thumb-actions-peek {
   opacity: 0;
   transform: translateY(-5px) scale(0.94);
+  pointer-events: none;
 }
 .thumb-actions {
   position: absolute;

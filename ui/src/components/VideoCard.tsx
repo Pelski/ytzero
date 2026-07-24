@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent } from "react";
-import { memo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Video } from "../api";
@@ -274,22 +274,37 @@ function VideoCard({
     if (next > 0.52) setActionsOpen(true);
   };
 
-  const openTouchActions = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.pointerType === "mouse") return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const next = getActionProximity(rect, e.clientX, e.clientY);
-    if (next < 0.35) return;
-    blockNextThumbClickRef.current = true;
-    lastProximityRef.current = 1;
-    setActionProximity(1);
-    setActionsOpen(true);
+  const toggleActions = (e: MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setActionsOpen((open) => {
+      const next = !open;
+      lastProximityRef.current = next ? 1 : 0;
+      setActionProximity(next ? 1 : 0);
+      return next;
+    });
   };
 
-  const resetActionProximity = () => {
+  const resetActionProximity = (e: PointerEvent<HTMLDivElement>) => {
+    // Touch pointers leave the element as soon as the finger is lifted. Keep
+    // the menu open until an action or an explicit outside tap instead.
+    if (e.pointerType !== "mouse") return;
     lastProximityRef.current = 0;
     setActionProximity(0);
     setActionsOpen(false);
   };
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const closeOnOutsideTap = (event: Event) => {
+      if (cardRef.current?.contains(event.target as Node)) return;
+      lastProximityRef.current = 0;
+      setActionProximity(0);
+      setActionsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideTap);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideTap);
+  }, [actionsOpen]);
 
   const videoHref = `/watch/${video.video_id}`;
 
@@ -402,9 +417,7 @@ function VideoCard({
           className={`thumb-wrap${actionsOpen ? " controls-near" : ""}`}
           style={{ "--actions-proximity": actionProximity } as CSSProperties}
           onPointerMove={selectable || readOnly ? undefined : updateActionProximity}
-          onPointerDown={selectable || readOnly ? undefined : openTouchActions}
           onPointerLeave={selectable || readOnly ? undefined : resetActionProximity}
-          onMouseLeave={selectable || readOnly ? undefined : resetActionProximity}
         >
           {selectable && (
             <button
@@ -470,9 +483,16 @@ function VideoCard({
           )}
           {!selectable && !readOnly && (
           <div className="thumb-actions-zone">
-            <div className="thumb-actions-peek" aria-hidden="true">
+            <button
+              type="button"
+              className="thumb-actions-peek"
+              aria-label={t("moreActions")}
+              aria-expanded={actionsOpen}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={toggleActions}
+            >
               <span /><span /><span /><span />
-            </div>
+            </button>
             <div className="thumb-actions">
               <VideoScheduleActions
                 video={video}
