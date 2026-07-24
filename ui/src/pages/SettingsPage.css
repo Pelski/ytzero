@@ -795,6 +795,7 @@
 .channel-rename-btn:hover { background: none; border: none; color: var(--accent); }
 tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .channel-original-name { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
+.channel-availability-note { color: var(--danger); font-size: 11.5px; margin-top: 3px; }
 .channel-rename-row { display: flex; align-items: center; gap: 4px; }
 .channel-rename-row input {
   background: var(--bg);

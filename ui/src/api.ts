@@ -78,6 +78,9 @@ export interface Channel {
   subscribed_at?: string | null;
   latest_video_at?: string | null;
   video_count?: number;
+  availability_status?: "available" | "unavailable";
+  unavailable_reason?: "not_found" | string | null;
+  unavailable_at?: string | null;
   tags: Tag[];
 }
 

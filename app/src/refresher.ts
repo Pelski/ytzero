@@ -10,6 +10,7 @@ import { runAutomaticUpdateChecks } from "./updates";
 import { notifyFollowedPlaylistVideos } from "./notifications";
 import { IMPORTED_CHANNEL_ID } from "./takeout";
 import { maintenanceActive } from "./maintenance";
+import { channelUnavailableReason } from "./channelAvailability";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -26,6 +27,16 @@ const upsertVideo = db.prepare(`
 `);
 
 const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
+const markChannelAvailable = db.prepare("UPDATE channels SET availability_status='available', unavailable_reason=NULL, unavailable_at=NULL WHERE channel_id=?");
+const markChannelUnavailable = db.prepare("UPDATE channels SET availability_status='unavailable', unavailable_reason=?, unavailable_at=datetime('now') WHERE channel_id=?");
+
+function recordChannelFailure(channelId: string, error: unknown): boolean {
+  const reason = channelUnavailableReason(error);
+  if (!reason) return false;
+  markChannelUnavailable.run(reason, channelId);
+  log.warn("channel.marked_unavailable", { channelId, reason, error: error instanceof Error ? error.message : String(error) });
+  return true;
+}
 
 // Politeness limits for the playlist scan during a manual sync, to avoid
 // tripping YouTube's rate limiting (HTTP 429).
@@ -263,7 +274,14 @@ export async function syncChannelPlaylists(channelId: string): Promise<{
 
 export async function refreshChannel(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
-  const feed = await fetchChannelFeed(channelId);
+  let feed;
+  try {
+    feed = await fetchChannelFeed(channelId);
+  } catch (error) {
+    recordChannelFailure(channelId, error);
+    throw error;
+  }
+  markChannelAvailable.run(channelId);
   const inheritChannelTags = db.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );
@@ -524,8 +542,12 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
     log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   });
 
+  let feedUnavailable = false;
   const [feed, scraped, streams] = await Promise.all([
-    fetchChannelFeed(channelId).catch(() => ({ videos: [], channelTitle: "", channelId })),
+    fetchChannelFeed(channelId).catch((error) => {
+      feedUnavailable = recordChannelFailure(channelId, error);
+      return { videos: [], channelTitle: "", channelId };
+    }),
     fetchChannelVideos(channelId),
     fetchChannelStreams(channelId),
   ]);
@@ -650,6 +672,7 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   // the periodic live-status refresh before it can appear on the channel page.
   await refreshLiveStatus(channelId);
   db.prepare("UPDATE channels SET last_refreshed_at = datetime('now'), last_full_synced_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  if (!feedUnavailable) markChannelAvailable.run(channelId);
   log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, streams: streams.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
   return { added };
 }
@@ -657,6 +680,8 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
 /** Full sync shared by the manual button and the background scheduler. Calls
  * for the same channel coalesce instead of scraping YouTube twice in parallel. */
 export function syncChannel(channelId: string): Promise<{ added: number }> {
+  const unavailable = db.prepare("SELECT 1 FROM channels WHERE channel_id=? AND availability_status='unavailable'").get(channelId);
+  if (unavailable) return Promise.reject(new Error("channel unavailable"));
   const current = channelSyncsInFlight.get(channelId);
   if (current) return current;
   const task = runChannelSync(channelId).finally(() => channelSyncsInFlight.delete(channelId));
@@ -674,6 +699,7 @@ export async function refreshAvatarsBatch(limit = 4) {
     .prepare(
       `SELECT channel_id FROM channels
        WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
+         AND availability_status != 'unavailable'
          AND COALESCE(avatar_checked_at, '1970-01-01') <= datetime('now', '-7 days')
          AND COALESCE(avatar_refresh_attempted_at, '1970-01-01') <= datetime('now', '-6 hours')
        ORDER BY COALESCE(avatar_checked_at, '1970-01-01') ASC LIMIT ?`
@@ -967,6 +993,7 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
     const channels = db.prepare(
       `SELECT channel_id FROM channels
        WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
+         AND availability_status != 'unavailable'
        ORDER BY COALESCE(last_refreshed_at, '1970-01-01') ASC LIMIT 10`
     ).all() as { channel_id: string }[];
     log.info("refresh.start", { channels: channels.length });
@@ -1018,6 +1045,7 @@ export async function syncNextSubscribedChannel(): Promise<void> {
       SELECT c.channel_id
       FROM channels c
       WHERE c.external = 0
+        AND c.availability_status != 'unavailable'
         AND EXISTS (
           SELECT 1 FROM user_channels uc
           WHERE uc.channel_id = c.channel_id AND uc.followed = 1
@@ -1092,7 +1120,9 @@ export async function refreshAllLiveStatuses(): Promise<void> {
           ELSE 2
         END AS priority
       FROM channels c
-      WHERE c.channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1) AND c.external = 0
+      WHERE c.channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
+        AND c.external = 0
+        AND c.availability_status != 'unavailable'
       ORDER BY priority ASC, c.channel_id ASC
     `).all() as { channel_id: string; priority: number }[];
 

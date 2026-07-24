@@ -392,6 +392,12 @@ Adding cache/transient/secret data does not require exporting it, but does
 require an explicit classification here so it cannot be included accidentally
 by a future generic exporter.
 
+Channel availability (`channels.availability_status`, `unavailable_reason`, and
+`unavailable_at`) is a rebuildable, network-derived cache. It is deliberately
+excluded from `instance.channels`: a restored installation starts channels as
+available and learns permanent 404/410 failures from YouTube again. This avoids
+moving stale remote-health conclusions between installations.
+
 ## Required tests
 
 - round trip: export a multi-profile fixture, restore into a blank database,

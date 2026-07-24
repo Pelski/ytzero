@@ -16,7 +16,10 @@ CREATE TABLE IF NOT EXISTS channels (
   url        TEXT NOT NULL DEFAULT '',
   thumbnail  TEXT NOT NULL DEFAULT '',
   added_at   TEXT NOT NULL DEFAULT (datetime('now')),
-  last_refreshed_at TEXT
+  last_refreshed_at TEXT,
+  availability_status TEXT NOT NULL DEFAULT 'available',
+  unavailable_reason TEXT,
+  unavailable_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS videos (
@@ -539,6 +542,11 @@ db.exec(`UPDATE user_videos SET watched = 1
 try { db.exec("ALTER TABLE tags ADD COLUMN filter_only INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN external INTEGER NOT NULL DEFAULT 0"); } catch {}
+// Network-derived availability is a rebuildable cache. Permanent missing-channel
+// responses stop background workers from retrying a deleted channel forever.
+try { db.exec("ALTER TABLE channels ADD COLUMN availability_status TEXT NOT NULL DEFAULT 'available'"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN unavailable_reason TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN unavailable_at TEXT"); } catch {}
 // Cached channel "about" payload (description, banner, links, stats, …) so the
 // channel page reads from the DB instead of scraping YouTube on every visit.
 try { db.exec("ALTER TABLE channels ADD COLUMN about_json TEXT"); } catch {}

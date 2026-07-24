@@ -1739,6 +1739,10 @@ function serializeChannel(ch: any) {
   };
 }
 
+function channelIsUnavailable(channelId: string): boolean {
+  return Boolean(db.prepare("SELECT 1 FROM channels WHERE channel_id=? AND availability_status='unavailable'").get(channelId));
+}
+
 api.get("/channels", (c) => {
   const uid = currentUserId(c);
   const channels = db.prepare(
@@ -1944,8 +1948,17 @@ api.get("/channels/:id/about", async (c) => {
 
   // Serve the cached about from the DB; only touch YouTube when it's missing
   // or stale (and then in the background, so the page never waits on it).
-  const cachedRow = db.prepare("SELECT about_json, about_fetched_at, subscriber_count FROM channels WHERE channel_id = ?")
-    .get(channelId) as { about_json: string | null; about_fetched_at: string | null; subscriber_count: string | null } | null;
+  const cachedRow = db.prepare("SELECT about_json, about_fetched_at, subscriber_count, title, thumbnail, availability_status FROM channels WHERE channel_id = ?")
+    .get(channelId) as { about_json: string | null; about_fetched_at: string | null; subscriber_count: string | null; title: string; thumbnail: string | null; availability_status: string } | null;
+
+  if (cachedRow?.availability_status === "unavailable") {
+    if (cachedRow.about_json) {
+      try {
+        return c.json({ ...withCustomTitle(normalizeCachedChannelAbout(JSON.parse(cachedRow.about_json) as ChannelAbout)), counts });
+      } catch { /* fall back to basic local columns */ }
+    }
+    return c.json({ channelId, title: customTitle || cachedRow.title || "", description: "", avatar: cachedRow.thumbnail ?? "", banner: "", subscriberCount: cachedRow.subscriber_count ?? "", stats: [], links: [], joinedDate: "", viewCount: "", handle: "", counts });
+  }
 
   if (cachedRow?.about_json) {
     if (ageMs(cachedRow.about_fetched_at) > ABOUT_DB_TTL) {
@@ -2010,8 +2023,13 @@ async function refreshChannelPlaylists(channelId: string, force = false) {
 api.get("/channels/:id/playlists", async (c) => {
   const uid = currentUserId(c);
   const channelId = c.req.param("id");
-  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at, playlists_cache_version FROM channels WHERE channel_id = ?")
-    .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null; playlists_cache_version: number } | null;
+  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at, playlists_cache_version, availability_status FROM channels WHERE channel_id = ?")
+    .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null; playlists_cache_version: number; availability_status: string } | null;
+
+  if (cached?.availability_status === "unavailable") {
+    try { return c.json({ playlists: attachPlaylistFollowState(uid, JSON.parse(cached.playlists_json || "[]")) }); }
+    catch { return c.json({ playlists: [] }); }
+  }
 
   if (cached?.playlists_json) {
     try {
@@ -2045,6 +2063,7 @@ api.get("/channels/:id/playlists", async (c) => {
 
 api.post("/channels/:id/playlists/sync", async (c) => {
   const channelId = c.req.param("id");
+  if (channelIsUnavailable(channelId)) return c.json({ error: "channel unavailable" }, 409);
   try {
     const result = await syncChannelPlaylists(channelId);
     log.info("channel.playlists.sync_requested", { channelId, count: result.playlists.length, synced: result.synced, added: result.added, errors: result.errors });
@@ -2063,6 +2082,7 @@ api.post("/channels/:id/playlists/sync", async (c) => {
 
 api.post("/channels/:id/metadata/sync", async (c) => {
   const channelId = c.req.param("id");
+  if (channelIsUnavailable(channelId)) return c.json({ error: "channel unavailable" }, 409);
   try {
     return c.json({ ok: true, ...(await syncChannelMissingMetadata(channelId)) });
   } catch (e) {
@@ -2252,6 +2272,7 @@ api.get("/channels/:id", (c) => {
 
 api.post("/channels/:id/sync", async (c) => {
   const channelId = c.req.param("id");
+  if (channelIsUnavailable(channelId)) return c.json({ error: "channel unavailable" }, 409);
   try {
     const result = await syncChannel(channelId);
     log.info("channel.sync_requested", { channelId, added: result.added });

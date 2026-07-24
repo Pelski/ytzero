@@ -56,6 +56,16 @@ describe("portable backup classification and restore", () => {
     expect(serialized).not.toContain("download_cookie");
   });
 
+  test("portable channel data excludes network-derived availability cache", async () => {
+    db.prepare("UPDATE channels SET availability_status='unavailable', unavailable_reason='do-not-export', unavailable_at=datetime('now') WHERE channel_id='UCportable'").run();
+    const options = backup.backupOptions();
+    const zip = await backup.createPortableBackup({ preset: "full", profiles: options.profiles.map((profile) => profile.id) });
+    const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
+    expect(serialized).not.toContain("do-not-export");
+    expect(serialized).not.toContain("availability_status");
+    db.prepare("UPDATE channels SET availability_status='available', unavailable_reason=NULL, unavailable_at=NULL WHERE channel_id='UCportable'").run();
+  });
+
   test("analyze is read-only and repeated merge restore is idempotent", async () => {
     const options = backup.backupOptions();
     const profile = options.profiles[0];

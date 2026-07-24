@@ -1994,6 +1994,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                               <Link to={`/channel/${ch.channel_id}`} className="channel-name channel-name-link">
                                 {ch.title || ch.channel_id}
                               </Link>
+                              {ch.availability_status === "unavailable" && <Badge variant="danger" size="sm">{t("channelUnavailable")}</Badge>}
                               <IconButton variant="ghost" className="channel-rename-btn" label={t("renameChannel")} onClick={() => startRenameChannel(ch)}>
                                 <Pencil size={12} />
                               </IconButton>
@@ -2001,6 +2002,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             {ch.custom_title && (
                               <div className="channel-original-name">{t("originalChannelName", { name: ch.original_title || ch.channel_id })}</div>
                             )}
+                            {ch.availability_status === "unavailable" && <div className="channel-availability-note">{t("channelUnavailableHint")}</div>}
                           </>
                         )}
                         {(ch.tags ?? []).length > 0 && (
