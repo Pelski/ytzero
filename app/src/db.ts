@@ -411,6 +411,16 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   last_seen  TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires ON auth_sessions(expires_at);
+
+-- One undo slot per profile for the "clean up the feed" bulk action — a fresh
+-- run always replaces the previous slot, there is no history stack.
+CREATE TABLE IF NOT EXISTS bulk_undo (
+  user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  action     TEXT NOT NULL,
+  count      INTEGER NOT NULL,
+  payload    TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
 // Per-profile login identity (used by auth_method = per_profile / oidc / proxy_header).
@@ -599,7 +609,16 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   app_icon_color: "#0a5fff",
   shorts_tab: "1",
   show_top_channels: "1",
+  // How far back the main feed reaches. Videos older than this stay in the
+  // library (and on channel pages) but never surface in the feed, so a fresh
+  // import of a large back catalogue doesn't bury today's uploads.
+  // Unit "off" disables the limit entirely.
+  feed_max_age_value: "6",
+  feed_max_age_unit: "months",
   hide_live_from_feed: "0",
+  // "More like this" on the watch page. Off keeps a session strictly to what the
+  // viewer chose to open, with no suggested next thing.
+  watch_show_related: "1",
   hide_members_only_from_feed: "0",
   hide_members_only_on_channel: "0",
   watched_style: "dimmed",

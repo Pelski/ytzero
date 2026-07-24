@@ -52,5 +52,7 @@
 
 .profile-card-size-trigger:hover, .profile-card-size-trigger.active { background: var(--surface-2); color: var(--text); }
 .ui-popover__content.profile-card-size-popover { min-width: min(220px, calc(100vw - 24px)); }
+.profile-card-size-popover .ui-popover__title { font-size: 10px; font-weight: 600; letter-spacing: .02em; }
+.cleanup-menu-item-chevron { color: var(--text-3); }
 
 /* grid size toggle */

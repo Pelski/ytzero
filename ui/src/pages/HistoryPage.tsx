@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { History } from "lucide-react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, EmptyState, PageHeader, SectionHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 function historyDayKey(value: string) {
   const date = new Date(value.replace(" ", "T"));
@@ -64,7 +64,7 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <EmptyState icon={<History />} title={t("historyEmpty")} />
+        <EmptyState art={<EmptyArt scene="noHistory" />} title={t("historyEmpty")} description={t("historyEmptyHint")} />
       ) : (
         <>
           {groups.map((group) => (

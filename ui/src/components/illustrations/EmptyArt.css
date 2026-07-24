@@ -1,0 +1,43 @@
+/* Every accent-toned part of an illustration inherits from this one colour, so
+   the whole set follows the instance's accent without per-scene overrides. */
+.empty-art {
+  color: var(--accent);
+  height: auto;
+  width: 100%;
+}
+
+.empty-art__base {
+  fill: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
+  stroke: color-mix(in srgb, var(--accent) 30%, var(--text-3));
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+}
+
+.empty-art__line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--accent) 30%, var(--text-3));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.6;
+}
+
+.empty-art__dot {
+  fill: color-mix(in srgb, var(--accent) 30%, var(--text-3));
+}
+
+.empty-art__glyph {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3.2;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .empty-art { animation: empty-art-rise .5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+}
+
+@keyframes empty-art-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}

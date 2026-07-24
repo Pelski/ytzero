@@ -59,6 +59,8 @@
 }
 .chip:hover { background: var(--chip-hover); }
 .chip.active { background: var(--text); color: var(--bg); }
+.chip.exclude { background: color-mix(in srgb, #f25b67 20%, transparent); color: #ff8992; }
+.chip.exclude:hover { background: color-mix(in srgb, #f25b67 28%, transparent); }
 .chip.chip-clear { color: var(--text-2); }
 .liked-filter-bar { margin-bottom: 18px; }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }

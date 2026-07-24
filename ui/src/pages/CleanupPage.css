@@ -1,0 +1,67 @@
+.cleanup-applied-banner {
+  /* Shared .ui-alert aligns to flex-start for multi-line title+description
+     content; this banner is always a single line, so center instead. */
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.cleanup-applied-banner .ui-alert__icon {
+  margin-top: 0;
+}
+
+/* Filter rows carry more control content (date + preset chips, channel picker,
+   tag chip bar) than a typical settings row — force the wrap the shared
+   .ui-setting-row layout only opts into below 760px, so the label column never
+   gets squeezed to near-zero width by a wide sibling at in-between viewports. */
+.cleanup-filters .ui-setting-row {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+.cleanup-filters .ui-setting-row__copy {
+  flex: 1 1 200px;
+}
+
+.cleanup-filters .ui-setting-row__control {
+  flex: 2 1 320px;
+  max-width: 100%;
+}
+
+.cleanup-tabs {
+  margin-top: 20px;
+}
+
+.cleanup-grid {
+  margin-top: 16px;
+}
+
+.cleanup-card {
+  min-width: 0;
+  transition: opacity 0.26s ease, transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cleanup-card--removing {
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.92);
+}
+
+.cleanup-noop-hint {
+  margin-top: 18px;
+}
+
+.cleanup-action-bar {
+  align-items: center;
+  background: var(--surface);
+  border-radius: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding: 16px 18px;
+  position: sticky;
+  bottom: 12px;
+  z-index: 5;
+}

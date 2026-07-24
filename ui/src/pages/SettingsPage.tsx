@@ -17,7 +17,7 @@ import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
-import { formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey } from "../i18n";
+import { formatAgeUnit, formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
@@ -37,6 +37,16 @@ const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: b
   { id: "profiles", labelKey: "profiles", icon: <Users size={15} />, hiddenForChild: true },
   { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true, hiddenForChild: true },
 ];
+
+// Feed age limit: "off" lives in the unit select so the whole control stays two
+// dropdowns (the value select is disabled while the limit is off).
+type FeedMaxAgeUnit = "days" | "weeks" | "months" | "years" | "off";
+const FEED_MAX_AGE_UNITS: Exclude<FeedMaxAgeUnit, "off">[] = ["days", "weeks", "months", "years"];
+const FEED_MAX_AGE_VALUES = Array.from({ length: 30 }, (_, i) => String(i + 1));
+
+function isFeedMaxAgeUnit(value: unknown): value is FeedMaxAgeUnit {
+  return typeof value === "string" && (FEED_MAX_AGE_UNITS as string[]).includes(value);
+}
 
 type LogLevel = "INFO" | "WARN" | "ERROR";
 
@@ -1117,6 +1127,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
+  const [watchShowRelated, setWatchShowRelated] = useState(true);
+  const [feedMaxAgeValue, setFeedMaxAgeValue] = useState("6");
+  const [feedMaxAgeUnit, setFeedMaxAgeUnit] = useState<FeedMaxAgeUnit>("months");
   const [feedAutoplayEnabled, setFeedAutoplayEnabled] = useState(false);
   const [feedAutoplayDirection, setFeedAutoplayDirection] = useState<"oldest" | "newest">("oldest");
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("everywhere");
@@ -1287,6 +1300,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
         setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
+        setWatchShowRelated(r.settings.watch_show_related !== "0");
+        setFeedMaxAgeValue(r.settings.feed_max_age_value || "6");
+        setFeedMaxAgeUnit(isFeedMaxAgeUnit(r.settings.feed_max_age_unit) ? r.settings.feed_max_age_unit : "off");
         setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
         setFeedAutoplayDirection(r.settings.feed_autoplay_direction === "newest" ? "newest" : "oldest");
         setMembersOnlyVisibility(
@@ -1423,6 +1439,20 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     const next = !hideLiveFromFeed;
     setHideLiveFromFeed(next);
     await api.updateSettings({ hide_live_from_feed: next ? "1" : "0" });
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const toggleWatchRelated = async () => {
+    const next = !watchShowRelated;
+    setWatchShowRelated(next);
+    await api.updateSettings({ watch_show_related: next ? "1" : "0" });
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const changeFeedMaxAge = async (value: string, unit: FeedMaxAgeUnit) => {
+    setFeedMaxAgeValue(value);
+    setFeedMaxAgeUnit(unit);
+    await api.updateSettings({ feed_max_age_value: value, feed_max_age_unit: unit });
     showToast(t("displaySettingsSaved"));
   };
 
@@ -2229,6 +2259,34 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
           <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
+          </SettingRow>
+
+          <SettingRow label={t("feedMaxAge")} description={t("feedMaxAgeHint")}>
+            <Inline gap={2} className="feed-max-age-control">
+              <SelectMenu
+                label={t("feedMaxAge")}
+                value={feedMaxAgeValue}
+                disabled={feedMaxAgeUnit === "off"}
+                onChange={(next: string) => changeFeedMaxAge(next, feedMaxAgeUnit)}
+                options={FEED_MAX_AGE_VALUES.map((value) => ({ value, label: value }))}
+              />
+              <SelectMenu
+                label={t("feedMaxAge")}
+                value={feedMaxAgeUnit}
+                onChange={(next: FeedMaxAgeUnit) => changeFeedMaxAge(feedMaxAgeValue, next)}
+                options={[
+                  ...FEED_MAX_AGE_UNITS.map((unit) => ({
+                    value: unit as FeedMaxAgeUnit,
+                    label: formatAgeUnit(Number(feedMaxAgeValue) || 1, unit, language),
+                  })),
+                  { value: "off" as FeedMaxAgeUnit, label: t("feedMaxAgeOff") },
+                ]}
+              />
+            </Inline>
+          </SettingRow>
+
+          <SettingRow label={t("watchShowRelated")} description={t("watchShowRelatedHint")}>
+            <Switch checked={watchShowRelated} onCheckedChange={() => toggleWatchRelated()} />
           </SettingRow>
 
           <SettingRow label={t("feedAutoplay")} description={t("feedAutoplayHint")}>

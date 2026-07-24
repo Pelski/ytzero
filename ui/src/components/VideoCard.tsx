@@ -3,6 +3,7 @@ import {
   ArrowDownToLine,
   CalendarCheck,
   CalendarX,
+  Check,
   Eye,
   Heart,
   Lock,
@@ -12,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent } from "react";
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Video } from "../api";
@@ -89,7 +90,7 @@ function formatDurationSeconds(totalSeconds: number): string {
     : `${m}:${String(s).padStart(2, "0")}`;
 }
 
-export default function VideoCard({
+function VideoCard({
   video,
   onPlay,
   onChanged,
@@ -100,6 +101,10 @@ export default function VideoCard({
   isWatched,
   isLiked,
   showWatchProgress,
+  selectable = false,
+  selected = false,
+  onSelectToggle,
+  readOnly = false,
 }: {
   video: Video;
   onPlay: (v: Video) => void;
@@ -111,6 +116,12 @@ export default function VideoCard({
   isWatched?: boolean;
   isLiked?: boolean;
   showWatchProgress?: boolean;
+  /** Selection mode: clicking the card toggles it instead of playing; swipe and hover actions are disabled. */
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: (videoId: string) => void;
+  /** Preview mode (e.g. cleanup's "what stays" column): no swipe, no hover actions, still clickable to open. */
+  readOnly?: boolean;
 }) {
   const { t, language, locale } = useI18n();
   const navigate = useNavigate();
@@ -212,6 +223,7 @@ export default function VideoCard({
       filterTaps: true,
       from: [0, 0],
       pointer: { capture: true },
+      enabled: !selectable && !readOnly,
     }
   );
 
@@ -276,6 +288,12 @@ export default function VideoCard({
   const videoHref = `/watch/${video.video_id}`;
 
   const playFromLink = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (selectable) {
+      e.preventDefault();
+      e.stopPropagation();
+      onSelectToggle?.(video.video_id);
+      return;
+    }
     if (blockNextThumbClickRef.current || blockClickAfterDragRef.current) {
       blockNextThumbClickRef.current = false;
       blockClickAfterDragRef.current = false;
@@ -365,11 +383,22 @@ export default function VideoCard({
         <div
           className={`thumb-wrap${actionsOpen ? " controls-near" : ""}`}
           style={{ "--actions-proximity": actionProximity } as CSSProperties}
-          onPointerMove={updateActionProximity}
-          onPointerDown={openTouchActions}
-          onPointerLeave={resetActionProximity}
-          onMouseLeave={resetActionProximity}
+          onPointerMove={selectable || readOnly ? undefined : updateActionProximity}
+          onPointerDown={selectable || readOnly ? undefined : openTouchActions}
+          onPointerLeave={selectable || readOnly ? undefined : resetActionProximity}
+          onMouseLeave={selectable || readOnly ? undefined : resetActionProximity}
         >
+          {selectable && (
+            <button
+              type="button"
+              className={`video-card-select-badge${selected ? " video-card-select-badge--checked" : ""}`}
+              aria-pressed={selected}
+              aria-label={t("selectVideo")}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelectToggle?.(video.video_id); }}
+            >
+              {selected && <Check size={14} />}
+            </button>
+          )}
           <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
             <Link
               to={videoHref}
@@ -421,6 +450,7 @@ export default function VideoCard({
               />
             </div>
           )}
+          {!selectable && !readOnly && (
           <div className="thumb-actions-zone">
             <div className="thumb-actions-peek" aria-hidden="true">
               <span /><span /><span /><span />
@@ -481,6 +511,7 @@ export default function VideoCard({
               </div>
             </div>
           </div>
+          )}
         </div>
 
         {searchResultLayout ? (
@@ -543,3 +574,5 @@ export default function VideoCard({
     </div>
   );
 }
+
+export default memo(VideoCard);

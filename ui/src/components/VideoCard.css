@@ -10,3 +10,25 @@
 .private-video-badge svg {
   flex: 0 0 auto;
 }
+
+.video-card-select-badge {
+  align-items: center;
+  background: rgba(15, 15, 15, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.75);
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  height: 22px;
+  justify-content: center;
+  left: 8px;
+  position: absolute;
+  top: 8px;
+  width: 22px;
+  z-index: 4;
+}
+
+.video-card-select-badge--checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}

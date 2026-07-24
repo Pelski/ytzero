@@ -7,6 +7,7 @@ import { img } from "../img";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { EmptyState, SelectMenu } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 const RANGES = [7, 30, 90, 365];
 
@@ -90,7 +91,10 @@ export default function InsightsPage() {
   }), [locale]);
 
   if (!data && loading) return <div className="insights-loading"><Activity className="spin" /> {t("loading")}</div>;
-  if (!data) return <EmptyState title={error || t("insightsNoData")} />;
+  // An error is a failure, not a milestone — only the genuine no-data case gets art.
+  if (!data) return error
+    ? <EmptyState title={error} />
+    : <EmptyState art={<EmptyArt scene="noInsights" />} title={t("insightsNoData")} description={t("insightsNoDataHint")} />;
 
   const { summary } = data;
   const maxDay = Math.max(...data.daily.map((item) => item.seconds), 1);

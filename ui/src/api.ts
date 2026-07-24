@@ -211,7 +211,11 @@ export interface AppSettings {
   app_icon_color: string;
   shorts_tab: string;
   show_top_channels: string;
+  feed_max_age_value: string;
+  /** days | weeks | months | years, or "off" to show videos of any age. */
+  feed_max_age_unit: string;
   hide_live_from_feed: string;
+  watch_show_related: string;
   hide_members_only_from_feed: string;
   hide_members_only_on_channel: string;
   watched_style: string;
@@ -656,6 +660,33 @@ export interface HouseholdInsights {
   sponsorblock_categories: { category: string; seconds: number; skip_count: number }[];
 }
 
+export interface CleanupChannelFilter {
+  mode: "include" | "exclude";
+  ids: string[];
+}
+
+export interface CleanupTagFilter {
+  include: number[];
+  exclude: number[];
+}
+
+export interface CleanupFilter {
+  status?: "inbox" | "queued" | "all";
+  /** ISO timestamp; matches videos published strictly before this instant. */
+  before?: string | null;
+  channels?: CleanupChannelFilter | null;
+  tags?: CleanupTagFilter | null;
+  /** Also match videos the feed itself would hide (shorts, live, members-only, filter rules). */
+  include_hidden?: boolean;
+}
+
+export interface CleanupPreviewResult {
+  videos: Video[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export interface ImportManifest {
   sessionId: string;
   channels: { channelId: string; title: string }[];
@@ -725,6 +756,17 @@ export const api = {
     if (opts.showAll) qs.set("show_all", "1");
     return http<{ video: Video | null }>(`/feed/adjacent?${qs}`);
   },
+  cleanupPreview: (filter: CleanupFilter, side: "clean" | "remain", opts: { excludeVideoIds?: string[]; page?: number } = {}) =>
+    http<CleanupPreviewResult>("/cleanup/preview", {
+      method: "POST",
+      body: JSON.stringify({ filter, side, exclude_video_ids: opts.excludeVideoIds ?? [], page: opts.page ?? 0 }),
+    }),
+  cleanupApply: (filter: CleanupFilter, action: "archive" | "watched", excludeVideoIds: string[] = []) =>
+    http<{ affected: number }>("/cleanup/apply", {
+      method: "POST",
+      body: JSON.stringify({ filter, action, exclude_video_ids: excludeVideoIds }),
+    }),
+  cleanupUndo: () => http<{ restored: number }>("/cleanup/undo", { method: "POST", body: "{}" }),
   inProgress: () => http<{ videos: Video[] }>("/in-progress"),
   youtubeSearch: (q: string) => http<{ results: SearchResult[]; channels: ChannelSearchResult[] }>(`/search/youtube?q=${encodeURIComponent(q)}`),
   plugins: () => http<{ plugins: PluginManifest[] }>("/plugins"),
@@ -815,7 +857,7 @@ export const api = {
   untagVideo: (id: string, tagId: number) =>
     http(`/videos/${id}/tags/${tagId}`, { method: "DELETE" }),
 
-  channels: () => http<{ channels: Channel[] }>("/channels"),
+  channels: () => http<{ channels: Channel[]; instance_has_data: boolean }>("/channels"),
   channel: (id: string) => http<{ channel: Channel }>(`/channels/${id}`),
   recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null })[] }>("/channels/recent"),
   topChannels: () => http<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("/channels/top"),

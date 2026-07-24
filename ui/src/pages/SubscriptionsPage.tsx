@@ -12,7 +12,8 @@ import TagFilterBar from "../components/TagFilterBar";
 import TagPickerMenu from "../components/TagPickerMenu";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
-import { EmptyState, IconButton, PageHeader, Popover, SelectMenu } from "../components/ui";
+import { Button, EmptyState, IconButton, PageHeader, Popover, SelectMenu } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 import { emit } from "../events";
 
 type SubscriptionSort = "name-asc" | "name-desc" | "latest-video" | "subscribed-recent" | "subscribers-desc" | "videos-desc";
@@ -226,7 +227,18 @@ export default function SubscriptionsPage() {
       {loading ? (
         <TableSkeleton rows={8} columns={3} />
       ) : filteredChannels.length === 0 ? (
-        <EmptyState icon={<Users />} title={query || selectedTags.length > 0 ? t("noMatchingChannels") : t("subscriptionsEmpty")} />
+        query || selectedTags.length > 0 ? (
+          // A filtered miss is a query outcome, not a milestone — stays plain
+          // (it reappears on every keystroke). The useful thing here is a way out.
+          <EmptyState
+            icon={<Users />}
+            title={t("noMatchingChannels")}
+            description={t("noMatchingChannelsHint")}
+            action={<Button onClick={() => { setQuery(""); setSelectedTags([]); }}>{t("clearFilters")}</Button>}
+          />
+        ) : (
+          <EmptyState art={<EmptyArt scene="noSubscriptions" />} title={t("subscriptionsEmpty")} description={t("subscriptionsEmptyHint")} />
+        )
       ) : (
         <div className="subs-grid">
           {filteredChannels.map((ch) => (

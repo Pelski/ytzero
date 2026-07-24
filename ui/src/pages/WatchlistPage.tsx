@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import "./WatchlistPage.css";
-import { Clock, Coffee, Sun, X } from "lucide-react";
+import { Coffee, Sun, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Bucket, type Video } from "../api";
 import { emit } from "../events";
@@ -11,6 +11,7 @@ import { formatVideoDuration, parseVideoDurationSeconds } from "../components/Vi
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { EmptyState, IconButton, LocalToast, PageHeader, SectionHeader, SelectMenu } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 import { img } from "../img";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
@@ -115,7 +116,7 @@ export default function WatchlistPage() {
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <EmptyState icon={<Clock />} title={t("watchlistEmpty")} />
+        <EmptyState art={<EmptyArt scene="scheduleClear" />} title={t("watchlistEmpty")} description={t("watchlistEmptyHint")} />
       ) : (
         <>
           {sections.map(({ id, labelKey, Icon, items }) => {

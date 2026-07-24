@@ -9,9 +9,10 @@ export function Alert({ variant = "info", icon, title, children, className, ...p
   </div>;
 }
 
-export function EmptyState({ icon, title, description, action, compact = false, className }: { icon?: ReactNode; title: ReactNode; description?: ReactNode; action?: ReactNode; compact?: boolean; className?: string }) {
-  return <div className={cx("ui-empty-state", compact && "ui-empty-state--compact", className)}>
-    {icon && <div className="ui-empty-state__icon">{icon}</div>}
+export function EmptyState({ icon, art, eyebrow, title, description, action, compact = false, className }: { icon?: ReactNode; /** Full illustration (see components/illustrations); replaces `icon` and enlarges the state. Reserved for primary destinations — see docs/illustrations.md. */ art?: ReactNode; eyebrow?: ReactNode; title: ReactNode; description?: ReactNode; action?: ReactNode; compact?: boolean; className?: string }) {
+  return <div className={cx("ui-empty-state", compact && "ui-empty-state--compact", Boolean(art) && "ui-empty-state--art", className)}>
+    {art ? <div className="ui-empty-state__art">{art}</div> : icon && <div className="ui-empty-state__icon">{icon}</div>}
+    {eyebrow && <div className="ui-empty-state__eyebrow">{eyebrow}</div>}
     <div className="ui-empty-state__title">{title}</div>
     {description && <div className="ui-empty-state__description">{description}</div>}
     {action && <div className="ui-empty-state__action">{action}</div>}

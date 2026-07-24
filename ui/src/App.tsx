@@ -26,6 +26,7 @@ import DownloadsPage from "./pages/DownloadsPage";
 import SubscriptionsPage from "./pages/SubscriptionsPage";
 import LikedPage from "./pages/LikedPage";
 import InsightsPage from "./pages/InsightsPage";
+import CleanupPage from "./pages/CleanupPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
@@ -481,6 +482,7 @@ function AppShell() {
               <Route path="/liked" element={<LikedPage onPlay={play} />} />
               <Route path="/history" element={<HistoryPage onPlay={play} />} />
               <Route path="/archive" element={<ArchivePage onPlay={play} />} />
+              <Route path="/cleanup" element={<CleanupPage />} />
               <Route path="/insights" element={<InsightsPage />} />
               <Route path="/settings" element={<SettingsPage showToast={showToast} />} />
               <Route path="/import" element={<ImportPage showToast={showToast} />} />

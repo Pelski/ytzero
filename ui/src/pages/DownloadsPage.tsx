@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./DownloadsPage.css";
 import { Link } from "react-router-dom";
-import { AlertTriangle, ArrowDownToLine, Check, ChevronDown, HardDrive, LoaderCircle, Pin, PinOff, RotateCw, Trash2 } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, HardDrive, LoaderCircle, Pin, PinOff, RotateCw, Trash2 } from "lucide-react";
 import { api, type DownloadsResponse, type DownloadItem } from "../api";
 import { formatTimeAgo, useI18n, type I18nKey } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
@@ -10,6 +10,7 @@ import { formatVideoDuration } from "../components/VideoCard";
 import Popconfirm from "../components/Popconfirm";
 import Tooltip from "../components/Tooltip";
 import { Alert, Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 const QUEUE_COLLAPSED_COUNT = 3;
 
@@ -166,7 +167,7 @@ export default function DownloadsPage() {
       )}
 
       {queueItems.length === 0 && doneItems.length === 0 ? (
-        <EmptyState icon={<ArrowDownToLine />} title={t("downloadsEmpty")} />
+        <EmptyState art={<EmptyArt scene="noDownloads" />} title={t("downloadsEmptyTitle")} description={t("downloadsEmpty")} />
       ) : (
         <>
           {queueItems.length > 0 && (

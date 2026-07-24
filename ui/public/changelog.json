@@ -1,6 +1,15 @@
 {
   "releases": [
     {
+      "version": "v0.14.0",
+      "name": "v0.14.0",
+      "publishedAt": "2026-07-24T12:03:15Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.14.0",
+      "notes": [
+        "Autoplay feed #55 (`822097f`)"
+      ]
+    },
+    {
       "version": "v0.13.1",
       "name": "v0.13.1",
       "publishedAt": "2026-07-24T11:26:18Z",
@@ -87,17 +96,6 @@
       "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.0",
       "notes": [
         "Follow playlist only on channels, new view with subscribed playlists #46 (`c19817c`)"
-      ]
-    },
-    {
-      "version": "v0.9.4",
-      "name": "v0.9.4",
-      "publishedAt": "2026-07-22T07:40:11Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.9.4",
-      "notes": [
-        "Improved image cache (`820c6a2`)",
-        "Improved image cache (`6ec85b3`)",
-        "Fixed one creator popover on watch view (`a4cb490`)"
       ]
     }
   ]

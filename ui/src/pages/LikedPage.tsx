@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { Clapperboard, ThumbsUp } from "lucide-react";
+import { Clapperboard } from "lucide-react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, Chip, EmptyState, PageHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -64,7 +65,7 @@ export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <EmptyState icon={<ThumbsUp />} title={t("likedEmpty")} />
+        <EmptyState art={<EmptyArt scene="nothingLiked" />} title={t("likedEmpty")} description={t("likedEmptyHint")} />
       ) : (
         <>
           <div className="video-grid">

@@ -139,6 +139,11 @@ export function formatHistoryEntryCount(n: number, language: Language): string {
   return locales[language].format.historyEntryCount(n);
 }
 
+/** Bare time unit agreeing with `n` — for the feed age-limit selects. */
+export function formatAgeUnit(n: number, unit: "days" | "weeks" | "months" | "years", language: Language): string {
+  return locales[language].format.ageUnit(n, unit);
+}
+
 export function compactNumber(value: number | null, language: Language): string {
   if (value == null) return "";
   return new Intl.NumberFormat(LOCALE_TAGS[language], { notation: "compact", maximumFractionDigits: 1 }).format(value);

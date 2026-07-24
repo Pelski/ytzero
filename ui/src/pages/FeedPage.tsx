@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "./FeedPage.css";
 import { subscribe } from "../events";
 import { Link, useNavigate } from "react-router-dom";
-import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
+import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload, Users } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { img } from "../img";
 import ChildTimeRequestBanner from "../components/ChildTimeRequestBanner";
+import EmptyArt from "../components/illustrations/EmptyArt";
 import TagFilterBar from "../components/TagFilterBar";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
@@ -136,6 +137,11 @@ export default function FeedPage({
   const [gridSize, setGridSize] = useState<GridSize>(readGridSize);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hasSubscriptions, setHasSubscriptions] = useState<boolean | null>(null);
+  // Gates the full "start from scratch" walkthrough — separate from
+  // hasSubscriptions so a profile with nothing followed yet, on an instance
+  // that already has channels/videos (another profile, an import), gets a
+  // lighter nudge instead of being told to start from zero.
+  const [instanceHasData, setInstanceHasData] = useState<boolean | null>(null);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
   const inProgressScroll = useHScroll();
   const queuedScroll = useHScroll();
@@ -215,7 +221,10 @@ export default function FeedPage({
   }, [loadTags, loadQueued, loadInProgress]);
 
   const loadSubscriptionState = useCallback(() => {
-    api.channels().then((r) => setHasSubscriptions(r.channels.some((channel) => channel.followed !== 0))).catch(() => {});
+    api.channels().then((r) => {
+      setHasSubscriptions(r.channels.some((channel) => channel.followed !== 0));
+      setInstanceHasData(r.instance_has_data);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -319,7 +328,7 @@ export default function FeedPage({
   const showQueuedSection = dueQueuedVideos.length > 0 && selectedTags.length === 0;
   const showFeedPreludeDivider = inProgress.length > 0 || showQueuedSection;
 
-  if (!loading && hasSubscriptions === false) {
+  if (!loading && instanceHasData === false) {
     return (
       <>
         <ChildTimeRequestBanner />
@@ -396,7 +405,28 @@ export default function FeedPage({
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton gridSize={gridSize} />
       ) : videos.length === 0 ? (
-        <EmptyState icon={<Inbox />} title={t("noVideos")} />
+        hasSubscriptions === false ? (
+          <EmptyState
+            icon={<Users />}
+            title={t("feedEmptyNotFollowingTitle")}
+            description={t("feedEmptyNotFollowingDescription")}
+            action={<ButtonLink variant="primary" to="/subscriptions" leadingIcon={<Plus size={16} />}>{t("feedOnboardingAddChannels")}</ButtonLink>}
+          />
+        ) : selectedTags.length > 0 ? (
+          <EmptyState
+            icon={<Inbox />}
+            title={t("feedEmptyNoTagMatchTitle")}
+            description={t("feedEmptyNoTagMatchDescription")}
+            action={<Button onClick={clearTags}>{t("feedEmptyNoTagMatchAction")}</Button>}
+          />
+        ) : (
+          <EmptyState
+            art={<EmptyArt scene="inboxZero" />}
+            eyebrow={t("feedEmptyCaughtUpEyebrow")}
+            title={t("feedEmptyCaughtUpTitle")}
+            description={t("feedEmptyCaughtUpDescription")}
+          />
+        )
       ) : (
         <>
           <div className={`video-grid video-grid--${gridSize}`}>

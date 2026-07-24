@@ -1,0 +1,80 @@
+import { getUserSetting } from "./db";
+import { childHidesLive } from "./childTime";
+import { feedSortSql, filterOnlySql, followedExists, followedPlaylistExists, tagFilterSql } from "./feedQueryFragments";
+import { feedMaxAgeCutoff } from "./feedMaxAge";
+
+export { feedSortSql, filterOnlySql, followedExists, followedPlaylistExists, tagFilterSql };
+
+export interface FeedVisibilityQuery {
+  status?: string;
+  tags?: string;
+  show_all?: string;
+  shorts?: string;
+}
+
+// The WHERE clause for the plain, unfiltered-by-channel/search main feed —
+// shared by GET /feed (when none of channel/q/all_sources/liked/only_shorts
+// apply), GET /feed/adjacent and the cleanup view, so "what the feed shows"
+// can never drift from what any of those consider deletable/keepable.
+// `includeHidden` skips every taste-based hiding rule (shorts, live, members-only
+// visibility, filter-only tags) while keeping the core "belongs to this profile's
+// library" + status conditions — used by cleanup's "also match videos hidden from
+// the feed" toggle.
+export function feedVisibilityWhere(
+  q: FeedVisibilityQuery,
+  uid: number,
+  opts: { includeHidden?: boolean } = {},
+): { where: string[]; params: any[] } {
+  const where: string[] = [];
+  const params: any[] = [];
+  where.push("(v.published_at IS NOT NULL AND v.published_at != '')");
+  const status = q.status ?? "inbox";
+  if (status !== "all") {
+    where.push("COALESCE(uv.status, 'inbox') = ?");
+    params.push(status);
+  }
+  where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
+  if (!opts.includeHidden) {
+    // Age limit: old uploads stay in the library and on channel pages, they just
+    // never surface in the feed (see feed_max_age_* in SETTING_DEFAULTS).
+    const cutoff = feedMaxAgeCutoff(getUserSetting(uid, "feed_max_age_value"), getUserSetting(uid, "feed_max_age_unit"));
+    if (cutoff) {
+      where.push("v.published_at >= ?");
+      params.push(cutoff);
+    }
+    const shortsParam = q.shorts;
+    if (shortsParam === "0" || (shortsParam !== "1" && getUserSetting(uid, "show_shorts") !== "1")) {
+      where.push("COALESCE(v.is_short, 0) = 0");
+    }
+    if (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid)) {
+      where.push("v.live_status NOT IN ('live', 'upcoming')");
+    }
+    where.push(`NOT (
+      v.members_only = 1 AND CASE COALESCE(
+        (SELECT member_pref.members_only_visibility FROM user_channels member_pref
+         WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
+      )
+        WHEN 'channel' THEN 1
+        WHEN 'hidden' THEN 1
+        WHEN 'everywhere' THEN 0
+        WHEN 'feed' THEN 0
+        ELSE ?
+      END = 1
+    )`);
+    params.push(getUserSetting(uid, "hide_members_only_from_feed") === "1" ? 1 : 0);
+  }
+  const tagsParam = q.tags;
+  const tagIds = tagsParam ? tagsParam.split(",").map(Number).filter(Boolean) : [];
+  if (tagIds.length) {
+    const f = tagFilterSql(uid, tagIds);
+    where.push(f.sql);
+    params.push(...f.params);
+  }
+  const showAll = q.show_all === "1";
+  if (!opts.includeHidden && !showAll) {
+    const fo = filterOnlySql(uid, tagIds);
+    where.push(fo.sql);
+    params.push(...fo.params);
+  }
+  return { where, params };
+}

@@ -8,6 +8,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import TagFilterBar from "../components/TagFilterBar";
 import ShortCard from "../components/ShortCard";
 import { Button, Chip, EmptyState } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 import ShortsPlayer from "../components/ShortsPlayer";
 import { ShortsGridSkeleton } from "../components/LoadingState";
 
@@ -246,7 +247,7 @@ export default function ShortsPage() {
       {loading && videos.length === 0 ? (
         <ShortsGridSkeleton />
       ) : videos.length === 0 ? (
-        <EmptyState icon={<Zap />} title={t("shortsEmpty")} />
+        <EmptyState art={<EmptyArt scene="noShorts" />} title={t("shortsEmpty")} description={t("shortsEmptyHint")} />
       ) : (
         <>
           <div className="shorts-grid">

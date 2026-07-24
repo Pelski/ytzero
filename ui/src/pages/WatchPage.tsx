@@ -186,6 +186,9 @@ export default function WatchPage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareWithTimestamp, setShareWithTimestamp] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  // Withheld until settings load: for a profile that turned suggestions off,
+  // rendering them first and pulling them away is worse than a brief gap.
+  const showRelated = settings ? settings.watch_show_related !== "0" : false;
   const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
   const [playbackPolicy, setPlaybackPolicy] = useState<{
     ready: boolean;
@@ -1784,6 +1787,7 @@ export default function WatchPage() {
             </div>
           </div>
         )}
+        {showRelated && <>
         <h2 className="related-title">{t("moreLikeThis")}</h2>
         {related.filter((v) => v.is_short === 0).map((v) => (
           <div key={v.video_id} className="related-item">
@@ -1821,6 +1825,7 @@ export default function WatchPage() {
             </div>
           </div>
         ))}
+        </>}
       </aside>
     </div>
   );

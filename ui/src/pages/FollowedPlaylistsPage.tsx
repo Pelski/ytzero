@@ -8,6 +8,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Badge, EmptyState, PageHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 export default function FollowedPlaylistsPage() {
   const { t, language } = useI18n();
@@ -32,7 +33,7 @@ export default function FollowedPlaylistsPage() {
         <VideoGridSkeleton gridSize="sm" />
       ) : playlists.length === 0 ? (
         <EmptyState
-          icon={<ListVideo />}
+          art={<EmptyArt scene="playlistEmpty" />}
           title={t("followedPlaylistsEmptyTitle")}
           description={t("followedPlaylistsEmptyDescription")}
         />

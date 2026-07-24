@@ -1193,6 +1193,12 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   .ui-setting-row__copy { flex: 0 1 auto; }
   .ui-setting-row__control { width: 100%; }
 }
+/* Number + unit pair: the shared 170px trigger minimum is far too wide for a
+   one- or two-digit value, and would push the unit select off the row. */
+.feed-max-age-control { flex-wrap: nowrap; }
+.feed-max-age-control > .ui-popover:first-child .ui-select-menu__trigger { min-width: 76px; }
+.feed-max-age-control > .ui-popover:last-child .ui-select-menu__trigger { min-width: 128px; }
+
 .video-card-size-setting { align-items: center; border-top: 1px solid var(--surface-2); display: flex; gap: 20px; justify-content: space-between; padding: 14px 0; }
 .video-card-size-control { align-items: center; display: flex; gap: 10px; min-width: 230px; }
 .video-card-size-control input { accent-color: var(--accent); flex: 1; }

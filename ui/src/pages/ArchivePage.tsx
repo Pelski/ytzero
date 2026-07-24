@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { Archive } from "lucide-react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { EmptyState, PageHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 export default function ArchivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -35,7 +35,7 @@ export default function ArchivePage({ onPlay }: { onPlay: (v: Video) => void }) 
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : visible.length === 0 ? (
-        <EmptyState icon={<Archive />} title={t("archiveEmpty")} />
+        <EmptyState art={<EmptyArt scene="archiveEmpty" />} title={t("archiveEmpty")} description={t("archiveEmptyHint")} />
       ) : (
         <div className="video-grid">
           {visible.map((v) => (

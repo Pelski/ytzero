@@ -37,6 +37,8 @@ import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHi
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
 import { recordSchedulingSignal } from "./contentSignals";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, saveChannelPlaylists, videoPlaylistsForUser } from "./channelPlaylists";
+import { feedVisibilityWhere, feedSortSql, followedExists, followedPlaylistExists, tagFilterSql, filterOnlySql } from "./feedQuery";
+import { buildCleanupWhere, countCleanupMatches, listCleanupVideoIds, snapshotUserVideoState, applyCleanupAction, restoreUserVideoState, saveBulkUndo, loadBulkUndo, clearBulkUndo, type CleanupFilter } from "./cleanup";
 import {
   authMethod,
   hashPassword,
@@ -378,59 +380,6 @@ function attachTags(uid: number, videos: VideoRow[]) {
   });
 }
 
-/** WHERE fragment excluding videos that have a filter_only tag unless one of those tags is selected.
- *  For channels: hidden only when ALL channel tags are filter_only (not just any one). */
-function filterOnlySql(uid: number, tagIds: number[]) {
-  // Video-level: exclude if video itself has any filter_only tag (owned by the user).
-  const noVideoFO = `NOT EXISTS (SELECT 1 FROM video_tags vt2 JOIN tags t2 ON t2.id = vt2.tag_id AND t2.user_id = ${uid} WHERE vt2.video_id = v.video_id AND t2.filter_only = 1)`;
-  // Channel-level: exclude only when channel has (user's) tags and every one of them is filter_only.
-  const noChannelFO = `(NOT EXISTS (SELECT 1 FROM channel_tags ct2 JOIN tags t2 ON t2.id = ct2.tag_id AND t2.user_id = ${uid} WHERE ct2.channel_id = v.channel_id)
-     OR EXISTS (SELECT 1 FROM channel_tags ct2 JOIN tags t2 ON t2.id = ct2.tag_id AND t2.user_id = ${uid} WHERE ct2.channel_id = v.channel_id AND t2.filter_only = 0))`;
-  const noPlaylistChannelFO = `NOT EXISTS (
-    SELECT 1 FROM channel_playlist_videos cpv2
-    JOIN channel_playlists cp2 ON cp2.playlist_id = cpv2.playlist_id
-    JOIN user_followed_playlists ufp2 ON ufp2.playlist_id = cp2.playlist_id AND ufp2.user_id = ${uid}
-    WHERE cpv2.video_id = v.video_id
-      AND EXISTS (SELECT 1 FROM channel_tags ct4 JOIN tags t4 ON t4.id = ct4.tag_id AND t4.user_id = ${uid} WHERE ct4.channel_id = cp2.channel_id)
-      AND NOT EXISTS (SELECT 1 FROM channel_tags ct5 JOIN tags t5 ON t5.id = ct5.tag_id AND t5.user_id = ${uid} WHERE ct5.channel_id = cp2.channel_id AND t5.filter_only = 0)
-  )`;
-  const noFO = `(${noVideoFO} AND ${noChannelFO} AND ${noPlaylistChannelFO})`;
-  if (tagIds.length === 0) return { sql: noFO, params: [] };
-  const ph = tagIds.map(() => "?").join(",");
-  return {
-    sql: `(${noFO}
-      OR EXISTS (SELECT 1 FROM video_tags vt3 JOIN tags t3 ON t3.id = vt3.tag_id AND t3.user_id = ${uid} WHERE vt3.video_id = v.video_id AND t3.filter_only = 1 AND t3.id IN (${ph}))
-      OR EXISTS (SELECT 1 FROM channel_tags ct3 JOIN tags t3 ON t3.id = ct3.tag_id AND t3.user_id = ${uid} WHERE ct3.channel_id = v.channel_id AND t3.filter_only = 1 AND t3.id IN (${ph}))
-      OR EXISTS (
-        SELECT 1 FROM channel_playlist_videos cpv3
-        JOIN channel_playlists cp3 ON cp3.playlist_id = cpv3.playlist_id
-        JOIN user_followed_playlists ufp3 ON ufp3.playlist_id = cp3.playlist_id AND ufp3.user_id = ${uid}
-        JOIN channel_tags ct6 ON ct6.channel_id = cp3.channel_id
-        JOIN tags t6 ON t6.id = ct6.tag_id AND t6.user_id = ${uid}
-        WHERE cpv3.video_id = v.video_id AND t6.filter_only = 1 AND t6.id IN (${ph})
-      ))`,
-    params: [...tagIds, ...tagIds, ...tagIds],
-  };
-}
-
-/** WHERE fragment matching videos that have ANY of the given tags (own or via channel). */
-function tagFilterSql(uid: number, tagIds: number[]) {
-  const ph = tagIds.map(() => "?").join(",");
-  return {
-    sql: `(EXISTS (SELECT 1 FROM video_tags vt JOIN tags t ON t.id = vt.tag_id AND t.user_id = ${uid} WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
-       OR EXISTS (SELECT 1 FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id AND t.user_id = ${uid} WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph}))
-       OR EXISTS (
-         SELECT 1 FROM channel_playlist_videos cpv
-         JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
-         JOIN user_followed_playlists ufp ON ufp.playlist_id = cp.playlist_id AND ufp.user_id = ${uid}
-         JOIN channel_tags ct ON ct.channel_id = cp.channel_id
-         JOIN tags t ON t.id = ct.tag_id AND t.user_id = ${uid}
-         WHERE cpv.video_id = v.video_id AND ct.tag_id IN (${ph})
-       ))`,
-    params: [...tagIds, ...tagIds, ...tagIds],
-  };
-}
-
 // Per-profile video projection: status/bucket/liked/progress come from the
 // active user's user_videos row (absent = default inbox); history is per user.
 // uid is a validated integer, safe to inline.
@@ -458,77 +407,6 @@ function videoSelect(uid: number) {
          COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id
   LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}`;
-}
-
-/** EXISTS fragment: the active user follows this video's channel. */
-function followedExists(uid: number) {
-  return `EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id = v.channel_id AND uc.user_id = ${uid} AND uc.followed = 1)`;
-}
-
-function followedPlaylistExists(uid: number) {
-  return `EXISTS (
-    SELECT 1 FROM channel_playlist_videos cpv
-    JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id
-    WHERE cpv.video_id = v.video_id AND ufp.user_id = ${uid}
-      AND ufp.include_in_feed = 1
-  )`;
-}
-
-function feedSortSql() {
-  // Playlist membership must not make old videos look newly published. The
-  // feed already excludes incomplete rows, so the real publication date is
-  // always available here.
-  return "v.published_at";
-}
-
-// The WHERE clause for the plain, unfiltered-by-channel/search main feed —
-// shared by GET /feed (when none of channel/q/all_sources/liked/only_shorts
-// apply) and GET /feed/adjacent, so "what the feed shows" and "what's next"
-// can never drift apart.
-function mainFeedWhere(c: any, uid: number): { where: string[]; params: any[] } {
-  const where: string[] = [];
-  const params: any[] = [];
-  where.push("(v.published_at IS NOT NULL AND v.published_at != '')");
-  const status = c.req.query("status") ?? "inbox";
-  if (status !== "all") {
-    where.push("COALESCE(uv.status, 'inbox') = ?");
-    params.push(status);
-  }
-  where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
-  const shortsParam = c.req.query("shorts");
-  if (shortsParam === "0" || (shortsParam !== "1" && getUserSetting(uid, "show_shorts") !== "1")) {
-    where.push("COALESCE(v.is_short, 0) = 0");
-  }
-  if (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid)) {
-    where.push("v.live_status NOT IN ('live', 'upcoming')");
-  }
-  where.push(`NOT (
-    v.members_only = 1 AND CASE COALESCE(
-      (SELECT member_pref.members_only_visibility FROM user_channels member_pref
-       WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
-    )
-      WHEN 'channel' THEN 1
-      WHEN 'hidden' THEN 1
-      WHEN 'everywhere' THEN 0
-      WHEN 'feed' THEN 0
-      ELSE ?
-    END = 1
-  )`);
-  params.push(getUserSetting(uid, "hide_members_only_from_feed") === "1" ? 1 : 0);
-  const tagsParam = c.req.query("tags");
-  const tagIds = tagsParam ? tagsParam.split(",").map(Number).filter(Boolean) : [];
-  if (tagIds.length) {
-    const f = tagFilterSql(uid, tagIds);
-    where.push(f.sql);
-    params.push(...f.params);
-  }
-  const showAll = c.req.query("show_all") === "1";
-  if (!showAll) {
-    const fo = filterOnlySql(uid, tagIds);
-    where.push(fo.sql);
-    params.push(...fo.params);
-  }
-  return { where, params };
 }
 
 function localSQLite(d: Date): string {
@@ -585,7 +463,7 @@ api.get("/feed", (c) => {
   let where: string[];
   let params: any[];
   if (isMainFeed) {
-    ({ where, params } = mainFeedWhere(c, uid));
+    ({ where, params } = feedVisibilityWhere(c.req.query(), uid));
   } else {
     where = [];
     params = [];
@@ -677,7 +555,7 @@ api.get("/feed/adjacent", (c) => {
   const anchor = db.prepare("SELECT published_at FROM videos WHERE video_id = ?").get(videoId) as { published_at: string | null } | null;
   if (!anchor?.published_at) return c.json({ video: null });
 
-  const { where, params } = mainFeedWhere(c, uid);
+  const { where, params } = feedVisibilityWhere(c.req.query(), uid);
   where.push(direction === "oldest" ? "v.published_at > ?" : "v.published_at < ?");
   params.push(anchor.published_at);
   where.push("COALESCE(uv.watched, 0) = 0");
@@ -685,6 +563,60 @@ api.get("/feed/adjacent", (c) => {
   const order = direction === "oldest" ? "v.published_at ASC" : "v.published_at DESC";
   const row = db.prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${order} LIMIT 1`).get(...params) as VideoRow | undefined;
   return c.json({ video: row ? attachTags(uid, [row])[0] : null });
+});
+
+// ---------- feed cleanup ----------
+// "clean" previews/counts what the filter would affect; "remain" previews what
+// the feed would still look like afterwards. Both share buildCleanupWhere with
+// GET /feed's own visibility rules, so what's shown here can never drift from
+// what /cleanup/apply actually touches.
+const CLEANUP_PAGE_SIZE = 24;
+
+api.post("/cleanup/preview", async (c) => {
+  const uid = currentUserId(c);
+  const body = await c.req.json() as { filter?: CleanupFilter; exclude_video_ids?: string[]; side?: "clean" | "remain"; page?: number };
+  const filter = body.filter ?? {};
+  const excludeIds = body.exclude_video_ids ?? [];
+  const side = body.side === "remain" ? "remain" : "clean";
+  const page = Math.max(0, Number(body.page ?? 0));
+
+  const { where, params } = buildCleanupWhere(filter, uid, side, excludeIds);
+  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const rows = db
+    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${feedSortSql()} DESC LIMIT ? OFFSET ?`)
+    .all(...params, CLEANUP_PAGE_SIZE, page * CLEANUP_PAGE_SIZE) as VideoRow[];
+  const total = countCleanupMatches(filter, uid, side, excludeIds);
+  return c.json({ videos: attachTags(uid, rows), total, page, limit: CLEANUP_PAGE_SIZE });
+});
+
+api.post("/cleanup/apply", async (c) => {
+  const uid = currentUserId(c);
+  const body = await c.req.json() as { filter?: CleanupFilter; exclude_video_ids?: string[]; action?: "archive" | "watched" };
+  const filter = body.filter ?? {};
+  const excludeIds = body.exclude_video_ids ?? [];
+  if (body.action !== "archive" && body.action !== "watched") return c.json({ error: "invalid action" }, 400);
+
+  const videoIds = listCleanupVideoIds(filter, uid, excludeIds);
+  if (videoIds.length === 0) return c.json({ affected: 0 });
+
+  const snapshot = snapshotUserVideoState(uid, videoIds);
+  applyCleanupAction(uid, videoIds, body.action);
+  // Both outcomes end in status=archived, so a pending auto download nobody
+  // will see anymore should stop the same way a single reject/watch does.
+  for (const id of videoIds) cancelAutoDownloadIfUnwanted(id);
+  saveBulkUndo(uid, body.action, snapshot);
+  refreshDiscoveryInBackground(uid);
+  return c.json({ affected: videoIds.length });
+});
+
+api.post("/cleanup/undo", (c) => {
+  const uid = currentUserId(c);
+  const entry = loadBulkUndo(uid);
+  if (!entry) return c.json({ error: "nothing to undo" }, 404);
+  restoreUserVideoState(uid, entry.snapshot);
+  clearBulkUndo(uid);
+  refreshDiscoveryInBackground(uid);
+  return c.json({ restored: entry.count });
 });
 
 api.get("/in-progress", (c) => {
@@ -1500,6 +1432,15 @@ const BUCKETS = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 // first action; subsequent actions update it. (videoExists guards FK errors.)
 const videoExistsStmt = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 
+// Whether this install has ever had a channel or video added, by any profile —
+// gates the full "start from scratch" onboarding (see GET /channels), as
+// opposed to a profile that simply hasn't followed anything yet.
+const anyChannelStmt = db.prepare("SELECT 1 FROM channels LIMIT 1");
+const anyVideoStmt = db.prepare("SELECT 1 FROM videos LIMIT 1");
+function instanceHasData(): boolean {
+  return !!anyChannelStmt.get() || !!anyVideoStmt.get();
+}
+
 api.post("/videos/:id/queue", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
@@ -1711,6 +1652,10 @@ api.get("/channels", (c) => {
       })(),
       tags: tags.filter((t) => t.channel_id === ch.channel_id).map((t) => ({ id: t.id, name: t.name, color: t.color })),
     })),
+    // Distinguishes a genuinely fresh install (show the full onboarding) from a
+    // profile that simply isn't following anything yet on an instance that
+    // already has channels/videos from another profile or an import.
+    instance_has_data: instanceHasData(),
   });
 });
 

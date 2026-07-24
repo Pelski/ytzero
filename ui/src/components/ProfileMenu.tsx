@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import "./ProfileMenu.css";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Check, Lock, LogOut, Settings, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronRight, Eraser, Lock, LogOut, Settings, SlidersHorizontal, X } from "lucide-react";
 import { api, type AuthStatus, type Profile } from "../api";
 import { emit, subscribe } from "../events";
 import { useI18n } from "../i18n";
@@ -148,6 +148,10 @@ export default function ProfileMenu() {
           trigger={<IconButton variant="ghost" size="sm" className="profile-card-size-trigger" label={t("videoCardSize")} icon={<SlidersHorizontal />} />}
         >
           <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => { setCardSize(next); persistVideoCardSize(next).then(() => emit("video-card-size-changed")).catch(() => {}); }} />
+          <MenuSeparator />
+          <Menu>
+            <MenuItem icon={<Eraser size={16} />} suffix={<ChevronRight size={15} className="cleanup-menu-item-chevron" />} onClick={() => { setCardSizeOpen(false); navigate("/cleanup"); }}>{t("cleanupFeed")}</MenuItem>
+          </Menu>
         </Popover>
       </div>
       <NotificationCenter />

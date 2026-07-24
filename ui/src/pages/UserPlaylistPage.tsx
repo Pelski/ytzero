@@ -11,6 +11,7 @@ import { emit } from "../events";
 import { formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, EmptyState, IconButton, Input, PageHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t, language } = useI18n();
@@ -90,7 +91,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton gridSize="sm" />
       ) : videos.length === 0 ? (
-        <EmptyState title={t("playlistIsEmpty")} />
+        <EmptyState art={<EmptyArt scene="playlistEmpty" />} title={t("playlistIsEmpty")} description={t("playlistIsEmptyHint")} />
       ) : (
         <div className="video-grid video-grid--sm">
           {videos.map((v) => (

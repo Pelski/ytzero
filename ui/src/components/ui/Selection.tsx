@@ -29,6 +29,36 @@ export function SelectMenu<T extends string | number>({ value, options, onChange
     : <Popover open={open} onOpenChange={onOpenChange} align="end" className="ui-select-menu__popover" trigger={trigger}>{content}</Popover>;
 }
 
+/** Like SelectMenu, but for choosing any number of options at once (checkmarks instead of a single active row). */
+export function MultiSelectMenu<T extends string | number>({ values, options, onChange, label, size = "md", disabled, searchable = false, searchPlaceholder = "Search…", emptyLabel = "—", summary, className, floating = false }: { values: readonly T[]; options: readonly { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean; searchText?: string }[]; onChange: (values: T[]) => void; label: string; size?: ButtonSize; disabled?: boolean; searchable?: boolean; searchPlaceholder?: string; emptyLabel?: ReactNode; /** Renders the trigger text for the current selection; defaults to the single option's label or the raw count. */ summary?: (selected: readonly T[]) => ReactNode; className?: string; floating?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedSet = new Set(values);
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleOptions = normalizedQuery ? options.filter((option) => (option.searchText ?? (typeof option.label === "string" ? option.label : String(option.value))).toLocaleLowerCase().includes(normalizedQuery)) : options;
+  const onOpenChange = (next: boolean) => { setOpen(next); if (!next) setQuery(""); };
+  const toggle = (value: T) => onChange(selectedSet.has(value) ? values.filter((v) => v !== value) : [...values, value]);
+  const triggerText = summary
+    ? summary(values)
+    : values.length === 0
+      ? emptyLabel
+      : values.length === 1
+        ? (options.find((o) => o.value === values[0])?.label ?? String(values[0]))
+        : String(values.length);
+  const trigger = <Button type="button" size={size} variant="secondary" disabled={disabled} className={cx("ui-select-menu__trigger", className)} aria-label={label} trailingIcon={<ChevronDown />}><span className="ui-select-menu__value">{triggerText}</span></Button>;
+  const content = <>
+    {searchable && <input className="ui-input ui-input--sm ui-select-menu__search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} autoFocus />}
+    <ScrollArea viewportClassName="ui-select-menu__options">
+      {visibleOptions.length > 0 ? <Menu>
+        {visibleOptions.map((option) => <MenuItem key={option.value} icon={option.icon} selected={selectedSet.has(option.value)} disabled={option.disabled} onClick={() => toggle(option.value)}>{option.label}</MenuItem>)}
+      </Menu> : <div className="ui-select-menu__empty">{emptyLabel}</div>}
+    </ScrollArea>
+  </>;
+  return floating
+    ? <FloatingPopover open={open} onOpenChange={onOpenChange} align="end" className="ui-select-menu__popover" trigger={trigger}>{content}</FloatingPopover>
+    : <Popover open={open} onOpenChange={onOpenChange} align="end" className="ui-select-menu__popover" trigger={trigger}>{content}</Popover>;
+}
+
 export function SegmentedControl<T extends string>({ value, options, onChange, label, className }: { value: T; options: readonly { value: T; label: ReactNode; icon?: ReactNode }[]; onChange: (value: T) => void; label: string; className?: string }) {
   return <div className={cx("ui-segmented", className)} role="radiogroup" aria-label={label}>{options.map((option) => <button type="button" role="radio" aria-checked={value === option.value} className={cx("ui-segmented__option", value === option.value && "ui-segmented__option--active")} key={option.value} onClick={() => onChange(option.value)}>{option.icon}{option.label}</button>)}</div>;
 }

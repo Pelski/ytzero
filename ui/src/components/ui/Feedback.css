@@ -14,6 +14,12 @@
 .ui-empty-state--compact { padding: 24px 16px; }
 .ui-empty-state__icon { color: var(--text-3); display: inline-flex; margin-bottom: 14px; }
 .ui-empty-state__icon svg { height: 40px; stroke-width: 1.4; width: 40px; }
+.ui-empty-state--art { padding-block: clamp(24px, 6vh, 64px); }
+.ui-empty-state__art { width: min(300px, 100%); }
+.ui-empty-state__art svg { display: block; height: auto; width: 100%; }
+.ui-empty-state__eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; margin-top: 16px; text-transform: uppercase; }
+.ui-empty-state--art .ui-empty-state__title { font-size: clamp(19px, 2.4vw, 24px); letter-spacing: -.02em; line-height: 1.2; margin-top: 8px; }
+.ui-empty-state--art .ui-empty-state__description { margin-top: 9px; max-width: 380px; }
 .ui-empty-state__title { color: var(--text); font-weight: 600; }
 .ui-empty-state__description { margin-top: 4px; max-width: 520px; }
 .ui-empty-state__action { margin-top: 14px; }

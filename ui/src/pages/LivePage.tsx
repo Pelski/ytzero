@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import "./LivePage.css";
-import { Radio } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -9,6 +8,7 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -49,7 +49,7 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (
-        <EmptyState icon={<Radio />} title={t("liveEmpty")} />
+        <EmptyState art={<EmptyArt scene="offAir" />} title={t("liveEmpty")} description={t("liveEmptyHint")} />
       ) : (
         <>
           {individualLive.length > 0 && (

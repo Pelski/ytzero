@@ -7,6 +7,7 @@ import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 import { Button, EmptyState, IconButton, PageHeader } from "../components/ui";
+import EmptyArt from "../components/illustrations/EmptyArt";
 
 export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -64,7 +65,7 @@ export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }
       <PageHeader title={t("discoveryTitle")} actions={<IconButton label={t("refresh")} icon={<RefreshCw className={refreshing ? "spin" : undefined} />} onClick={refresh} disabled={refreshing} />} />
 
       {local.length === 0 ? (
-        <EmptyState icon={<Inbox />} title={t("discoveryEmpty")} />
+        <EmptyState art={<EmptyArt scene="noDiscovery" />} title={t("discoveryEmpty")} description={t("discoveryEmptyHint")} />
       ) : null}
 
       {local.length > 0 && (
