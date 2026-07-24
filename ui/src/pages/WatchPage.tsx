@@ -286,6 +286,9 @@ export default function WatchPage() {
   // the manual DOM cleanup never touches the React-rendered LocalPlayer.
   const ytWrapRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const youtubePlaybackDesiredRef = useRef(false);
+  const youtubeHiddenAtRef = useRef(0);
+  const youtubeBackgroundRetryRef = useRef(false);
   const archivedRef = useRef(false);
   const progressRef = useRef<{ position: number; duration: number } | null>(null);
   const sbSegmentsRef = useRef<SponsorSegment[]>([]);
@@ -392,6 +395,7 @@ export default function WatchPage() {
 
   const requestYouTubePlayback = useCallback(() => {
     setYoutubeAutoplayBlocked(false);
+    youtubePlaybackDesiredRef.current = true;
     const p = playerRef.current;
     try {
       const iframe = p?.getIframe?.() as HTMLIFrameElement | undefined;
@@ -656,6 +660,15 @@ export default function WatchPage() {
         if (!position || !playerDuration) return;
         if (isStream) streamPositionRef.current = position;
         if (!isStream) progressRef.current = { position, duration: playerDuration };
+        if (playerKind === "youtube" && "mediaSession" in navigator) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: playerDuration,
+              playbackRate: Number(speedRef.current) || 1,
+              position: Math.min(position, playerDuration),
+            });
+          } catch {}
+        }
         if (p.getPlayerState?.() !== 1) return;
         if (!isStream) {
           api.saveProgress(id, position, playerDuration).catch(() => {});
@@ -765,16 +778,38 @@ export default function WatchPage() {
             requestYouTubePlayback();
           },
           onAutoplayBlocked: () => {
+            youtubePlaybackDesiredRef.current = false;
             if (!destroyed) setYoutubeAutoplayBlocked(true);
           },
           onStateChange: (e: any) => {
             // 1 === playing: apply the desired speed once (YT resets on load).
-            if (e?.data === 1 && !speedApplied) {
-              speedApplied = true;
-              applySpeed(e.target);
+            if (e?.data === 1) {
+              youtubePlaybackDesiredRef.current = true;
+              try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing"; } catch {}
+              if (!speedApplied) {
+                speedApplied = true;
+                applySpeed(e.target);
+              }
+            }
+            // Android can pause an inline iframe immediately after the page is
+            // backgrounded. Retry once in that narrow transition window; later
+            // pauses (headphones, calls, lock-screen controls) stay respected.
+            if (e?.data === 2) {
+              const justBackgrounded = document.hidden && Date.now() - youtubeHiddenAtRef.current < 2_000;
+              if (youtubePlaybackDesiredRef.current && justBackgrounded && !youtubeBackgroundRetryRef.current) {
+                youtubeBackgroundRetryRef.current = true;
+                e.target.playVideo?.();
+              } else {
+                try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused"; } catch {}
+                if (!document.hidden) youtubePlaybackDesiredRef.current = false;
+              }
             }
             // 0 === ended
-            if (e?.data === 0) handleEndedRef.current();
+            if (e?.data === 0) {
+              youtubePlaybackDesiredRef.current = false;
+              try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "none"; } catch {}
+              handleEndedRef.current();
+            }
           },
           onError: (e: any) => {
             if (!destroyed) setYoutubeError(Number(e?.data) || null);
@@ -796,6 +831,79 @@ export default function WatchPage() {
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
   }, [id, video?.video_id, videoMissing, membersOnlyNotice, playerKind, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
+
+  // Give the cross-origin YouTube iframe the same lock-screen/media-key surface
+  // as LocalPlayer. The action handlers deliberately dereference playerRef at
+  // invocation time because the iframe is created asynchronously.
+  useEffect(() => {
+    if (playerKind !== "youtube" || !video || !("mediaSession" in navigator)) return;
+    const mediaSession = navigator.mediaSession;
+    const seekBy = (seconds: number) => {
+      const player = playerRef.current;
+      const current = Number(player?.getCurrentTime?.());
+      const duration = Number(player?.getDuration?.());
+      if (!Number.isFinite(current)) return;
+      player?.seekTo?.(Math.min(Math.max(0, current + seconds), Number.isFinite(duration) ? duration : Infinity), true);
+    };
+    const setHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try { mediaSession.setActionHandler(action, handler); } catch {}
+    };
+
+    try {
+      mediaSession.metadata = new MediaMetadata({
+        title: video.title,
+        artist: video.channel_title,
+        artwork: video.thumbnail ? [{ src: img(video.thumbnail), sizes: "480x360", type: "image/jpeg" }] : [],
+      });
+    } catch {}
+    setHandler("play", () => {
+      youtubePlaybackDesiredRef.current = true;
+      playerRef.current?.playVideo?.();
+    });
+    setHandler("pause", () => {
+      youtubePlaybackDesiredRef.current = false;
+      playerRef.current?.pauseVideo?.();
+    });
+    setHandler("seekbackward", (details) => seekBy(-(details.seekOffset ?? 10)));
+    setHandler("seekforward", (details) => seekBy(details.seekOffset ?? 10));
+    setHandler("seekto", (details) => {
+      if (details.seekTime != null) playerRef.current?.seekTo?.(details.seekTime, true);
+    });
+
+    return () => {
+      try {
+        mediaSession.metadata = null;
+        mediaSession.playbackState = "none";
+      } catch {}
+      for (const action of ["play", "pause", "seekbackward", "seekforward", "seekto"] as MediaSessionAction[]) {
+        setHandler(action, null);
+      }
+    };
+  }, [playerKind, video?.video_id, video?.title, video?.channel_title, video?.thumbnail]);
+
+  // Preserve the user's playing intent while Android moves the tab into the
+  // background. Calling playVideo before suspension avoids the mobile-only
+  // pause seen with inline embeds; the state handler above provides one retry.
+  useEffect(() => {
+    if (playerKind !== "youtube") return;
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        youtubeBackgroundRetryRef.current = false;
+        return;
+      }
+      const player = playerRef.current;
+      const state = player?.getPlayerState?.();
+      // Some Android builds pause the iframe just before dispatching the page
+      // visibility event. Preserve the last known playing intent in that case,
+      // while still respecting a pause the viewer made in the foreground.
+      youtubePlaybackDesiredRef.current = youtubePlaybackDesiredRef.current && (state === 1 || state === 2 || state === 3);
+      youtubeHiddenAtRef.current = Date.now();
+      youtubeBackgroundRetryRef.current = false;
+      if (youtubePlaybackDesiredRef.current) player?.playVideo?.();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [playerKind, id]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
