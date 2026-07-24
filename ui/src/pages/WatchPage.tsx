@@ -402,8 +402,11 @@ export default function WatchPage() {
       if (iframe) {
         const permissions = new Set((iframe.getAttribute("allow") ?? "").split(";").map((v) => v.trim()).filter(Boolean));
         permissions.add("autoplay");
+        permissions.add("encrypted-media");
         permissions.add("picture-in-picture");
+        permissions.add("fullscreen");
         iframe.setAttribute("allow", [...permissions].join("; "));
+        iframe.setAttribute("allowfullscreen", "");
       }
       p?.playVideo?.();
     } catch {}
