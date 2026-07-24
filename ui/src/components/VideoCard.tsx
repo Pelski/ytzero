@@ -133,6 +133,7 @@ function VideoCard({
   const [removed, setRemoved] = useState(false);
   const [actionProximity, setActionProximity] = useState(0);
   const [actionsPinned, setActionsPinned] = useState(false);
+  const [actionsHovered, setActionsHovered] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState(video.download_status ?? null);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
@@ -144,7 +145,7 @@ function VideoCard({
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
   const blockClickAfterDragRef = useRef(false);
-  const actionsOpen = actionsPinned || actionProximity > 0.52;
+  const actionsOpen = actionsPinned || actionsHovered || actionProximity > 0.52;
 
   const exitLeft = () => {
     const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
@@ -267,6 +268,10 @@ function VideoCard({
 
   const updateActionProximity = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== "mouse") return;
+    if ((e.target as HTMLElement).closest(".thumb-actions")) {
+      setActionsHovered(true);
+      return;
+    }
     const rect = e.currentTarget.getBoundingClientRect();
     const next = getActionProximity(rect, e.clientX, e.clientY);
     if (Math.abs(next - lastProximityRef.current) < 0.025) return;
@@ -492,7 +497,11 @@ function VideoCard({
             >
               <span /><span /><span /><span />
             </button>
-            <div className="thumb-actions">
+            <div
+              className="thumb-actions"
+              onPointerEnter={(e) => { if (e.pointerType === "mouse") setActionsHovered(true); }}
+              onPointerLeave={(e) => { if (e.pointerType === "mouse") setActionsHovered(false); }}
+            >
               <VideoScheduleActions
                 video={video}
                 variant="overlay"

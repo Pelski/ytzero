@@ -29,4 +29,3 @@
 .tooltip-wrap--right:hover .tooltip-tip { transform: translateY(-50%) translateX(0); }
 .tooltip-wrap--top:hover   .tooltip-tip { transform: translateX(-50%) translateY(0); }
 .tooltip-wrap--bottom:hover .tooltip-tip{ transform: translateX(-50%) translateY(0); }
-
