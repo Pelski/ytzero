@@ -219,6 +219,8 @@ export interface AppSettings {
   sponsorblock_enabled: string;
   sponsorblock_categories: string;
   update_check_interval: string;
+  feed_autoplay_enabled: string;
+  feed_autoplay_direction: string;
 }
 
 export interface AppNotification {
@@ -716,6 +718,12 @@ export const api = {
     if (p.processing) qs.set("processing", "1");
     if (p.limit) qs.set("limit", String(p.limit));
     return http<{ videos: Video[] }>(`/feed?${qs}`);
+  },
+  feedAdjacent: (videoId: string, direction: "oldest" | "newest", opts: { tags?: number[]; showAll?: boolean } = {}) => {
+    const qs = new URLSearchParams({ video_id: videoId, direction });
+    if (opts.tags?.length) qs.set("tags", opts.tags.join(","));
+    if (opts.showAll) qs.set("show_all", "1");
+    return http<{ video: Video | null }>(`/feed/adjacent?${qs}`);
   },
   inProgress: () => http<{ videos: Video[] }>("/in-progress"),
   youtubeSearch: (q: string) => http<{ results: SearchResult[]; channels: ChannelSearchResult[] }>(`/search/youtube?q=${encodeURIComponent(q)}`),

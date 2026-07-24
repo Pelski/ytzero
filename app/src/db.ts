@@ -607,6 +607,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   sponsorblock_enabled: "0",
   sponsorblock_categories: '["sponsor"]',
   update_check_interval: "off",
+  // "Autoplay my feed" (#55): auto-advance through the main feed on video end.
+  feed_autoplay_enabled: "0",
+  feed_autoplay_direction: "oldest", // oldest | newest
   // ---------- authentication (all app-wide, owned by the primary profile) ----------
   // none | shared | per_profile | oidc | proxy_header
   auth_method: "none",

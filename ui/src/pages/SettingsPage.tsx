@@ -1117,6 +1117,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
+  const [feedAutoplayEnabled, setFeedAutoplayEnabled] = useState(false);
+  const [feedAutoplayDirection, setFeedAutoplayDirection] = useState<"oldest" | "newest">("oldest");
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("everywhere");
   const [watchedStyle, setWatchedStyle] = useState<WatchedStyle>("dimmed");
   const [videoCardSize, setVideoCardSize] = useState(248);
@@ -1285,6 +1287,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setShowShorts(r.settings.show_shorts === "1");
         setShowTopChannels(r.settings.show_top_channels !== "0");
         setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
+        setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
+        setFeedAutoplayDirection(r.settings.feed_autoplay_direction === "newest" ? "newest" : "oldest");
         setMembersOnlyVisibility(
           r.settings.hide_members_only_from_feed === "1"
             ? r.settings.hide_members_only_on_channel === "1" ? "hidden" : "channel"
@@ -1419,6 +1423,19 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     const next = !hideLiveFromFeed;
     setHideLiveFromFeed(next);
     await api.updateSettings({ hide_live_from_feed: next ? "1" : "0" });
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const toggleFeedAutoplay = async () => {
+    const next = !feedAutoplayEnabled;
+    setFeedAutoplayEnabled(next);
+    await api.updateSettings({ feed_autoplay_enabled: next ? "1" : "0" });
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const changeFeedAutoplayDirection = async (next: "oldest" | "newest") => {
+    setFeedAutoplayDirection(next);
+    await api.updateSettings({ feed_autoplay_direction: next });
     showToast(t("displaySettingsSaved"));
   };
 
@@ -2213,6 +2230,24 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
           </SettingRow>
+
+          <SettingRow label={t("feedAutoplay")} description={t("feedAutoplayHint")}>
+            <Switch checked={feedAutoplayEnabled} onCheckedChange={() => toggleFeedAutoplay()} />
+          </SettingRow>
+
+          {feedAutoplayEnabled && (
+            <SettingRow label={t("feedAutoplayDirection")} description={t("feedAutoplayDirectionHint")}>
+              <SelectMenu
+                label={t("feedAutoplayDirection")}
+                value={feedAutoplayDirection}
+                onChange={changeFeedAutoplayDirection}
+                options={[
+                  { value: "oldest", label: t("feedAutoplayOldestFirst") },
+                  { value: "newest", label: t("feedAutoplayNewestFirst") },
+                ]}
+              />
+            </SettingRow>
+          )}
 
           <SettingRow label={t("membersOnlyVisibility")} description={t("membersOnlyVisibilityHint")}>
             <SelectMenu

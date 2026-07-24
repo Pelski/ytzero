@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import confetti from "canvas-confetti";
 import "./WatchPage.css";
 import { emit, emitToast } from "../events";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Archive,
   AlertTriangle,
@@ -43,6 +43,7 @@ import PlaylistPicker from "../components/PlaylistPicker";
 import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
+import UpNextOverlay from "../components/UpNextOverlay";
 import { img } from "../img";
 import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
 import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, MenuItem, MenuSeparator, MenuStatus, Popover, ScrollArea, Switch } from "../components/ui";
@@ -172,6 +173,10 @@ export default function WatchPage() {
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const feedContext = searchParams.get("feedContext") === "1";
+  const feedTags = searchParams.get("tags") ?? "";
+  const feedShowAll = searchParams.get("show_all") === "1";
   const [video, setVideo] = useState<Video | null>(null);
   const [videoMissing, setVideoMissing] = useState(false);
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
@@ -243,6 +248,11 @@ export default function WatchPage() {
   const nextInPlaylistRef = useRef<string | null>(null);
   const playlistItemsRef = useRef<HTMLDivElement>(null);
   const activePlaylistItemRef = useRef<HTMLAnchorElement>(null);
+  // "Autoplay my feed" (#55): the next video in the main feed, prefetched so
+  // it's ready the instant the current one ends. Only populated when we got
+  // here from the Feed (feedContext) and the setting is on.
+  const nextInFeedRef = useRef<Video | null>(null);
+  const [upNextVideo, setUpNextVideo] = useState<Video | null>(null);
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
@@ -478,6 +488,23 @@ export default function WatchPage() {
     nextInPlaylistRef.current = next ? `/watch/${next.videoId}/playlist/${playlistId}` : null;
   }, [playlistIndex, playlistVideos, playlistId]);
 
+  // "Autoplay my feed" (#55): prefetch the next feed video so the up-next
+  // overlay can appear instantly on end. It shows for every video reached
+  // from the Feed regardless of the setting — only whether it auto-advances
+  // depends on feed_autoplay_enabled (toggleable right on the overlay too).
+  useEffect(() => {
+    nextInFeedRef.current = null;
+    setUpNextVideo(null);
+    if (!id || !feedContext) return;
+    let cancelled = false;
+    const direction = settings?.feed_autoplay_direction === "newest" ? "newest" : "oldest";
+    const tagIds = feedTags ? feedTags.split(",").map(Number).filter(Boolean) : [];
+    api.feedAdjacent(id, direction, { tags: tagIds, showAll: feedShowAll })
+      .then((r) => { if (!cancelled) nextInFeedRef.current = r.video; })
+      .catch(() => { if (!cancelled) nextInFeedRef.current = null; });
+    return () => { cancelled = true; };
+  }, [id, feedContext, feedTags, feedShowAll, settings?.feed_autoplay_direction]);
+
   useEffect(() => {
     if (!video || settings?.sponsorblock_enabled !== "1") {
       setSbSegments([]);
@@ -552,7 +579,21 @@ export default function WatchPage() {
     if (!id) return;
     api.complete(id).catch(() => {});
     if (nextInPlaylistRef.current) navigate(nextInPlaylistRef.current);
+    else if (nextInFeedRef.current) setUpNextVideo(nextInFeedRef.current);
   }, [id, navigate]);
+
+  const goToUpNextVideo = useCallback(() => {
+    if (!upNextVideo) return;
+    const params = new URLSearchParams({ feedContext: "1" });
+    if (feedTags) params.set("tags", feedTags);
+    if (feedShowAll) params.set("show_all", "1");
+    navigate(`/watch/${upNextVideo.video_id}?${params.toString()}`);
+  }, [upNextVideo, feedTags, feedShowAll, navigate]);
+
+  const toggleFeedAutoplay = useCallback((next: boolean) => {
+    setSettings((s) => s ? { ...s, feed_autoplay_enabled: next ? "1" : "0" } : s);
+    api.updateSettings({ feed_autoplay_enabled: next ? "1" : "0" }).catch(() => {});
+  }, []);
   const handleEndedRef = useRef(handleEnded);
   useEffect(() => { handleEndedRef.current = handleEnded; }, [handleEnded]);
 
@@ -1262,6 +1303,15 @@ export default function WatchPage() {
                     <Play size={16} /> {t("playerPlay")}
                   </Button>
                 </div>
+              )}
+              {upNextVideo && (
+                <UpNextOverlay
+                  video={upNextVideo}
+                  autoplayEnabled={settings?.feed_autoplay_enabled === "1"}
+                  onToggleAutoplay={toggleFeedAutoplay}
+                  onPlayNow={goToUpNextVideo}
+                  onDismiss={() => setUpNextVideo(null)}
+                />
               )}
             </div>
           </div>

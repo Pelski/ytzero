@@ -481,6 +481,56 @@ function feedSortSql() {
   return "v.published_at";
 }
 
+// The WHERE clause for the plain, unfiltered-by-channel/search main feed —
+// shared by GET /feed (when none of channel/q/all_sources/liked/only_shorts
+// apply) and GET /feed/adjacent, so "what the feed shows" and "what's next"
+// can never drift apart.
+function mainFeedWhere(c: any, uid: number): { where: string[]; params: any[] } {
+  const where: string[] = [];
+  const params: any[] = [];
+  where.push("(v.published_at IS NOT NULL AND v.published_at != '')");
+  const status = c.req.query("status") ?? "inbox";
+  if (status !== "all") {
+    where.push("COALESCE(uv.status, 'inbox') = ?");
+    params.push(status);
+  }
+  where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
+  const shortsParam = c.req.query("shorts");
+  if (shortsParam === "0" || (shortsParam !== "1" && getUserSetting(uid, "show_shorts") !== "1")) {
+    where.push("COALESCE(v.is_short, 0) = 0");
+  }
+  if (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid)) {
+    where.push("v.live_status NOT IN ('live', 'upcoming')");
+  }
+  where.push(`NOT (
+    v.members_only = 1 AND CASE COALESCE(
+      (SELECT member_pref.members_only_visibility FROM user_channels member_pref
+       WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
+    )
+      WHEN 'channel' THEN 1
+      WHEN 'hidden' THEN 1
+      WHEN 'everywhere' THEN 0
+      WHEN 'feed' THEN 0
+      ELSE ?
+    END = 1
+  )`);
+  params.push(getUserSetting(uid, "hide_members_only_from_feed") === "1" ? 1 : 0);
+  const tagsParam = c.req.query("tags");
+  const tagIds = tagsParam ? tagsParam.split(",").map(Number).filter(Boolean) : [];
+  if (tagIds.length) {
+    const f = tagFilterSql(uid, tagIds);
+    where.push(f.sql);
+    params.push(...f.params);
+  }
+  const showAll = c.req.query("show_all") === "1";
+  if (!showAll) {
+    const fo = filterOnlySql(uid, tagIds);
+    where.push(fo.sql);
+    params.push(...fo.params);
+  }
+  return { where, params };
+}
+
 function localSQLite(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:00`;
@@ -525,102 +575,116 @@ api.get("/feed", (c) => {
   const limit = Math.min(100, Number(c.req.query("limit") ?? 40));
   const q = c.req.query("q")?.trim();
   const channel = c.req.query("channel");
-  const tagsParam = c.req.query("tags"); // comma-separated tag ids
-  const status = c.req.query("status") ?? "inbox"; // inbox | all
   const allSources = c.req.query("all_sources") === "1";
   const processing = c.req.query("processing") === "1";
   if (processing && !channel) return c.json({ videos: [], page, limit });
 
-  const where: string[] = [];
-  const params: any[] = [];
-  // Videos without a publication date are incomplete imports. Never let them
-  // use created_at as a fake feed date; expose them only through the channel's
-  // dedicated processing tab.
-  where.push(processing
-    ? "(v.published_at IS NULL OR v.published_at = '')"
-    : "(v.published_at IS NOT NULL AND v.published_at != '')");
-  if (status !== "all") {
-    where.push("COALESCE(uv.status, 'inbox') = ?");
-    params.push(status);
-  }
-  if (channel) {
-    where.push("v.channel_id = ?");
-    params.push(channel);
-  } else if (!allSources) {
-    where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
-  }
-  if (q) {
-    where.push("(v.title LIKE ? OR v.description LIKE ?)");
-    params.push(`%${q}%`, `%${q}%`);
-  }
-  // shorts=1 forces shorts in, shorts=0 forces them out; otherwise the active
-  // profile's setting decides.
-  const shortsParam = c.req.query("shorts");
-  if (shortsParam === "0" || (shortsParam !== "1" && getUserSetting(uid, "show_shorts") !== "1")) {
-    where.push("COALESCE(v.is_short, 0) = 0");
-  }
-  if (c.req.query("only_shorts") === "1") {
-    where.push("v.is_short = 1");
-  }
-  // Keep live/upcoming streams available in the dedicated Live tab, while
-  // allowing each profile to keep its main feed focused on regular uploads.
-  if (c.req.query("only_shorts") !== "1" && (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid))) {
-    where.push("v.live_status NOT IN ('live', 'upcoming')");
-  }
   // Channel defaults inherit the profile-wide visibility for each surface.
   const isMainFeed = !processing && !channel && !allSources && !q && c.req.query("liked") !== "1" && c.req.query("only_shorts") !== "1";
-  if (channel) {
-    where.push(`NOT (
-      v.members_only = 1 AND CASE COALESCE(
-        (SELECT member_pref.members_only_visibility FROM user_channels member_pref
-         WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
-      )
-        WHEN 'feed' THEN 0
-        WHEN 'hidden' THEN 1
-        WHEN 'everywhere' THEN 0
-        WHEN 'channel' THEN 0
-        ELSE ?
-      END = 1
-    )`);
-    params.push(getUserSetting(uid, "hide_members_only_on_channel") === "1" ? 1 : 0);
-  }
+
+  let where: string[];
+  let params: any[];
   if (isMainFeed) {
-    where.push(`NOT (
-      v.members_only = 1 AND CASE COALESCE(
-        (SELECT member_pref.members_only_visibility FROM user_channels member_pref
-         WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
-      )
-        WHEN 'channel' THEN 1
-        WHEN 'hidden' THEN 1
-        WHEN 'everywhere' THEN 0
-        WHEN 'feed' THEN 0
-        ELSE ?
-      END = 1
-    )`);
-    params.push(getUserSetting(uid, "hide_members_only_from_feed") === "1" ? 1 : 0);
-  }
-  if (c.req.query("liked") === "1") {
-    where.push("uv.liked = 1");
-  }
-  const tagIds = tagsParam ? tagsParam.split(",").map(Number).filter(Boolean) : [];
-  if (tagIds.length) {
-    const f = tagFilterSql(uid, tagIds);
-    where.push(f.sql);
-    params.push(...f.params);
-  }
-  // Exclude filter_only-tagged videos unless the relevant tag is actively selected.
-  // show_all=1 bypasses this entirely and shows everything regardless of filter_only tags.
-  const showAll = c.req.query("show_all") === "1";
-  if (!channel && !allSources && !showAll) {
-    const fo = filterOnlySql(uid, tagIds);
-    where.push(fo.sql);
-    params.push(...fo.params);
+    ({ where, params } = mainFeedWhere(c, uid));
+  } else {
+    where = [];
+    params = [];
+    // Videos without a publication date are incomplete imports. Never let them
+    // use created_at as a fake feed date; expose them only through the channel's
+    // dedicated processing tab.
+    where.push(processing
+      ? "(v.published_at IS NULL OR v.published_at = '')"
+      : "(v.published_at IS NOT NULL AND v.published_at != '')");
+    const status = c.req.query("status") ?? "inbox";
+    if (status !== "all") {
+      where.push("COALESCE(uv.status, 'inbox') = ?");
+      params.push(status);
+    }
+    if (channel) {
+      where.push("v.channel_id = ?");
+      params.push(channel);
+    } else if (!allSources) {
+      where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
+    }
+    if (q) {
+      where.push("(v.title LIKE ? OR v.description LIKE ?)");
+      params.push(`%${q}%`, `%${q}%`);
+    }
+    // shorts=1 forces shorts in, shorts=0 forces them out; otherwise the active
+    // profile's setting decides.
+    const shortsParam = c.req.query("shorts");
+    if (shortsParam === "0" || (shortsParam !== "1" && getUserSetting(uid, "show_shorts") !== "1")) {
+      where.push("COALESCE(v.is_short, 0) = 0");
+    }
+    if (c.req.query("only_shorts") === "1") {
+      where.push("v.is_short = 1");
+    }
+    // Keep live/upcoming streams available in the dedicated Live tab, while
+    // allowing each profile to keep its main feed focused on regular uploads.
+    if (c.req.query("only_shorts") !== "1" && (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid))) {
+      where.push("v.live_status NOT IN ('live', 'upcoming')");
+    }
+    if (channel) {
+      where.push(`NOT (
+        v.members_only = 1 AND CASE COALESCE(
+          (SELECT member_pref.members_only_visibility FROM user_channels member_pref
+           WHERE member_pref.user_id = ${uid} AND member_pref.channel_id = v.channel_id), 'default'
+        )
+          WHEN 'feed' THEN 0
+          WHEN 'hidden' THEN 1
+          WHEN 'everywhere' THEN 0
+          WHEN 'channel' THEN 0
+          ELSE ?
+        END = 1
+      )`);
+      params.push(getUserSetting(uid, "hide_members_only_on_channel") === "1" ? 1 : 0);
+    }
+    if (c.req.query("liked") === "1") {
+      where.push("uv.liked = 1");
+    }
+    const tagsParam = c.req.query("tags");
+    const tagIds = tagsParam ? tagsParam.split(",").map(Number).filter(Boolean) : [];
+    if (tagIds.length) {
+      const f = tagFilterSql(uid, tagIds);
+      where.push(f.sql);
+      params.push(...f.params);
+    }
+    // Exclude filter_only-tagged videos unless the relevant tag is actively selected.
+    // show_all=1 bypasses this entirely and shows everything regardless of filter_only tags.
+    const showAll = c.req.query("show_all") === "1";
+    if (!channel && !allSources && !showAll) {
+      const fo = filterOnlySql(uid, tagIds);
+      where.push(fo.sql);
+      params.push(...fo.params);
+    }
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = db
     .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${isMainFeed ? feedSortSql() : "COALESCE(v.published_at, v.created_at)"} DESC LIMIT ? OFFSET ?`)
     .all(...params, limit, page * limit) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows), page, limit });
+});
+
+// The next/previous video in the main feed, in publish-date order, skipping
+// anything already watched. Backs the "autoplay my feed" setting — resolved
+// server-side (rather than walking the client's loaded pages) so it always
+// matches the full feed regardless of how many pages the UI has fetched.
+api.get("/feed/adjacent", (c) => {
+  const uid = currentUserId(c);
+  const videoId = c.req.query("video_id");
+  const direction = c.req.query("direction") === "newest" ? "newest" : "oldest";
+  if (!videoId) return c.json({ video: null });
+  const anchor = db.prepare("SELECT published_at FROM videos WHERE video_id = ?").get(videoId) as { published_at: string | null } | null;
+  if (!anchor?.published_at) return c.json({ video: null });
+
+  const { where, params } = mainFeedWhere(c, uid);
+  where.push(direction === "oldest" ? "v.published_at > ?" : "v.published_at < ?");
+  params.push(anchor.published_at);
+  where.push("COALESCE(uv.watched, 0) = 0");
+  const whereSql = `WHERE ${where.join(" AND ")}`;
+  const order = direction === "oldest" ? "v.published_at ASC" : "v.published_at DESC";
+  const row = db.prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${order} LIMIT 1`).get(...params) as VideoRow | undefined;
+  return c.json({ video: row ? attachTags(uid, [row])[0] : null });
 });
 
 api.get("/in-progress", (c) => {
