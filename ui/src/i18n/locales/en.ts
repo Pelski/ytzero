@@ -131,6 +131,8 @@ export const en = {
     restoreRejectedVideo: "Restore rejected video",
     rejectVideo: "Reject video",
     watched: "Watched",
+    markWatched: "Mark as watched",
+    markUnwatched: "Mark as unwatched",
     scheduledFeedback: "Scheduled",
     scheduleRemovedFeedback: "Removed from schedule",
     remove: "Remove",

@@ -1515,6 +1515,35 @@ api.post("/videos/:id/complete", (c) => {
   return c.json({ ok: true });
 });
 
+api.delete("/videos/:id/complete", (c) => {
+  const uid = currentUserId(c);
+  const id = c.req.param("id");
+  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  db.transaction(() => {
+    const state = db.prepare("SELECT watched FROM user_videos WHERE user_id = ? AND video_id = ?")
+      .get(uid, id) as { watched: number | null } | null;
+    db.prepare(
+      `INSERT INTO user_videos (user_id, video_id, status, watched) VALUES (?, ?, 'inbox', NULL)
+       ON CONFLICT(user_id, video_id) DO UPDATE SET
+         status = 'inbox', watched = NULL, watch_position = NULL, watch_duration = NULL,
+         bucket = NULL, queued_at = NULL, show_from = NULL`
+    ).run(uid, id);
+    // Completing a video creates one history entry. Remove only the newest one
+    // so undoing an accidental click does not erase older, legitimate watches.
+    // Checking the old state also keeps repeated DELETE requests idempotent.
+    if (state?.watched === 1) {
+      db.prepare(
+        `DELETE FROM history WHERE id = (
+           SELECT id FROM history WHERE user_id = ? AND video_id = ?
+           ORDER BY watched_at DESC, id DESC LIMIT 1
+         )`
+      ).run(uid, id);
+    }
+  })();
+  refreshDiscoveryInBackground(uid);
+  return c.json({ ok: true });
+});
+
 api.put("/videos/:id/like", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");

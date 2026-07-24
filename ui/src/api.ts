@@ -850,6 +850,7 @@ export const api = {
   restore: (id: string) => http(`/videos/${id}/restore`, { method: "POST" }),
   watch: (id: string) => http(`/videos/${id}/watch`, { method: "POST" }),
   complete: (id: string) => http(`/videos/${id}/complete`, { method: "POST" }),
+  markUnwatched: (id: string) => http(`/videos/${id}/complete`, { method: "DELETE" }),
   likeVideo: (id: string, liked: boolean) =>
     http(`/videos/${id}/like`, { method: "PUT", body: JSON.stringify({ liked }) }),
   tagVideo: (id: string, tag_id: number) =>

@@ -185,13 +185,24 @@ export default function ShortsPage() {
     navigate("/shorts", { replace: true });
   }, [navigate]);
 
-  const handleWatched = useCallback((videoId: string) => {
+  const handleWatched = useCallback((videoId: string, watched = true) => {
     setWatchedIds((prev) => {
-      if (prev.has(videoId)) return prev;
       const next = new Set(prev);
-      next.add(videoId);
+      if (watched) next.add(videoId);
+      else next.delete(videoId);
       return next;
     });
+    setVideos((prev) => prev.map((video) =>
+      video.video_id === videoId
+        ? {
+            ...video,
+            watched: watched ? 1 : null,
+            status: watched ? video.status : "inbox",
+            watch_position: watched ? video.watch_position : null,
+            watch_duration: watched ? video.watch_duration : null,
+          }
+        : video
+    ));
   }, []);
 
   const handleLiked = useCallback((videoId: string, liked: boolean) => {
@@ -259,6 +270,7 @@ export default function ShortsPage() {
                   video={v}
                   onPlay={openPlayer}
                   onRemoved={handleRemoved}
+                  onWatched={handleWatched}
                   onLiked={handleLiked}
                   isWatched={isWatched(v)}
                   isLiked={liked}

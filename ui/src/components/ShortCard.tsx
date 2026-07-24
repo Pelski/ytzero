@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { MouseEvent } from "react";
-import { Archive, Check, Eye, Heart, Lock, Star } from "lucide-react";
+import { Archive, Check, Eye, EyeOff, Heart, Lock, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
@@ -15,6 +15,7 @@ export default function ShortCard({
   video,
   onPlay,
   onRemoved,
+  onWatched,
   onLiked,
   isWatched,
   isLiked,
@@ -22,6 +23,7 @@ export default function ShortCard({
   video: Video;
   onPlay: (v: Video) => void;
   onRemoved: (videoId: string) => void;
+  onWatched: (videoId: string, watched: boolean) => void;
   onLiked: (videoId: string, liked: boolean) => void;
   isWatched: boolean;
   isLiked: boolean;
@@ -59,6 +61,13 @@ export default function ShortCard({
     const next = !isLiked;
     onLiked(video.video_id, next);
     api.likeVideo(video.video_id, next).catch(() => onLiked(video.video_id, !next));
+  };
+
+  const markUnwatched = (e: MouseEvent) => {
+    e.stopPropagation();
+    api.markUnwatched(video.video_id)
+      .then(() => onWatched(video.video_id, false))
+      .catch(() => {});
   };
 
   const views = formatViewsCount(video.views, language);
@@ -106,8 +115,14 @@ export default function ShortCard({
             <Heart size={16} fill={isLiked ? "currentColor" : "none"} />
           </button>
         </Tooltip>
-        {video.status !== "archived" && (
-          <Tooltip text={t("watched")}>
+        {isWatched ? (
+          <Tooltip text={t("markUnwatched")}>
+            <button className="sc-btn" onClick={markUnwatched}>
+              <EyeOff size={16} />
+            </button>
+          </Tooltip>
+        ) : video.status !== "archived" ? (
+          <Tooltip text={t("markWatched")}>
             <button
               className="sc-btn"
               onClick={removeWith(() =>
@@ -117,7 +132,7 @@ export default function ShortCard({
               <Eye size={16} />
             </button>
           </Tooltip>
-        )}
+        ) : null}
         {video.status !== "archived" && (
           <Tooltip text={t("reject")}>
             <button className="sc-btn" onClick={removeWith(() => api.archiveVideo(video.video_id))}>

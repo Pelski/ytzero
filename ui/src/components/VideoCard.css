@@ -32,3 +32,38 @@
   background: var(--accent);
   border-color: var(--accent);
 }
+
+.swipe-reveal--restored {
+  left: 0;
+  background: color-mix(in srgb, #52b979 22%, transparent);
+  color: #7bd99d;
+}
+
+.swipe-wrap.card-fading .swipe-reveal--restored {
+  background: color-mix(in srgb, #52b979 34%, transparent);
+}
+
+.swipe-wrap.video-card-entering {
+  animation: video-card-enter-feed 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes video-card-enter-feed {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.975);
+  }
+  62% {
+    opacity: 1;
+    transform: translateY(2px) scale(1.005);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-wrap.video-card-entering {
+    animation: none;
+  }
+}

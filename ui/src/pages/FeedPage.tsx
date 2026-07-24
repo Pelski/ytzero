@@ -10,7 +10,7 @@ import { img } from "../img";
 import ChildTimeRequestBanner from "../components/ChildTimeRequestBanner";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import TagFilterBar from "../components/TagFilterBar";
-import VideoCard from "../components/VideoCard";
+import VideoCard, { type CardFeedback } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 import { Button, ButtonLink, Divider, EmptyState, IconButton } from "../components/ui";
@@ -142,7 +142,9 @@ export default function FeedPage({
   // that already has channels/videos (another profile, an import), gets a
   // lighter nudge instead of being told to start from zero.
   const [instanceHasData, setInstanceHasData] = useState<boolean | null>(null);
+  const [enteringFeedVideoId, setEnteringFeedVideoId] = useState<string | null>(null);
   const loadMoreRef = useRef<HTMLButtonElement>(null);
+  const enteringFeedTimerRef = useRef<number | null>(null);
   const inProgressScroll = useHScroll();
   const queuedScroll = useHScroll();
 
@@ -184,6 +186,10 @@ export default function FeedPage({
     ro.observe(el);
     return () => ro.disconnect();
   }, [hCardMin]);
+
+  useEffect(() => () => {
+    if (enteringFeedTimerRef.current !== null) window.clearTimeout(enteringFeedTimerRef.current);
+  }, []);
 
   const load = useCallback(async (requestedPage = page) => {
     if (requestedPage === 0) setLoading(true);
@@ -316,6 +322,27 @@ export default function FeedPage({
     loadInProgress();
   };
 
+  const handleInProgressChanged = (videoId?: string, feedback?: CardFeedback) => {
+    if (!videoId) return;
+    loadQueued();
+
+    if (feedback !== "unwatched") {
+      setVideos((current) => current.filter((video) => video.video_id !== videoId));
+      loadInProgress();
+      return;
+    }
+
+    api.inProgress().then((result) => {
+      setVideos((current) => current.map((video) => video.video_id === videoId
+        ? { ...video, watched: null, watch_position: null, watch_duration: null, status: "inbox" }
+        : video));
+      setEnteringFeedVideoId(videoId);
+      setInProgress(result.videos.filter((video) => video.is_short === 0));
+      if (enteringFeedTimerRef.current !== null) window.clearTimeout(enteringFeedTimerRef.current);
+      enteringFeedTimerRef.current = window.setTimeout(() => setEnteringFeedVideoId(null), 800);
+    }).catch(console.error);
+  };
+
   // Time-based queued sections — only show videos that have unlocked.
   const now = new Date();
   const dueQueuedVideos = queued
@@ -325,6 +352,8 @@ export default function FeedPage({
       if (bucketDiff !== 0) return bucketDiff;
       return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
     });
+  const inProgressIds = new Set(inProgress.map((video) => video.video_id));
+  const feedVideos = videos.filter((video) => !inProgressIds.has(video.video_id));
   const showQueuedSection = dueQueuedVideos.length > 0 && selectedTags.length === 0;
   const showFeedPreludeDivider = inProgress.length > 0 || showQueuedSection;
 
@@ -374,7 +403,7 @@ export default function FeedPage({
             <div className={`h-scroll-row h-scroll-row--${gridSize}`} ref={inProgressScroll.ref}>
               {inProgress.map((v) => (
                 <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
-                  <VideoCard video={v} onPlay={onPlay} onChanged={loadInProgress} />
+                  <VideoCard video={v} onPlay={onPlay} onChanged={handleInProgressChanged} />
                 </div>
               ))}
             </div>
@@ -430,8 +459,14 @@ export default function FeedPage({
       ) : (
         <>
           <div className={`video-grid video-grid--${gridSize}`}>
-            {videos.map((v) => (
-              <VideoCard key={v.video_id} video={v} onPlay={handleFeedPlay} onChanged={removeFromFeed} />
+            {feedVideos.map((v) => (
+              <VideoCard
+                key={v.video_id}
+                video={v}
+                onPlay={handleFeedPlay}
+                onChanged={removeFromFeed}
+                entering={v.video_id === enteringFeedVideoId}
+              />
             ))}
           </div>
           {loadingMore && <VideoGridSkeleton count={4} gridSize={gridSize} />}

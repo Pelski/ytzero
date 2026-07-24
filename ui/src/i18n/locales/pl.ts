@@ -132,6 +132,8 @@ export const pl: Locale = {
     restoreRejectedVideo: "Przywróć odrzucony film",
     rejectVideo: "Odrzuć film",
     watched: "Obejrzane",
+    markWatched: "Oznacz jako obejrzane",
+    markUnwatched: "Oznacz jako nieobejrzane",
     scheduledFeedback: "Zaplanowano",
     scheduleRemovedFeedback: "Usunięto z planu",
     remove: "Usuń",

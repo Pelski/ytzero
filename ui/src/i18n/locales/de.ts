@@ -130,6 +130,8 @@ export const de: Locale = {
     restoreRejectedVideo: "Abgelehntes Video wiederherstellen",
     rejectVideo: "Video ablehnen",
     watched: "Angesehen",
+    markWatched: "Als angesehen markieren",
+    markUnwatched: "Als ungesehen markieren",
     scheduledFeedback: "Geplant",
     scheduleRemovedFeedback: "Aus der Planung entfernt",
     remove: "Entfernen",

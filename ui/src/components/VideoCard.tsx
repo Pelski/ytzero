@@ -5,6 +5,7 @@ import {
   CalendarX,
   Check,
   Eye,
+  EyeOff,
   Heart,
   Lock,
   Star,
@@ -32,7 +33,7 @@ const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
 const SWIPE_FEEDBACK_MS = 720;
 const FINAL_EXIT_MS = 280;
-type CardFeedback = "watched" | "rejected" | "scheduled" | "unscheduled";
+export type CardFeedback = "watched" | "unwatched" | "rejected" | "restored" | "scheduled" | "unscheduled";
 
 /** Duration in seconds for sorting/comparing; null when the string is unparseable. */
 export function parseVideoDurationSeconds(duration: string | null): number | null {
@@ -105,10 +106,11 @@ function VideoCard({
   selected = false,
   onSelectToggle,
   readOnly = false,
+  entering = false,
 }: {
   video: Video;
   onPlay: (v: Video) => void;
-  onChanged: (videoId?: string) => void;
+  onChanged: (videoId?: string, feedback?: CardFeedback) => void;
   showRestore?: boolean;
   showChannelAvatar?: boolean;
   searchResultLayout?: boolean;
@@ -122,6 +124,8 @@ function VideoCard({
   onSelectToggle?: (videoId: string) => void;
   /** Preview mode (e.g. cleanup's "what stays" column): no swipe, no hover actions, still clickable to open. */
   readOnly?: boolean;
+  /** Briefly animate a card that has just moved into this grid. */
+  entering?: boolean;
 }) {
   const { t, language, locale } = useI18n();
   const navigate = useNavigate();
@@ -146,12 +150,12 @@ function VideoCard({
     setSwipeX(-(cardWidth + SWIPE_EXIT_GUTTER));
   };
 
-  const removeWithLayoutAnimation = () => {
+  const removeWithLayoutAnimation = (feedback?: CardFeedback) => {
     exitLeft();
     setFading(true);
     window.setTimeout(() => {
       setRemoved(true);
-      onChanged(video.video_id);
+      onChanged(video.video_id, feedback);
     }, FINAL_EXIT_MS);
   };
 
@@ -160,7 +164,7 @@ function VideoCard({
       setCommittedFeedback(feedback);
       setCommittedDir(feedback === "watched" ? "right" : "left");
       setFading(true);
-      setTimeout(removeWithLayoutAnimation, 180);
+      setTimeout(() => removeWithLayoutAnimation(feedback), 180);
     });
   };
 
@@ -177,6 +181,8 @@ function VideoCard({
 
   const markWatchedAndArchive = () =>
     api.complete(video.video_id).then(() => api.archiveVideo(video.video_id));
+
+  const markUnwatched = () => api.markUnwatched(video.video_id);
 
   const requestLocalDownload = (e: MouseEvent) => {
     e.stopPropagation();
@@ -241,7 +247,7 @@ function VideoCard({
         ? api.archiveVideo(video.video_id)
         : markWatchedAndArchive();
       action.then(() => {
-        setTimeout(removeWithLayoutAnimation, SWIPE_FEEDBACK_MS);
+        setTimeout(() => removeWithLayoutAnimation(dir === "left" ? "rejected" : "watched"), SWIPE_FEEDBACK_MS);
       });
     } else {
       setCommittedDir(null);
@@ -314,25 +320,37 @@ function VideoCard({
     ?? (activeSwipeDir === "right" ? "watched" : activeSwipeDir === "left" ? "rejected" : null);
   const RevealIcon = revealFeedback === "watched"
     ? Eye
-    : revealFeedback === "scheduled"
-      ? CalendarCheck
-      : revealFeedback === "unscheduled"
-        ? CalendarX
-        : Archive;
+    : revealFeedback === "unwatched"
+      ? EyeOff
+      : revealFeedback === "restored"
+        ? Undo2
+        : revealFeedback === "scheduled"
+          ? CalendarCheck
+          : revealFeedback === "unscheduled"
+            ? CalendarX
+            : Archive;
   const revealLabel = revealFeedback === "watched"
     ? t("watched")
-    : revealFeedback === "scheduled"
-      ? t("scheduledFeedback")
-      : revealFeedback === "unscheduled"
-        ? t("scheduleRemovedFeedback")
-        : t("reject");
+    : revealFeedback === "unwatched"
+      ? t("markUnwatched")
+      : revealFeedback === "restored"
+        ? t("restore")
+        : revealFeedback === "scheduled"
+          ? t("scheduledFeedback")
+          : revealFeedback === "unscheduled"
+            ? t("scheduleRemovedFeedback")
+            : t("reject");
   const revealClass = revealFeedback === "watched"
     ? "swipe-reveal--left"
-    : revealFeedback === "scheduled"
-      ? "swipe-reveal--scheduled"
-      : revealFeedback === "unscheduled"
-        ? "swipe-reveal--unscheduled"
-        : "swipe-reveal--right";
+    : revealFeedback === "unwatched"
+      ? "swipe-reveal--unscheduled"
+      : revealFeedback === "restored"
+        ? "swipe-reveal--restored"
+        : revealFeedback === "scheduled"
+          ? "swipe-reveal--scheduled"
+          : revealFeedback === "unscheduled"
+            ? "swipe-reveal--unscheduled"
+            : "swipe-reveal--right";
   const watched = isWatched ?? video.watched === 1;
 
   const contentOpacity = Math.min(1, revealProgress * 2.5);
@@ -351,7 +369,7 @@ function VideoCard({
   if (removed) return null;
 
   return (
-    <div className={`swipe-wrap${fading ? " card-fading" : ""}`}>
+    <div className={`swipe-wrap${fading ? " card-fading" : ""}${entering ? " video-card-entering" : ""}`}>
       {revealFeedback && (
         <div className={`swipe-reveal ${revealClass}`} style={{ width: revealWidth, opacity: fading ? undefined : contentOpacity }}>
           <span className="swipe-reveal-icon">
@@ -487,16 +505,22 @@ function VideoCard({
                     </button>
                   </Tooltip>
                 )}
-                {video.status !== "archived" && (
-                  <Tooltip text={t("watched")}>
+                {watched ? (
+                  <Tooltip text={t("markUnwatched")}>
+                    <button className="action-btn" onClick={(e) => act(e, markUnwatched, "unwatched")}>
+                      <EyeOff />
+                    </button>
+                  </Tooltip>
+                ) : video.status !== "archived" ? (
+                  <Tooltip text={t("markWatched")}>
                     <button className="action-btn" onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
                       <Eye />
                     </button>
                   </Tooltip>
-                )}
+                ) : null}
                 {showRestore && (
                   <Tooltip text={t("restore")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => api.restore(video.video_id))}>
+                    <button className="action-btn" onClick={(e) => act(e, () => api.restore(video.video_id), "restored")}>
                       <Undo2 />
                     </button>
                   </Tooltip>
