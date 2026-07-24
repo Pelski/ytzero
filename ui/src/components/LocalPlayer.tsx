@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { Clapperboard, LoaderCircle, Maximize, Minimize, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
+import Hls from "hls.js";
+import { Clapperboard, LoaderCircle, Maximize, Minimize, MonitorPlay, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
 import type { SponsorSegment, VideoChapter, VideoSubtitle } from "../api";
 import { api, SB_CATEGORIES } from "../api";
 import { subtitleLanguageLabel } from "../subtitleLanguages";
@@ -64,6 +65,17 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   preferredSubtitleLanguages?: string[];
   subtitleStyle?: SubtitleStyle;
   onSubtitleSizeChange?: (size: number) => void;
+  // Experimental play-while-downloading stream (HLS via hls.js). hls.js reports
+  // an Infinite duration for the growing playlist, so the known total length is
+  // passed in for the scrub bar and seeking; buffered shows what's downloaded.
+  live?: boolean;
+  liveLabel?: string;
+  durationSeconds?: number;
+  onError?: () => void;
+  // Streaming mode only: leave the experimental stream for the viewer's own
+  // configured player (rendered as a centred button in the control bar).
+  onExitStreaming?: () => void;
+  exitStreamingLabel?: string;
 }>(function LocalPlayer({
   src,
   poster,
@@ -86,6 +98,12 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   preferredSubtitleLanguages = [],
   subtitleStyle,
   onSubtitleSizeChange,
+  live = false,
+  liveLabel,
+  durationSeconds,
+  onError,
+  onExitStreaming,
+  exitStreamingLabel,
 }, ref) {
   const { t } = useI18n();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -264,6 +282,65 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     setBuffering(false);
   };
 
+  // Kick off playback for a streaming source. hls.js swaps the media source
+  // via MSE after the element's autoplay attribute is evaluated, so playback
+  // must be started explicitly once the manifest is parsed. If the browser
+  // blocks autoplay-with-sound, retry muted (always allowed) so the stream
+  // actually plays — the viewer can unmute from the volume control.
+  const tryStreamAutoplay = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.play().catch(() => {
+      v.muted = true;
+      setMuted(true);
+      v.play().catch(() => {});
+    });
+  }, []);
+
+  // Experimental streaming source: attach the growing HLS playlist via hls.js
+  // (or native HLS on Safari). Seeking works across everything downloaded so
+  // far; the seekable range grows as ffmpeg produces more segments.
+  useEffect(() => {
+    if (!live) return;
+    const v = videoRef.current;
+    if (!v) return;
+    // Native HLS (Safari): point the element straight at the playlist.
+    if (!Hls.isSupported() && v.canPlayType("application/vnd.apple.mpegurl")) {
+      v.src = src;
+      const onLoaded = () => tryStreamAutoplay();
+      v.addEventListener("loadedmetadata", onLoaded, { once: true });
+      return () => v.removeEventListener("loadedmetadata", onLoaded);
+    }
+    if (!Hls.isSupported()) { onError?.(); return; }
+    // liveDurationInfinity keeps MediaSource duration at Infinity while the
+    // playlist grows, so the element never fires a premature "ended" at the
+    // first-loaded edge (which would auto-advance us out of the player). The
+    // real total length is supplied via durationSeconds for the scrub bar.
+    const hls = new Hls({
+      enableWorker: true,
+      lowLatencyMode: false,
+      // Static VOD playlist: hls.js knows the real duration and seeks anywhere;
+      // the backend transcodes the requested segment on demand. Keep the
+      // read-ahead modest so hls.js doesn't request far beyond the region.
+      maxBufferLength: 30,
+      backBufferLength: 60,
+    });
+    hls.loadSource(src);
+    hls.attachMedia(v);
+    // Start playback once the manifest is ready (autoplay attribute alone is
+    // unreliable with MSE). EVENT playlists start at position 0 by default.
+    hls.on(Hls.Events.MANIFEST_PARSED, () => tryStreamAutoplay());
+    hls.on(Hls.Events.ERROR, (_evt, data) => {
+      if (!data.fatal) return;
+      // A growing playlist momentarily 404s between segment writes; recover
+      // network/media errors in place instead of tearing the player down.
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+      else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+      else { hls.destroy(); onError?.(); }
+    });
+    return () => { hls.destroy(); };
+  }, [live, src, onError, tryStreamAutoplay]);
+
   useEffect(() => {
     const v = videoRef.current;
     if (v && Number.isFinite(playbackRate) && playbackRate > 0) v.playbackRate = playbackRate;
@@ -379,7 +456,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         default: {
           if (/^[0-9]$/.test(e.key)) {
             const v = videoRef.current;
-            if (v && Number.isFinite(v.duration)) v.currentTime = (Number(e.key) / 10) * v.duration;
+            const dur = v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (live && durationSeconds ? durationSeconds : 0);
+            if (v && dur && Number.isFinite(dur)) v.currentTime = (Number(e.key) / 10) * dur;
             showControls();
           }
         }
@@ -454,8 +532,10 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
 
   const scrubTo = (clientX: number) => {
     const v = videoRef.current;
-    if (!v || !Number.isFinite(v.duration)) return;
-    const time = barFraction(clientX) * v.duration;
+    if (!v) return;
+    const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (live && durationSeconds ? durationSeconds : 0);
+    if (!Number.isFinite(dur) || dur <= 0) return;
+    const time = barFraction(clientX) * dur;
     v.currentTime = time;
     setCurrentTime(time);
   };
@@ -472,28 +552,31 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   };
   const onBarPointerUp = () => setScrubbing(false);
 
-  const progress = duration > 0 ? currentTime / duration : 0;
-  const bufferedFrac = duration > 0 ? buffered / duration : 0;
+  // The static VOD playlist gives hls.js the real duration; fall back to the
+  // known length only until metadata arrives.
+  const barDuration = duration > 0 ? duration : (live && durationSeconds ? durationSeconds : 0);
+  const progress = barDuration > 0 ? currentTime / barDuration : 0;
+  const bufferedFrac = barDuration > 0 ? buffered / barDuration : 0;
 
   const segments = useMemo(() => {
-    if (duration <= 0) return [];
+    if (barDuration <= 0) return [];
     return sbSegments.map((seg) => ({
       key: seg.UUID,
-      left: (seg.segment[0] / duration) * 100,
-      width: Math.max(0.3, ((seg.segment[1] - seg.segment[0]) / duration) * 100),
+      left: (seg.segment[0] / barDuration) * 100,
+      width: Math.max(0.3, ((seg.segment[1] - seg.segment[0]) / barDuration) * 100),
       color: SB_CATEGORIES.find((c) => c.id === seg.category)?.color ?? "#888",
     }));
-  }, [sbSegments, duration]);
+  }, [sbSegments, barDuration]);
 
   const chapterTicks = useMemo(() => {
-    if (duration <= 0) return [];
-    return chapters.filter((ch) => ch.start > 0 && ch.start < duration).map((ch) => ({
+    if (barDuration <= 0) return [];
+    return chapters.filter((ch) => ch.start > 0 && ch.start < barDuration).map((ch) => ({
       key: ch.start,
-      left: (ch.start / duration) * 100,
+      left: (ch.start / barDuration) * 100,
     }));
-  }, [chapters, duration]);
+  }, [chapters, barDuration]);
 
-  const hoverTime = hoverX != null && duration > 0 ? hoverX * duration : null;
+  const hoverTime = hoverX != null && barDuration > 0 ? hoverX * barDuration : null;
   const activeChapter = hoverTime != null
     ? [...chapters].reverse().find((ch) => ch.start <= hoverTime)
     : null;
@@ -508,7 +591,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       <video
         ref={videoRef}
         className="lp-video"
-        src={src}
+        src={live ? undefined : src}
         poster={poster}
         autoPlay={autoplay}
         playsInline
@@ -530,6 +613,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           setControlsVisible(true);
           onEnded?.();
         }}
+        onError={() => onError?.()}
       >
         {activeSub && (
           <track
@@ -554,8 +638,18 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         </div>
       )}
 
+      {buffering && poster && (
+        <div className="lp-loading-bg" style={{ backgroundImage: `url(${poster})` }} aria-hidden="true" />
+      )}
+
       {buffering && (
         <div className="lp-spinner" aria-hidden="true"><LoaderCircle className="spin" size={42} /></div>
+      )}
+
+      {live && (
+        <div className={`lp-live-corner${controlsVisible || !playing ? " visible" : ""}`}>
+          <span className="lp-live-dot" /> {liveLabel ?? "STREAMING"}
+        </div>
       )}
 
       {!playing && !buffering && (
@@ -610,8 +704,17 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
               onChange={(e) => { setVolume(Number(e.target.value)); setMuted(Number(e.target.value) === 0); }}
             />
           </div>
-          <span className="lp-time">{fmtTime(currentTime)} / {fmtTime(duration)}</span>
+          <span className="lp-time">{fmtTime(currentTime)} / {fmtTime(barDuration)}</span>
           <span className="lp-spacer" />
+          {live && onExitStreaming && (
+            <>
+              <button className="lp-exit-stream" onClick={onExitStreaming} title={exitStreamingLabel}>
+                <MonitorPlay size={17} />
+                {exitStreamingLabel && <span>{exitStreamingLabel}</span>}
+              </button>
+              <span className="lp-spacer" />
+            </>
+          )}
           <SubtitlePicker
             videoId={videoId}
             subtitles={subs}

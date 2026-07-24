@@ -795,6 +795,7 @@ export const api = {
   pinDownload: (id: string, pinned: boolean) =>
     http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download/pin`, { method: "PUT", body: JSON.stringify({ pinned }) }),
   streamUrl: (id: string) => `/api/videos/${id}/stream`,
+  hlsUrl: (id: string) => `/api/videos/${id}/hls/index.m3u8`,
   videoSubtitles: (id: string) => http<{ subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`),
   downloadSubtitle: (id: string, lang: string) =>
     http<{ ok: boolean; downloaded: boolean; subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`, { method: "POST", body: JSON.stringify({ lang }) }),

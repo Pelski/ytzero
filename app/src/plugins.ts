@@ -246,6 +246,17 @@ const DOWNLOADS_SETTINGS: PluginSettingSource[] = [
     min: 1, max: 500, step: 1,
     defaultValue: DL_DEFAULTS.max_storage_gb,
   },
+  {
+    key: "experimental_streaming",
+    type: "toggle",
+    label: { en: "Stream while downloading (experimental)", pl: "Streaming w trakcie pobierania (eksperymentalne)", de: "Streamen während des Downloads (experimentell)" },
+    description: {
+      en: "HIGHLY EXPERIMENTAL. Opening a not-yet-downloaded video plays it instantly via a live HLS stream while yt-dlp + ffmpeg download it in the background. You can seek anywhere already downloaded; seeking further ahead waits for the download to catch up. The finished stream is also saved as a normal download. Requires ffmpeg. H.264 only, so quality is capped at ~1080p.",
+      pl: "MOCNO EKSPERYMENTALNE. Wejście na niepobrany film odtwarza go od razu przez strumień HLS na żywo, podczas gdy yt-dlp + ffmpeg pobierają go w tle. Możesz przewijać po wszystkim, co już pobrane; przewinięcie dalej czeka, aż pobieranie dogoni. Ukończony strumień zapisuje się też jako zwykłe pobranie. Wymaga ffmpeg. Tylko H.264, więc jakość ograniczona do ~1080p.",
+      de: "HOCHEXPERIMENTELL. Beim Öffnen eines noch nicht heruntergeladenen Videos wird es sofort über einen Live-HLS-Stream abgespielt, während yt-dlp + ffmpeg es im Hintergrund laden. Du kannst überall im bereits Geladenen spulen; weiter nach vorne zu spulen wartet, bis der Download aufholt. Der fertige Stream wird zusätzlich als normaler Download gespeichert. Benötigt ffmpeg. Nur H.264, daher Qualität auf ~1080p begrenzt.",
+    },
+    defaultValue: DL_DEFAULTS.experimental_streaming,
+  },
 ];
 
 export const PLUGINS: PluginManifest[] = [

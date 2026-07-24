@@ -31,7 +31,7 @@ import { log, readRecentLogs } from "./logger";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
-import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, fetchSubtitles, getDownload, listDownloads, listSubtitleFiles, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
@@ -975,6 +975,39 @@ api.get("/videos/:id/stream", (c) => {
   }
   return new Response(file, {
     headers: { "Content-Type": contentType, "Accept-Ranges": "bytes", "Content-Length": String(size) },
+  });
+});
+
+// EXPERIMENTAL: play + seek a not-yet-downloaded video via on-demand HLS. The
+// playlist is a static VOD for the whole (known) duration, so the browser can
+// seek anywhere; each segment is transcoded on demand from the direct stream.
+// A clean copy is saved in the background so /stream serves it locally later.
+//   GET .../hls/index.m3u8  -> the static VOD playlist
+//   GET .../hls/segNNNNN.ts -> a media segment (produced on demand)
+api.get("/videos/:id/hls/:file", async (c) => {
+  const uid = currentUserId(c);
+  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (!liveStreamEnabled()) return c.json({ error: "streaming disabled" }, 409);
+  const id = c.req.param("id");
+  const file = c.req.param("file");
+
+  if (file === "index.m3u8") {
+    const done = getDownload(id);
+    if (done && done.status === "done" && done.path && existsSync(done.path)) {
+      return c.json({ error: "already downloaded" }, 409);
+    }
+    if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+    const playlist = await getHlsPlaylist(id);
+    if (!playlist) return c.json({ error: "stream unavailable" }, 502);
+    return new Response(playlist, {
+      headers: { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store" },
+    });
+  }
+
+  const path = await getHlsSegment(id, file, c.req.raw.signal);
+  if (!path) return c.json({ error: "not found" }, 404);
+  return new Response(Bun.file(path), {
+    headers: { "Content-Type": "video/mp2t", "Cache-Control": "no-store" },
   });
 });
 

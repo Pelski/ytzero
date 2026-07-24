@@ -74,6 +74,17 @@
   object-fit: contain;
   cursor: pointer;
 }
+/* Blurred still of the video shown behind the spinner while it buffers. */
+.lp-loading-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(18px) brightness(0.55);
+  transform: scale(1.1); /* hide the blur's soft edges */
+  pointer-events: none;
+  z-index: 0;
+}
 .lp-spinner {
   position: absolute;
   inset: 0;
@@ -82,6 +93,7 @@
   justify-content: center;
   color: rgba(255, 255, 255, 0.9);
   pointer-events: none;
+  z-index: 1;
 }
 .lp-big-play {
   position: absolute;
@@ -228,6 +240,59 @@
   align-items: center;
   cursor: pointer;
   touch-action: none;
+}
+/* Experimental play-while-downloading stream: a badge in the top-left corner. */
+.lp-live-corner {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.lp-live-corner.visible { opacity: 1; }
+/* Centred "leave the experimental stream" button in the control bar. */
+.lp-exit-stream {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.lp-exit-stream:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.6); }
+.lp-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.6);
+  animation: lp-live-pulse 1.6s ease-out infinite;
+}
+@keyframes lp-live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(255, 77, 79, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
 }
 .lp-bar-track {
   position: relative;

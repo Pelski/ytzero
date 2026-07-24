@@ -2592,6 +2592,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 description: t("pluginSectionRetentionHint"),
                 keys: ["retention_days", "delete_watched", "delete_watched_hours", "keep_liked", "max_storage_gb"],
               },
+              {
+                id: "experimental",
+                title: t("pluginSectionExperimental"),
+                description: t("pluginSectionExperimentalHint"),
+                keys: ["experimental_streaming"],
+              },
             ];
             const sectionKeys = plugin.id === "discovery" ? discoverySections : plugin.id === "downloads" ? downloadsSections : null;
             const sections = sectionKeys

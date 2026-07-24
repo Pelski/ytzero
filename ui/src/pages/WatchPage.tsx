@@ -73,6 +73,15 @@ const CINEMA_MODE_KEY = "watchCinemaMode";
 const SIDEBAR_KEY = "sidebar_open";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
 
+// "15:04" / "1:02:03" -> seconds. Used to give the streaming player the full
+// video length (hls.js only knows the downloaded-so-far portion).
+function colonDurationToSeconds(duration: string | null | undefined): number | undefined {
+  if (!duration) return undefined;
+  const parts = duration.trim().split(":");
+  if (parts.length < 2 || parts.length > 3 || !parts.every((p) => /^\d+$/.test(p))) return undefined;
+  return parts.reduce((total, p) => total * 60 + Number(p), 0);
+}
+
 function restoreSidebarVisibility() {
   document.body.classList.remove("cinema");
   document.body.classList.toggle("sidebar-hidden", localStorage.getItem(SIDEBAR_KEY) === "0");
@@ -196,12 +205,14 @@ export default function WatchPage() {
     isChildProfile: boolean;
     childDownloadsOnly: boolean;
     pluginWatchMode: WatchSourceMode;
+    experimentalStreaming: boolean;
   }>({
     ready: false,
     downloadsEnabled: false,
     isChildProfile: false,
     childDownloadsOnly: false,
     pluginWatchMode: "youtube",
+    experimentalStreaming: false,
   });
   const {
     ready: playbackPolicyReady,
@@ -209,6 +220,7 @@ export default function WatchPage() {
     isChildProfile,
     childDownloadsOnly,
     pluginWatchMode,
+    experimentalStreaming,
   } = playbackPolicy;
   const [descOpen, setDescOpen] = useState(false);
   const [descExpandable, setDescExpandable] = useState(false);
@@ -242,6 +254,11 @@ export default function WatchPage() {
   const [playerSource, setPlayerSource] = useState<"auto" | "youtube">("auto");
   // watch_source_mode = "ask"/"download": what the viewer decided for THIS video.
   const [sourceChoice, setSourceChoice] = useState<"undecided" | "youtube" | "wait">("undecided");
+  // Current position of the experimental stream, so the handoff to the local
+  // file (once the background download finishes) resumes at the same spot.
+  const streamPositionRef = useRef(0);
+  // The viewer left the experimental stream for their configured player.
+  const [skipStreaming, setSkipStreaming] = useState(false);
   const [waitProgress, setWaitProgress] = useState<{ percent: number; speed: string | null } | null>(null);
   const [waitError, setWaitError] = useState<string | null>(null);
   const [youtubeAutoplayBlocked, setYoutubeAutoplayBlocked] = useState(false);
@@ -315,6 +332,7 @@ export default function WatchPage() {
         const configuredMode = pluginSettings?.settings.watch_source_mode;
         if (configuredMode === "ask" || configuredMode === "download") pluginWatchMode = configuredMode;
       }
+      const experimentalStreaming = downloadsEnabled && Number(pluginSettings?.settings.experimental_streaming) === 1;
       if (cancelled) return;
       setDownloadSubtitleLanguages(subtitleLanguages);
       setPlaybackPolicy({
@@ -323,6 +341,7 @@ export default function WatchPage() {
         isChildProfile: childStatus?.is_child ?? false,
         childDownloadsOnly: !!(childStatus?.is_child && childStatus.downloads_only),
         pluginWatchMode,
+        experimentalStreaming,
       });
     })();
     return () => { cancelled = true; };
@@ -332,6 +351,7 @@ export default function WatchPage() {
   // Which surface fills the player area. Children never get a choice: with
   // downloads_only they are locked to local files, otherwise plain YouTube.
   const watchMode = downloadsEnabled && !isChildProfile ? pluginWatchMode : "youtube";
+  const streamingEnabled = experimentalStreaming && !isChildProfile && !skipStreaming;
   const playerKind = resolvePlayerKind({
     hasVideo: !!video,
     isLive: video?.live_status === "live" || video?.live_status === "upcoming",
@@ -341,10 +361,12 @@ export default function WatchPage() {
     childDownloadsOnly,
     sourceChoice,
     watchMode,
+    streamingEnabled,
   });
   const privateVideoNotice = video?.is_private === 1;
   const membersOnlyNotice = video?.members_only === 1 && !isChildProfile && !privateVideoNotice;
-  const usingLocal = playerKind === "local" && !membersOnlyNotice && !privateVideoNotice;
+  // Both "local" and "stream" render the LocalPlayer component (same layout).
+  const usingLocal = (playerKind === "local" || playerKind === "stream") && !membersOnlyNotice && !privateVideoNotice;
   const sharedTimestamp = Number(new URLSearchParams(location.search).get("t"));
   const sharedStartSeconds = Number.isFinite(sharedTimestamp) ? Math.max(0, Math.floor(sharedTimestamp)) : 0;
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
@@ -387,6 +409,13 @@ export default function WatchPage() {
     setYoutubeAutoplayBlocked(false);
     setSourceChoice("youtube");
   }, []);
+
+  useEffect(() => { streamPositionRef.current = 0; setSkipStreaming(false); }, [id]);
+
+  // Leave the experimental stream: fall back to whatever the viewer's configured
+  // player would be (download-wait / ask / YouTube — or the local file if the
+  // background download already finished).
+  const exitStreaming = useCallback(() => setSkipStreaming(true), []);
 
   useEffect(() => {
     setYoutubeError(null);
@@ -607,6 +636,10 @@ export default function WatchPage() {
     if (!id || (!video && !videoMissing)) return;
 
     const canAutoArchive = video ? (video.live_status !== "live" && video.live_status !== "upcoming") : false;
+    // In "stream" mode the reported duration is the downloaded length so far,
+    // not the full video — persisting progress or auto-archiving off that ratio
+    // would be wrong. The saved download handles resume on the next visit.
+    const isStream = playerKind === "stream";
 
     const startSeconds = sharedStartSeconds || (
       video?.watch_position && video?.watch_duration && video.watch_duration > 0 &&
@@ -621,14 +654,17 @@ export default function WatchPage() {
         const position = p.getCurrentTime() as number;
         const playerDuration = p.getDuration() as number;
         if (!position || !playerDuration) return;
-        progressRef.current = { position, duration: playerDuration };
+        if (isStream) streamPositionRef.current = position;
+        if (!isStream) progressRef.current = { position, duration: playerDuration };
         if (p.getPlayerState?.() !== 1) return;
-        api.saveProgress(id, position, playerDuration).catch(() => {});
-        if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
-          archivedRef.current = true;
-          api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
-          api.complete(id).catch(() => {});
-          api.archiveVideo(id).catch(() => {});
+        if (!isStream) {
+          api.saveProgress(id, position, playerDuration).catch(() => {});
+          if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
+            archivedRef.current = true;
+            api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
+            api.complete(id).catch(() => {});
+            api.archiveVideo(id).catch(() => {});
+          }
         }
         if (!sbPausedRef.current) {
           for (const seg of sbSegmentsRef.current) {
@@ -661,8 +697,10 @@ export default function WatchPage() {
 
     if (membersOnlyNotice) return;
 
-    if (playerKind === "local") {
+    if (playerKind === "local" || playerKind === "stream") {
       // LocalPlayer renders the <video> itself and fills playerRef via its ref.
+      // In "stream" mode the duration is unknown, so poll() self-skips progress
+      // saving and auto-archive — SponsorBlock/resume just wait for the download.
       const pollInterval = setInterval(poll, 1_000);
       return () => {
         clearInterval(pollInterval);
@@ -973,17 +1011,19 @@ export default function WatchPage() {
     return () => clearInterval(t);
   }, [id]);
 
-  // While this video is being fetched by the downloader, poll faster so the
-  // download button reflects reality without a reload.
+  // While this video is being fetched — or is playing via the experimental
+  // stream (which waits for the background download to hand off to the local
+  // file) — poll faster so the switch happens the moment the file is ready.
   useEffect(() => {
-    if (!id || (downloadStatus !== "queued" && downloadStatus !== "downloading")) return;
+    const active = downloadStatus === "queued" || downloadStatus === "downloading" || playerKind === "stream";
+    if (!id || !active) return;
     const t = setInterval(() => {
       api.video(id).then((r) => {
         setVideo((prev) => prev ? { ...prev, download_status: r.video.download_status } : prev);
       }).catch(() => {});
-    }, 5_000);
+    }, playerKind === "stream" ? 2_500 : 5_000);
     return () => clearInterval(t);
-  }, [id, downloadStatus]);
+  }, [id, downloadStatus, playerKind]);
 
   const requestDownload = () => {
     if (!video) return;
@@ -1185,6 +1225,37 @@ export default function WatchPage() {
                     </ButtonAnchor>
                   </div>
                 </div>
+              ) : playerKind === "stream" && video ? (
+                <LocalPlayer
+                  key={`${video.video_id}-stream`}
+                  ref={playerRef}
+                  live
+                  liveLabel={t("watchStreamingBadge")}
+                  durationSeconds={colonDurationToSeconds(video.duration)}
+                  onExitStreaming={exitStreaming}
+                  exitStreamingLabel={t("watchExitStreaming")}
+                  src={api.hlsUrl(video.video_id)}
+                  poster={img(video.thumbnail)}
+                  playbackRate={Number(speed)}
+                  title={video.title}
+                  channelTitle={video.channel_title}
+                  artworkUrl={img(video.thumbnail)}
+                  cinemaMode={cinemaMode}
+                  onToggleCinema={() => setCinemaMode((mode) => !mode)}
+                  onEnded={handleEnded}
+                  keyboardSeekSeconds={keyboardSeekSeconds}
+                  onShortcut={showShortcutFeedback}
+                  videoId={video.video_id}
+                  ccDefaultOn={captionsDefaultOn}
+                  ccDefaultLang={captionsDefaultLang}
+                  preferredSubtitleLanguages={[captionsDefaultLang, ...downloadSubtitleLanguages]}
+                  subtitleStyle={{
+                    size: subtitleSize,
+                    color: settings?.player_sub_color || "#ffffff",
+                    bg: Number(settings?.player_sub_bg ?? 75),
+                  }}
+                  onSubtitleSizeChange={changeSubtitleSize}
+                />
               ) : playerKind === "local" && video ? (
                 <LocalPlayer
                   key={`${video.video_id}-local-${sharedStartSeconds}`}
@@ -1193,6 +1264,7 @@ export default function WatchPage() {
                   poster={img(video.thumbnail)}
                   startSeconds={
                     sharedStartSeconds
+                      || Math.floor(streamPositionRef.current)
                       || progressRef.current?.position
                       || (video.watch_position && video.watch_duration && video.watch_duration > 0 &&
                           video.watch_position / video.watch_duration < 0.9
