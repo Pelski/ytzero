@@ -720,7 +720,48 @@ export interface ImportCommitResult {
   };
 }
 
+export interface BackupOptions {
+  formatVersion: number;
+  presets: Record<string, string[]>;
+  sections: { id: string; schemaVersion: number; scope: "instance" | "profile"; sensitivity: "normal" | "personal"; dependencies: string[]; category: string; optional?: boolean }[];
+  profiles: { id: string; name: string; isChild: boolean }[];
+  exclusions: string[];
+}
+
+export interface RestoreAnalysis {
+  sessionId: string;
+  expiresAt: string;
+  archiveBytes: number;
+  integrity: "verified";
+  sameSource: boolean;
+  warnings: string[];
+  exclusions: string[];
+  existingProfiles: { id: number; portable_uuid: string; name: string }[];
+  manifest: {
+    createdAt: string;
+    appVersion: string;
+    exportPreset: string;
+    profiles: { id: string; name: string; isChild: boolean }[];
+    sections: { id: string; profileId?: string; records: number }[];
+  };
+}
+
 export const api = {
+  backupOptions: () => http<BackupOptions>("/backup/options"),
+  exportBackup: async (payload: { preset: string; profiles: string[]; sections: string[] }) => {
+    const response = await fetch("/api/backup/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({})) as any).error ?? `HTTP ${response.status}`);
+    return response.blob();
+  },
+  restoreAnalyze: (file: File) => {
+    const body = new FormData(); body.append("file", file);
+    return http<RestoreAnalysis>("/restore/analyze", { method: "POST", body });
+  },
+  restorePlan: (payload: { sessionId: string; mappings: Record<string, { action: "create" | "merge" | "skip"; targetProfileId?: number }>; sections: string[]; strategy: "merge" | "replace" }) =>
+    http<{ sessionId: string; planRevision: number; changes: { createProfiles: number; mergeProfiles: number; skipProfiles: number; records: number; sections: number; strategy: string }; warnings: string[] }>("/restore/plan", { method: "POST", body: JSON.stringify(payload) }),
+  restoreCommit: (sessionId: string, planRevision: number) =>
+    http<{ ok: true; snapshot: string; counts: { created: number; updated: number; skipped: number; warnings: string[] } }>("/restore/commit", { method: "POST", body: JSON.stringify({ sessionId, planRevision }) }),
+  deleteRestoreSession: (id: string) => http<{ ok: true }>(`/restore/session/${id}`, { method: "DELETE" }),
   feed: (p: {
     page?: number;
     tags?: number[];

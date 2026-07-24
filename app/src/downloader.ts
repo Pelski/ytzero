@@ -2,6 +2,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, r
 import { basename, dirname, join, resolve } from "node:path";
 import { db, getSetting } from "./db";
 import { log } from "./logger";
+import { maintenanceActive } from "./maintenance";
 
 // Files land in one global directory: a video downloaded once serves every
 // profile. Retention below is the only thing that removes them.
@@ -1057,6 +1058,7 @@ let ticking = false;
 let lastCleanupAt = 0;
 
 async function tick() {
+  if (maintenanceActive()) return;
   if (ticking) return;
   ticking = true;
   try {

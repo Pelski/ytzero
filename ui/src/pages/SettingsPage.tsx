@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
@@ -1761,9 +1761,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     <>
       <PageHeader
         title={t("settingsTitle")}
-        actions={isChildProfile === false
-          ? <ButtonLink to="/import" leadingIcon={<FolderUp size={16} />}>{t("importDataButton")}</ButtonLink>
-          : undefined}
+        actions={isChildProfile === false ? <>
+          {isPrimary && <ButtonLink to="/restore" leadingIcon={<ArchiveRestore size={16} />}>{t("backupRestore")}</ButtonLink>}
+          <ButtonLink to="/import" leadingIcon={<FolderUp size={16} />}>{t("importDataButton")}</ButtonLink>
+        </> : undefined}
       />
 
       {childLock.enabled && !childLock.locked && (
@@ -2791,6 +2792,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isSettingsLocked && tab === "advanced" && (
         <SettingsSection>
+          {isPrimary && <SettingRow label={t("backupRestore")} description={t("backupRestoreHint")}>
+            <ButtonLink to="/restore" leadingIcon={<ArchiveRestore size={16} />}>{t("backupRestoreOpen")}</ButtonLink>
+          </SettingRow>}
           <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "logs", label: t("logs") }, { value: "changelog", label: t("changelog") }]} />
 
           {advancedSubTab === "external" && (

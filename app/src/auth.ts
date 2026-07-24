@@ -393,8 +393,8 @@ export async function oidcCallback(
       const nextOrder = (db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM users").get() as { n: number }).n;
       const name = String((claims as any).name ?? (claims as any).preferred_username ?? claimValue);
       const created = db
-        .prepare("INSERT INTO users (name, avatar_color, oidc_subject, sort_order) VALUES (?, ?, ?, ?) RETURNING id")
-        .get(name, "#7c5cff", claimValue, nextOrder) as { id: number };
+        .prepare("INSERT INTO users (name, avatar_color, oidc_subject, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id")
+        .get(name, "#7c5cff", claimValue, nextOrder, crypto.randomUUID()) as { id: number };
       row = created;
     } else {
       throw new Error("no profile mapped to this identity");

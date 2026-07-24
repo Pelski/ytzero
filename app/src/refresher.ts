@@ -9,6 +9,7 @@ import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { runAutomaticUpdateChecks } from "./updates";
 import { notifyFollowedPlaylistVideos } from "./notifications";
 import { IMPORTED_CHANNEL_ID } from "./takeout";
+import { maintenanceActive } from "./maintenance";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -668,6 +669,7 @@ export function syncChannel(channelId: string): Promise<{ added: number }> {
  * prioritising those not checked recently. Called on a slow background timer.
  */
 export async function refreshAvatarsBatch(limit = 4) {
+  if (maintenanceActive()) return 0;
   const rows = db
     .prepare(
       `SELECT channel_id FROM channels
@@ -782,6 +784,7 @@ async function refreshPlaylistDurations(): Promise<number> {
 }
 
 export async function refreshVideoMetadataBatch(limit = 10) {
+  if (maintenanceActive()) return 0;
   await refreshPlaylistDurations();
   const now = Date.now();
   const candidates = db
@@ -884,6 +887,7 @@ const enrichImportedVideo = db.prepare(`
 `);
 
 export async function backfillImportedVideos(limit = 15) {
+  if (maintenanceActive()) return 0;
   const now = Date.now();
   // Anything still parked on the placeholder channel needs enrichment, even
   // when the export supplied a title (history entries). Playlist members and
@@ -950,6 +954,7 @@ export async function backfillImportedVideos(limit = 15) {
 let refreshing = false;
 
 export async function refreshAll(): Promise<{ channels: number; added: number; errors: string[] }> {
+  if (maintenanceActive()) return { channels: 0, added: 0, errors: [] };
   if (refreshing) {
     log.warn("refresh.skipped", { reason: "already_in_progress" });
     return { channels: 0, added: 0, errors: ["refresh already in progress"] };
@@ -998,6 +1003,7 @@ let scheduledPlaylistSyncRunning = false;
  * channel. Attempt time drives rotation so one broken channel cannot starve
  * every channel after it. */
 export async function syncNextSubscribedChannel(): Promise<void> {
+  if (maintenanceActive()) return;
   if (refreshing) {
     log.info("channel.full_sync.skipped", { reason: "feed_refresh_in_progress" });
     return;
@@ -1043,6 +1049,7 @@ export async function syncNextSubscribedChannel(): Promise<void> {
 }
 
 export async function syncNextFollowedPlaylist(): Promise<void> {
+  if (maintenanceActive()) return;
   if (scheduledPlaylistSyncRunning) return;
   scheduledPlaylistSyncRunning = true;
   try {
@@ -1071,6 +1078,7 @@ export async function syncNextFollowedPlaylist(): Promise<void> {
  * are checked first so a stream that just started surfaces quickly.
  */
 export async function refreshAllLiveStatuses(): Promise<void> {
+  if (maintenanceActive()) return;
   if (liveRefreshing) return;
   liveRefreshing = true;
   try {

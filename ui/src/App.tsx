@@ -27,6 +27,7 @@ import SubscriptionsPage from "./pages/SubscriptionsPage";
 import LikedPage from "./pages/LikedPage";
 import InsightsPage from "./pages/InsightsPage";
 import CleanupPage from "./pages/CleanupPage";
+import RestorePage from "./pages/RestorePage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
@@ -505,6 +506,7 @@ function AppShell() {
               <Route path="/insights" element={<InsightsPage />} />
               <Route path="/settings" element={<SettingsPage showToast={showToast} />} />
               <Route path="/import" element={<ImportPage showToast={showToast} />} />
+              <Route path="/restore" element={<RestorePage showToast={showToast} />} />
             </Routes>
           </div>
         </main>

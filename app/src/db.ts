@@ -774,3 +774,36 @@ if (getSetting("multiuser_migrated") !== "1") {
 if ((db.prepare("SELECT count(*) AS n FROM users").get() as { n: number }).n === 0) {
   db.prepare("INSERT INTO users (name, avatar_color) VALUES (?, ?)").run("Default", "#f2293a");
 }
+
+// Stable identities used by portable backup/restore. Local integer ids remain
+// implementation details and are never written to a portable archive.
+for (const stmt of [
+  "ALTER TABLE users ADD COLUMN portable_uuid TEXT",
+  "ALTER TABLE tags ADD COLUMN portable_uuid TEXT",
+  "ALTER TABLE user_playlists ADD COLUMN portable_uuid TEXT",
+]) {
+  try { db.exec(stmt); } catch {}
+}
+for (const table of ["users", "tags", "user_playlists"] as const) {
+  const rows = db.prepare(`SELECT id FROM ${table} WHERE portable_uuid IS NULL OR portable_uuid = ''`).all() as { id: number }[];
+  const update = db.prepare(`UPDATE ${table} SET portable_uuid = ? WHERE id = ?`);
+  const backfill = db.transaction(() => {
+    for (const row of rows) update.run(crypto.randomUUID(), row.id);
+  });
+  backfill();
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_portable_uuid ON ${table}(portable_uuid)`);
+}
+
+// Records where a portable object from another installation landed locally.
+// This keeps repeated restores idempotent even when an older target assigned a
+// different UUID during a previous import.
+db.exec(`CREATE TABLE IF NOT EXISTS portable_object_mappings (
+  source_installation_id TEXT NOT NULL,
+  object_type            TEXT NOT NULL,
+  source_uuid            TEXT NOT NULL,
+  local_id               INTEGER NOT NULL,
+  created_at             TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (source_installation_id, object_type, source_uuid)
+)`);
+
+if (!getSetting("installation_id")) setSetting("installation_id", crypto.randomUUID());

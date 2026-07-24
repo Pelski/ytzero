@@ -3,6 +3,7 @@ import { fetchChannelAbout, fetchVideoInfo, searchYouTube, type SearchResult, ty
 import { buildKeywordPlan, tokenizeDiscoveryText, type KeywordSeed } from "./discoveryKeywords";
 import { DL_DEFAULTS, resetDownloadsState } from "./downloader";
 import { SUBTITLE_LANGUAGES } from "./subtitleLanguages";
+import { maintenanceActive } from "./maintenance";
 
 export interface PluginManifest {
   id: string;
@@ -454,6 +455,45 @@ export function setPluginSettings(uid: number, pluginId: string, patch: Record<s
   return getPluginSettings(uid, pluginId, language);
 }
 
+// Portable backup is adapter-driven: core never serializes plugin tables or
+// opaque state. Each adapter exposes only values owned and validated by the
+// current plugin implementation.
+export interface PortablePluginBackupAdapter {
+  id: string;
+  scope: "instance" | "profile";
+  schemaVersion: number;
+  export(userId: number): unknown;
+  restore(userId: number, value: unknown): void;
+}
+
+export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
+  {
+    id: "discovery",
+    scope: "profile",
+    schemaVersion: 1,
+    export(userId) {
+      const blocked = db.prepare("SELECT value FROM plugin_state WHERE plugin_id='discovery' AND user_id=? AND key='blocked_terms'").get(userId) as { value: string } | null;
+      let blockedTerms: string[] = [];
+      try { blockedTerms = blocked ? JSON.parse(blocked.value) : []; } catch {}
+      return { settings: getPluginSettings(userId, "discovery").settings, blockedTerms };
+    },
+    restore(userId, value) {
+      const input = value && typeof value === "object" ? value as any : {};
+      setPluginSettings(userId, "discovery", { ...(input.settings ?? {}), blockedTerms: Array.isArray(input.blockedTerms) ? input.blockedTerms : [] });
+    },
+  },
+  {
+    id: "downloads",
+    scope: "instance",
+    schemaVersion: 1,
+    export(userId) { return { settings: getPluginSettings(userId, "downloads").settings }; },
+    restore(userId, value) {
+      const input = value && typeof value === "object" ? value as any : {};
+      setPluginSettings(userId, "downloads", input.settings ?? {});
+    },
+  },
+] as const;
+
 export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
   if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
   if (pluginId === "downloads") {
@@ -839,6 +879,7 @@ export function refreshDiscoveryInBackground(uid: number) {
 }
 
 async function runDiscoveryRefresh(uid: number) {
+  if (maintenanceActive()) return;
   const current = discoveryRefreshInFlight.get(uid);
   if (current) return current;
   const promise = rebuildDiscoveryRecommendations(uid).finally(() => discoveryRefreshInFlight.delete(uid));

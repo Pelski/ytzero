@@ -1,0 +1,45 @@
+.restore-page {
+  max-width: 900px;
+}
+
+.restore-page > .ui-tabs-wrap {
+  margin-bottom: var(--space-4);
+}
+
+.restore-options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-2);
+}
+
+.restore-options-grid .ui-checkbox {
+  padding: var(--space-2);
+  border-radius: 8px;
+}
+
+.restore-options-grid .ui-checkbox:hover {
+  background: var(--surface-2);
+}
+
+.restore-upload {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  border: 2px dashed var(--surface-3);
+  border-radius: 12px;
+  text-align: center;
+}
+
+.restore-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+@media (max-width: 620px) {
+  .restore-options-grid { grid-template-columns: 1fr; }
+}

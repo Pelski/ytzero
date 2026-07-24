@@ -39,6 +39,7 @@ import { recordSchedulingSignal } from "./contentSignals";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, saveChannelPlaylists, videoPlaylistsForUser } from "./channelPlaylists";
 import { feedVisibilityWhere, feedSortSql, followedExists, followedPlaylistExists, tagFilterSql, filterOnlySql } from "./feedQuery";
 import { buildCleanupWhere, countCleanupMatches, listCleanupVideoIds, snapshotUserVideoState, applyCleanupAction, restoreUserVideoState, saveBulkUndo, loadBulkUndo, clearBulkUndo, type CleanupFilter } from "./cleanup";
+import { analyzePortableBackup, backupOptions, commitPortableRestore, createPortableBackup, deleteRestoreSession, planPortableRestore } from "./portableBackup";
 import {
   authMethod,
   hashPassword,
@@ -259,6 +260,8 @@ const SETTINGS_MUTATION_PREFIXES = [
   "/filter-rules",
   "/playlists",
   "/plugins",
+  "/backup",
+  "/restore",
 ];
 
 // Tags and personal playlists belong to the active profile and remain editable
@@ -280,6 +283,59 @@ api.use("*", async (c, next) => {
     return c.json({ error: "settings locked" }, 423);
   }
   await next();
+});
+
+// ---------- portable backup and restore (admin only) ----------
+
+api.get("/backup/options", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  c.header("Cache-Control", "private, no-store");
+  return c.json(backupOptions());
+});
+
+api.post("/backup/export", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const input = await c.req.json().catch(() => ({}));
+  const archive = await createPortableBackup(input);
+  const date = new Date().toISOString().slice(0, 10);
+  const body = archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength) as ArrayBuffer;
+  return new Response(body, { headers: {
+    "Content-Type": "application/zip",
+    "Content-Disposition": `attachment; filename="ytzero-backup-${date}.zip"`,
+    "Cache-Control": "private, no-store",
+    "Content-Length": String(archive.length),
+  } });
+});
+
+api.post("/restore/analyze", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const body = await c.req.parseBody();
+  const file = body.file;
+  if (!(file instanceof File)) return c.json({ error: "backup file required" }, 400);
+  if (!/\.(zip|ytzero-backup)$/i.test(file.name)) return c.json({ error: "choose a .zip or .ytzero-backup file" }, 400);
+  const result = await analyzePortableBackup(currentUserId(c), new Uint8Array(await file.arrayBuffer()));
+  c.header("Cache-Control", "private, no-store");
+  return c.json(result);
+});
+
+api.post("/restore/plan", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const { sessionId, mappings, sections, strategy } = await c.req.json().catch(() => ({}));
+  if (typeof sessionId !== "string" || !mappings || !Array.isArray(sections)) return c.json({ error: "invalid restore plan" }, 400);
+  return c.json(planPortableRestore(currentUserId(c), sessionId, { mappings, sections, strategy }));
+});
+
+api.post("/restore/commit", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const { sessionId, planRevision } = await c.req.json().catch(() => ({}));
+  if (typeof sessionId !== "string" || !Number.isInteger(planRevision)) return c.json({ error: "invalid restore commit" }, 400);
+  return c.json(await commitPortableRestore(currentUserId(c), sessionId, planRevision));
+});
+
+api.delete("/restore/session/:id", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  deleteRestoreSession(currentUserId(c), c.req.param("id"));
+  return c.json({ ok: true });
 });
 
 interface VideoRow {
@@ -2363,8 +2419,8 @@ api.post("/playlists", async (c) => {
   if (!name?.trim()) return c.json({ error: "name required" }, 400);
   const nextOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS sort_order FROM user_playlists WHERE user_id = ?").get(uid) as { sort_order: number };
   const row = db
-    .prepare("INSERT INTO user_playlists (name, icon, sort_order, user_id) VALUES (?, ?, ?, ?) RETURNING id, name, icon, sort_order, created_at")
-    .get(name.trim(), String(icon || "ListMusic").trim() || "ListMusic", nextOrder.sort_order, uid);
+    .prepare("INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, name, icon, sort_order, created_at")
+    .get(name.trim(), String(icon || "ListMusic").trim() || "ListMusic", nextOrder.sort_order, uid, crypto.randomUUID());
   return c.json({ playlist: row });
 });
 
@@ -2537,7 +2593,7 @@ const ensureImportedVideo = db.prepare(
 
 function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[]): { playlistsCreated: number; videosAdded: number } {
   const findPlaylist = db.prepare("SELECT id FROM user_playlists WHERE user_id = ? AND name = ? COLLATE NOCASE");
-  const createPlaylist = db.prepare("INSERT INTO user_playlists (name, sort_order, user_id) VALUES (?, ?, ?) RETURNING id");
+  const createPlaylist = db.prepare("INSERT INTO user_playlists (name, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?) RETURNING id");
   const nextOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM user_playlists WHERE user_id = ?");
   const addMembership = db.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)");
 
@@ -2549,7 +2605,7 @@ function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[]): { pl
       let row = findPlaylist.get(uid, pl.name) as { id: number } | undefined;
       if (!row) {
         const order = (nextOrder.get(uid) as { n: number }).n;
-        row = createPlaylist.get(pl.name, order, uid) as { id: number };
+        row = createPlaylist.get(pl.name, order, uid, crypto.randomUUID()) as { id: number };
         playlistsCreated++;
       }
       for (const videoId of pl.videoIds) {
@@ -2745,8 +2801,8 @@ api.post("/tags", async (c) => {
   const { name, color } = await c.req.json();
   if (!name?.trim()) return c.json({ error: "name required" }, 400);
   const r = db
-    .prepare("INSERT INTO tags (name, color, user_id) VALUES (?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET color = excluded.color RETURNING *")
-    .get(name.trim(), color ?? "#7c5cff", uid);
+    .prepare("INSERT INTO tags (name, color, user_id, portable_uuid) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET color = excluded.color RETURNING *")
+    .get(name.trim(), color ?? "#7c5cff", uid, crypto.randomUUID());
   return c.json({ tag: r });
 });
 
@@ -3023,8 +3079,8 @@ api.post("/profiles", async (c) => {
   const nextOrder = (db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM users").get() as { n: number }).n;
   const pinHash = isSixDigitPin(pin) ? await hashPin(pin) : null;
   const row = db
-    .prepare("INSERT INTO users (name, avatar_color, pin_hash, sort_order) VALUES (?, ?, ?, ?) RETURNING *")
-    .get(name.trim(), avatar_color || "#7c5cff", pinHash, nextOrder) as UserRow;
+    .prepare("INSERT INTO users (name, avatar_color, pin_hash, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING *")
+    .get(name.trim(), avatar_color || "#7c5cff", pinHash, nextOrder, crypto.randomUUID()) as UserRow;
   log.info("profile.created", { id: row.id, name: row.name });
   return c.json({ profile: serializeProfile(row, currentUserId(c)) });
 });
