@@ -1880,10 +1880,10 @@ body.cinema .watch-layout.theater .watch-panels {
 body.cinema .watch-layout.theater .watch-row .ui-button {
   background: transparent;
 }
-body.cinema .watch-layout.theater .watch-row .ui-button:hover {
+body.cinema .watch-layout.theater .watch-row .ui-button:not(.like-btn):hover {
   background: rgba(255, 255, 255, 0.1);
 }
-body.cinema .watch-layout.theater .watch-row .ui-button[aria-pressed="true"],
+body.cinema .watch-layout.theater .watch-row .ui-button[aria-pressed="true"]:not(.like-btn),
 body.cinema .watch-layout.theater .watch-row .ui-button--secondary {
   background: rgba(255, 255, 255, 0.15);
 }

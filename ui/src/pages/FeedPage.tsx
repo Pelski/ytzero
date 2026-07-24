@@ -136,6 +136,8 @@ export default function FeedPage({
   const [refreshing, setRefreshing] = useState(false);
   const [gridSize, setGridSize] = useState<GridSize>(readGridSize);
   const [showTopChannels, setShowTopChannels] = useState(true);
+  const [inProgressExpanded, setInProgressExpanded] = useState(false);
+  const [queuedExpanded, setQueuedExpanded] = useState(false);
   const [hasSubscriptions, setHasSubscriptions] = useState<boolean | null>(null);
   // Gates the full "start from scratch" walkthrough — separate from
   // hasSubscriptions so a profile with nothing followed yet, on an instance
@@ -400,7 +402,11 @@ export default function FeedPage({
             <span>{t("continueWatching")}</span>
           </div>
           <div className={`h-scroll-wrap${inProgressScroll.shadowLeft ? " shadow-left" : ""}${inProgressScroll.shadowRight ? " shadow-right" : ""}`}>
-            <div className={`h-scroll-row h-scroll-row--${gridSize}`} ref={inProgressScroll.ref}>
+            <div
+              id="continue-watching-list"
+              className={`h-scroll-row h-scroll-row--${gridSize} mobile-preview-row${inProgressExpanded ? " is-expanded" : ""}`}
+              ref={inProgressScroll.ref}
+            >
               {inProgress.map((v) => (
                 <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
                   <VideoCard video={v} onPlay={onPlay} onChanged={handleInProgressChanged} />
@@ -408,6 +414,18 @@ export default function FeedPage({
               ))}
             </div>
           </div>
+          {inProgress.length > 3 && (
+            <div className="mobile-preview-toggle">
+              <Button
+                size="sm"
+                aria-expanded={inProgressExpanded}
+                aria-controls="continue-watching-list"
+                onClick={() => setInProgressExpanded((expanded) => !expanded)}
+              >
+                {t(inProgressExpanded ? "showLess" : "showMore")}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -418,7 +436,11 @@ export default function FeedPage({
             <span>{t("navWatchlist")}</span>
           </div>
           <div className={`h-scroll-wrap${queuedScroll.shadowLeft ? " shadow-left" : ""}${queuedScroll.shadowRight ? " shadow-right" : ""}`}>
-            <div className={`h-scroll-row h-scroll-row--${gridSize}`} ref={queuedScroll.ref}>
+            <div
+              id="scheduled-feed-list"
+              className={`h-scroll-row h-scroll-row--${gridSize} mobile-preview-row${queuedExpanded ? " is-expanded" : ""}`}
+              ref={queuedScroll.ref}
+            >
               {dueQueuedVideos.map((v) => (
                 <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
                   <VideoCard video={v} onPlay={onPlay} onChanged={reload} />
@@ -426,6 +448,18 @@ export default function FeedPage({
               ))}
             </div>
           </div>
+          {dueQueuedVideos.length > 3 && (
+            <div className="mobile-preview-toggle">
+              <Button
+                size="sm"
+                aria-expanded={queuedExpanded}
+                aria-controls="scheduled-feed-list"
+                onClick={() => setQueuedExpanded((expanded) => !expanded)}
+              >
+                {t(queuedExpanded ? "showLess" : "showMore")}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

@@ -348,13 +348,14 @@ button.video-card:disabled { cursor: default; }
 }
 .video-card .thumb-wrap.controls-near .thumb-actions-peek,
 .thumb-actions-zone:focus-within .thumb-actions-peek {
-  opacity: 0;
-  transform: translateY(-5px) scale(0.94);
-  pointer-events: none;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  background: rgba(0, 0, 0, 0.82);
 }
 .thumb-actions {
   position: absolute;
-  top: 8px;
+  top: 38px;
   right: 8px;
   display: flex;
   flex-direction: column;
@@ -372,14 +373,18 @@ button.video-card:disabled { cursor: default; }
   transform: translateY(0) scale(1);
 }
 .thumb-actions button,
-.thumb-actions a { pointer-events: auto; }
+.thumb-actions a { pointer-events: none; }
+.video-card .thumb-wrap.controls-near .thumb-actions button,
+.video-card .thumb-wrap.controls-near .thumb-actions a,
+.thumb-actions-zone:focus-within .thumb-actions button,
+.thumb-actions-zone:focus-within .thumb-actions a { pointer-events: auto; }
 @media (hover: none) {
   .thumb-actions-peek {
     opacity: 0.92;
     transform: translateY(0) scale(1);
   }
   .video-card .thumb-wrap.controls-near .thumb-actions-peek {
-    opacity: 0;
+    opacity: 1;
   }
 }
 .thumb-actions-row {

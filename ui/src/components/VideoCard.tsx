@@ -132,7 +132,7 @@ function VideoCard({
   const [fading, setFading] = useState(false);
   const [removed, setRemoved] = useState(false);
   const [actionProximity, setActionProximity] = useState(0);
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionsPinned, setActionsPinned] = useState(false);
   const [downloadStatus, setDownloadStatus] = useState(video.download_status ?? null);
   const [swipeX, setSwipeX] = useState(0);
   const [swiping, setSwiping] = useState(false);
@@ -144,6 +144,7 @@ function VideoCard({
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
   const blockClickAfterDragRef = useRef(false);
+  const actionsOpen = actionsPinned || actionProximity > 0.52;
 
   const exitLeft = () => {
     const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
@@ -271,14 +272,13 @@ function VideoCard({
     if (Math.abs(next - lastProximityRef.current) < 0.025) return;
     lastProximityRef.current = next;
     setActionProximity(next);
-    if (next > 0.52) setActionsOpen(true);
   };
 
   const toggleActions = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setActionsOpen((open) => {
-      const next = !open;
+    setActionsPinned((pinned) => {
+      const next = !pinned;
       lastProximityRef.current = next ? 1 : 0;
       setActionProximity(next ? 1 : 0);
       return next;
@@ -291,7 +291,6 @@ function VideoCard({
     if (e.pointerType !== "mouse") return;
     lastProximityRef.current = 0;
     setActionProximity(0);
-    setActionsOpen(false);
   };
 
   useEffect(() => {
@@ -300,7 +299,7 @@ function VideoCard({
       if (cardRef.current?.contains(event.target as Node)) return;
       lastProximityRef.current = 0;
       setActionProximity(0);
-      setActionsOpen(false);
+      setActionsPinned(false);
     };
     document.addEventListener("pointerdown", closeOnOutsideTap);
     return () => document.removeEventListener("pointerdown", closeOnOutsideTap);

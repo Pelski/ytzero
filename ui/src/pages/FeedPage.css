@@ -192,4 +192,13 @@
 .h-scroll-card {
   flex-shrink: 0;
 }
+.mobile-preview-toggle { display: none; }
 
+@media (max-width: 760px) {
+  .mobile-preview-row:not(.is-expanded) > .h-scroll-card:nth-child(n + 4) { display: none; }
+  .mobile-preview-toggle {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+  }
+}
