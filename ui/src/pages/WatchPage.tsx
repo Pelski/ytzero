@@ -840,7 +840,9 @@ export default function WatchPage() {
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   // The YouTube iframe only receives its built-in shortcuts after it has been

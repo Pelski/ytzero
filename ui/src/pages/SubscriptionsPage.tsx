@@ -114,9 +114,10 @@ export default function SubscriptionsPage() {
     const stored = sessionStorage.getItem("subscriptionSort");
     return stored === "name-desc" || stored === "latest-video" || stored === "subscribed-recent" || stored === "subscribers-desc" || stored === "videos-desc" ? stored : "name-asc";
   });
-  const [selectedTags, setSelectedTags] = useState<number[]>(() => {
-    try { return JSON.parse(sessionStorage.getItem("subscriptionTags") ?? "[]"); } catch { return []; }
-  });
+  // Intentionally not persisted (unlike sort): a forgotten tag filter would
+  // silently hide newly-followed channels that have no tags yet, making them
+  // look "missing" from subscriptions. Always start unfiltered.
+  const [selectedTags, setSelectedTags] = useState<number[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -153,16 +154,11 @@ export default function SubscriptionsPage() {
   }, [channels, query, selectedTags, sort]);
 
   const toggleTag = (id: number) => {
-    setSelectedTags((current) => {
-      const next = current.includes(id) ? current.filter((tagId) => tagId !== id) : [...current, id];
-      sessionStorage.setItem("subscriptionTags", JSON.stringify(next));
-      return next;
-    });
+    setSelectedTags((current) => current.includes(id) ? current.filter((tagId) => tagId !== id) : [...current, id]);
   };
 
   const clearTagFilters = () => {
     setSelectedTags([]);
-    sessionStorage.setItem("subscriptionTags", "[]");
   };
 
   const applyChannelTags = (channel: Channel, nextTags: Tag[]) => {
