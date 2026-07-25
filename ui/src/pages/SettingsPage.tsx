@@ -22,7 +22,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, Popover, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, Field, IconButton, Inline, Input, InputGroup, PageHeader, Popover, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
@@ -649,15 +649,18 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
 
 const PROFILE_COLORS = ["#f2293a", "#7c5cff", "#3ea6ff", "#00b894", "#e17055", "#fdcb6e", "#e84393", "#636e72"];
 
-function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allowPin, allowPinReset, allowChildToggle }: {
+function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, adminDelete, allowPin, allowPinReset, allowChildToggle, allowOidcMapping, oidcClaim }: {
   profile: Profile;
   onSaved: () => void;
   onDeleted: () => void;
   showToast: (m: string) => void;
   canDelete: boolean;
+  adminDelete: boolean;
   allowPin: boolean;
   allowPinReset: boolean;
   allowChildToggle: boolean;
+  allowOidcMapping: boolean;
+  oidcClaim?: string;
 }) {
   const { t } = useI18n();
   const [name, setName] = useState(profile.name);
@@ -667,6 +670,7 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allo
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deletePin, setDeletePin] = useState("");
   const [deleteError, setDeleteError] = useState(false);
+  const [oidcIdentity, setOidcIdentity] = useState(profile.oidc_identity ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const deleteWithPin = async () => {
@@ -689,6 +693,14 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allo
     await api.updateProfile(profile.id, { pin: pin || null });
     setPin("");
     setEditingPin(false);
+    showToast(t("profileSaved"));
+    onSaved();
+  };
+
+  const saveOidcIdentity = async () => {
+    const identity = oidcIdentity.trim();
+    if (!identity || identity === profile.oidc_identity) return;
+    await api.updateProfile(profile.id, { oidc_identity: identity });
     showToast(t("profileSaved"));
     onSaved();
   };
@@ -741,6 +753,21 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allo
             ))}
           </div>
         </div>
+      )}
+
+      {allowOidcMapping && oidcClaim && (
+        <Field
+          label={oidcClaim.toLowerCase() === "email" ? t("profileOidcIdentityEmail") : t("profileOidcIdentity", { claim: oidcClaim })}
+          hint={t("profileOidcIdentityHint", { claim: oidcClaim })}
+        >
+          <Input
+            type={oidcClaim.toLowerCase() === "email" ? "email" : "text"}
+            value={oidcIdentity}
+            onChange={(event) => setOidcIdentity(event.target.value)}
+            onBlur={() => void saveOidcIdentity()}
+            onKeyDown={(event) => event.key === "Enter" && void saveOidcIdentity()}
+          />
+        </Field>
       )}
 
       {allowPin && (
@@ -800,7 +827,7 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, allo
 
       {canDelete && (
         <div className="profile-edit-row">
-          {!profile.has_pin ? (
+          {!profile.has_pin || adminDelete ? (
             <Popconfirm message={t("deleteProfileConfirm")} onConfirm={async () => { await api.deleteProfile(profile.id); onDeleted(); }}>
               <Button variant="danger"><Trash2 size={15} /> {t("deleteProfile")}</Button>
             </Popconfirm>
@@ -914,10 +941,18 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(PROFILE_COLORS[1]);
+  const [newOidcIdentity, setNewOidcIdentity] = useState("");
+  const [newIsChild, setNewIsChild] = useState(false);
+  const [oidcMapping, setOidcMapping] = useState<{ claim: string; required: boolean } | null>(null);
+  const [canCreate, setCanCreate] = useState(true);
 
   // Reload the list and tell the topbar picker to refresh too.
   const refresh = useCallback(() => {
-    api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
+    api.profiles().then((r) => {
+      setProfiles(r.profiles);
+      setOidcMapping(r.oidc_mapping);
+      setCanCreate(r.can_create);
+    }).catch(() => {});
     emit("profiles-changed");
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
@@ -932,16 +967,27 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
   }, [searchParams, setSearchParams]);
 
   const create = async () => {
-    if (!newName.trim()) return;
-    await api.createProfile({ name: newName.trim(), avatar_color: newColor });
-    setNewName("");
-    setNewColor(PROFILE_COLORS[1]);
-    setCreating(false);
-    refresh();
+    if (!newName.trim() || (oidcMapping?.required && !newOidcIdentity.trim())) return;
+    try {
+      await api.createProfile({
+        name: newName.trim(),
+        avatar_color: newColor,
+        oidc_identity: oidcMapping ? newOidcIdentity.trim() : undefined,
+        is_child: newIsChild,
+      });
+      setNewName("");
+      setNewColor(PROFILE_COLORS[1]);
+      setNewOidcIdentity("");
+      setNewIsChild(false);
+      setCreating(false);
+      refresh();
+    } catch (error: any) {
+      showToast(error?.message ?? t("loginError"));
+    }
   };
 
-  // The primary profile may edit others (name/color/avatar); everyone else can
-  // only edit their own. PIN and deletion stay owner-only.
+  // The primary profile may prepare and restrict OIDC profiles before their
+  // first login, including removing a profile that was created by mistake.
   const iAmPrimary = profiles.find((p) => p.active)?.is_primary ?? false;
 
   return (
@@ -962,6 +1008,7 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
                 {[
                   p.is_primary && t("primaryProfile"),
                   p.is_child && t("childProfile"),
+                  p.oidc_identity && (oidcMapping?.claim.toLowerCase() === "email" ? p.oidc_identity : `${oidcMapping?.claim}: ${p.oidc_identity}`),
                   p.has_pin && t("profilePin") + " ••••••",
                 ].filter(Boolean).join(" · ") || "—"}
               </div>
@@ -981,7 +1028,10 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
                   allowPin={p.active}
                   allowPinReset={iAmPrimary && !p.active}
                   allowChildToggle={iAmPrimary && !p.is_primary}
-                  canDelete={profiles.length > 1 && p.active && !p.is_primary}
+                  allowOidcMapping={iAmPrimary && Boolean(oidcMapping)}
+                  oidcClaim={oidcMapping?.claim}
+                  canDelete={profiles.length > 1 && !p.is_primary && (p.active || iAmPrimary)}
+                  adminDelete={iAmPrimary && !p.active}
                   onSaved={refresh}
                   onDeleted={() => { setExpanded(null); refresh(); }}
                 />
@@ -997,6 +1047,28 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
           <ProfileAvatar profile={{ name: newName || "?", avatar: "", avatar_color: newColor }} size={44} />
           <div className="profile-card-main">
             <Input value={newName} placeholder={t("profileName")} autoFocus onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} />
+            {oidcMapping && (
+              <Field
+                label={oidcMapping.claim.toLowerCase() === "email" ? t("profileOidcIdentityEmail") : t("profileOidcIdentity", { claim: oidcMapping.claim })}
+                hint={t("profileOidcIdentityHint", { claim: oidcMapping.claim })}
+              >
+                <Input
+                  type={oidcMapping.claim.toLowerCase() === "email" ? "email" : "text"}
+                  required={oidcMapping.required}
+                  value={newOidcIdentity}
+                  onChange={(event) => setNewOidcIdentity(event.target.value)}
+                  onKeyDown={(event) => event.key === "Enter" && create()}
+                />
+              </Field>
+            )}
+            {iAmPrimary && (
+              <Switch
+                label={t("childProfile")}
+                description={t("childProfileHint")}
+                checked={newIsChild}
+                onCheckedChange={setNewIsChild}
+              />
+            )}
             <div className="profile-color-swatches" style={{ marginTop: 8 }}>
               {PROFILE_COLORS.map((c) => (
                 <button key={c} className={`profile-color-swatch${c === newColor ? " selected" : ""}`} style={{ background: c }} aria-label={c} onClick={() => setNewColor(c)} />
@@ -1004,12 +1076,12 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
             </div>
           </div>
           <div className="profile-card-actions">
-            <Button variant="primary" onClick={create} disabled={!newName.trim()}>{t("create")}</Button>
-            <Button onClick={() => setCreating(false)}>{t("cancel")}</Button>
+            <Button variant="primary" onClick={create} disabled={!newName.trim() || Boolean(oidcMapping?.required && !newOidcIdentity.trim())}>{t("create")}</Button>
+            <Button onClick={() => { setCreating(false); setNewOidcIdentity(""); setNewIsChild(false); }}>{t("cancel")}</Button>
           </div>
         </div>
       ) : (
-        <Button onClick={() => setCreating(true)}><UserPlus size={15} /> {t("addProfile")}</Button>
+        canCreate && <Button onClick={() => setCreating(true)}><UserPlus size={15} /> {t("addProfile")}</Button>
       )}
     </SettingsSection>
   );

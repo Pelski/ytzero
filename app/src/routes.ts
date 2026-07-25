@@ -196,7 +196,7 @@ function isAdmin(c: any): boolean {
   return isPrimaryUser(c) || Boolean(c.get("sessionAdmin"));
 }
 // Who may edit a profile's general settings (name/color/avatar): the owner, or
-// an admin. PIN changes and deletion are owner-only (see handlers).
+// an admin. PIN changes remain owner-only; admins may delete non-primary profiles.
 function canManageProfile(c: any, id: number): boolean {
   return currentUserId(c) === id || isAdmin(c);
 }
@@ -3124,7 +3124,28 @@ interface UserRow {
   is_child: number;
 }
 
-function serializeProfile(u: UserRow, activeId: number) {
+function oidcProfileMapping() {
+  const mapped = authMethod() === "oidc" && (getSetting("auth_oidc_mode") || "mapped") === "mapped";
+  return { mapped, claim: getSetting("auth_oidc_claim") || "preferred_username" };
+}
+
+function normalizeOidcIdentity(value: unknown, claim: string): string {
+  const identity = String(value ?? "").trim();
+  return claim.toLowerCase() === "email" ? identity.toLowerCase() : identity;
+}
+
+function validOidcIdentity(identity: string, claim: string): boolean {
+  return claim.toLowerCase() !== "email" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity);
+}
+
+function oidcIdentityExists(identity: string, claim: string, exceptId?: number): boolean {
+  const comparison = claim.toLowerCase() === "email" ? "lower(oidc_subject) = lower(?)" : "oidc_subject = ?";
+  const row = db.prepare(`SELECT id FROM users WHERE ${comparison}${exceptId ? " AND id != ?" : ""}`)
+    .get(...(exceptId ? [identity, exceptId] : [identity]));
+  return Boolean(row);
+}
+
+function serializeProfile(u: UserRow, activeId: number, includeOidcIdentity = false) {
   const method = authMethod();
   const status = u.is_child === 1 ? childStatus(u.id) : null;
   return {
@@ -3150,28 +3171,45 @@ function serializeProfile(u: UserRow, activeId: number) {
       unlimited_today: status.unlimited_today,
     } : null,
     can_switch: canSwitchProfiles(),
+    ...(includeOidcIdentity ? { oidc_identity: u.oidc_subject ?? "" } : {}),
   };
 }
 
 api.get("/profiles", (c) => {
   const activeId = currentUserId(c);
   const rows = db.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
-  return c.json({ profiles: rows.map((u) => serializeProfile(u, activeId)), active_id: activeId });
+  const mapping = oidcProfileMapping();
+  const admin = isAdmin(c);
+  return c.json({
+    profiles: rows.map((u) => serializeProfile(u, activeId, admin && mapping.mapped)),
+    active_id: activeId,
+    oidc_mapping: mapping.mapped ? { claim: mapping.claim, required: true } : null,
+    can_create: !mapping.mapped || admin,
+  });
 });
 
 api.post("/profiles", async (c) => {
-  const { name, avatar_color, pin } = await c.req.json().catch(() => ({}));
+  const { name, avatar_color, pin, oidc_identity, is_child } = await c.req.json().catch(() => ({}));
   if (!name?.trim()) return c.json({ error: "name required" }, 400);
   if (pin !== undefined && pin !== null && pin !== "" && !isSixDigitPin(pin)) {
     return c.json({ error: "PIN must have 6 digits" }, 400);
   }
+  const mapping = oidcProfileMapping();
+  if (mapping.mapped && !isAdmin(c)) return c.json({ error: "only an admin can create OIDC profiles" }, 403);
+  const identity = normalizeOidcIdentity(oidc_identity, mapping.claim);
+  if (mapping.mapped && !identity) return c.json({ error: `${mapping.claim} identity required` }, 400);
+  if (identity && !isAdmin(c)) return c.json({ error: "only an admin can map an OIDC identity" }, 403);
+  if (identity && !validOidcIdentity(identity, mapping.claim)) return c.json({ error: `invalid ${mapping.claim} identity` }, 400);
+  if (identity && oidcIdentityExists(identity, mapping.claim)) return c.json({ error: "OIDC identity is already assigned" }, 409);
+  if (is_child && !isAdmin(c)) return c.json({ error: "only an admin can create a child profile" }, 403);
   const nextOrder = (db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM users").get() as { n: number }).n;
   const pinHash = isSixDigitPin(pin) ? await hashPin(pin) : null;
   const row = db
-    .prepare("INSERT INTO users (name, avatar_color, pin_hash, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING *")
-    .get(name.trim(), avatar_color || "#7c5cff", pinHash, nextOrder, crypto.randomUUID()) as UserRow;
+    .prepare("INSERT INTO users (name, avatar_color, pin_hash, oidc_subject, is_child, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *")
+    .get(name.trim(), avatar_color || "#7c5cff", pinHash, identity || null, is_child ? 1 : 0, nextOrder, crypto.randomUUID()) as UserRow;
+  if (is_child) setUserSetting(row.id, "child_local_only", "1");
   log.info("profile.created", { id: row.id, name: row.name });
-  return c.json({ profile: serializeProfile(row, currentUserId(c)) });
+  return c.json({ profile: serializeProfile(row, currentUserId(c), isAdmin(c) && mapping.mapped) });
 });
 
 api.patch("/profiles/:id", async (c) => {
@@ -3187,6 +3225,16 @@ api.patch("/profiles/:id", async (c) => {
   }
   if (body.avatar_color !== undefined) {
     db.prepare("UPDATE users SET avatar_color = ? WHERE id = ?").run(String(body.avatar_color), id);
+  }
+  if (body.oidc_identity !== undefined) {
+    if (!isAdmin(c)) return c.json({ error: "only an admin can map an OIDC identity" }, 403);
+    const mapping = oidcProfileMapping();
+    if (!mapping.mapped) return c.json({ error: "OIDC mapped mode is not active" }, 400);
+    const identity = normalizeOidcIdentity(body.oidc_identity, mapping.claim);
+    if (!identity) return c.json({ error: `${mapping.claim} identity required` }, 400);
+    if (!validOidcIdentity(identity, mapping.claim)) return c.json({ error: `invalid ${mapping.claim} identity` }, 400);
+    if (oidcIdentityExists(identity, mapping.claim, id)) return c.json({ error: "OIDC identity is already assigned" }, 409);
+    db.prepare("UPDATE users SET oidc_subject = ? WHERE id = ?").run(identity, id);
   }
   // is_child: admin-only, so a child profile can never unmark itself. The
   // primary profile is the household admin and cannot be a child profile.
@@ -3227,7 +3275,7 @@ api.patch("/profiles/:id", async (c) => {
     }
   }
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
-  return c.json({ profile: serializeProfile(row, currentUserId(c)) });
+  return c.json({ profile: serializeProfile(row, currentUserId(c), isAdmin(c) && oidcProfileMapping().mapped) });
 });
 
 api.delete("/profiles/:id", async (c) => {
@@ -3237,11 +3285,13 @@ api.delete("/profiles/:id", async (c) => {
   if (count <= 1) return c.json({ error: "cannot delete the last profile" }, 400);
   const user = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!user) return c.json({ error: "not found" }, 404);
-  // A profile is deleted only by its owner (while logged into it) — not even the
-  // primary profile can delete someone else's.
-  if (currentUserId(c) !== id) return c.json({ error: "switch to this profile first" }, 403);
-  // If it has a PIN, the owner must re-enter it to confirm deletion.
-  if (user.pin_hash) {
+  // The owner may delete their own profile; an admin may remove any non-primary
+  // profile without requiring that person to sign in first.
+  const deletingOwnProfile = currentUserId(c) === id;
+  if (!deletingOwnProfile && !isAdmin(c)) return c.json({ error: "not allowed" }, 403);
+  // A PIN confirms self-deletion. Admin deletion is already authorized by the
+  // admin session (and by the settings lock when one is enabled).
+  if (user.pin_hash && deletingOwnProfile) {
     const { pin } = await c.req.json().catch(() => ({}));
     if (!isSixDigitPin(pin) || !(await Bun.password.verify(pin, user.pin_hash))) {
       return c.json({ error: "invalid PIN" }, 401);
@@ -3249,10 +3299,13 @@ api.delete("/profiles/:id", async (c) => {
   }
   db.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all per-user state
   log.info("profile.deleted", { id });
-  // The active profile just deleted itself → fall back to the first remaining one.
-  const next = firstUserId.get() as { id: number };
-  c.header("Set-Cookie", profileCookie(next.id));
-  return c.json({ ok: true, active_id: next.id });
+  if (deletingOwnProfile) {
+    // The active profile just deleted itself → fall back to the first remaining one.
+    const next = firstUserId.get() as { id: number };
+    c.header("Set-Cookie", profileCookie(next.id));
+    return c.json({ ok: true, active_id: next.id });
+  }
+  return c.json({ ok: true, active_id: currentUserId(c) });
 });
 
 api.post("/profiles/:id/avatar", async (c) => {

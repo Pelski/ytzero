@@ -427,6 +427,7 @@ export interface Profile {
     unlimited_today: boolean;
   } | null;
   can_switch: boolean;
+  oidc_identity?: string;
 }
 
 export interface ChildConfig {
@@ -1030,10 +1031,10 @@ export const api = {
   videoCreators: (videoId: string) =>
     http<{ creators: VideoCreator[] }>(`/videos/${videoId}/creators`),
 
-  profiles: () => http<{ profiles: Profile[]; active_id: number }>("/profiles"),
-  createProfile: (p: { name: string; avatar_color?: string; pin?: string }) =>
+  profiles: () => http<{ profiles: Profile[]; active_id: number; oidc_mapping: { claim: string; required: boolean } | null; can_create: boolean }>("/profiles"),
+  createProfile: (p: { name: string; avatar_color?: string; pin?: string; oidc_identity?: string; is_child?: boolean }) =>
     http<{ profile: Profile }>("/profiles", { method: "POST", body: JSON.stringify(p) }),
-  updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null; is_child?: boolean; child_config?: Partial<ChildConfig> }) =>
+  updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null; oidc_identity?: string; is_child?: boolean; child_config?: Partial<ChildConfig> }) =>
     http<{ profile: Profile }>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify(p) }),
   deleteProfile: (id: number, pin?: string) =>
     http<{ active_id?: number }>(`/profiles/${id}`, { method: "DELETE", body: JSON.stringify({ pin }) }),

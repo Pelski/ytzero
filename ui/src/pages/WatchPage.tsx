@@ -52,10 +52,10 @@ import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, Me
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
 import { normalizeSponsorSegments } from "../sponsorblock";
-import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, downloadScreenshotCanvas, parsePlayerScreenshotFormat } from "../playerScreenshot";
+import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 
-type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock";
+type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
 let ytApiReady: Promise<void> | null = null;
 function loadYouTubeApi(): Promise<void> {
@@ -398,52 +398,29 @@ export default function WatchPage() {
   const captionsDefaultOn = !channelCaptionsOff && (Boolean(channelCaptionLanguage) || settings?.player_cc === "1");
   const captionsDefaultLang = channelCaptionLanguage || settings?.player_cc_lang || settings?.player_hl || "en";
 
-  const takeEmbeddedScreenshot = useCallback(async () => {
-    const element = playerWrapRef.current;
-    if (!element || !video) {
+  const takeEmbeddedScreenshot = useCallback(() => {
+    if (!video) {
       showShortcutFeedback("screenshotError");
       return;
     }
-    try {
-      const seconds = Math.max(0, Number(playerRef.current?.getCurrentTime?.()) || 0);
-      const useBuiltInFallback = dispatchEnhanceEvent(ENHANCE_BRIDGE_EVENTS.screenshotRequest, {
-        version: ENHANCE_BRIDGE_VERSION,
-        video: {
-          id: video.video_id,
-          title: video.title,
-          channelTitle: video.channel_title,
-          seconds,
-        },
-        screenshot: {
-          format: screenshotFormat,
-          quality: screenshotQuality,
-          filenameTemplate: screenshotFilenameTemplate,
-        },
-      }, { cancelable: true });
-      // An extension claims the request synchronously with preventDefault(),
-      // then reports completion through screenshotResult.
-      if (!useBuiltInFallback) return;
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(element, {
-        backgroundColor: "#000000",
-        logging: false,
-        useCORS: true,
-        ignoreElements: (node) => node.hasAttribute("data-screenshot-ignore"),
-      });
-      await downloadScreenshotCanvas(canvas, {
-        template: screenshotFilenameTemplate,
-        channel: video.channel_title,
+    const seconds = Math.max(0, Number(playerRef.current?.getCurrentTime?.()) || 0);
+    const requestWasNotClaimed = dispatchEnhanceEvent(ENHANCE_BRIDGE_EVENTS.screenshotRequest, {
+      version: ENHANCE_BRIDGE_VERSION,
+      video: {
+        id: video.video_id,
         title: video.title,
-        videoId: video.video_id,
+        channelTitle: video.channel_title,
         seconds,
+      },
+      screenshot: {
         format: screenshotFormat,
         quality: screenshotQuality,
-      });
-      showShortcutFeedback("screenshot");
-    } catch (error) {
-      console.error("Unable to capture embedded player container", error);
-      showShortcutFeedback("screenshotError");
-    }
+        filenameTemplate: screenshotFilenameTemplate,
+      },
+    }, { cancelable: true });
+    // Capturing a cross-origin embedded frame is only possible when the
+    // extension claims the request synchronously with preventDefault().
+    if (requestWasNotClaimed) showShortcutFeedback("screenshotUnsupported");
   }, [screenshotFilenameTemplate, screenshotFormat, screenshotQuality, showShortcutFeedback, video]);
 
   // Publish per-video data that cannot live in the static configuration file.
@@ -1685,6 +1662,7 @@ export default function WatchPage() {
                         : shortcutFeedback.kind === "sponsorblock" ? FastForward
                           : shortcutFeedback.kind === "screenshot" ? Camera
                             : shortcutFeedback.kind === "screenshotError" ? AlertTriangle
+                              : shortcutFeedback.kind === "screenshotUnsupported" ? AlertTriangle
                           : shortcutFeedback.kind === "captionsOn" || shortcutFeedback.kind === "captionsOff" ? Clapperboard : Gauge;
                 const sponsorCategory = shortcutFeedback.category ? SB_CATEGORIES.find((category) => category.id === shortcutFeedback.category) : undefined;
                 const label = shortcutFeedback.kind === "back" ? `−${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
@@ -1696,6 +1674,7 @@ export default function WatchPage() {
                         : shortcutFeedback.kind === "captionsOff" ? t("captionsOff")
                           : shortcutFeedback.kind === "screenshot" ? t("playerScreenshotSaved")
                             : shortcutFeedback.kind === "screenshotError" ? t("playerScreenshotError")
+                              : shortcutFeedback.kind === "screenshotUnsupported" ? t("playerScreenshotUnsupported")
                           : shortcutFeedback.kind === "sponsorblock" ? t("sponsorblockSkipped", { category: sponsorCategory ? t(sponsorCategory.labelKey) : shortcutFeedback.category ?? "SponsorBlock" }) : "";
                 return <div key={shortcutFeedback.id} className={`shortcut-feedback${shortcutFeedback.kind === "sponsorblock" ? " shortcut-feedback--sponsorblock" : ""}`}><Icon size={19} />{label && <span>{label}</span>}</div>;
               })()}

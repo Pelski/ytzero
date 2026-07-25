@@ -47,11 +47,13 @@ describe("portable backup classification and restore", () => {
   test("configuration export excludes authentication values and runtime tables", async () => {
     setSetting("auth_oidc_client_secret", "DO-NOT-EXPORT-THIS");
     setSetting("auth_shared_password_hash", "HASH-DO-NOT-EXPORT");
+    db.prepare("UPDATE users SET oidc_subject = ? WHERE id = 1").run("profile-identity-do-not-export@example.com");
     const options = backup.backupOptions();
     const zip = await backup.createPortableBackup({ preset: "configuration", profiles: options.profiles.map((profile) => profile.id) });
     const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
     expect(serialized).not.toContain("DO-NOT-EXPORT-THIS");
     expect(serialized).not.toContain("HASH-DO-NOT-EXPORT");
+    expect(serialized).not.toContain("profile-identity-do-not-export@example.com");
     expect(serialized).not.toContain("auth_sessions");
     expect(serialized).not.toContain("download_cookie");
   });
