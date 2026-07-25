@@ -606,6 +606,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_quality: "auto",
   player_speed: "1",
   keyboard_seek_seconds: "5",
+  // Raw local-player frame export. Both are portable, per-profile preferences.
+  player_screenshot_format: "jpeg",
+  player_screenshot_filename: "{channel}_{title}_{timestamp_ms}",
   // Mobile: rotating to landscape on the watch page enters fullscreen.
   auto_fullscreen_landscape: "0",
   grid_size: "sm",

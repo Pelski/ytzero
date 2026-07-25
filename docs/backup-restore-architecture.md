@@ -164,6 +164,8 @@ below.
 - `settings`: only registered, non-secret global settings. Exclude Child Lock
   hashes and every authentication secret or activation setting.
 - `user_settings`: registered settings for selected profiles.
+  This includes the local-player screenshot format and filename template; both
+  are portable presentation preferences and contain no captured image data.
 - `plugins`: enabled state for known plugins.
 - `plugin_settings` and global `plugin_<id>_*` settings: only through each
   plugin's backup adapter and normal value validation.

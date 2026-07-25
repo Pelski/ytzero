@@ -207,6 +207,8 @@ export interface AppSettings {
   player_quality: string;
   player_speed: string;
   keyboard_seek_seconds: string;
+  player_screenshot_format: string;
+  player_screenshot_filename: string;
   auto_fullscreen_landscape?: string;
   grid_size: string;
   child_lock_enabled: string;

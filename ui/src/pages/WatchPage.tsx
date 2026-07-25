@@ -9,6 +9,7 @@ import {
   ArrowDownToLine,
   BookmarkPlus,
   CalendarDays,
+  Camera,
   Check,
   ChevronLeft,
   Clock,
@@ -37,7 +38,7 @@ import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSeg
 import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import TagChip from "../components/TagChip";
-import LocalPlayer from "../components/LocalPlayer";
+import LocalPlayer, { type LocalPlayerShortcut } from "../components/LocalPlayer";
 import Popconfirm from "../components/Popconfirm";
 import PlaylistPicker from "../components/PlaylistPicker";
 import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
@@ -50,6 +51,9 @@ import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, Me
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
 import { normalizeSponsorSegments } from "../sponsorblock";
+import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, downloadScreenshotCanvas, parsePlayerScreenshotFormat } from "../playerScreenshot";
+
+type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock";
 
 let ytApiReady: Promise<void> | null = null;
 function loadYouTubeApi(): Promise<void> {
@@ -249,7 +253,7 @@ export default function WatchPage() {
   );
   const [playlistVideos, setPlaylistVideos] = useState<PlaylistVideo[]>([]);
   const [speed, setSpeed] = useState("1");
-  const [shortcutFeedback, setShortcutFeedback] = useState<{ kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff" | "sponsorblock"; id: number; seconds?: number; category?: string } | null>(null);
+  const [shortcutFeedback, setShortcutFeedback] = useState<{ kind: WatchShortcutKind; id: number; seconds?: number; category?: string } | null>(null);
   // "auto" plays the local file when one exists; "youtube" forces the iframe.
   const [playerSource, setPlayerSource] = useState<"auto" | "youtube">("auto");
   // watch_source_mode = "ask"/"download": what the viewer decided for THIS video.
@@ -296,7 +300,7 @@ export default function WatchPage() {
   const disabledSegsRef = useRef<Set<string>>(new Set());
   const recordedSbSegsRef = useRef<Set<string>>(new Set());
 
-  const showShortcutFeedback = useCallback((kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff" | "sponsorblock", seconds?: number, category?: string) => {
+  const showShortcutFeedback = useCallback((kind: WatchShortcutKind, seconds?: number, category?: string) => {
     if (shortcutFeedbackTimerRef.current) window.clearTimeout(shortcutFeedbackTimerRef.current);
     setShortcutFeedback({ kind, id: Date.now(), seconds, category });
     shortcutFeedbackTimerRef.current = window.setTimeout(() => setShortcutFeedback(null), kind === "sponsorblock" ? 4_200 : 1_560);
@@ -373,6 +377,8 @@ export default function WatchPage() {
   const sharedTimestamp = Number(new URLSearchParams(location.search).get("t"));
   const sharedStartSeconds = Number.isFinite(sharedTimestamp) ? Math.max(0, Math.floor(sharedTimestamp)) : 0;
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
+  const screenshotFormat = parsePlayerScreenshotFormat(settings?.player_screenshot_format);
+  const screenshotFilenameTemplate = settings?.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE;
   const rawSubtitleSize = settings?.player_sub_size;
   const subtitleSize = rawSubtitleSize === "small" ? 14
     : rawSubtitleSize === "large" ? 26
@@ -386,6 +392,36 @@ export default function WatchPage() {
     : null;
   const captionsDefaultOn = !channelCaptionsOff && (Boolean(channelCaptionLanguage) || settings?.player_cc === "1");
   const captionsDefaultLang = channelCaptionLanguage || settings?.player_cc_lang || settings?.player_hl || "en";
+
+  const takeEmbeddedScreenshot = useCallback(async () => {
+    const element = playerWrapRef.current;
+    if (!element || !video) {
+      showShortcutFeedback("screenshotError");
+      return;
+    }
+    try {
+      const seconds = Math.max(0, Number(playerRef.current?.getCurrentTime?.()) || 0);
+      const { default: html2canvas } = await import("html2canvas");
+      const canvas = await html2canvas(element, {
+        backgroundColor: "#000000",
+        logging: false,
+        useCORS: true,
+        ignoreElements: (node) => node.hasAttribute("data-screenshot-ignore"),
+      });
+      await downloadScreenshotCanvas(canvas, {
+        template: screenshotFilenameTemplate,
+        channel: video.channel_title,
+        title: video.title,
+        videoId: video.video_id,
+        seconds,
+        format: screenshotFormat,
+      });
+      showShortcutFeedback("screenshot");
+    } catch (error) {
+      console.error("Unable to capture embedded player container", error);
+      showShortcutFeedback("screenshotError");
+    }
+  }, [screenshotFilenameTemplate, screenshotFormat, showShortcutFeedback, video]);
 
   const changeSubtitleSize = useCallback((size: number) => {
     const value = String(size);
@@ -1063,6 +1099,12 @@ export default function WatchPage() {
         return;
       }
 
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        if (!e.repeat) void takeEmbeddedScreenshot();
+        return;
+      }
+
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         const current = player.getCurrentTime?.();
         const duration = player.getDuration?.();
@@ -1109,7 +1151,7 @@ export default function WatchPage() {
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [playerKind, showShortcutFeedback, keyboardSeekSeconds]);
+  }, [playerKind, showShortcutFeedback, keyboardSeekSeconds, takeEmbeddedScreenshot]);
 
   // Refresh views + likes in the background every 30 s while watching
   useEffect(() => {
@@ -1356,6 +1398,8 @@ export default function WatchPage() {
                   onEnded={handleEnded}
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
+                  screenshotFormat={screenshotFormat}
+                  screenshotFilenameTemplate={screenshotFilenameTemplate}
                   videoId={video.video_id}
                   ccDefaultOn={captionsDefaultOn}
                   ccDefaultLang={captionsDefaultLang}
@@ -1392,6 +1436,8 @@ export default function WatchPage() {
                   onEnded={handleEnded}
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
+                  screenshotFormat={screenshotFormat}
+                  screenshotFilenameTemplate={screenshotFilenameTemplate}
                   videoId={video.video_id}
                   ccDefaultOn={captionsDefaultOn}
                   ccDefaultLang={captionsDefaultLang}
@@ -1467,12 +1513,26 @@ export default function WatchPage() {
                   )}
                 </div>
               )}
+              {playerKind === "youtube" && video && (
+                <button
+                  type="button"
+                  className="watch-embedded-screenshot"
+                  onClick={() => void takeEmbeddedScreenshot()}
+                  aria-label={t("playerScreenshot")}
+                  title={`${t("playerScreenshot")} (S)`}
+                  data-screenshot-ignore
+                >
+                  <Camera size={19} />
+                </button>
+              )}
               {shortcutFeedback && (() => {
                 const Icon = shortcutFeedback.kind === "back" ? Rewind
                   : shortcutFeedback.kind === "forward" ? FastForward
                     : shortcutFeedback.kind === "volumeUp" ? Volume2
                       : shortcutFeedback.kind === "volumeDown" ? Volume1
                         : shortcutFeedback.kind === "sponsorblock" ? FastForward
+                          : shortcutFeedback.kind === "screenshot" ? Camera
+                            : shortcutFeedback.kind === "screenshotError" ? AlertTriangle
                           : shortcutFeedback.kind === "captionsOn" || shortcutFeedback.kind === "captionsOff" ? Clapperboard : Gauge;
                 const sponsorCategory = shortcutFeedback.category ? SB_CATEGORIES.find((category) => category.id === shortcutFeedback.category) : undefined;
                 const label = shortcutFeedback.kind === "back" ? `−${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
@@ -1480,6 +1540,8 @@ export default function WatchPage() {
                     : shortcutFeedback.kind === "speed" ? "2×"
                       : shortcutFeedback.kind === "captionsOn" ? t("captionsOn")
                         : shortcutFeedback.kind === "captionsOff" ? t("captionsOff")
+                          : shortcutFeedback.kind === "screenshot" ? t("playerScreenshotSaved")
+                            : shortcutFeedback.kind === "screenshotError" ? t("playerScreenshotError")
                           : shortcutFeedback.kind === "sponsorblock" ? t("sponsorblockSkipped", { category: sponsorCategory ? t(sponsorCategory.labelKey) : shortcutFeedback.category ?? "SponsorBlock" }) : "";
                 return <div key={shortcutFeedback.id} className={`shortcut-feedback${shortcutFeedback.kind === "sponsorblock" ? " shortcut-feedback--sponsorblock" : ""}`}><Icon size={19} />{label && <span>{label}</span>}</div>;
               })()}

@@ -23,6 +23,7 @@ import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
 import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, IconButton, Inline, Input, InputGroup, PageHeader, Popover, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
+import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -1147,6 +1148,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playerQuality, setPlayerQuality] = useState("auto");
   const [playerSpeed, setPlayerSpeed] = useState("1");
   const [keyboardSeekSeconds, setKeyboardSeekSeconds] = useState("5");
+  const [screenshotFormat, setScreenshotFormat] = useState<PlayerScreenshotFormat>("jpeg");
+  const [screenshotFilename, setScreenshotFilename] = useState(DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
   const [autoFullscreen, setAutoFullscreen] = useState(false);
   const [sbEnabled, setSbEnabled] = useState(false);
   const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
@@ -1364,6 +1367,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setPlayerQuality(r.settings.player_quality);
         setPlayerSpeed(r.settings.player_speed ?? "1");
         setKeyboardSeekSeconds(r.settings.keyboard_seek_seconds ?? "5");
+        setScreenshotFormat(parsePlayerScreenshotFormat(r.settings.player_screenshot_format));
+        setScreenshotFilename(r.settings.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
         setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
         setSbEnabled(r.settings.sponsorblock_enabled === "1");
         try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
@@ -2523,6 +2528,36 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               onChange={(next) => {
                 setKeyboardSeekSeconds(next);
                 savePlayer({ keyboard_seek_seconds: next });
+              }}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("playerScreenshotFormat")} description={t("playerScreenshotFormatHint")}>
+            <SelectMenu
+              label={t("playerScreenshotFormat")}
+              value={screenshotFormat}
+              options={([
+                { value: "jpeg", label: "JPG" },
+                { value: "png", label: "PNG" },
+                { value: "webp", label: "WebP" },
+              ] as const)}
+              onChange={(next) => {
+                setScreenshotFormat(next);
+                savePlayer({ player_screenshot_format: next });
+              }}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("playerScreenshotFilename")} description={t("playerScreenshotFilenameHint")}>
+            <Input
+              aria-label={t("playerScreenshotFilename")}
+              value={screenshotFilename}
+              placeholder={DEFAULT_SCREENSHOT_FILENAME_TEMPLATE}
+              onChange={(event) => setScreenshotFilename(event.target.value)}
+              onBlur={() => {
+                const next = screenshotFilename.trim() || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE;
+                setScreenshotFilename(next);
+                savePlayer({ player_screenshot_filename: next });
               }}
             />
           </SettingRow>

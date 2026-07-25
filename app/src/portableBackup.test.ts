@@ -9,7 +9,7 @@ process.env.RESTORE_SESSION_DIR = resolve(root, "sessions");
 process.env.AVATAR_DIR = resolve(root, "avatars");
 
 const backup = await import("./portableBackup");
-const { db, setSetting } = await import("./db");
+const { db, setSetting, setUserSetting, getUserSetting } = await import("./db");
 
 beforeAll(() => {
   db.prepare("INSERT INTO channels(channel_id,title,url) VALUES(?,?,?)").run("UCportable", "Portable channel", "https://youtube.com/channel/UCportable");
@@ -60,11 +60,13 @@ describe("portable backup classification and restore", () => {
     const options = backup.backupOptions();
     const profile = options.profiles[0];
     db.prepare("UPDATE channels SET manual_status='banned' WHERE channel_id='UCportable'").run();
+    setUserSetting(1, "player_screenshot_filename", "{title}_{timestamp_ms}");
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
     db.prepare("UPDATE channels SET external=1 WHERE channel_id='UCportable'").run();
     db.prepare("DELETE FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").run();
+    setUserSetting(1, "player_screenshot_filename", "changed");
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
@@ -76,5 +78,6 @@ describe("portable backup classification and restore", () => {
     expect((db.prepare("SELECT count(*) n FROM history WHERE user_id=1 AND video_id='portable001' AND watched_at='2026-07-25 10:00:00'").get() as { n: number }).n).toBe(1);
     expect(db.prepare("SELECT uc.followed, c.external FROM user_channels uc JOIN channels c USING(channel_id) WHERE uc.user_id=1 AND uc.channel_id='UCportable'").get()).toEqual({ followed: 1, external: 0 });
     expect((db.prepare("SELECT manual_status FROM channels WHERE channel_id='UCportable'").get() as { manual_status: string }).manual_status).toBe("banned");
+    expect(getUserSetting(1, "player_screenshot_filename")).toBe("{title}_{timestamp_ms}");
   });
 });

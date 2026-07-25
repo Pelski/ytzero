@@ -1,12 +1,13 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import Hls from "hls.js";
-import { Clapperboard, LoaderCircle, Maximize, Minimize, MonitorPlay, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
+import { Camera, Clapperboard, LoaderCircle, Maximize, Minimize, MonitorPlay, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
 import type { SponsorSegment, VideoChapter, VideoSubtitle } from "../api";
 import { api, SB_CATEGORIES } from "../api";
 import { subtitleLanguageLabel } from "../subtitleLanguages";
 import { useI18n } from "../i18n";
 import SubtitlePicker from "./SubtitlePicker";
+import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../playerScreenshot";
 
 const VOLUME_KEY = "localPlayerVolume";
 const MUTED_KEY = "localPlayerMuted";
@@ -34,6 +35,8 @@ export interface SubtitleStyle {
   bg: number; // background opacity 0-100
 }
 
+export type LocalPlayerShortcut = "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff" | "screenshot" | "screenshotError";
+
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0;
   const h = Math.floor(s / 3600);
@@ -58,7 +61,9 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   onToggleCinema?: () => void;
   onEnded?: () => void;
   keyboardSeekSeconds?: number;
-  onShortcut?: (kind: "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff", seconds?: number) => void;
+  onShortcut?: (kind: LocalPlayerShortcut, seconds?: number) => void;
+  screenshotFormat?: PlayerScreenshotFormat;
+  screenshotFilenameTemplate?: string;
   videoId?: string;
   ccDefaultOn?: boolean;
   ccDefaultLang?: string;
@@ -92,6 +97,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   onEnded,
   keyboardSeekSeconds = 5,
   onShortcut,
+  screenshotFormat = "jpeg",
+  screenshotFilenameTemplate,
   videoId,
   ccDefaultOn = false,
   ccDefaultLang,
@@ -382,6 +389,35 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     else v.requestPictureInPicture?.().catch(() => {});
   }, []);
 
+  const takeScreenshot = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || video.videoWidth <= 0 || video.videoHeight <= 0) {
+      onShortcut?.("screenshotError");
+      return;
+    }
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("canvas unavailable");
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+      await downloadScreenshotCanvas(canvas, {
+        template: screenshotFilenameTemplate,
+        channel: channelTitle,
+        title,
+        videoId,
+        seconds: video.currentTime,
+        format: screenshotFormat,
+      });
+      onShortcut?.("screenshot");
+      showControls();
+    } catch (error) {
+      console.error("Unable to capture video frame", error);
+      onShortcut?.("screenshotError");
+    }
+  }, [channelTitle, onShortcut, screenshotFilenameTemplate, screenshotFormat, showControls, title, videoId]);
+
   useEffect(() => {
     const onFs = () => setIsFullscreen(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", onFs);
@@ -453,6 +489,10 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           showControls();
           break;
         case "m": case "M": setMuted((m) => !m); showControls(); break;
+        case "s": case "S":
+          e.preventDefault();
+          if (!e.repeat) void takeScreenshot();
+          break;
         default: {
           if (/^[0-9]$/.test(e.key)) {
             const v = videoRef.current;
@@ -486,7 +526,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId]);
+  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId, takeScreenshot]);
 
   // Media Session: system-level controls (keyboard media keys, lock screen).
   useEffect(() => {
@@ -725,6 +765,9 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
             onSelect={pickSubLang}
             onToggle={toggleSubtitles}
           />
+          <button className="lp-btn" onClick={() => void takeScreenshot()} aria-label={t("playerScreenshot")} title={`${t("playerScreenshot")} (S)`} disabled={buffering}>
+            <Camera size={19} />
+          </button>
           {onToggleCinema && (
             <button
               className={`lp-btn${cinemaMode ? " active" : ""}`}
