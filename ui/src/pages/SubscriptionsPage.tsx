@@ -12,7 +12,7 @@ import TagFilterBar from "../components/TagFilterBar";
 import TagPickerMenu from "../components/TagPickerMenu";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
-import { Button, EmptyState, IconButton, PageHeader, Popover, SelectMenu } from "../components/ui";
+import { Button, EmptyState, IconButton, PageHeader, Popover, SelectMenu, useHorizontalDragScroll } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { emit } from "../events";
 
@@ -74,6 +74,7 @@ function ChannelTagsRow({ channel, tags, onApply, onTagCreated }: { channel: Cha
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [shadowLeft, setShadowLeft] = useState(false);
   const [shadowRight, setShadowRight] = useState(false);
+  const { dragScrollProps, dragScrollClassName } = useHorizontalDragScroll<HTMLDivElement>();
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -95,7 +96,7 @@ function ChannelTagsRow({ channel, tags, onApply, onTagCreated }: { channel: Cha
   return (
     <div className="subs-card-tags-row">
       <div className={`subs-card-tags-scroll${shadowLeft ? " shadow-left" : ""}${shadowRight ? " shadow-right" : ""}`}>
-        <div className="subs-card-tags-list" ref={scrollerRef}>
+        <div className={`subs-card-tags-list ${dragScrollClassName}`} ref={scrollerRef} {...dragScrollProps}>
           {channel.tags.map((tag) => <TagChip key={tag.id} tag={tag} />)}
         </div>
       </div>

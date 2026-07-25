@@ -1,0 +1,7 @@
+@media (hover: hover) and (pointer: fine) {
+  .ui-horizontal-drag-scroll { cursor: grab; }
+  .ui-horizontal-drag-scroll--dragging {
+    cursor: grabbing;
+    user-select: none;
+  }
+}

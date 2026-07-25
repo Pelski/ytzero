@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import type { Tag } from "../api";
 import { useI18n } from "../i18n";
+import { useHorizontalDragScroll } from "./ui";
 
 export default function TagFilterBar({
   tags,
@@ -33,6 +34,7 @@ export default function TagFilterBar({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [shadowLeft, setShadowLeft] = useState(false);
   const [shadowRight, setShadowRight] = useState(false);
+  const { dragScrollProps, dragScrollClassName } = useHorizontalDragScroll<HTMLDivElement>();
   const activeCount = selected.length + excludedIds.length;
 
   useEffect(() => {
@@ -59,7 +61,7 @@ export default function TagFilterBar({
     <div className="chip-filter-row">
       {tags.length > 0 && (
         <div className={`chip-bar-wrap${shadowLeft ? " shadow-left" : ""}${shadowRight ? " shadow-right" : ""}`}>
-          <div className="chip-bar" ref={scrollerRef}>
+          <div className={`chip-bar ${dragScrollClassName}`} ref={scrollerRef} {...dragScrollProps}>
             {tags.map((tag) => {
               const included = selected.includes(tag.id);
               const excluded = tristate && excludedIds.includes(tag.id);

@@ -13,6 +13,7 @@ export * from "./Menu";
 export * from "./Popover";
 export * from "./Selection";
 export * from "./ScrollArea";
+export * from "./HorizontalDragScroll";
 export * from "./Settings";
 export { default as SteppedSlider } from "./SteppedSlider";
 export type { SteppedSliderProps } from "./SteppedSlider";
