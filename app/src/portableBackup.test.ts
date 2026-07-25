@@ -56,21 +56,13 @@ describe("portable backup classification and restore", () => {
     expect(serialized).not.toContain("download_cookie");
   });
 
-  test("portable channel data excludes network-derived availability cache", async () => {
-    db.prepare("UPDATE channels SET availability_status='unavailable', unavailable_reason='do-not-export', unavailable_at=datetime('now') WHERE channel_id='UCportable'").run();
-    const options = backup.backupOptions();
-    const zip = await backup.createPortableBackup({ preset: "full", profiles: options.profiles.map((profile) => profile.id) });
-    const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
-    expect(serialized).not.toContain("do-not-export");
-    expect(serialized).not.toContain("availability_status");
-    db.prepare("UPDATE channels SET availability_status='available', unavailable_reason=NULL, unavailable_at=NULL WHERE channel_id='UCportable'").run();
-  });
-
   test("analyze is read-only and repeated merge restore is idempotent", async () => {
     const options = backup.backupOptions();
     const profile = options.profiles[0];
+    db.prepare("UPDATE channels SET manual_status='banned' WHERE channel_id='UCportable'").run();
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
+    db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
     db.prepare("UPDATE channels SET external=1 WHERE channel_id='UCportable'").run();
     db.prepare("DELETE FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").run();
     const analyzed = await backup.analyzePortableBackup(1, zip);
@@ -83,5 +75,6 @@ describe("portable backup classification and restore", () => {
     await backup.commitPortableRestore(1, again.sessionId, planAgain.planRevision);
     expect((db.prepare("SELECT count(*) n FROM history WHERE user_id=1 AND video_id='portable001' AND watched_at='2026-07-25 10:00:00'").get() as { n: number }).n).toBe(1);
     expect(db.prepare("SELECT uc.followed, c.external FROM user_channels uc JOIN channels c USING(channel_id) WHERE uc.user_id=1 AND uc.channel_id='UCportable'").get()).toEqual({ followed: 1, external: 0 });
+    expect((db.prepare("SELECT manual_status FROM channels WHERE channel_id='UCportable'").get() as { manual_status: string }).manual_status).toBe("banned");
   });
 });

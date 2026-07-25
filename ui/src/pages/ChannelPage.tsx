@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import "./ChannelPage.css";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
-import { api, type ChannelAbout, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
+import { api, type ChannelAbout, type ChannelManualStatus, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
 import TagPickerMenu from "../components/TagPickerMenu";
@@ -14,7 +14,7 @@ import { emit } from "../events";
 import { formatAddedVideos, formatPlaylistVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
-import { Alert, Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
+import { Badge, Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
 
 type Tab = "videos" | "shorts" | "playlists" | "processing";
 
@@ -54,7 +54,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [channelUnavailable, setChannelUnavailable] = useState(false);
+  const [manualStatus, setManualStatus] = useState<ChannelManualStatus>("active");
   const [channelSearch, setChannelSearch] = useState("");
   const [searchVideos, setSearchVideos] = useState<Video[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -85,7 +85,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     setChannelSearch("");
     setSearchVideos([]);
     setChannelTags([]);
-    setChannelUnavailable(false);
+    setManualStatus("active");
     // Reset to the default tab only when switching channels — preserve an
     // incoming ?tab= (e.g. tab=playlists) on first load / deep links.
     if (prevIdRef.current && prevIdRef.current !== id) {
@@ -102,7 +102,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
     api.channel(id).then((r) => {
       setChannelTags(r.channel.tags);
-      setChannelUnavailable(r.channel.availability_status === "unavailable");
+      setManualStatus(r.channel.manual_status ?? "active");
       setFollowed(r.channel.followed !== 0);
       setChannelSpeed(r.channel.playback_speed ?? "");
       setAutoDownloadMinDuration(r.channel.auto_download_min_duration_override ?? null);
@@ -311,7 +311,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   };
 
   const handleSync = async () => {
-    if (!id || syncing || channelUnavailable) return;
+    if (!id || syncing || manualStatus !== "active") return;
     setSyncing(true);
     setSyncMsg(null);
     try {
@@ -385,15 +385,20 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const matchingPlaylists = (playlists ?? []).filter((playlist) =>
     playlist.title.toLocaleLowerCase(locale).includes(normalizedSearch)
   );
+  const manualStatusLabel = manualStatus === "paused" ? t("channelStatusPaused")
+    : manualStatus === "broken" ? t("channelStatusBroken")
+    : manualStatus === "banned" ? t("channelStatusBanned")
+    : manualStatus === "deleted" ? t("channelStatusDeleted")
+    : t("channelStatusActive");
 
   return (
     <>
-      {channelUnavailable && <Alert variant="danger" title={t("channelUnavailable")}>{t("channelUnavailableHint")}</Alert>}
       {about?.banner && <img className="channel-banner" src={img(about.banner)} alt="" />}
       <div className="channel-header">
         {about?.avatar && <img className="channel-avatar" src={img(about.avatar)} alt="" />}
         <div className="channel-info">
-          <h1 className="channel-title">{about?.title ?? "…"}</h1>
+          <div className="channel-title-line"><h1 className="channel-title">{about?.title ?? "…"}</h1>{manualStatus !== "active" && <Badge variant="warning">{manualStatusLabel}</Badge>}</div>
+          {manualStatus !== "active" && <div className="channel-status-note">{t("channelStatusSyncDisabled")}</div>}
           {about && (about.subscriberCount || about.stats.length > 0) && (
             <div className="channel-stats">
               {about.subscriberCount && <span>{about.subscriberCount} {t("subscribers")}</span>}
@@ -442,8 +447,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         <div className="channel-header-actions">
           <SplitButton
             onClick={handleSync}
-            disabled={syncing || channelUnavailable}
-            title={channelUnavailable ? t("channelUnavailableSyncTitle") : t("syncTitle")}
+            disabled={syncing || manualStatus !== "active"}
+            title={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("syncTitle")}
             menuLabel={t("moreActions")}
             menu={<>
               <MenuItem icon={<ListRestart />} onClick={handlePlaylistCatalogSync} title={t("syncPlaylistCatalogHint")}>{t("syncPlaylistCatalog")}</MenuItem>
@@ -655,7 +660,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         (videosLoading ? (
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
-          <EmptyState title={t("channelVideosEmpty")} description={channelUnavailable ? t("channelUnavailableHint") : t("channelVideosEmptyHint")} action={!channelUnavailable && <Button variant="primary" onClick={handleSync} disabled={syncing}>
+          <EmptyState title={t("channelVideosEmpty")} description={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("channelVideosEmptyHint")} action={manualStatus === "active" && <Button variant="primary" onClick={handleSync} disabled={syncing}>
               <RefreshCw size={15} className={syncing ? "channel-spin" : undefined} />
               {syncing ? t("syncing") : t("syncChannelVideos")}
             </Button>} />

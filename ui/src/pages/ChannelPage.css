@@ -1,6 +1,4 @@
 /* ---------- channel page ---------- */
-.ui-alert + .channel-banner,
-.ui-alert + .channel-header { margin-top: 16px; }
 .channel-banner {
   width: 100%;
   max-height: 260px;
@@ -23,7 +21,9 @@
   background: var(--surface);
 }
 .channel-info { flex: 1; min-width: 0; }
+.channel-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .channel-title { font-size: 22px; font-weight: 700; margin: 4px 0 4px; letter-spacing: -0.3px; }
+.channel-status-note { color: var(--text-2); font-size: 12px; margin: 0 0 8px; }
 .channel-stats { color: var(--text-2); font-size: 13px; margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 0 6px; }
 .channel-stats span + span::before { content: "·"; margin-right: 6px; }
 .channel-desc {

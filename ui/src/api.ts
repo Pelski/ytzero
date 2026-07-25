@@ -56,6 +56,7 @@ export interface Video {
 }
 
 export type MembersOnlyVisibility = "default" | "everywhere" | "channel" | "hidden";
+export type ChannelManualStatus = "active" | "paused" | "broken" | "banned" | "deleted";
 
 export interface Channel {
   channel_id: string;
@@ -78,9 +79,8 @@ export interface Channel {
   subscribed_at?: string | null;
   latest_video_at?: string | null;
   video_count?: number;
-  availability_status?: "available" | "unavailable";
-  unavailable_reason?: "not_found" | string | null;
-  unavailable_at?: string | null;
+  manual_status?: ChannelManualStatus;
+  manual_status_updated_at?: string | null;
   tags: Tag[];
 }
 
@@ -912,6 +912,8 @@ export const api = {
     http<{ channel_id: string; title: string }>("/channels", { method: "POST", body: JSON.stringify({ url, custom_name: customName || undefined }) }),
   renameChannel: (id: string, customTitle: string | null) =>
     http<{ channel: Channel }>(`/channels/${id}/name`, { method: "PUT", body: JSON.stringify({ custom_title: customTitle }) }),
+  setChannelStatus: (id: string, status: ChannelManualStatus) =>
+    http<{ ok: true; status: ChannelManualStatus }>(`/channels/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }),
   removeChannel: (id: string) => http(`/channels/${id}`, { method: "DELETE" }),
   tagChannel: (id: string, tag_id: number) =>
     http(`/channels/${id}/tags`, { method: "POST", body: JSON.stringify({ tag_id }) }),

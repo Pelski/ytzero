@@ -4,6 +4,7 @@ import { buildKeywordPlan, tokenizeDiscoveryText, type KeywordSeed } from "./dis
 import { DL_DEFAULTS, resetDownloadsState } from "./downloader";
 import { SUBTITLE_LANGUAGES } from "./subtitleLanguages";
 import { maintenanceActive } from "./maintenance";
+import { log } from "./logger";
 
 export interface PluginManifest {
   id: string;
@@ -873,7 +874,9 @@ export function refreshDiscoveryInBackground(uid: number) {
   const delay = Math.max(0, DISCOVERY_REFRESH_INTERVAL_MS - storedDiscoveryAgeMs(uid));
   const timer = setTimeout(() => {
     discoveryRefreshTimers.delete(uid);
-    runDiscoveryRefresh(uid).catch(() => {});
+    runDiscoveryRefresh(uid).catch((error) => {
+      log.warn("discovery.background_refresh_failed", { userId: uid, error: error instanceof Error ? error.message : String(error) });
+    });
   }, delay);
   discoveryRefreshTimers.set(uid, timer);
 }
@@ -889,12 +892,20 @@ async function runDiscoveryRefresh(uid: number) {
 
 async function rebuildDiscoveryRecommendations(uid: number) {
   if (!pluginEnabled("discovery")) return;
+  const startedAt = Date.now();
   const settings = discoverySettings(uid);
   const totalLimit = settings.total_limit;
   const local = localRecommendations(uid, Math.max(24, totalLimit), settings);
   const importedExternal = await externalRecommendations(uid, Math.max(settings.early_external_count, 8), settings);
   const recommendations = mixRecommendations([...local, ...importedExternal], totalLimit, settings);
   persistDiscoveryRecommendations(uid, recommendations);
+  log.info("discovery.refresh_complete", {
+    userId: uid,
+    localCandidates: local.length,
+    externalCandidates: importedExternal.length,
+    recommendations: recommendations.length,
+    ms: Date.now() - startedAt,
+  });
 }
 
 function persistDiscoveryRecommendations(uid: number, recommendations: DiscoveryRecommendation[]) {

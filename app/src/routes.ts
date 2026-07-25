@@ -40,6 +40,7 @@ import { CHANNEL_PLAYLIST_CACHE_VERSION, saveChannelPlaylists, videoPlaylistsFor
 import { feedVisibilityWhere, feedSortSql, followedExists, followedPlaylistExists, tagFilterSql, filterOnlySql } from "./feedQuery";
 import { buildCleanupWhere, countCleanupMatches, listCleanupVideoIds, snapshotUserVideoState, applyCleanupAction, restoreUserVideoState, saveBulkUndo, loadBulkUndo, clearBulkUndo, type CleanupFilter } from "./cleanup";
 import { analyzePortableBackup, backupOptions, commitPortableRestore, createPortableBackup, deleteRestoreSession, planPortableRestore } from "./portableBackup";
+import { isChannelManualStatus } from "./channelStatus";
 import {
   authMethod,
   hashPassword,
@@ -71,6 +72,24 @@ export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolea
 api.onError((err, c) => {
   log.error("api.unhandled_error", { path: c.req.path, method: c.req.method, error: err.message });
   return c.json({ error: err.message }, 500);
+});
+
+// Log only failed or unusually slow requests. Query strings, request bodies,
+// headers and cookies are intentionally excluded from diagnostic logs.
+api.use("*", async (c, next) => {
+  const startedAt = Date.now();
+  await next();
+  const ms = Date.now() - startedAt;
+  const meta = {
+    method: c.req.method,
+    path: c.req.path,
+    status: c.res.status,
+    ms,
+    userId: c.get("userId") || undefined,
+  };
+  if (c.res.status >= 500) log.error("api.request_failed", meta);
+  else if (c.res.status >= 400) log.warn("api.request_failed", meta);
+  else if (ms >= 2_000) log.warn("api.request_slow", meta);
 });
 
 // ---------- helpers ----------
@@ -295,8 +314,17 @@ api.get("/backup/options", (c) => {
 
 api.post("/backup/export", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const startedAt = Date.now();
   const input = await c.req.json().catch(() => ({}));
   const archive = await createPortableBackup(input);
+  log.info("backup.exported", {
+    userId: currentUserId(c),
+    preset: typeof input.preset === "string" ? input.preset : "default",
+    profiles: Array.isArray(input.profiles) ? input.profiles.length : "all",
+    selectedSections: Array.isArray(input.sections) ? input.sections.length : "preset",
+    bytes: archive.length,
+    ms: Date.now() - startedAt,
+  });
   const date = new Date().toISOString().slice(0, 10);
   const body = archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength) as ArrayBuffer;
   return new Response(body, { headers: {
@@ -313,7 +341,17 @@ api.post("/restore/analyze", async (c) => {
   const file = body.file;
   if (!(file instanceof File)) return c.json({ error: "backup file required" }, 400);
   if (!/\.(zip|ytzero-backup)$/i.test(file.name)) return c.json({ error: "choose a .zip or .ytzero-backup file" }, 400);
+  const startedAt = Date.now();
   const result = await analyzePortableBackup(currentUserId(c), new Uint8Array(await file.arrayBuffer()));
+  log.info("restore.analyzed", {
+    userId: currentUserId(c),
+    bytes: result.archiveBytes,
+    profiles: result.manifest.profiles.length,
+    sections: result.manifest.sections.length,
+    warnings: result.warnings.length,
+    sameSource: result.sameSource,
+    ms: Date.now() - startedAt,
+  });
   c.header("Cache-Control", "private, no-store");
   return c.json(result);
 });
@@ -322,19 +360,31 @@ api.post("/restore/plan", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const { sessionId, mappings, sections, strategy } = await c.req.json().catch(() => ({}));
   if (typeof sessionId !== "string" || !mappings || !Array.isArray(sections)) return c.json({ error: "invalid restore plan" }, 400);
-  return c.json(planPortableRestore(currentUserId(c), sessionId, { mappings, sections, strategy }));
+  const result = planPortableRestore(currentUserId(c), sessionId, { mappings, sections, strategy });
+  log.info("restore.planned", { userId: currentUserId(c), ...result.changes, warnings: result.warnings.length });
+  return c.json(result);
 });
 
 api.post("/restore/commit", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const { sessionId, planRevision } = await c.req.json().catch(() => ({}));
   if (typeof sessionId !== "string" || !Number.isInteger(planRevision)) return c.json({ error: "invalid restore commit" }, 400);
-  return c.json(await commitPortableRestore(currentUserId(c), sessionId, planRevision));
+  const startedAt = Date.now();
+  const result = await commitPortableRestore(currentUserId(c), sessionId, planRevision);
+  log.info("restore.committed", {
+    userId: currentUserId(c),
+    ...result.counts,
+    warnings: result.counts.warnings.length,
+    safetySnapshot: true,
+    ms: Date.now() - startedAt,
+  });
+  return c.json(result);
 });
 
 api.delete("/restore/session/:id", (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   deleteRestoreSession(currentUserId(c), c.req.param("id"));
+  log.info("restore.canceled", { userId: currentUserId(c) });
   return c.json({ ok: true });
 });
 
@@ -1317,7 +1367,9 @@ api.get("/videos/:id/chapters", async (c) => {
 
   if (cached?.chapters_json) {
     if (ageMs(cached.chapters_fetched_at) > CHAPTERS_DB_TTL) {
-      refreshVideoChapters(videoId).catch(() => {});
+      refreshVideoChapters(videoId).catch((error) => {
+        log.warn("video.chapters_background_refresh_failed", { videoId, error: error instanceof Error ? error.message : String(error) });
+      });
     }
     try {
       return c.json({ chapters: JSON.parse(cached.chapters_json) });
@@ -1739,8 +1791,14 @@ function serializeChannel(ch: any) {
   };
 }
 
-function channelIsUnavailable(channelId: string): boolean {
-  return Boolean(db.prepare("SELECT 1 FROM channels WHERE channel_id=? AND availability_status='unavailable'").get(channelId));
+function channelSyncIsDisabled(channelId: string): boolean {
+  const row = db.prepare("SELECT manual_status FROM channels WHERE channel_id=?").get(channelId) as { manual_status: string } | null;
+  return Boolean(row && row.manual_status !== "active");
+}
+
+function playlistChannelSyncIsDisabled(playlistId: string): boolean {
+  const row = db.prepare("SELECT c.manual_status FROM channel_playlists cp JOIN channels c ON c.channel_id=cp.channel_id WHERE cp.playlist_id=?").get(playlistId) as { manual_status: string } | null;
+  return Boolean(row && row.manual_status !== "active");
 }
 
 api.get("/channels", (c) => {
@@ -1850,6 +1908,16 @@ api.put("/channels/:id/name", async (c) => {
   return c.json({ ok: true, channel: serializeChannel(ch) });
 });
 
+api.put("/channels/:id/status", async (c) => {
+  const channelId = c.req.param("id");
+  const { status } = await c.req.json().catch(() => ({}));
+  if (!isChannelManualStatus(status)) return c.json({ error: "invalid channel status" }, 400);
+  const result = db.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(status, channelId);
+  if (result.changes === 0) return c.json({ error: "not found" }, 404);
+  log.info("channel.manual_status_changed", { channelId, status });
+  return c.json({ ok: true, status });
+});
+
 api.post("/channels/:id/tags", async (c) => {
   const uid = currentUserId(c);
   const { tag_id } = await c.req.json();
@@ -1924,12 +1992,15 @@ async function refreshChannelAbout(channelId: string): Promise<ChannelAbout> {
   fetchChannelVideosDurations(channelId).then((durations) => {
     const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
     for (const d of durations) upd.run(d.duration, d.videoId);
-  }).catch(() => {});
+  }).catch((error) => {
+    log.warn("channel.about_duration_backfill_failed", { channelId, error: error instanceof Error ? error.message : String(error) });
+  });
   return aboutForStorage;
 }
 
 api.get("/channels/:id/about", async (c) => {
   const channelId = c.req.param("id");
+  const syncDisabled = channelSyncIsDisabled(channelId);
   // Real counts from our own data — stable regardless of how many pages the
   // UI has loaded (NULL is_short counts as a regular video, matching the UI).
   const row = db.prepare(`
@@ -1948,32 +2019,30 @@ api.get("/channels/:id/about", async (c) => {
 
   // Serve the cached about from the DB; only touch YouTube when it's missing
   // or stale (and then in the background, so the page never waits on it).
-  const cachedRow = db.prepare("SELECT about_json, about_fetched_at, subscriber_count, title, thumbnail, availability_status FROM channels WHERE channel_id = ?")
-    .get(channelId) as { about_json: string | null; about_fetched_at: string | null; subscriber_count: string | null; title: string; thumbnail: string | null; availability_status: string } | null;
-
-  if (cachedRow?.availability_status === "unavailable") {
-    if (cachedRow.about_json) {
-      try {
-        return c.json({ ...withCustomTitle(normalizeCachedChannelAbout(JSON.parse(cachedRow.about_json) as ChannelAbout)), counts });
-      } catch { /* fall back to basic local columns */ }
-    }
-    return c.json({ channelId, title: customTitle || cachedRow.title || "", description: "", avatar: cachedRow.thumbnail ?? "", banner: "", subscriberCount: cachedRow.subscriber_count ?? "", stats: [], links: [], joinedDate: "", viewCount: "", handle: "", counts });
-  }
+  const cachedRow = db.prepare("SELECT about_json, about_fetched_at, subscriber_count FROM channels WHERE channel_id = ?")
+    .get(channelId) as { about_json: string | null; about_fetched_at: string | null; subscriber_count: string | null } | null;
 
   if (cachedRow?.about_json) {
-    if (ageMs(cachedRow.about_fetched_at) > ABOUT_DB_TTL) {
+    if (!syncDisabled && ageMs(cachedRow.about_fetched_at) > ABOUT_DB_TTL) {
       refreshChannelAbout(channelId).catch((e) =>
         log.warn("channel.about.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
     }
     try {
       const cachedAbout = JSON.parse(cachedRow.about_json) as Partial<ChannelAbout>;
-      if (!("subscriberCount" in cachedAbout)) {
+      if (!("subscriberCount" in cachedAbout) && !syncDisabled) {
         return c.json({ ...withCustomTitle(await refreshChannelAbout(channelId)), counts });
       }
       return c.json({ ...withCustomTitle(normalizeCachedChannelAbout(cachedAbout as ChannelAbout)), counts });
     } catch {
       // corrupted cache — fall through to a fresh fetch
     }
+  }
+
+  if (syncDisabled) {
+    const ch = db.prepare("SELECT title, thumbnail, subscriber_count FROM channels WHERE channel_id = ?")
+      .get(channelId) as { title: string; thumbnail: string | null; subscriber_count: string | null } | null;
+    if (!ch) return c.json({ error: "not found" }, 404);
+    return c.json({ channelId, title: customTitle || ch.title || "", description: "", avatar: ch.thumbnail ?? "", banner: "", subscriberCount: ch.subscriber_count ?? "", stats: [], links: [], joinedDate: "", viewCount: "", handle: "", counts });
   }
 
   // No usable cache: fetch synchronously this once, then it's served from DB.
@@ -2023,29 +2092,25 @@ async function refreshChannelPlaylists(channelId: string, force = false) {
 api.get("/channels/:id/playlists", async (c) => {
   const uid = currentUserId(c);
   const channelId = c.req.param("id");
-  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at, playlists_cache_version, availability_status FROM channels WHERE channel_id = ?")
-    .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null; playlists_cache_version: number; availability_status: string } | null;
-
-  if (cached?.availability_status === "unavailable") {
-    try { return c.json({ playlists: attachPlaylistFollowState(uid, JSON.parse(cached.playlists_json || "[]")) }); }
-    catch { return c.json({ playlists: [] }); }
-  }
+  const syncDisabled = channelSyncIsDisabled(channelId);
+  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at, playlists_cache_version FROM channels WHERE channel_id = ?")
+    .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null; playlists_cache_version: number } | null;
 
   if (cached?.playlists_json) {
     try {
       const playlists = JSON.parse(cached.playlists_json);
-      if (cached.playlists_cache_version < CHANNEL_PLAYLIST_CACHE_VERSION) {
+      if (!syncDisabled && cached.playlists_cache_version < CHANNEL_PLAYLIST_CACHE_VERSION) {
         return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId, true)) });
       }
       // Pre-pagination cache entries commonly contain exactly YouTube's first
       // page of 30 cards. Upgrade them synchronously so this request already
       // shows the missing playlists instead of waiting for the weekly refresh.
-      if (Array.isArray(playlists) && playlists.length === 30) {
+      if (!syncDisabled && Array.isArray(playlists) && playlists.length === 30) {
         return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
       }
       if (Array.isArray(playlists)) saveChannelPlaylists(channelId, playlists);
     } catch { /* corrupted cache — fall through to a fresh fetch */ }
-    if (ageMs(cached.playlists_fetched_at) > PLAYLISTS_DB_TTL) {
+    if (!syncDisabled && ageMs(cached.playlists_fetched_at) > PLAYLISTS_DB_TTL) {
       refreshChannelPlaylists(channelId).catch((e) =>
         log.warn("channel.playlists.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
     }
@@ -2053,6 +2118,8 @@ api.get("/channels/:id/playlists", async (c) => {
       return c.json({ playlists: attachPlaylistFollowState(uid, JSON.parse(cached.playlists_json)) });
     } catch { /* corrupted cache — fall through */ }
   }
+
+  if (syncDisabled) return c.json({ playlists: [] });
 
   try {
     return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
@@ -2063,7 +2130,7 @@ api.get("/channels/:id/playlists", async (c) => {
 
 api.post("/channels/:id/playlists/sync", async (c) => {
   const channelId = c.req.param("id");
-  if (channelIsUnavailable(channelId)) return c.json({ error: "channel unavailable" }, 409);
+  if (channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
   try {
     const result = await syncChannelPlaylists(channelId);
     log.info("channel.playlists.sync_requested", { channelId, count: result.playlists.length, synced: result.synced, added: result.added, errors: result.errors });
@@ -2082,7 +2149,7 @@ api.post("/channels/:id/playlists/sync", async (c) => {
 
 api.post("/channels/:id/metadata/sync", async (c) => {
   const channelId = c.req.param("id");
-  if (channelIsUnavailable(channelId)) return c.json({ error: "channel unavailable" }, 409);
+  if (channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
   try {
     return c.json({ ok: true, ...(await syncChannelMissingMetadata(channelId)) });
   } catch (e) {
@@ -2272,7 +2339,7 @@ api.get("/channels/:id", (c) => {
 
 api.post("/channels/:id/sync", async (c) => {
   const channelId = c.req.param("id");
-  if (channelIsUnavailable(channelId)) return c.json({ error: "channel unavailable" }, 409);
+  if (channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
   try {
     const result = await syncChannel(channelId);
     log.info("channel.sync_requested", { channelId, added: result.added });
@@ -2352,6 +2419,7 @@ api.put("/channel-playlists/:id/follow", async (c) => {
 });
 
 api.post("/channel-playlists/:id/sync", async (c) => {
+  if (playlistChannelSyncIsDisabled(c.req.param("id"))) return c.json({ error: "channel sync disabled" }, 409);
   try {
     const result = await syncPlaylist(c.req.param("id"));
     return c.json({ ok: true, added: result.added });

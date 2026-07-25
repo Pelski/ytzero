@@ -8,6 +8,7 @@ import { log } from "./logger";
 import { COMMIT, VERSION } from "./version";
 import { createAppIconPng, createAppIconSvg } from "./app-icon";
 import { createAppManifest } from "./app-manifest";
+import { collectDiagnosticSnapshot } from "./diagnostics";
 
 const app = new Hono();
 
@@ -69,3 +70,8 @@ const port = Number(process.env.PORT ?? 3001);
 const idleTimeout = Number(process.env.IDLE_TIMEOUT_SECONDS ?? 120);
 const server = Bun.serve({ port, idleTimeout, fetch: app.fetch });
 log.info("app.listen", { url: String(server.url), port, uiDir, idleTimeout, version: VERSION, commit: COMMIT });
+try {
+  log.info("app.state_snapshot", collectDiagnosticSnapshot());
+} catch (error) {
+  log.warn("app.state_snapshot_failed", { error: error instanceof Error ? error.message : String(error) });
+}

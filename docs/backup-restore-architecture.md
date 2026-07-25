@@ -392,11 +392,11 @@ Adding cache/transient/secret data does not require exporting it, but does
 require an explicit classification here so it cannot be included accidentally
 by a future generic exporter.
 
-Channel availability (`channels.availability_status`, `unavailable_reason`, and
-`unavailable_at`) is a rebuildable, network-derived cache. It is deliberately
-excluded from `instance.channels`: a restored installation starts channels as
-available and learns permanent 404/410 failures from YouTube again. This avoids
-moving stale remote-health conclusions between installations.
+The operator-selected channel status (`channels.manual_status`) is portable
+instance organization/configuration owned by `instance.channels` schema v2.
+It uses the stable channel ID, restores idempotently, and a v1 archive leaves
+the target's current status unchanged because the field is absent. The update
+timestamp is rebuildable audit metadata and is not exported.
 
 ## Required tests
 

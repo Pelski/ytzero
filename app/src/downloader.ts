@@ -356,7 +356,7 @@ export function prioritizeDownload(videoId: string): boolean {
     try { active.proc.kill(); } catch {}
   }
   // Kick the loop so the wait is seconds, not a whole tick interval.
-  setTimeout(() => tick().catch(() => {}), 300);
+  setTimeout(() => tick().catch((error) => log.error("downloads.tick_failed", { error: error instanceof Error ? error.message : String(error) })), 300);
   return true;
 }
 
@@ -1085,7 +1085,8 @@ export function startDownloader() {
   // Drop any HLS streaming scratch left behind by a previous run.
   resetHlsScratch();
   // Crash recovery: an interrupted download restarts from the queue.
-  db.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run();
+  const crashRecovered = db.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run().changes;
+  if (crashRecovered > 0) log.warn("downloads.crash_recovered", { count: crashRecovered });
   // Older versions treated optional subtitle failures as a failed video. Give
   // those jobs one clean run through the new video-first pipeline.
   const recoveredSubtitleFailures = db.prepare(`
@@ -1097,8 +1098,10 @@ export function startDownloader() {
     )
   `).run().changes;
   if (recoveredSubtitleFailures > 0) log.info("downloads.subtitle_failures_requeued", { count: recoveredSubtitleFailures });
-  setTimeout(() => tick().catch(() => {}), 8_000);
-  setInterval(() => tick().catch(() => {}), TICK_INTERVAL_MS);
-  setInterval(() => ytdlpSelfUpdate().catch(() => {}), 24 * 60 * 60_000);
-  log.info("scheduler.downloads", { dir: DOWNLOADS_DIR, intervalMs: TICK_INTERVAL_MS });
+  const reportTickError = (error: unknown) => log.error("downloads.tick_failed", { error: error instanceof Error ? error.message : String(error) });
+  setTimeout(() => tick().catch(reportTickError), 8_000);
+  setInterval(() => tick().catch(reportTickError), TICK_INTERVAL_MS);
+  setInterval(() => ytdlpSelfUpdate().catch((error) => log.warn("downloads.ytdlp_update_failed", { error: error instanceof Error ? error.message : String(error) })), 24 * 60 * 60_000);
+  const queue = Object.fromEntries((db.prepare("SELECT status AS name, COUNT(*) AS count FROM downloads GROUP BY status").all() as { name: string; count: number }[]).map((row) => [row.name, Number(row.count)]));
+  log.info("scheduler.downloads", { dir: DOWNLOADS_DIR, intervalMs: TICK_INTERVAL_MS, enabled: dlEnabled(), queue });
 }

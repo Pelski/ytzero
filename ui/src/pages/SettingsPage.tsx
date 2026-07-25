@@ -3,7 +3,7 @@ import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -1087,6 +1087,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [loading, setLoading] = useState(true);
   const [addingChannel, setAddingChannel] = useState(false);
   const [updatingChannelId, setUpdatingChannelId] = useState<string | null>(null);
+  const [updatingChannelStatusId, setUpdatingChannelStatusId] = useState<string | null>(null);
   const [addingTag, setAddingTag] = useState(false);
   const [externalVideos, setExternalVideos] = useState<Video[]>([]);
   const [loadingExternal, setLoadingExternal] = useState(false);
@@ -1191,6 +1192,22 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       showToast(`${t("error")}: ${error instanceof Error ? error.message : error}`);
     } finally {
       setUpdatingChannelId(null);
+    }
+  };
+
+  const updateChannelStatus = async (channel: Channel, status: ChannelManualStatus) => {
+    if (updatingChannelStatusId) return;
+    const previous = channel.manual_status ?? "active";
+    setUpdatingChannelStatusId(channel.channel_id);
+    setChannels((current) => current.map((item) => item.channel_id === channel.channel_id ? { ...item, manual_status: status } : item));
+    try {
+      await api.setChannelStatus(channel.channel_id, status);
+      showToast(status === "active" ? t("channelStatusRestored") : t("channelStatusUpdated"));
+    } catch (error) {
+      setChannels((current) => current.map((item) => item.channel_id === channel.channel_id ? { ...item, manual_status: previous } : item));
+      showToast(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUpdatingChannelStatusId(null);
     }
   };
 
@@ -1737,6 +1754,14 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   };
 
   const normalizedChannelQuery = channelQuery.trim().toLowerCase();
+  const channelStatusOptions: { value: ChannelManualStatus; label: string }[] = [
+    { value: "active", label: t("channelStatusActive") },
+    { value: "paused", label: t("channelStatusPaused") },
+    { value: "broken", label: t("channelStatusBroken") },
+    { value: "banned", label: t("channelStatusBanned") },
+    { value: "deleted", label: t("channelStatusDeleted") },
+  ];
+  const channelStatusLabel = (status: ChannelManualStatus | undefined) => channelStatusOptions.find((option) => option.value === (status ?? "active"))?.label ?? t("channelStatusActive");
   const filteredChannels = normalizedChannelQuery
     ? channels.filter((ch) => {
         const title = (ch.title || "").toLowerCase();
@@ -1994,7 +2019,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                               <Link to={`/channel/${ch.channel_id}`} className="channel-name channel-name-link">
                                 {ch.title || ch.channel_id}
                               </Link>
-                              {ch.availability_status === "unavailable" && <Badge variant="danger" size="sm">{t("channelUnavailable")}</Badge>}
+                              {(ch.manual_status ?? "active") !== "active" && <Badge variant="warning" size="sm">{channelStatusLabel(ch.manual_status)}</Badge>}
                               <IconButton variant="ghost" className="channel-rename-btn" label={t("renameChannel")} onClick={() => startRenameChannel(ch)}>
                                 <Pencil size={12} />
                               </IconButton>
@@ -2002,7 +2027,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             {ch.custom_title && (
                               <div className="channel-original-name">{t("originalChannelName", { name: ch.original_title || ch.channel_id })}</div>
                             )}
-                            {ch.availability_status === "unavailable" && <div className="channel-availability-note">{t("channelUnavailableHint")}</div>}
                           </>
                         )}
                         {(ch.tags ?? []).length > 0 && (
@@ -2018,6 +2042,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         )}
                       </td>
                       <td className="shrink">
+                        <div className="channel-row-controls">
                         <Popover
                           align="start"
                           surface="menu"
@@ -2032,6 +2057,17 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             <TagCreateForm title={t("newTag")} name={newChannelTagName} color={newChannelTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewChannelTagName} onColorChange={setNewChannelTagColor} onSubmit={() => createAndAddChannelTag(ch.channel_id)} />
                           </TagPickerMenu>
                         </Popover>
+                        <SelectMenu
+                          label={t("channelStatus")}
+                          value={ch.manual_status ?? "active"}
+                          options={channelStatusOptions}
+                          size="sm"
+                          floating
+                          disabled={updatingChannelStatusId !== null}
+                          className="channel-status-select"
+                          onChange={(status) => void updateChannelStatus(ch, status)}
+                        />
+                        </div>
                       </td>
                       <td className="shrink">
                         <Button
