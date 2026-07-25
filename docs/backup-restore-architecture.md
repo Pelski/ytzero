@@ -164,8 +164,12 @@ below.
 - `settings`: only registered, non-secret global settings. Exclude Child Lock
   hashes and every authentication secret or activation setting.
 - `user_settings`: registered settings for selected profiles.
-  This includes the local-player screenshot format and filename template; both
-  are portable presentation preferences and contain no captured image data.
+  This includes the player screenshot format, quality, and filename template;
+  they are portable presentation preferences and contain no captured image data.
+  It also includes YT Zero Enhance enablement, replacement-control preference,
+  frame-step FPS, and screenshot encoding quality. The authenticated watch page
+  embeds only these safe presentation values for the browser extension and
+  never includes secrets or raw profile records.
 - `plugins`: enabled state for known plugins.
 - `plugin_settings` and global `plugin_<id>_*` settings: only through each
   plugin's backup adapter and normal value validation.

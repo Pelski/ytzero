@@ -35,7 +35,7 @@ export interface SubtitleStyle {
   bg: number; // background opacity 0-100
 }
 
-export type LocalPlayerShortcut = "back" | "forward" | "volumeUp" | "volumeDown" | "speed" | "captionsOn" | "captionsOff" | "screenshot" | "screenshotError";
+export type LocalPlayerShortcut = "back" | "forward" | "volumeUp" | "volumeDown" | "mute" | "unmute" | "speed" | "captionsOn" | "captionsOff" | "screenshot" | "screenshotError";
 
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) s = 0;
@@ -63,6 +63,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   keyboardSeekSeconds?: number;
   onShortcut?: (kind: LocalPlayerShortcut, seconds?: number) => void;
   screenshotFormat?: PlayerScreenshotFormat;
+  screenshotQuality?: number;
   screenshotFilenameTemplate?: string;
   videoId?: string;
   ccDefaultOn?: boolean;
@@ -98,6 +99,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   keyboardSeekSeconds = 5,
   onShortcut,
   screenshotFormat = "jpeg",
+  screenshotQuality = 0.92,
   screenshotFilenameTemplate,
   videoId,
   ccDefaultOn = false,
@@ -409,6 +411,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         videoId,
         seconds: video.currentTime,
         format: screenshotFormat,
+        quality: screenshotQuality,
       });
       onShortcut?.("screenshot");
       showControls();
@@ -416,7 +419,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       console.error("Unable to capture video frame", error);
       onShortcut?.("screenshotError");
     }
-  }, [channelTitle, onShortcut, screenshotFilenameTemplate, screenshotFormat, showControls, title, videoId]);
+  }, [channelTitle, onShortcut, screenshotFilenameTemplate, screenshotFormat, screenshotQuality, showControls, title, videoId]);
 
   useEffect(() => {
     const onFs = () => setIsFullscreen(Boolean(document.fullscreenElement));
@@ -488,7 +491,16 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           onShortcut?.("volumeDown");
           showControls();
           break;
-        case "m": case "M": setMuted((m) => !m); showControls(); break;
+        case "m":
+        case "M":
+          e.preventDefault();
+          if (!e.repeat) {
+            const nextMuted = !muted;
+            setMuted(nextMuted);
+            onShortcut?.(nextMuted ? "mute" : "unmute");
+            showControls();
+          }
+          break;
         case "s": case "S":
           e.preventDefault();
           if (!e.repeat) void takeScreenshot();
@@ -526,7 +538,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId, takeScreenshot]);
+  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId, takeScreenshot, muted, onShortcut]);
 
   // Media Session: system-level controls (keyboard media keys, lock screen).
   useEffect(() => {

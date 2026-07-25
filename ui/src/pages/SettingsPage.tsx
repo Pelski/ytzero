@@ -1149,6 +1149,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [playerSpeed, setPlayerSpeed] = useState("1");
   const [keyboardSeekSeconds, setKeyboardSeekSeconds] = useState("5");
   const [screenshotFormat, setScreenshotFormat] = useState<PlayerScreenshotFormat>("jpeg");
+  const [screenshotQuality, setScreenshotQuality] = useState("0.92");
   const [screenshotFilename, setScreenshotFilename] = useState(DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
   const [autoFullscreen, setAutoFullscreen] = useState(false);
   const [sbEnabled, setSbEnabled] = useState(false);
@@ -1368,6 +1369,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setPlayerSpeed(r.settings.player_speed ?? "1");
         setKeyboardSeekSeconds(r.settings.keyboard_seek_seconds ?? "5");
         setScreenshotFormat(parsePlayerScreenshotFormat(r.settings.player_screenshot_format));
+        setScreenshotQuality(r.settings.player_screenshot_quality ?? "0.92");
         setScreenshotFilename(r.settings.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
         setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
         setSbEnabled(r.settings.sponsorblock_enabled === "1");
@@ -1576,6 +1578,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
   const savePlayer = async (patch: Record<string, string>) => {
     await api.updateSettings(patch);
+    emit("player-settings-changed");
     showToast(t("playerSettingsSaved"));
   };
 
@@ -1583,6 +1586,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     const next = !sbEnabled;
     setSbEnabled(next);
     await api.updateSettings({ sponsorblock_enabled: next ? "1" : "0" });
+    emit("player-settings-changed");
     showToast(t("sponsorblockSaved"));
   };
 
@@ -1592,6 +1596,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       : [...sbCategories, id];
     setSbCategories(next);
     await api.updateSettings({ sponsorblock_categories: JSON.stringify(next) });
+    emit("player-settings-changed");
     showToast(t("sponsorblockSaved"));
   };
 
@@ -2532,6 +2537,21 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             />
           </SettingRow>
 
+          <SettingRow
+            label={t("autoFullscreenLandscape")}
+            description={<>{t("autoFullscreenLandscapeHint")}<br />{t("autoFullscreenLandscapeCaveat")}</>}
+          >
+            <Switch
+              checked={autoFullscreen}
+              onCheckedChange={(next) => {
+                setAutoFullscreen(next);
+                savePlayer({ auto_fullscreen_landscape: next ? "1" : "0" });
+              }}
+            />
+          </SettingRow>
+          </SettingsSection>
+
+          <SettingsSection title={t("playerScreenshots")} className="settings-display-group">
           <SettingRow label={t("playerScreenshotFormat")} description={t("playerScreenshotFormatHint")}>
             <SelectMenu
               label={t("playerScreenshotFormat")}
@@ -2544,6 +2564,24 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               onChange={(next) => {
                 setScreenshotFormat(next);
                 savePlayer({ player_screenshot_format: next });
+              }}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("playerScreenshotQuality")}>
+            <Input
+              aria-label={t("playerScreenshotQuality")}
+              type="number"
+              min={0.1}
+              max={1}
+              step={0.01}
+              value={screenshotQuality}
+              disabled={screenshotFormat === "png"}
+              onChange={(event) => setScreenshotQuality(event.target.value)}
+              onBlur={() => {
+                const next = String(Math.min(1, Math.max(0.1, Number(screenshotQuality) || 0.92)));
+                setScreenshotQuality(next);
+                savePlayer({ player_screenshot_quality: next });
               }}
             />
           </SettingRow>
@@ -2562,18 +2600,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             />
           </SettingRow>
 
-          <SettingRow
-            label={t("autoFullscreenLandscape")}
-            description={<>{t("autoFullscreenLandscapeHint")}<br />{t("autoFullscreenLandscapeCaveat")}</>}
-          >
-            <Switch
-              checked={autoFullscreen}
-              onCheckedChange={(next) => {
-                setAutoFullscreen(next);
-                savePlayer({ auto_fullscreen_landscape: next ? "1" : "0" });
-              }}
-            />
-          </SettingRow>
           </SettingsSection>
 
           <SettingsSection title={t("displayEnhancements")} className="settings-display-group">

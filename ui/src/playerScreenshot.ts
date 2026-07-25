@@ -54,14 +54,14 @@ export function buildScreenshotFilename(input: {
 
 export async function downloadScreenshotCanvas(
   canvas: HTMLCanvasElement,
-  input: Parameters<typeof buildScreenshotFilename>[0],
+  input: Parameters<typeof buildScreenshotFilename>[0] & { quality?: number },
 ): Promise<void> {
   const output = SCREENSHOT_FORMATS[input.format];
   const blob = await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (value) => value ? resolve(value) : reject(new Error("frame encoding failed")),
       output.mime,
-      input.format === "png" ? undefined : 0.92,
+      input.format === "png" ? undefined : Math.min(1, Math.max(0.1, input.quality ?? 0.92)),
     );
   });
   const url = URL.createObjectURL(blob);

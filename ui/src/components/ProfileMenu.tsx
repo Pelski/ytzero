@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import "./ProfileMenu.css";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronRight, Eraser, Lock, LogOut, Settings, SlidersHorizontal, X } from "lucide-react";
-import { api, type AuthStatus, type Profile } from "../api";
+import { Check, ChevronRight, Eraser, Lock, LogOut, Puzzle, Settings, SlidersHorizontal, X } from "lucide-react";
+import { api, type AppSettings, type AuthStatus, type Profile } from "../api";
 import { emit, subscribe } from "../events";
 import { useI18n } from "../i18n";
 import { parseVideoCardSize, persistVideoCardSize } from "../videoCardSize";
-import { Button, IconButton, Menu, MenuItem, MenuSeparator, Popover, ScrollArea, SteppedSlider } from "./ui";
+import { Button, IconButton, Menu, MenuItem, MenuSeparator, Popover, ScrollArea, SettingRow, SteppedSlider, Switch } from "./ui";
 import NotificationCenter from "./NotificationCenter";
+import Tooltip from "./Tooltip";
+import { ENHANCE_EXTENSION_STATUS } from "../enhanceBridge";
 
 /** Round avatar: uploaded image, or a colored circle with the name initial. */
 export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
@@ -37,12 +39,19 @@ export default function ProfileMenu() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
   const [childLockEnabled, setChildLockEnabled] = useState(false);
   const [reloginFor, setReloginFor] = useState<Profile | null>(null);
+  const [enhanceOpen, setEnhanceOpen] = useState(false);
+  const [enhanceEnabled, setEnhanceEnabled] = useState(true);
+  const [enhanceReplaceControls, setEnhanceReplaceControls] = useState(true);
 
   const load = useCallback(() => {
     api.profiles().then((r) => setProfiles(r.profiles)).catch(() => {});
     api.authStatus().then(setAuth).catch(() => {});
     api.childLock().then((r) => setChildLockEnabled(r.child_lock.enabled)).catch(() => {});
-    api.settings().then((r) => setCardSize(parseVideoCardSize(r.settings.grid_size))).catch(() => {});
+    api.settings().then((r) => {
+      setCardSize(parseVideoCardSize(r.settings.grid_size));
+      setEnhanceEnabled(r.settings.enhance_enabled !== "0");
+      setEnhanceReplaceControls(r.settings.enhance_replace_controls !== "0");
+    }).catch(() => {});
   }, []);
   useEffect(load, [load]);
   useEffect(() => subscribe("profiles-changed", load), [load]);
@@ -105,6 +114,15 @@ export default function ProfileMenu() {
     else setPinError(true);
   };
 
+  const saveEnhanceSetting = async (patch: Partial<AppSettings>) => {
+    try {
+      await api.updateSettings(patch);
+      emit("player-settings-changed");
+    } catch {
+      load();
+    }
+  };
+
   if (!active) return null;
 
   return (
@@ -138,6 +156,56 @@ export default function ProfileMenu() {
           </Menu>
         </div>
       </Popover>
+      <div
+        id={ENHANCE_EXTENSION_STATUS.elementId}
+        className="profile-enhance-extension"
+        data-extension-status="inactive"
+      >
+        <Popover
+          align="end"
+          open={enhanceOpen}
+          onOpenChange={setEnhanceOpen}
+          title={t("enhanceSettingsTitle")}
+          className="profile-enhance-popover"
+          trigger={
+            <span className="profile-enhance-extension-trigger-wrap">
+              <Tooltip text={t("enhanceExtensionConnected")} pos="bottom">
+                <IconButton
+                  variant={enhanceOpen ? "secondary" : "ghost"}
+                  size="sm"
+                  className="profile-enhance-extension-trigger"
+                  label={t("enhanceExtensionConnected")}
+                  icon={<Puzzle />}
+                />
+              </Tooltip>
+            </span>
+          }
+        >
+          <div className="profile-enhance-settings">
+            <SettingRow label={t("enhanceEnabled")} description={t("enhanceEnabledHint")} align="start">
+              <Switch
+                checked={enhanceEnabled}
+                ariaLabel={t("enhanceEnabled")}
+                onCheckedChange={(next) => {
+                  setEnhanceEnabled(next);
+                  void saveEnhanceSetting({ enhance_enabled: next ? "1" : "0" });
+                }}
+              />
+            </SettingRow>
+            <SettingRow label={t("enhanceReplaceControls")} description={t("enhanceReplaceControlsHint")} align="start">
+              <Switch
+                checked={enhanceReplaceControls}
+                ariaLabel={t("enhanceReplaceControls")}
+                onCheckedChange={(next) => {
+                  setEnhanceReplaceControls(next);
+                  void saveEnhanceSetting({ enhance_replace_controls: next ? "1" : "0" });
+                }}
+              />
+            </SettingRow>
+          </div>
+        </Popover>
+        <span className="profile-enhance-extension-badge" aria-hidden="true" />
+      </div>
       <div className="profile-card-size-wrap">
         <Popover
           open={cardSizeOpen}

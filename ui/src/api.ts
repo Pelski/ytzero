@@ -207,7 +207,11 @@ export interface AppSettings {
   player_quality: string;
   player_speed: string;
   keyboard_seek_seconds: string;
+  enhance_enabled: string;
+  enhance_replace_controls: string;
+  enhance_frame_fps: string;
   player_screenshot_format: string;
+  player_screenshot_quality: string;
   player_screenshot_filename: string;
   auto_fullscreen_landscape?: string;
   grid_size: string;

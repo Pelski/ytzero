@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } 
 import { subscribe, subscribeToast, emit, type ToastVariant } from "./events";
 import { Link, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
-import { api, type AuthStatus, type ChildStatus, type UserPlaylist, type Video } from "./api";
+import { api, type AppSettings, type AuthStatus, type ChildStatus, type UserPlaylist, type Video } from "./api";
 import ChildLockScreen from "./components/ChildLockScreen";
 import LoginPage from "./pages/LoginPage";
 import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
@@ -41,6 +41,7 @@ import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
 import { Badge, Button, Toast } from "./components/ui";
+import { ENHANCE_CONFIGURATION_ELEMENT_ID, serializeEnhanceConfiguration } from "./enhanceBridge";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
@@ -276,6 +277,7 @@ function AppShell() {
   const [showShorts, setShowShorts] = useState(false);
   const [appName, setAppName] = useState("YT Zero");
   const [appIconColor, setAppIconColor] = useState("#0a5fff");
+  const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
   const [showHidden, setShowHidden] = useState(false);
@@ -315,6 +317,7 @@ function AppShell() {
 
   const loadSettings = useCallback(() => {
     api.settings().then((r) => {
+      setAppSettings(r.settings);
       setShowShorts(r.settings.show_shorts === "1");
       setAppName(r.settings.app_name || "YT Zero");
       setAppIconColor(r.settings.app_icon_color || "#0a5fff");
@@ -336,6 +339,7 @@ function AppShell() {
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("watched-style-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("video-card-size-changed", loadSettings), [loadSettings]);
+  useEffect(() => subscribe("player-settings-changed", loadSettings), [loadSettings]);
 
   const loadPlugins = useCallback(() => {
     api.plugins()
@@ -454,6 +458,11 @@ function AppShell() {
 
   return (
     <AppNameContext.Provider value={appName}>
+    {appSettings && (
+      <script id={ENHANCE_CONFIGURATION_ELEMENT_ID} type="application/json">
+        {serializeEnhanceConfiguration(appSettings)}
+      </script>
+    )}
     <div className="layout">
       <TopBar appName={appName} appIconColor={appIconColor} />
       <div className="layout-body">

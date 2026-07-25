@@ -606,8 +606,14 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_quality: "auto",
   player_speed: "1",
   keyboard_seek_seconds: "5",
-  // Raw local-player frame export. Both are portable, per-profile preferences.
+  // Browser-extension integration for enhancing the embedded YouTube iframe.
+  // These are portable presentation preferences and contain no instance secrets.
+  enhance_enabled: "1",
+  enhance_replace_controls: "1",
+  enhance_frame_fps: "30",
+  // Frame export settings are portable, per-profile presentation preferences.
   player_screenshot_format: "jpeg",
+  player_screenshot_quality: "0.92",
   player_screenshot_filename: "{channel}_{title}_{timestamp_ms}",
   // Mobile: rotating to landscape on the watch page enters fullscreen.
   auto_fullscreen_landscape: "0",

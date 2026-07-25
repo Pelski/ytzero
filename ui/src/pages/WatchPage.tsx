@@ -33,6 +33,7 @@ import {
   Undo2,
   Volume1,
   Volume2,
+  VolumeX,
 } from "lucide-react";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
@@ -52,6 +53,7 @@ import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
 import { normalizeSponsorSegments } from "../sponsorblock";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, downloadScreenshotCanvas, parsePlayerScreenshotFormat } from "../playerScreenshot";
+import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 
 type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock";
 
@@ -290,6 +292,7 @@ export default function WatchPage() {
   // the manual DOM cleanup never touches the React-rendered LocalPlayer.
   const ytWrapRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+  const enhancePlayerStateRef = useRef<{ state: EnhancePlayerState; updatedAt: number } | null>(null);
   const youtubePlaybackDesiredRef = useRef(false);
   const youtubeHiddenAtRef = useRef(0);
   const youtubeBackgroundRetryRef = useRef(false);
@@ -299,6 +302,7 @@ export default function WatchPage() {
   const sbPausedRef = useRef(false);
   const disabledSegsRef = useRef<Set<string>>(new Set());
   const recordedSbSegsRef = useRef<Set<string>>(new Set());
+  const endedHandledRef = useRef<string | null>(null);
 
   const showShortcutFeedback = useCallback((kind: WatchShortcutKind, seconds?: number, category?: string) => {
     if (shortcutFeedbackTimerRef.current) window.clearTimeout(shortcutFeedbackTimerRef.current);
@@ -378,6 +382,7 @@ export default function WatchPage() {
   const sharedStartSeconds = Number.isFinite(sharedTimestamp) ? Math.max(0, Math.floor(sharedTimestamp)) : 0;
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
   const screenshotFormat = parsePlayerScreenshotFormat(settings?.player_screenshot_format);
+  const screenshotQuality = Math.min(1, Math.max(0.1, Number(settings?.player_screenshot_quality) || 0.92));
   const screenshotFilenameTemplate = settings?.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE;
   const rawSubtitleSize = settings?.player_sub_size;
   const subtitleSize = rawSubtitleSize === "small" ? 14
@@ -401,6 +406,23 @@ export default function WatchPage() {
     }
     try {
       const seconds = Math.max(0, Number(playerRef.current?.getCurrentTime?.()) || 0);
+      const useBuiltInFallback = dispatchEnhanceEvent(ENHANCE_BRIDGE_EVENTS.screenshotRequest, {
+        version: ENHANCE_BRIDGE_VERSION,
+        video: {
+          id: video.video_id,
+          title: video.title,
+          channelTitle: video.channel_title,
+          seconds,
+        },
+        screenshot: {
+          format: screenshotFormat,
+          quality: screenshotQuality,
+          filenameTemplate: screenshotFilenameTemplate,
+        },
+      }, { cancelable: true });
+      // An extension claims the request synchronously with preventDefault(),
+      // then reports completion through screenshotResult.
+      if (!useBuiltInFallback) return;
       const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(element, {
         backgroundColor: "#000000",
@@ -415,18 +437,73 @@ export default function WatchPage() {
         videoId: video.video_id,
         seconds,
         format: screenshotFormat,
+        quality: screenshotQuality,
       });
       showShortcutFeedback("screenshot");
     } catch (error) {
       console.error("Unable to capture embedded player container", error);
       showShortcutFeedback("screenshotError");
     }
-  }, [screenshotFilenameTemplate, screenshotFormat, showShortcutFeedback, video]);
+  }, [screenshotFilenameTemplate, screenshotFormat, screenshotQuality, showShortcutFeedback, video]);
+
+  // Publish per-video data that cannot live in the static configuration file.
+  // The ready handshake lets a content script request the latest snapshot even
+  // when it loads after React emitted the initial context event.
+  useEffect(() => {
+    if (playerKind !== "youtube" || !video) return;
+    const publishContext = () => dispatchEnhanceEvent(ENHANCE_BRIDGE_EVENTS.context, {
+      version: ENHANCE_BRIDGE_VERSION,
+      active: true,
+      video: {
+        id: video.video_id,
+        title: video.title,
+        channelId: video.channel_id,
+        channelTitle: video.channel_title,
+        duration: video.duration,
+      },
+      playback: {
+        rate: Number(video.channel_playback_speed ?? settings?.player_speed ?? 1) || 1,
+        keyboardSeekSeconds,
+        frameStepFps: 30,
+        captions: {
+          enabledByDefault: captionsDefaultOn,
+          language: captionsDefaultLang,
+          style: {
+            fontSizePx: subtitleSize,
+            color: settings?.player_sub_color || "#ffffff",
+            backgroundOpacityPercent: Number(settings?.player_sub_bg ?? 75),
+          },
+        },
+        chapters,
+        sponsorBlockSegments: sbSegments,
+      },
+      screenshot: {
+        format: screenshotFormat,
+        quality: screenshotQuality,
+        filenameTemplate: screenshotFilenameTemplate,
+      },
+    });
+    publishContext();
+    document.addEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
+    return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
+  }, [captionsDefaultLang, captionsDefaultOn, chapters, keyboardSeekSeconds, playerKind, screenshotFilenameTemplate, screenshotFormat, screenshotQuality, sbSegments, settings?.player_speed, settings?.player_sub_bg, settings?.player_sub_color, subtitleSize, video]);
+
+  useEffect(() => {
+    const onScreenshotResult = (event: Event) => {
+      const detail = parseEnhanceEventDetail<{ status?: string }>(event);
+      if (detail?.status === "saved") showShortcutFeedback("screenshot");
+      else if (detail?.status === "error") showShortcutFeedback("screenshotError");
+    };
+    document.addEventListener(ENHANCE_BRIDGE_EVENTS.screenshotResult, onScreenshotResult);
+    return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.screenshotResult, onScreenshotResult);
+  }, [showShortcutFeedback]);
 
   const changeSubtitleSize = useCallback((size: number) => {
     const value = String(size);
     setSettings((current) => current ? { ...current, player_sub_size: value } : current);
-    api.updateSettings({ player_sub_size: value }).catch(console.error);
+    api.updateSettings({ player_sub_size: value })
+      .then(() => emit("player-settings-changed"))
+      .catch(console.error);
   }, []);
 
   const requestYouTubePlayback = useCallback(() => {
@@ -444,9 +521,10 @@ export default function WatchPage() {
         iframe.setAttribute("allow", [...permissions].join("; "));
         iframe.setAttribute("allowfullscreen", "");
       }
-      p?.playVideo?.();
+      if (id) void sendPlayerCommand(id, "play").catch(() => p?.playVideo?.());
+      else p?.playVideo?.();
     } catch {}
-  }, []);
+  }, [id]);
 
   const chooseYouTube = useCallback(() => {
     setYoutubeAutoplayBlocked(false);
@@ -652,6 +730,8 @@ export default function WatchPage() {
   // When a video finishes: record completion, advance the playlist if any.
   const handleEnded = useCallback(() => {
     if (!id) return;
+    if (endedHandledRef.current === id) return;
+    endedHandledRef.current = id;
     api.complete(id).catch(() => {});
     if (nextInPlaylistRef.current) navigate(nextInPlaylistRef.current);
     else if (nextInFeedRef.current) setUpNextVideo(nextInFeedRef.current);
@@ -671,6 +751,56 @@ export default function WatchPage() {
   }, []);
   const handleEndedRef = useRef(handleEnded);
   useEffect(() => { handleEndedRef.current = handleEnded; }, [handleEnded]);
+  useEffect(() => {
+    endedHandledRef.current = null;
+    enhancePlayerStateRef.current = null;
+  }, [id]);
+
+  useEffect(() => {
+    if (playerKind !== "youtube" || !id) return;
+    const toggleEnhancedCaptions = () => {
+      void sendPlayerCommand(id, "toggle-captions").catch((error) => console.warn("Unable to toggle enhanced-player captions", error));
+    };
+    const onPlayerEvent = (event: Event) => {
+      const message = parseEnhancePlayerEvent(event);
+      if (!message || message.videoId !== id) return;
+
+      if (message.type === "ready" || message.type === "state") {
+        enhancePlayerStateRef.current = { state: message.payload.state, updatedAt: Date.now() };
+        try {
+          if ("mediaSession" in navigator) {
+            navigator.mediaSession.playbackState = message.payload.state.ended
+              ? "none"
+              : message.payload.state.paused ? "paused" : "playing";
+          }
+        } catch {}
+        return;
+      }
+
+      if (message.type === "shortcut") {
+        const { action, repeat } = message.payload;
+        if (repeat) return;
+        if (action === "cinema-mode") setCinemaMode((current) => !current);
+        else if (action === "seek-back") showShortcutFeedback("back", keyboardSeekSeconds);
+        else if (action === "seek-forward") showShortcutFeedback("forward", keyboardSeekSeconds);
+        else if (action === "seek-back-10") showShortcutFeedback("back", 10);
+        else if (action === "seek-forward-10") showShortcutFeedback("forward", 10);
+        else if (action === "volume-up") showShortcutFeedback("volumeUp");
+        else if (action === "volume-down") showShortcutFeedback("volumeDown");
+        else if (action === "toggle-muted") showShortcutFeedback(enhancePlayerStateRef.current?.state.muted ? "unmute" : "mute");
+        return;
+      }
+
+      if (message.type === "captions-toggle-request") {
+        toggleEnhancedCaptions();
+        return;
+      }
+
+      if (message.type === "ended") handleEndedRef.current();
+    };
+    document.addEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
+    return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
+  }, [id, keyboardSeekSeconds, playerKind, showShortcutFeedback]);
 
   // Create the player (YT iframe or the ref populated by LocalPlayer) and poll
   // progress every second. The poll runs against the shared YT-shaped player
@@ -692,10 +822,12 @@ export default function WatchPage() {
 
     const poll = () => {
       const p = playerRef.current;
-      if (!p?.getCurrentTime) return;
+      const enhancedSnapshot = playerKind === "youtube" ? enhancePlayerStateRef.current : null;
+      const enhancedState = enhancedSnapshot && Date.now() - enhancedSnapshot.updatedAt < 2_500 ? enhancedSnapshot.state : null;
+      if (!p?.getCurrentTime && !enhancedState) return;
       try {
-        const position = p.getCurrentTime() as number;
-        const playerDuration = p.getDuration() as number;
+        const position = enhancedState?.currentTime ?? p.getCurrentTime() as number;
+        const playerDuration = enhancedState?.duration ?? p.getDuration() as number;
         if (!position || !playerDuration) return;
         if (isStream) streamPositionRef.current = position;
         if (!isStream) progressRef.current = { position, duration: playerDuration };
@@ -708,7 +840,8 @@ export default function WatchPage() {
             });
           } catch {}
         }
-        if (p.getPlayerState?.() !== 1) return;
+        const isPlaying = enhancedState ? !enhancedState.paused && !enhancedState.ended : p.getPlayerState?.() === 1;
+        if (!isPlaying) return;
         if (!isStream) {
           api.saveProgress(id, position, playerDuration).catch(() => {});
           if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
@@ -877,7 +1010,7 @@ export default function WatchPage() {
   useEffect(() => {
     if (playerKind !== "youtube" || !video || !("mediaSession" in navigator)) return;
     const mediaSession = navigator.mediaSession;
-    const seekBy = (seconds: number) => {
+    const seekByFallback = (seconds: number) => {
       const player = playerRef.current;
       const current = Number(player?.getCurrentTime?.());
       const duration = Number(player?.getDuration?.());
@@ -897,16 +1030,25 @@ export default function WatchPage() {
     } catch {}
     setHandler("play", () => {
       youtubePlaybackDesiredRef.current = true;
-      playerRef.current?.playVideo?.();
+      void sendPlayerCommand(video.video_id, "play").catch(() => playerRef.current?.playVideo?.());
     });
     setHandler("pause", () => {
       youtubePlaybackDesiredRef.current = false;
-      playerRef.current?.pauseVideo?.();
+      void sendPlayerCommand(video.video_id, "pause").catch(() => playerRef.current?.pauseVideo?.());
     });
-    setHandler("seekbackward", (details) => seekBy(-(details.seekOffset ?? 10)));
-    setHandler("seekforward", (details) => seekBy(details.seekOffset ?? 10));
+    setHandler("seekbackward", (details) => {
+      const seconds = -(details.seekOffset ?? 10);
+      void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
+    });
+    setHandler("seekforward", (details) => {
+      const seconds = details.seekOffset ?? 10;
+      void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
+    });
     setHandler("seekto", (details) => {
-      if (details.seekTime != null) playerRef.current?.seekTo?.(details.seekTime, true);
+      if (details.seekTime != null) {
+        void sendPlayerCommand(video.video_id, "seek-to", { seconds: details.seekTime })
+          .catch(() => playerRef.current?.seekTo?.(details.seekTime!, true));
+      }
     });
 
     return () => {
@@ -974,7 +1116,9 @@ export default function WatchPage() {
     const eff = v ?? settings?.player_speed ?? "1";
     setSpeed(eff);
     speedRef.current = eff;
-    try { playerRef.current?.setPlaybackRate(Number(eff)); } catch {}
+    const applyFallback = () => { try { playerRef.current?.setPlaybackRate(Number(eff)); } catch {} };
+    if (id) void sendPlayerCommand(id, "set-playback-rate", { rate: Number(eff) }).catch(applyFallback);
+    else applyFallback();
     setMoreOpen(false);
     setSpeedOpen(false);
     if (video) {
@@ -1105,6 +1249,22 @@ export default function WatchPage() {
         return;
       }
 
+      if (e.key === "m" || e.key === "M") {
+        e.preventDefault();
+        if (e.repeat) return;
+        const enhancedState = enhancePlayerStateRef.current?.state;
+        const muted = enhancedState?.muted ?? Boolean(player.isMuted?.());
+        showShortcutFeedback(muted ? "unmute" : "mute");
+        if (id) {
+          void sendPlayerCommand(id, "toggle-muted").catch(() => {
+            if (muted) player.unMute?.();
+            else player.mute?.();
+          });
+        } else if (muted) player.unMute?.();
+        else player.mute?.();
+        return;
+      }
+
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
         const current = player.getCurrentTime?.();
         const duration = player.getDuration?.();
@@ -1151,7 +1311,7 @@ export default function WatchPage() {
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [playerKind, showShortcutFeedback, keyboardSeekSeconds, takeEmbeddedScreenshot]);
+  }, [id, playerKind, showShortcutFeedback, keyboardSeekSeconds, takeEmbeddedScreenshot]);
 
   // Refresh views + likes in the background every 30 s while watching
   useEffect(() => {
@@ -1399,6 +1559,7 @@ export default function WatchPage() {
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
                   screenshotFormat={screenshotFormat}
+                  screenshotQuality={screenshotQuality}
                   screenshotFilenameTemplate={screenshotFilenameTemplate}
                   videoId={video.video_id}
                   ccDefaultOn={captionsDefaultOn}
@@ -1437,6 +1598,7 @@ export default function WatchPage() {
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
                   screenshotFormat={screenshotFormat}
+                  screenshotQuality={screenshotQuality}
                   screenshotFilenameTemplate={screenshotFilenameTemplate}
                   videoId={video.video_id}
                   ccDefaultOn={captionsDefaultOn}
@@ -1513,23 +1675,13 @@ export default function WatchPage() {
                   )}
                 </div>
               )}
-              {playerKind === "youtube" && video && (
-                <button
-                  type="button"
-                  className="watch-embedded-screenshot"
-                  onClick={() => void takeEmbeddedScreenshot()}
-                  aria-label={t("playerScreenshot")}
-                  title={`${t("playerScreenshot")} (S)`}
-                  data-screenshot-ignore
-                >
-                  <Camera size={19} />
-                </button>
-              )}
               {shortcutFeedback && (() => {
                 const Icon = shortcutFeedback.kind === "back" ? Rewind
                   : shortcutFeedback.kind === "forward" ? FastForward
                     : shortcutFeedback.kind === "volumeUp" ? Volume2
                       : shortcutFeedback.kind === "volumeDown" ? Volume1
+                        : shortcutFeedback.kind === "mute" ? VolumeX
+                          : shortcutFeedback.kind === "unmute" ? Volume2
                         : shortcutFeedback.kind === "sponsorblock" ? FastForward
                           : shortcutFeedback.kind === "screenshot" ? Camera
                             : shortcutFeedback.kind === "screenshotError" ? AlertTriangle
@@ -1538,6 +1690,8 @@ export default function WatchPage() {
                 const label = shortcutFeedback.kind === "back" ? `−${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
                   : shortcutFeedback.kind === "forward" ? `+${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
                     : shortcutFeedback.kind === "speed" ? "2×"
+                      : shortcutFeedback.kind === "mute" ? t("playerMute")
+                        : shortcutFeedback.kind === "unmute" ? t("playerUnmute")
                       : shortcutFeedback.kind === "captionsOn" ? t("captionsOn")
                         : shortcutFeedback.kind === "captionsOff" ? t("captionsOff")
                           : shortcutFeedback.kind === "screenshot" ? t("playerScreenshotSaved")
