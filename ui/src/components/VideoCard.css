@@ -69,5 +69,19 @@
 }
 
 .video-card .v-time--arrival {
-  white-space: normal;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 8px;
+  white-space: nowrap;
+}
+
+.video-card .v-time-item {
+  align-items: center;
+  display: inline-flex;
+  gap: 3px;
+}
+
+.video-card .v-time-item svg {
+  flex: 0 0 auto;
 }

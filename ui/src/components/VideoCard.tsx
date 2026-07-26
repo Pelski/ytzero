@@ -11,6 +11,7 @@ import {
   Star,
   Trash2,
   Undo2,
+  Upload,
   X,
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent } from "react";
@@ -621,7 +622,20 @@ function VideoCard({
                 {publishedTime && !showFoundTime && <span className="v-time">{publishedTime}</span>}
                 {showFoundTime && foundTime && (
                   <span className="v-time v-time--arrival">
-                    {t("uploadedTime", { time: publishedTime })} · {t("foundTime", { time: foundTime })}
+                    {publishedTime && (
+                      <Tooltip text={t("uploadedTime", { time: publishedTime })} pos="top">
+                        <span className="v-time-item" aria-label={t("uploadedTime", { time: publishedTime })}>
+                          <Upload size={13} aria-hidden="true" />
+                          <span>{publishedTime}</span>
+                        </span>
+                      </Tooltip>
+                    )}
+                    <Tooltip text={t("foundTime", { time: foundTime })} pos="top">
+                      <span className="v-time-item" aria-label={t("foundTime", { time: foundTime })}>
+                        <Eye size={13} aria-hidden="true" />
+                        <span>{foundTime}</span>
+                      </span>
+                    </Tooltip>
                   </span>
                 )}
               </div>
