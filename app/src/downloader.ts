@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { db, getSetting } from "./db";
+import { downloadCookieAttempts, downloadFormat } from "./downloadStrategy";
 import { log } from "./logger";
 import { maintenanceActive } from "./maintenance";
 
@@ -687,16 +688,10 @@ function writeNfoFile(videoId: string, base: string) {
 }
 
 async function runDownload(videoId: string, s: DlSettings) {
-  const height = s.quality === "best" ? null : Number(s.quality);
-  // Explicitly pick the best separate video and audio streams. Sorting by
-  // codec (H.264 + M4A) made a lower-resolution progressive format win over
-  // a higher-resolution stream, even when the user selected "Best".
-  const format = height
-    ? `bestvideo*[height<=${height}]+bestaudio/best[height<=${height}]`
-    : "bestvideo*+bestaudio/best";
+  const format = downloadFormat(String(s.quality));
   const base = renderOutputTemplate(videoId, String(s.output_template));
   mkdirSync(dirname(join(DOWNLOADS_DIR, base)), { recursive: true });
-  const args = [
+  const baseArgs = [
     `https://www.youtube.com/watch?v=${videoId}`,
     "--no-playlist",
     "--newline",
@@ -711,47 +706,71 @@ async function runDownload(videoId: string, s: DlSettings) {
     "--merge-output-format", "mp4",
     "-o", join(DOWNLOADS_DIR, `${base}.%(ext)s`),
   ];
-  if (s.write_thumbnail === 1) args.push("--write-thumbnail");
-  if (s.embed_metadata === 1) args.push("--embed-metadata");
-  if (s.write_info_json === 1) args.push("--write-info-json");
-  if (downloadCookiesConfigured()) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
+  if (s.write_thumbnail === 1) baseArgs.push("--write-thumbnail");
+  if (s.embed_metadata === 1) baseArgs.push("--embed-metadata");
+  if (s.write_info_json === 1) baseArgs.push("--write-info-json");
 
   db.prepare("UPDATE downloads SET status = 'downloading', quality = ?, output_base = ?, error = NULL, attempts = attempts + 1, started_at = datetime('now') WHERE video_id = ?")
     .run(s.quality, base, videoId);
   log.info("downloads.start", { videoId, quality: s.quality, base });
 
-  let proc: ReturnType<typeof Bun.spawn>;
-  try {
-    proc = Bun.spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
-  } catch (e) {
-    const error = e instanceof Error ? e.message : String(e);
-    db.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
-    ytdlpVersion = undefined; // binary may have moved — re-check on next tick
-    log.error("downloads.spawn_failed", { videoId, error });
-    return;
-  }
-  const job: ActiveDownload = { videoId, proc, percent: 0, totalBytes: null, speed: null, cancelled: false, preempted: false };
-  active = job;
+  const cookieAttempts = downloadCookieAttempts(downloadCookiesConfigured());
+  let job: ActiveDownload | null = null;
+  let code = 1;
+  let stderrTail: string[] = [];
 
-  const stderrTail: string[] = [];
-  try {
-    await Promise.all([
-      readLines(proc.stdout as ReadableStream<Uint8Array>, (line) => {
-        const m = line.match(PROGRESS_RE);
-        if (!m) return;
-        job.percent = Number(m[1]);
-        if (m[2] && m[3]) job.totalBytes = parseBytes(m[2], m[3]);
-        if (m[4]) job.speed = m[4];
-      }),
-      readLines(proc.stderr as ReadableStream<Uint8Array>, (line) => {
-        if (!line.trim()) return;
-        stderrTail.push(line.trim());
-        if (stderrTail.length > 8) stderrTail.shift();
-      }),
-    ]);
-  } catch {}
-  const code = await proc.exited;
+  for (let attemptIndex = 0; attemptIndex < cookieAttempts.length; attemptIndex++) {
+    const useCookies = cookieAttempts[attemptIndex];
+    const args = [...baseArgs];
+    if (useCookies) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
+
+    let proc: ReturnType<typeof Bun.spawn>;
+    try {
+      proc = Bun.spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e);
+      db.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
+      ytdlpVersion = undefined; // binary may have moved — re-check on next tick
+      log.error("downloads.spawn_failed", { videoId, error });
+      active = null;
+      return;
+    }
+
+    if (job) job.proc = proc;
+    else job = { videoId, proc, percent: 0, totalBytes: null, speed: null, cancelled: false, preempted: false };
+    active = job;
+    const attemptStderr: string[] = [];
+
+    try {
+      await Promise.all([
+        readLines(proc.stdout as ReadableStream<Uint8Array>, (line) => {
+          const m = line.match(PROGRESS_RE);
+          if (!m || !job) return;
+          job.percent = Number(m[1]);
+          if (m[2] && m[3]) job.totalBytes = parseBytes(m[2], m[3]);
+          if (m[4]) job.speed = m[4];
+        }),
+        readLines(proc.stderr as ReadableStream<Uint8Array>, (line) => {
+          if (!line.trim()) return;
+          attemptStderr.push(line.trim());
+          if (attemptStderr.length > 8) attemptStderr.shift();
+        }),
+      ]);
+    } catch {}
+    code = await proc.exited;
+    stderrTail = attemptStderr;
+
+    if (code === 0 || job.cancelled || job.preempted) break;
+    if (cookieAttempts[attemptIndex + 1]) {
+      log.info("downloads.retry_with_cookies", {
+        videoId,
+        reason: stderrTail.at(-1) ?? `yt-dlp exited with code ${code}`,
+      });
+    }
+  }
   active = null;
+
+  if (!job) return;
 
   if (job.cancelled) {
     unlinkFiles(videoId);
