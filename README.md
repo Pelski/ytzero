@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/icon.svg" width="112" height="112" alt="YT Zero logo">
+  <img src="docs/assets/ytzero-logo.svg" width="112" height="112" alt="YT Zero logo">
   <h1>YT Zero</h1>
   <p><strong>A self-hosted YouTube inbox for people who want subscriptions, not recommendations.</strong></p>
   <p>
