@@ -217,6 +217,7 @@ export interface AppSettings {
   auto_fullscreen_landscape?: string;
   grid_size: string;
   child_lock_enabled: string;
+  profile_admin_only_areas: string;
   app_name: string;
   app_icon_color: string;
   shorts_tab: string;
@@ -407,9 +408,15 @@ export const SB_CATEGORIES: { id: string; labelKey: I18nKey; color: string }[] =
   { id: "filler",         labelKey: "sbCatFiller",        color: "#7300ab" },
 ];
 
+export type ProfilePermissionArea = "channels" | "followed_playlists" | "imports" | "tags" | "filters" | "playlists" | "appearance" | "feed" | "navigation" | "playback" | "plugins" | "profiles";
+
 export interface ChildLockStatus {
   enabled: boolean;
   locked: boolean;
+}
+
+export interface ProfilePermissions {
+  admin_only_areas: ProfilePermissionArea[];
 }
 
 export interface Profile {
@@ -970,6 +977,9 @@ export const api = {
   updateSettings: (s: Partial<AppSettings>) =>
     http("/settings", { method: "PUT", body: JSON.stringify(s) }),
   childLock: () => http<{ child_lock: ChildLockStatus }>("/child-lock"),
+  profilePermissions: () => http<{ permissions: ProfilePermissions }>("/profile-permissions"),
+  updateProfilePermissions: (adminOnlyAreas: ProfilePermissionArea[]) =>
+    http<{ permissions: ProfilePermissions }>("/profile-permissions", { method: "PUT", body: JSON.stringify({ admin_only_areas: adminOnlyAreas }) }),
   enableChildLock: (pin: string) =>
     http<{ child_lock: ChildLockStatus }>("/child-lock/enable", { method: "POST", body: JSON.stringify({ pin }) }),
   unlockChildLock: (pin: string) =>

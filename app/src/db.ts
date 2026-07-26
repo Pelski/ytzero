@@ -625,6 +625,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   grid_size: "sm",
   child_lock_enabled: "0",
   child_lock_pin_hash: "",
+  // Portable, non-secret policy defining which areas non-admin profiles may
+  // not change. This is independent from the temporary PIN-based child lock.
+  profile_admin_only_areas: '{"version":3,"adminOnlyAreas":["channels","followed_playlists","imports","appearance","feed","navigation","playback","plugins","profiles"]}',
   app_name: "YT Zero",
   app_icon_color: "#0a5fff",
   shorts_tab: "1",
@@ -677,6 +680,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
 export const GLOBAL_SETTING_KEYS = new Set([
   "child_lock_enabled",
   "child_lock_pin_hash",
+  "profile_admin_only_areas",
   "app_name",
   "app_icon_color",
   "auth_method",

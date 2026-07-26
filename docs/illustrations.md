@@ -25,6 +25,7 @@ stays deliberately quiet.
 | Surface | Scene | Why |
 |---|---|---|
 | `/` feed, nothing left | `inboxZero` | The reward state — the whole point of the app |
+| `/` feed, no followed channels | `noSubscriptions` | First-run state; same meaning as an empty subscriptions page |
 | `/watchlist` | `scheduleClear` | Nothing planned; calm, recurring |
 | `/live` | `offAir` | Nobody streaming; recurring, not a failure |
 | `/downloads` | `noDownloads` | Primary destination, hasn't been used yet |

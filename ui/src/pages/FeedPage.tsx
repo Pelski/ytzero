@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "./FeedPage.css";
 import { subscribe } from "../events";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload, Users } from "lucide-react";
+import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
@@ -474,7 +474,7 @@ export default function FeedPage({
       ) : videos.length === 0 ? (
         hasSubscriptions === false ? (
           <EmptyState
-            icon={<Users />}
+            art={<EmptyArt scene="noSubscriptions" />}
             title={t("feedEmptyNotFollowingTitle")}
             description={t("feedEmptyNotFollowingDescription")}
             action={<ButtonLink variant="primary" to="/subscriptions" leadingIcon={<Plus size={16} />}>{t("feedOnboardingAddChannels")}</ButtonLink>}

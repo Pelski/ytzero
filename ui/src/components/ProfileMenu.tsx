@@ -3,7 +3,7 @@ import "./ProfileMenu.css";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, ChevronRight, Eraser, Lock, LogOut, Puzzle, Settings, SlidersHorizontal, X } from "lucide-react";
-import { api, type AppSettings, type AuthStatus, type Profile } from "../api";
+import { api, type AppSettings, type AuthStatus, type Profile, type ProfilePermissions } from "../api";
 import { emit, subscribe } from "../events";
 import { useI18n } from "../i18n";
 import { parseVideoCardSize, persistVideoCardSize } from "../videoCardSize";
@@ -25,7 +25,7 @@ export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "
   );
 }
 
-export default function ProfileMenu() {
+export default function ProfileMenu({ isAdmin, profilePermissions }: { isAdmin: boolean; profilePermissions: ProfilePermissions }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
@@ -63,6 +63,7 @@ export default function ProfileMenu() {
   const cardSizeSteps = [180, 220, 260, 300, 372, 480] as const;
   // Leaving a child profile is gated by the app-wide child lock PIN.
   const needsChildLock = Boolean(active?.is_child && childLockEnabled);
+  const canManageArea = (area: ProfilePermissions["admin_only_areas"][number]) => isAdmin || !profilePermissions.admin_only_areas.includes(area);
 
   const doSwitch = async (p: Profile, enteredPin?: string, enteredChildLockPin?: string) => {
     try {
@@ -161,12 +162,12 @@ export default function ProfileMenu() {
           </ScrollArea>
           <MenuSeparator />
           <Menu className="profile-picker-actions">
-            <MenuItem icon={<Settings size={18} />} onClick={() => { setOpen(false); navigate("/settings?tab=profiles"); }}>{t("manageProfiles")}</MenuItem>
+            {canManageArea("profiles") && <MenuItem icon={<Settings size={18} />} onClick={() => { setOpen(false); navigate("/settings?tab=profiles"); }}>{t("manageProfiles")}</MenuItem>}
             {auth && auth.method !== "none" && <MenuItem icon={<LogOut size={18} />} onClick={doLogout}>{t("logout")}</MenuItem>}
           </Menu>
         </div>
       </Popover>
-      <div
+      {canManageArea("playback") && <div
         id={ENHANCE_EXTENSION_STATUS.elementId}
         className="profile-enhance-extension"
         data-extension-status="inactive"
@@ -215,7 +216,7 @@ export default function ProfileMenu() {
           </div>
         </Popover>
         <span className="profile-enhance-extension-badge" aria-hidden="true" />
-      </div>
+      </div>}
       <div className="profile-card-size-wrap">
         <Popover
           open={cardSizeOpen}
@@ -225,10 +226,10 @@ export default function ProfileMenu() {
           className="profile-card-size-popover"
           trigger={<IconButton variant="ghost" size="sm" className="profile-card-size-trigger" label={t("videoCardSize")} icon={<SlidersHorizontal />} />}
         >
-          <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => { setCardSize(next); persistVideoCardSize(next).then(() => emit("video-card-size-changed")).catch(() => {}); }} />
+          {canManageArea("appearance") && <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => { setCardSize(next); persistVideoCardSize(next).then(() => emit("video-card-size-changed")).catch(() => {}); }} />}
           {location.pathname === "/" && (
             <>
-              <MenuSeparator />
+              {canManageArea("appearance") && <MenuSeparator />}
               <SettingRow label={t("feedSortLabel")} className="profile-feed-sort-row">
                 <SegmentedControl
                   className="profile-feed-sort-control"

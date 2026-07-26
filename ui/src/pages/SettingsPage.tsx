@@ -3,7 +3,7 @@ import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -28,16 +28,40 @@ import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
 // Tabs unavailable to a profile are omitted entirely, not shown as dead ends.
-const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean; hiddenForChild?: boolean }[] = [
+const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean }[] = [
   { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
   { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
   { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
-  { id: "display", labelKey: "display", icon: <MonitorPlay size={15} />, hiddenForChild: true },
-  { id: "plugins", labelKey: "pluginsTab", icon: <Plug size={15} />, hiddenForChild: true },
-  { id: "advanced", labelKey: "advanced", icon: <Wrench size={15} />, hiddenForChild: true },
-  { id: "profiles", labelKey: "profiles", icon: <Users size={15} />, hiddenForChild: true },
-  { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true, hiddenForChild: true },
+  { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
+  { id: "plugins", labelKey: "pluginsTab", icon: <Plug size={15} /> },
+  { id: "advanced", labelKey: "advanced", icon: <Wrench size={15} />, primaryOnly: true },
+  { id: "profiles", labelKey: "profiles", icon: <Users size={15} /> },
+  { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true },
 ];
+
+const DISPLAY_PERMISSION_AREAS: ProfilePermissionArea[] = ["appearance", "feed", "navigation", "playback"];
+const DEFAULT_ADMIN_ONLY_AREAS: ProfilePermissionArea[] = ["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"];
+const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"]);
+const PROFILE_PERMISSION_OPTIONS: { id: ProfilePermissionArea; labelKey: I18nKey; hintKey: I18nKey }[] = [
+  { id: "channels", labelKey: "profilePermissionChannels", hintKey: "profilePermissionChannelsHint" },
+  { id: "followed_playlists", labelKey: "profilePermissionFollowedPlaylists", hintKey: "profilePermissionFollowedPlaylistsHint" },
+  { id: "imports", labelKey: "profilePermissionImports", hintKey: "profilePermissionImportsHint" },
+  { id: "tags", labelKey: "profilePermissionTags", hintKey: "profilePermissionTagsHint" },
+  { id: "filters", labelKey: "profilePermissionFilters", hintKey: "profilePermissionFiltersHint" },
+  { id: "playlists", labelKey: "profilePermissionPlaylists", hintKey: "profilePermissionPlaylistsHint" },
+  { id: "appearance", labelKey: "profilePermissionAppearance", hintKey: "profilePermissionAppearanceHint" },
+  { id: "feed", labelKey: "profilePermissionFeed", hintKey: "profilePermissionFeedHint" },
+  { id: "navigation", labelKey: "profilePermissionNavigation", hintKey: "profilePermissionNavigationHint" },
+  { id: "playback", labelKey: "profilePermissionPlayback", hintKey: "profilePermissionPlaybackHint" },
+  { id: "plugins", labelKey: "profilePermissionPlugins", hintKey: "profilePermissionPluginsHint" },
+  { id: "profiles", labelKey: "profilePermissionProfiles", hintKey: "profilePermissionProfilesHint" },
+];
+
+function permissionAreaForTab(tab: Tab): ProfilePermissionArea | null {
+  if (tab === "channels" || tab === "tags" || tab === "playlists" || tab === "plugins" || tab === "profiles") return tab;
+  if (tab === "advanced") return null;
+  return null;
+}
 
 // Feed age limit: "off" lives in the unit select so the whole control stays two
 // dropdowns (the value select is disabled while the limit is off).
@@ -1227,6 +1251,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [sbEnabled, setSbEnabled] = useState(false);
   const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
   const [childLock, setChildLock] = useState<ChildLockStatus>({ enabled: false, locked: false });
+  const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: DEFAULT_ADMIN_ONLY_AREAS });
   const [unlockPin, setUnlockPin] = useState("");
   const [enablePin, setEnablePin] = useState("");
   const [enablePinConfirm, setEnablePinConfirm] = useState("");
@@ -1335,10 +1360,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   }, []);
 
   useEffect(() => {
-    if (tab === "advanced" && advancedSubTab === "external") loadExternal();
-    if (tab === "advanced" && advancedSubTab === "logs") loadLogs();
-    if (tab === "advanced" && advancedSubTab === "changelog") loadChangelog();
-  }, [tab, advancedSubTab, loadExternal, loadLogs, loadChangelog]);
+    if (!isPrimary || tab !== "advanced") return;
+    if (advancedSubTab === "external") loadExternal();
+    if (advancedSubTab === "logs") loadLogs();
+    if (advancedSubTab === "changelog") loadChangelog();
+  }, [isPrimary, tab, advancedSubTab, loadExternal, loadLogs, loadChangelog]);
 
   const loadFollowedPlaylists = useCallback(() => {
     api.followedPlaylists().then((result) => setFollowedPlaylists(result.playlists)).catch(console.error);
@@ -1401,8 +1427,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     api.childStatus().then((s) => setIsChildProfile(s.is_child)).catch(() => setIsChildProfile(false));
     load().catch(console.error);
     loadPlugins();
-    Promise.all([api.settings(), api.childLock()])
-      .then(([r, cl]) => {
+    Promise.all([api.settings(), api.childLock(), api.profilePermissions()])
+      .then(([r, cl, permissions]) => {
         const name = r.settings.app_name || "YT Zero";
         setAppName(name);
         setAppNameInput(name);
@@ -1447,6 +1473,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setSbEnabled(r.settings.sponsorblock_enabled === "1");
         try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
         setChildLock(cl.child_lock);
+        setProfilePermissions(permissions.permissions);
       })
       .catch(console.error);
   }, [load, loadPlugins]);
@@ -1723,6 +1750,21 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     showToast(t("settingsLocked"));
   };
 
+  const toggleAdminOnlyArea = async (area: ProfilePermissionArea, adminOnly: boolean) => {
+    const previous = profilePermissions;
+    const adminOnlyAreas = adminOnly
+      ? [...new Set([...profilePermissions.admin_only_areas, area])]
+      : profilePermissions.admin_only_areas.filter((item) => item !== area);
+    setProfilePermissions({ admin_only_areas: adminOnlyAreas });
+    try {
+      const result = await api.updateProfilePermissions(adminOnlyAreas);
+      setProfilePermissions(result.permissions);
+    } catch (error) {
+      setProfilePermissions(previous);
+      showToast(`${t("error")}: ${error instanceof Error ? error.message : error}`);
+    }
+  };
+
   const addChannel = async () => {
     if (!channelUrl.trim() || addingChannel) return;
     setAddingChannel(true);
@@ -1851,29 +1893,53 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         return title.includes(normalizedChannelQuery) || channelId.includes(normalizedChannelQuery);
       })
     : channels;
-  const isSettingsLocked = childLock.enabled && childLock.locked;
-  const visibleTabs = TABS.filter((tabItem) =>
-    (!tabItem.primaryOnly || isPrimary)
-    && (!tabItem.hiddenForChild || isChildProfile === false)
-  );
+  const canManageArea = (area: ProfilePermissionArea) => isPrimary || !profilePermissions.admin_only_areas.includes(area);
+  const channelSubTabOptions: { value: "list" | "playlists" | "filters"; label: string; count: number }[] = [
+    ...(canManageArea("channels") ? [{ value: "list" as const, label: t("channels"), count: channels.length }] : []),
+    ...(canManageArea("followed_playlists") ? [{ value: "playlists" as const, label: t("followedPlaylists"), count: followedPlaylists.length }] : []),
+    ...(canManageArea("filters") ? [{ value: "filters" as const, label: t("filters"), count: filterRules.length }] : []),
+  ];
+  const currentPermissionArea = tab === "channels"
+    ? channelSubTab === "playlists" ? "followed_playlists" : channelSubTab === "filters" ? "filters" : "channels"
+    : tab === "display" ? DISPLAY_PERMISSION_AREAS.find(canManageArea) ?? null
+    : permissionAreaForTab(tab);
+  const isCurrentTabLocked = childLock.enabled
+    && childLock.locked
+    && currentPermissionArea != null
+    && PIN_PROTECTED_PERMISSION_AREAS.has(currentPermissionArea);
+  const visibleTabs = TABS.filter((tabItem) => {
+    const permissionArea = permissionAreaForTab(tabItem.id);
+    const hasVisibleChannelSection = tabItem.id !== "channels" || channelSubTabOptions.length > 0;
+    const hasVisibleDisplaySection = tabItem.id !== "display" || DISPLAY_PERMISSION_AREAS.some(canManageArea);
+    return (!tabItem.primaryOnly || isPrimary)
+      && hasVisibleChannelSection
+      && hasVisibleDisplaySection
+      && (tabItem.id === "channels" || isPrimary || permissionArea == null || !profilePermissions.admin_only_areas.includes(permissionArea));
+  });
 
   useEffect(() => {
     if (isChildProfile == null) return;
     if (!visibleTabs.some((tabItem) => tabItem.id === tab)) {
       setTab(visibleTabs[0]?.id ?? "tags");
     }
-  }, [isChildProfile, isPrimary, tab]);
+  }, [isChildProfile, isPrimary, profilePermissions.admin_only_areas, tab]);
+
+  useEffect(() => {
+    if (tab !== "channels" || channelSubTabOptions.some((option) => option.value === channelSubTab)) return;
+    const next = channelSubTabOptions[0]?.value;
+    if (next) setChannelSubTab(next);
+  }, [tab, channelSubTab, channelSubTabOptions.map((option) => option.value).join(",")]);
 
   return (
     <>
       <PageHeader
         title={t("settingsTitle")}
-        actions={isChildProfile === false ? <>
+        actions={canManageArea("imports") ? <>
           <ButtonLink to="/import" leadingIcon={<FolderUp size={16} />}>{t("importDataButton")}</ButtonLink>
         </> : undefined}
       />
 
-      {childLock.enabled && !childLock.locked && (
+      {childLock.enabled && !childLock.locked && !isPrimary && (
         <button className="settings-unlocked-warning" onClick={lockSettings}>
           <ShieldCheck />
           <span>{t("settingsUnlockedWarning")}</span>
@@ -1883,7 +1949,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       <Tabs variant="settings" className="settings-tabs-layout" label={t("settingsTitle")} value={tab} onChange={setTab} options={visibleTabs.map((tabItem) => ({ value: tabItem.id, label: t(tabItem.labelKey), icon: tabItem.icon, count: tabItem.id === "channels" ? channels.length : undefined }))} />
 
-      {isSettingsLocked && tab !== "tags" && tab !== "playlists" && (
+      {isCurrentTabLocked && (
         <SettingsSection className="child-lock-panel">
           <div className="child-lock-header">
             <ShieldCheck />
@@ -1910,7 +1976,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </SettingsSection>
       )}
 
-      {!isSettingsLocked && tab === "profiles" && isChildProfile === false && (
+      {!isCurrentTabLocked && tab === "profiles" && (
         <>
           <ProfilesSettings showToast={showToast} />
 
@@ -1957,7 +2023,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               <>
                 <div className="child-lock-status">
                   <span className="tag-pill">{t("childLockEnabledStatus")}</span>
-                  <Button onClick={lockSettings}>{t("lockNow")}</Button>
                   <Button variant="danger" onClick={disableChildLock}>{t("disableChildLock")}</Button>
                 </div>
                 <Text tone="secondary">{t("changePinHint")}</Text>
@@ -1987,19 +2052,41 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 </div>
               </>
             )}
+
           </SettingsSection>
+
+          {isPrimary && (
+            <SettingsSection
+              title={t("profilePermissionsTitle")}
+              description={t("profilePermissionsHint")}
+            >
+              {PROFILE_PERMISSION_OPTIONS.map((option) => (
+                <SettingRow
+                  key={option.id}
+                  label={t(option.labelKey)}
+                  description={t(option.hintKey)}
+                >
+                  <Switch
+                    checked={profilePermissions.admin_only_areas.includes(option.id)}
+                    ariaLabel={t(option.labelKey)}
+                    onCheckedChange={(checked) => void toggleAdminOnlyArea(option.id, checked)}
+                  />
+                </SettingRow>
+              ))}
+            </SettingsSection>
+          )}
 
           {isPrimary && <ChannelOwnership showToast={showToast} />}
         </>
       )}
 
-      {!isSettingsLocked && tab === "auth" && isPrimary && <AuthSettings showToast={showToast} />}
+      {!isCurrentTabLocked && tab === "auth" && isPrimary && <AuthSettings showToast={showToast} />}
 
-      {!isSettingsLocked && tab === "channels" && (
+      {!isCurrentTabLocked && tab === "channels" && (
         <SettingsSection>
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("channels")} value={channelSubTab} onChange={setChannelSubTab} options={[{ value: "list", label: t("channels"), count: channels.length }, { value: "playlists", label: t("followedPlaylists"), count: followedPlaylists.length }, { value: "filters", label: t("filters"), count: filterRules.length }]} />
+          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("channels")} value={channelSubTab} onChange={setChannelSubTab} options={channelSubTabOptions} />
 
-          {channelSubTab === "list" && (
+          {channelSubTab === "list" && canManageArea("channels") && (
             <>
               <Text tone="secondary">{t("addChannelHint")}</Text>
               <div className="form-row">
@@ -2029,20 +2116,24 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   showToast(t("channelAdded", { name }));
                   load();
                 }} />
-                <Button onClick={() => fileRef.current?.click()} disabled={addingChannel}>
-                  <FolderUp /> {t("importOpmlCsv")}
-                </Button>
-                <Input
-                  ref={fileRef}
-                  type="file"
-                  accept=".opml,.xml,.csv"
-                  hidden
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) importFile(f);
-                    e.target.value = "";
-                  }}
-                />
+                {canManageArea("imports") && (
+                  <>
+                    <Button onClick={() => fileRef.current?.click()} disabled={addingChannel}>
+                      <FolderUp /> {t("importOpmlCsv")}
+                    </Button>
+                    <Input
+                      ref={fileRef}
+                      type="file"
+                      accept=".opml,.xml,.csv"
+                      hidden
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) importFile(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </>
+                )}
               </div>
               <div className="form-row">
                 <input
@@ -2187,7 +2278,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </>
           )}
 
-          {channelSubTab === "playlists" && (
+          {channelSubTab === "playlists" && canManageArea("followed_playlists") && (
             followedPlaylists.length === 0 ? <EmptyState title={t("noFollowedPlaylists")} description={t("noFollowedPlaylistsHint")} /> :
             <div className="followed-playlists-settings">
               {followedPlaylists.map((playlist) => <div className="followed-playlist-row" key={playlist.playlist_id}>
@@ -2202,7 +2293,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </div>
           )}
 
-          {channelSubTab === "filters" && (
+          {channelSubTab === "filters" && canManageArea("filters") && (
             <>
               <Text tone="secondary">
                 {t("filterHint")}
@@ -2235,7 +2326,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </SettingsSection>
       )}
 
-      {tab === "tags" && (
+      {!isCurrentTabLocked && tab === "tags" && (
         <SettingsSection>
           <Tabs variant="subtle" className="settings-subtabs-layout" label={t("tagsRules")} value={tagSubTab} onChange={setTagSubTab} options={[{ value: "list", label: t("tags"), count: tags.length }, { value: "rules", label: t("rules"), count: rules.length }]} />
 
@@ -2310,7 +2401,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </SettingsSection>
       )}
 
-      {tab === "playlists" && (
+      {!isCurrentTabLocked && tab === "playlists" && (
         <SettingsSection>
           <Text tone="secondary">
             {t("playlistHint")}
@@ -2350,9 +2441,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </SettingsSection>
       )}
 
-      {!isSettingsLocked && tab === "display" && (
+      {!isCurrentTabLocked && tab === "display" && (
         <div className="settings-display-groups">
-          <SettingsSection title={t("displayAppearance")} className="settings-display-group">
+          {canManageArea("appearance") && <SettingsSection title={t("displayAppearance")} className="settings-display-group">
           {isPrimary ? (
             <>
               <SettingRow label={t("appNameLabel")} htmlFor="app-name">
@@ -2388,73 +2479,15 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           ) : (
             <Text tone="secondary">{t("primaryOnlyHint")}</Text>
           )}
-          </SettingsSection>
 
-          <SettingsSection title={t("displayFeed")} className="settings-display-group">
-          <SettingRow label={t("showShorts")} description={t("showShortsHint")}>
-            <Switch checked={showShorts} onCheckedChange={() => toggleShorts()} />
-          </SettingRow>
-
-          <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
-            <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
-          </SettingRow>
-
-          <SettingRow label={t("feedMaxAge")} description={t("feedMaxAgeHint")}>
-            <Inline gap={2} className="feed-max-age-control">
-              <SelectMenu
-                label={t("feedMaxAge")}
-                value={feedMaxAgeValue}
-                disabled={feedMaxAgeUnit === "off"}
-                onChange={(next: string) => changeFeedMaxAge(next, feedMaxAgeUnit)}
-                options={FEED_MAX_AGE_VALUES.map((value) => ({ value, label: value }))}
-              />
-              <SelectMenu
-                label={t("feedMaxAge")}
-                value={feedMaxAgeUnit}
-                onChange={(next: FeedMaxAgeUnit) => changeFeedMaxAge(feedMaxAgeValue, next)}
-                options={[
-                  ...FEED_MAX_AGE_UNITS.map((unit) => ({
-                    value: unit as FeedMaxAgeUnit,
-                    label: formatAgeUnit(Number(feedMaxAgeValue) || 1, unit, language),
-                  })),
-                  { value: "off" as FeedMaxAgeUnit, label: t("feedMaxAgeOff") },
-                ]}
-              />
-            </Inline>
-          </SettingRow>
-
-          <SettingRow label={t("watchShowRelated")} description={t("watchShowRelatedHint")}>
-            <Switch checked={watchShowRelated} onCheckedChange={() => toggleWatchRelated()} />
-          </SettingRow>
-
-          <SettingRow label={t("feedAutoplay")} description={t("feedAutoplayHint")}>
-            <Switch checked={feedAutoplayEnabled} onCheckedChange={() => toggleFeedAutoplay()} />
-          </SettingRow>
-
-          {feedAutoplayEnabled && (
-            <SettingRow label={t("feedAutoplayDirection")} description={t("feedAutoplayDirectionHint")}>
-              <SelectMenu
-                label={t("feedAutoplayDirection")}
-                value={feedAutoplayDirection}
-                onChange={changeFeedAutoplayDirection}
-                options={[
-                  { value: "oldest", label: t("feedAutoplayOldestFirst") },
-                  { value: "newest", label: t("feedAutoplayNewestFirst") },
-                ]}
-              />
-            </SettingRow>
-          )}
-
-          <SettingRow label={t("membersOnlyVisibility")} description={t("membersOnlyVisibilityHint")}>
+          <SettingRow label={t("uiLanguage")}>
             <SelectMenu
-              label={t("membersOnlyVisibility")}
-              value={membersOnlyVisibility}
-              onChange={changeMembersOnlyVisibility}
-              options={[
-                { value: "everywhere", label: t("channelMembersOnlyEverywhere") },
-                { value: "channel", label: t("channelMembersOnlyChannelOnly") },
-                { value: "hidden", label: t("channelMembersOnlyNowhere") },
-              ]}
+              label={t("uiLanguage")}
+              value={language}
+              options={LANGUAGES.map((code) => ({ value: code, label: languageName(code) }))}
+              onChange={(next) => {
+                setLanguage(next).then(() => showToast(t("displaySettingsSaved"))).catch(console.error);
+              }}
             />
           </SettingRow>
 
@@ -2484,27 +2517,78 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               ))}
             </div>
           </div>
-
-          <SettingRow label={t("showTopChannels")} description={t("showTopChannelsHint")}>
-            <Switch checked={showTopChannels} onCheckedChange={() => toggleTopChannels()} />
-          </SettingRow>
-
           </SettingsSection>
 
-          <SettingsSection title={t("displayLanguage")} className="settings-display-group">
-          <SettingRow label={t("uiLanguage")}>
+          }
+
+          {canManageArea("feed") && <SettingsSection title={t("displayFeed")} className="settings-display-group">
+
+          <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
+            <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
+          </SettingRow>
+
+          <SettingRow label={t("feedMaxAge")} description={t("feedMaxAgeHint")}>
+            <Inline gap={2} className="feed-max-age-control">
+              <SelectMenu
+                label={t("feedMaxAge")}
+                value={feedMaxAgeValue}
+                disabled={feedMaxAgeUnit === "off"}
+                onChange={(next: string) => changeFeedMaxAge(next, feedMaxAgeUnit)}
+                options={FEED_MAX_AGE_VALUES.map((value) => ({ value, label: value }))}
+              />
+              <SelectMenu
+                label={t("feedMaxAge")}
+                value={feedMaxAgeUnit}
+                onChange={(next: FeedMaxAgeUnit) => changeFeedMaxAge(feedMaxAgeValue, next)}
+                options={[
+                  ...FEED_MAX_AGE_UNITS.map((unit) => ({
+                    value: unit as FeedMaxAgeUnit,
+                    label: formatAgeUnit(Number(feedMaxAgeValue) || 1, unit, language),
+                  })),
+                  { value: "off" as FeedMaxAgeUnit, label: t("feedMaxAgeOff") },
+                ]}
+              />
+            </Inline>
+          </SettingRow>
+
+          <SettingRow label={t("membersOnlyVisibility")} description={t("membersOnlyVisibilityHint")}>
             <SelectMenu
-              label={t("uiLanguage")}
-              value={language}
-              options={LANGUAGES.map((code) => ({ value: code, label: languageName(code) }))}
-              onChange={(next) => {
-                setLanguage(next).then(() => showToast(t("displaySettingsSaved"))).catch(console.error);
-              }}
+              label={t("membersOnlyVisibility")}
+              value={membersOnlyVisibility}
+              onChange={changeMembersOnlyVisibility}
+              options={[
+                { value: "everywhere", label: t("channelMembersOnlyEverywhere") },
+                { value: "channel", label: t("channelMembersOnlyChannelOnly") },
+                { value: "hidden", label: t("channelMembersOnlyNowhere") },
+              ]}
             />
           </SettingRow>
-          </SettingsSection>
 
-          <SettingsSection title={t("displayPlayback")} className="settings-display-group">
+          </SettingsSection>
+          }
+
+          {canManageArea("playback") && <SettingsSection title={t("displayPlayback")} className="settings-display-group">
+          <SettingRow label={t("watchShowRelated")} description={t("watchShowRelatedHint")}>
+            <Switch checked={watchShowRelated} onCheckedChange={() => toggleWatchRelated()} />
+          </SettingRow>
+
+          <SettingRow label={t("feedAutoplay")} description={t("feedAutoplayHint")}>
+            <Switch checked={feedAutoplayEnabled} onCheckedChange={() => toggleFeedAutoplay()} />
+          </SettingRow>
+
+          {feedAutoplayEnabled && (
+            <SettingRow label={t("feedAutoplayDirection")} description={t("feedAutoplayDirectionHint")}>
+              <SelectMenu
+                label={t("feedAutoplayDirection")}
+                value={feedAutoplayDirection}
+                onChange={changeFeedAutoplayDirection}
+                options={[
+                  { value: "oldest", label: t("feedAutoplayOldestFirst") },
+                  { value: "newest", label: t("feedAutoplayNewestFirst") },
+                ]}
+              />
+            </SettingRow>
+          )}
           <SettingRow label={t("forceCaptions")} description={t("forceCaptionsHint")}>
             <Switch
               checked={playerCc}
@@ -2622,8 +2706,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             />
           </SettingRow>
           </SettingsSection>
+          }
 
-          <SettingsSection title={t("playerScreenshots")} className="settings-display-group">
+          {canManageArea("playback") && <SettingsSection title={t("playerScreenshots")} className="settings-display-group">
           <SettingRow label={t("playerScreenshotFormat")} description={t("playerScreenshotFormatHint")}>
             <SelectMenu
               label={t("playerScreenshotFormat")}
@@ -2673,8 +2758,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingRow>
 
           </SettingsSection>
+          }
 
-          <SettingsSection title={t("displayEnhancements")} className="settings-display-group">
+          {canManageArea("playback") && <SettingsSection title={t("displayEnhancements")} className="settings-display-group">
           <SettingRow label="SponsorBlock" description={t("sponsorblockHint")}>
             <Switch checked={sbEnabled} onCheckedChange={() => toggleSb()} />
           </SettingRow>
@@ -2695,8 +2781,17 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </div>
           )}
           </SettingsSection>
+          }
 
-          <SettingsSection title={t("displayNavigation")} className="settings-display-group">
+          {canManageArea("navigation") && <SettingsSection title={t("displayNavigation")} className="settings-display-group">
+          <SettingRow label={t("showShorts")} description={t("showShortsHint")}>
+            <Switch checked={showShorts} onCheckedChange={() => toggleShorts()} />
+          </SettingRow>
+
+          <SettingRow label={t("showTopChannels")} description={t("showTopChannelsHint")}>
+            <Switch checked={showTopChannels} onCheckedChange={() => toggleTopChannels()} />
+          </SettingRow>
+
           <div className="sidebar-order-head">
             <div>
               <div className="switch-label">{t("sidebarOrderTitle")}</div>
@@ -2708,10 +2803,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </div>
           <SidebarNavEditor value={navConfig} onChange={persistNavConfig} />
           </SettingsSection>
+          }
         </div>
       )}
 
-      {!isSettingsLocked && tab === "plugins" && (
+      {!isCurrentTabLocked && tab === "plugins" && (
         <SettingsSection>
           <Alert variant="info">{t("pluginSettingsHint")}</Alert>
           <div className="plugin-settings-list">
@@ -2960,7 +3056,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </SettingsSection>
       )}
 
-      {!isSettingsLocked && tab === "advanced" && (
+      {!isCurrentTabLocked && tab === "advanced" && (
         <SettingsSection>
           {isPrimary && <SettingRow label={t("backupRestore")} description={t("backupRestoreHint")}>
             <ButtonLink to="/restore" leadingIcon={<ArchiveRestore size={16} />}>{t("backupRestoreOpen")}</ButtonLink>

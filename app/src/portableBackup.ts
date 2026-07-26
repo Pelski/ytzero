@@ -6,6 +6,7 @@ import { basename, dirname, resolve } from "node:path";
 import { inflateRawSync } from "node:zlib";
 import { acquireMaintenance } from "./maintenance";
 import { isChannelManualStatus } from "./channelStatus";
+import { parseAdminOnlyAreas, serializeAdminOnlyAreas } from "./profilePermissions";
 
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -63,11 +64,16 @@ export const BACKUP_PRESETS: Record<string, string[]> = {
 };
 
 const SECTION_BY_ID = new Map(BACKUP_SECTIONS.map((section) => [section.id, section]));
-const SAFE_GLOBAL_SETTINGS = new Set(["app_name", "app_icon_color"]);
+const SAFE_GLOBAL_SETTINGS = new Set(["app_name", "app_icon_color", "profile_admin_only_areas"]);
 const SECRET_SETTING_KEYS = new Set([...GLOBAL_SETTING_KEYS].filter((key) => key.startsWith("auth_") || key.includes("hash") || key.includes("secret")));
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function portableGlobalSettingValue(key: string, value: unknown): string {
+  if (key === "profile_admin_only_areas") return serializeAdminOnlyAreas(parseAdminOnlyAreas(String(value)));
+  return String(value);
+}
 
 export interface BackupManifestSection {
   id: string;
@@ -136,7 +142,7 @@ function sectionData(id: string, profile: any | null, referenced: Set<string>): 
   switch (id) {
     case "instance.settings": {
       const settings: Record<string, string> = {};
-      for (const row of db.prepare("SELECT key, value FROM settings").all() as any[]) if (SAFE_GLOBAL_SETTINGS.has(row.key)) settings[row.key] = row.value;
+      for (const row of db.prepare("SELECT key, value FROM settings").all() as any[]) if (SAFE_GLOBAL_SETTINGS.has(row.key)) settings[row.key] = portableGlobalSettingValue(row.key, row.value);
       return { settings };
     }
     case "instance.plugins": return PLUGINS.map((plugin) => {
@@ -371,7 +377,7 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
         else { db.prepare("UPDATE users SET name=?, avatar_color=?, is_child=? WHERE id=?").run(String(source.name || "Restored profile"), String(source.color || "#7c5cff"), source.isChild ? 1 : 0, uid); counts.updated++; }
         saveMapping(state.manifest.sourceInstallationId, "profile", source.id, uid); profileIds.set(source.id, uid);
       }
-      if (selected.has("instance.settings")) { const doc = data.get("instance.settings:"); for (const [key, value] of Object.entries(doc?.settings ?? {})) if (SAFE_GLOBAL_SETTINGS.has(key) && !SECRET_SETTING_KEYS.has(key)) db.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, String(value)); }
+      if (selected.has("instance.settings")) { const doc = data.get("instance.settings:"); for (const [key, value] of Object.entries(doc?.settings ?? {})) if (SAFE_GLOBAL_SETTINGS.has(key) && !SECRET_SETTING_KEYS.has(key)) db.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, portableGlobalSettingValue(key, value)); }
       if (selected.has("instance.channels")) for (const row of data.get("instance.channels:") ?? []) { ensureChannel(row); db.prepare("UPDATE channels SET custom_title=?, auto_download_min_duration_override=? WHERE channel_id=?").run(row.custom_title ?? null, Number.isInteger(row.auto_download_min_duration_override) ? row.auto_download_min_duration_override : null, row.channel_id); if (isChannelManualStatus(row.manual_status)) db.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(row.manual_status,row.channel_id); }
       if (selected.has("library.referenced-videos")) for (const row of data.get("library.referenced-videos:") ?? []) ensureVideo(row);
       if (selected.has("instance.plugins")) for (const row of data.get("instance.plugins:") ?? []) { if (!PLUGINS.some((p) => p.id === row.id)) { counts.warnings.push(`Plugin ${row.id} is unavailable`); continue; } setPluginEnabled(row.id, Boolean(row.enabled)); const adapter=PLUGIN_BACKUP_ADAPTERS.find((item)=>item.id===row.id&&item.scope==="instance"); if(adapter&&row.payload) adapter.restore(adminId,row.payload); }

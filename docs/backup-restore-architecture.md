@@ -163,7 +163,10 @@ below.
 
 - `settings`: only registered, non-secret global settings. Exclude Child Lock
   hashes and every authentication secret or activation setting.
+  The administrator-only profile permission areas are portable configuration.
+  Enabling Child Lock and its PIN remain local and are never exported.
 - `user_settings`: registered settings for selected profiles.
+- `profile_admin_only_areas` is portable instance configuration. Its versioned document uses schema v3; restore normalizes legacy `settings` access into separate appearance, feed, navigation, and playback permissions.
   This includes the player screenshot format, quality, and filename template;
   they are portable presentation preferences and contain no captured image data.
   It also includes YT Zero Enhance enablement, replacement-control preference,

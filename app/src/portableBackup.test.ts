@@ -9,6 +9,7 @@ process.env.RESTORE_SESSION_DIR = resolve(root, "sessions");
 process.env.AVATAR_DIR = resolve(root, "avatars");
 
 const backup = await import("./portableBackup");
+const permissions = await import("./profilePermissions");
 const { db, setSetting, setUserSetting, getUserSetting } = await import("./db");
 
 beforeAll(() => {
@@ -47,6 +48,9 @@ describe("portable backup classification and restore", () => {
   test("configuration export excludes authentication values and runtime tables", async () => {
     setSetting("auth_oidc_client_secret", "DO-NOT-EXPORT-THIS");
     setSetting("auth_shared_password_hash", "HASH-DO-NOT-EXPORT");
+    setSetting("child_lock_enabled", "1");
+    setSetting("child_lock_pin_hash", "CHILD-PIN-HASH-DO-NOT-EXPORT");
+    setSetting("profile_admin_only_areas", '["settings","profiles"]');
     db.prepare("UPDATE users SET oidc_subject = ? WHERE id = 1").run("profile-identity-do-not-export@example.com");
     db.prepare("UPDATE channels SET feed_refresh_attempted_at = ?, feed_refresh_failures = ? WHERE channel_id = 'UCportable'")
       .run("2099-12-31 23:59:58", 987654321);
@@ -55,6 +59,10 @@ describe("portable backup classification and restore", () => {
     const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
     expect(serialized).not.toContain("DO-NOT-EXPORT-THIS");
     expect(serialized).not.toContain("HASH-DO-NOT-EXPORT");
+    expect(serialized).not.toContain("CHILD-PIN-HASH-DO-NOT-EXPORT");
+    expect(serialized).not.toContain("child_lock_enabled");
+    expect(serialized).toContain("profile_admin_only_areas");
+    expect(serialized).toContain('\\\"appearance\\\",\\\"feed\\\",\\\"navigation\\\",\\\"playback\\\",\\\"profiles\\\"');
     expect(serialized).not.toContain("profile-identity-do-not-export@example.com");
     expect(serialized).not.toContain("2099-12-31 23:59:58");
     expect(serialized).not.toContain("987654321");
@@ -68,6 +76,7 @@ describe("portable backup classification and restore", () => {
     db.prepare("UPDATE channels SET manual_status='banned' WHERE channel_id='UCportable'").run();
     setUserSetting(1, "player_screenshot_filename", "{title}_{timestamp_ms}");
     setUserSetting(1, "enhance_frame_fps", "60");
+    setSetting("profile_admin_only_areas", '["channels","plugins"]');
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
@@ -75,6 +84,7 @@ describe("portable backup classification and restore", () => {
     db.prepare("DELETE FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").run();
     setUserSetting(1, "player_screenshot_filename", "changed");
     setUserSetting(1, "enhance_frame_fps", "24");
+    setSetting("profile_admin_only_areas", "[]");
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
@@ -88,5 +98,7 @@ describe("portable backup classification and restore", () => {
     expect((db.prepare("SELECT manual_status FROM channels WHERE channel_id='UCportable'").get() as { manual_status: string }).manual_status).toBe("banned");
     expect(getUserSetting(1, "player_screenshot_filename")).toBe("{title}_{timestamp_ms}");
     expect(getUserSetting(1, "enhance_frame_fps")).toBe("60");
+    expect((db.prepare("SELECT value FROM settings WHERE key='profile_admin_only_areas'").get() as { value: string }).value)
+      .toBe(permissions.serializeAdminOnlyAreas(["channels", "followed_playlists", "imports", "plugins"]));
   });
 });

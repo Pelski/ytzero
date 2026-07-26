@@ -1,8 +1,8 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { subscribe, subscribeToast, emit, type ToastVariant } from "./events";
-import { Link, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
-import { api, type AppSettings, type AuthStatus, type ChildStatus, type UserPlaylist, type Video } from "./api";
+import { api, type AppSettings, type AuthStatus, type ChildStatus, type ProfilePermissions, type UserPlaylist, type Video } from "./api";
 import ChildLockScreen from "./components/ChildLockScreen";
 import LoginPage from "./pages/LoginPage";
 import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
@@ -198,7 +198,7 @@ function SidebarPlaylists() {
   );
 }
 
-function TopBar({ appName, appIconColor }: { appName: string; appIconColor: string }) {
+function TopBar({ appName, appIconColor, isAdmin, profilePermissions }: { appName: string; appIconColor: string; isAdmin: boolean; profilePermissions: ProfilePermissions }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -248,7 +248,7 @@ function TopBar({ appName, appIconColor }: { appName: string; appIconColor: stri
           <Search />
         </button>
       </form>
-      <ProfileMenu />
+      <ProfileMenu isAdmin={isAdmin} profilePermissions={profilePermissions} />
     </div>
   );
 }
@@ -265,10 +265,10 @@ export default function App() {
 
   if (!auth) return null; // brief: deciding app vs. login
   if (!auth.authenticated) return <LoginPage status={auth} />;
-  return <AppShell />;
+  return <AppShell isAdmin={Boolean(auth.is_admin)} />;
 }
 
-function AppShell() {
+function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const { t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
@@ -282,6 +282,7 @@ function AppShell() {
   const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [childStatus, setChildStatus] = useState<ChildStatus | null>(null);
+  const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: ["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"] });
   const toastTimeoutRef = useRef<number | null>(null);
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
@@ -335,6 +336,9 @@ function AppShell() {
   }, []);
 
   useEffect(loadSettings, [loadSettings]);
+  useEffect(() => {
+    api.profilePermissions().then((result) => setProfilePermissions(result.permissions)).catch(() => {});
+  }, []);
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("watched-style-changed", loadSettings), [loadSettings]);
@@ -464,7 +468,7 @@ function AppShell() {
       </script>
     )}
     <div className="layout">
-      <TopBar appName={appName} appIconColor={appIconColor} />
+      <TopBar appName={appName} appIconColor={appIconColor} isAdmin={isAdmin} profilePermissions={profilePermissions} />
       <div className="layout-body">
         <aside className="sidebar">
           {navItems.map(renderNavLink)}
@@ -514,8 +518,8 @@ function AppShell() {
               <Route path="/cleanup" element={<CleanupPage />} />
               <Route path="/insights" element={<InsightsPage />} />
               <Route path="/settings" element={<SettingsPage showToast={showToast} />} />
-              <Route path="/import" element={<ImportPage showToast={showToast} />} />
-              <Route path="/restore" element={<RestorePage showToast={showToast} />} />
+              <Route path="/import" element={isAdmin || !profilePermissions.admin_only_areas.includes("imports") ? <ImportPage showToast={showToast} /> : <Navigate to="/settings" replace />} />
+              <Route path="/restore" element={isAdmin ? <RestorePage showToast={showToast} /> : <Navigate to="/settings" replace />} />
             </Routes>
           </div>
         </main>

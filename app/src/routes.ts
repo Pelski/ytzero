@@ -41,6 +41,7 @@ import { feedVisibilityWhere, feedSortSql, followedExists, followedPlaylistExist
 import { buildCleanupWhere, countCleanupMatches, listCleanupVideoIds, snapshotUserVideoState, applyCleanupAction, restoreUserVideoState, saveBulkUndo, loadBulkUndo, clearBulkUndo, type CleanupFilter } from "./cleanup";
 import { analyzePortableBackup, backupOptions, commitPortableRestore, createPortableBackup, deleteRestoreSession, planPortableRestore } from "./portableBackup";
 import { isChannelManualStatus } from "./channelStatus";
+import { isProfilePermissionArea, parseAdminOnlyAreas, permissionAreaForMutation, permissionAreasForSettings, serializeAdminOnlyAreas, settingsMutationRequiresAdmin, type ProfilePermissionArea } from "./profilePermissions";
 import {
   authMethod,
   hashPassword,
@@ -96,6 +97,17 @@ api.use("*", async (c, next) => {
 
 const CHILD_LOCK_SESSION_COOKIE = "ytzero_child_lock";
 const CHILD_LOCK_SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const CHILD_LOCK_PIN_PROTECTED_AREAS = new Set<ProfilePermissionArea>([
+  "channels",
+  "followed_playlists",
+  "imports",
+  "appearance",
+  "feed",
+  "navigation",
+  "playback",
+  "plugins",
+  "profiles",
+]);
 const childLockSessions = new Map<string, number>();
 
 function parseCookies(header: string | undefined) {
@@ -140,7 +152,16 @@ function hasChildLockSession(c: any) {
 
 function childLockStatus(c: any) {
   const enabled = isChildLockEnabled();
-  return { enabled, locked: enabled && !hasChildLockSession(c) };
+  return {
+    enabled,
+    // Admin authority already proves who is operating the app. The lock protects
+    // other profiles and never hides settings from the primary/admin profile.
+    locked: enabled && !isAdmin(c) && !hasChildLockSession(c),
+  };
+}
+
+function adminOnlyAreas(): ProfilePermissionArea[] {
+  return parseAdminOnlyAreas(getSetting("profile_admin_only_areas"));
 }
 
 async function verifyChildLockPin(pin: string) {
@@ -271,34 +292,26 @@ async function hashPin(pin: string) {
   return Bun.password.hash(pin);
 }
 
-const SETTINGS_MUTATION_PREFIXES = [
-  "/settings",
-  "/channels",
-  "/tags",
-  "/rules",
-  "/filter-rules",
-  "/playlists",
-  "/plugins",
-  "/backup",
-  "/restore",
-];
-
-// Tags and personal playlists belong to the active profile and remain editable
-// even while the shared settings lock is closed.
-function isPersonalMutation(path: string) {
-  return path === "/tags" || path.startsWith("/tags/")
-    || path === "/rules" || path.startsWith("/rules/")
-    || path === "/playlists" || path.startsWith("/playlists/")
-    || path.startsWith("/videos/") && path.includes("/tags")
-    || path.startsWith("/channels/") && path.includes("/tags");
-}
-
 api.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname.replace(/^\/api/, "");
   const method = c.req.method.toUpperCase();
   const isMutation = !["GET", "HEAD", "OPTIONS"].includes(method);
-  const isProtected = SETTINGS_MUTATION_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
-  if (isMutation && isProtected && !isPersonalMutation(path) && !path.startsWith("/child-lock") && !hasChildLockSession(c)) {
+  const settingsBody = isMutation && path === "/settings" ? await c.req.json().catch(() => null) : null;
+  if (!isAdmin(c) && settingsBody != null && settingsMutationRequiresAdmin(settingsBody)) {
+    return c.json({ error: "admin only" }, 403);
+  }
+  const areas = !isMutation
+    ? []
+    : path === "/settings"
+      ? permissionAreasForSettings(settingsBody)
+      : [permissionAreaForMutation(path)].filter((area): area is ProfilePermissionArea => area != null);
+  if (!isAdmin(c) && areas.some((area) => adminOnlyAreas().includes(area))) {
+    return c.json({ error: "admin only" }, 403);
+  }
+  // Child Lock keeps its original role: a temporary PIN gate for shared
+  // settings. Personal tags and playlists remain usable while it is locked.
+  const isPinProtected = areas.some((area) => CHILD_LOCK_PIN_PROTECTED_AREAS.has(area));
+  if (isPinProtected && !isAdmin(c) && !hasChildLockSession(c)) {
     return c.json({ error: "settings locked" }, 423);
   }
   await next();
@@ -1250,6 +1263,7 @@ api.get("/archive", (c) => {
 // belongs to an external channel (not followed, brought in just to watch).
 // Watched ones (with a saved position) float to the top.
 api.get("/external", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const uid = currentUserId(c);
   const rows = db
     .prepare(`${videoSelect(uid)} WHERE c.external = 1
@@ -1261,6 +1275,7 @@ api.get("/external", (c) => {
 // Clear orphan externals. Protects anything the user actively saved
 // (queued, liked or added to a playlist), then drops now-empty external channels.
 api.delete("/external", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   // Protect anything ANY profile actively saved (queued, liked, or in a playlist).
   const res = db.prepare(`
     DELETE FROM videos
@@ -1277,6 +1292,7 @@ api.delete("/external", (c) => {
 
 // Remove a single external video, then drop its channel if now empty + external.
 api.delete("/external/:id", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const id = c.req.param("id");
   const res = db.prepare(`
     DELETE FROM videos
@@ -3032,6 +3048,21 @@ api.get("/child-lock", (c) => {
   return c.json({ child_lock: childLockStatus(c) });
 });
 
+api.get("/profile-permissions", (c) => {
+  return c.json({ permissions: { admin_only_areas: adminOnlyAreas() } });
+});
+
+api.put("/profile-permissions", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "only an admin can manage profile permissions" }, 403);
+  const body = await c.req.json().catch(() => ({}));
+  if (!Array.isArray(body.admin_only_areas) || body.admin_only_areas.some((area: unknown) => !isProfilePermissionArea(area))) {
+    return c.json({ error: "invalid admin-only areas" }, 400);
+  }
+  const areas = [...new Set(body.admin_only_areas as ProfilePermissionArea[])];
+  setSetting("profile_admin_only_areas", serializeAdminOnlyAreas(areas));
+  return c.json({ permissions: { admin_only_areas: adminOnlyAreas() } });
+});
+
 api.post("/child-lock/enable", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "only an admin can manage child lock" }, 403);
   if (isChildLockEnabled()) return c.json({ error: "child lock already enabled" }, 409);
@@ -3039,8 +3070,10 @@ api.post("/child-lock/enable", async (c) => {
   if (!isSixDigitPin(body.pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
   setSetting("child_lock_pin_hash", await hashChildLockPin(body.pin));
   setSetting("child_lock_enabled", "1");
-  setChildLockSession(c);
-  return c.json({ child_lock: { enabled: true, locked: false } });
+  // Admin access no longer depends on the shared unlock cookie. Clear any stale
+  // cookie so other profiles in this browser are protected immediately.
+  clearChildLockSession(c);
+  return c.json({ child_lock: childLockStatus(c) });
 });
 
 api.post("/child-lock/unlock", async (c) => {
@@ -3050,7 +3083,7 @@ api.post("/child-lock/unlock", async (c) => {
     return c.json({ error: "invalid PIN" }, 401);
   }
   setChildLockSession(c);
-  return c.json({ child_lock: { enabled: true, locked: false } });
+  return c.json({ child_lock: childLockStatus(c) });
 });
 
 api.post("/child-lock/lock", (c) => {
@@ -3062,20 +3095,15 @@ api.post("/child-lock/change-pin", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "only an admin can manage child lock" }, 403);
   if (!isChildLockEnabled()) return c.json({ error: "child lock is disabled" }, 400);
   const body = await c.req.json().catch(() => ({}));
-  const canChange = hasChildLockSession(c) || (isSixDigitPin(body.current_pin) && (await verifyChildLockPin(body.current_pin)));
-  if (!canChange) return c.json({ error: "invalid PIN" }, 401);
   if (!isSixDigitPin(body.new_pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
   setSetting("child_lock_pin_hash", await hashChildLockPin(body.new_pin));
-  setChildLockSession(c);
-  return c.json({ child_lock: { enabled: true, locked: false } });
+  clearChildLockSession(c);
+  return c.json({ child_lock: childLockStatus(c) });
 });
 
 api.post("/child-lock/disable", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "only an admin can manage child lock" }, 403);
   if (!isChildLockEnabled()) return c.json({ child_lock: childLockStatus(c) });
-  const body = await c.req.json().catch(() => ({}));
-  const canDisable = hasChildLockSession(c) || (isSixDigitPin(body.pin) && (await verifyChildLockPin(body.pin)));
-  if (!canDisable) return c.json({ error: "invalid PIN" }, 401);
   setSetting("child_lock_enabled", "0");
   setSetting("child_lock_pin_hash", "");
   clearChildLockSession(c);
@@ -3733,13 +3761,17 @@ api.post("/refresh", async (c) => {
 });
 
 api.get("/logs", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const limit = Math.min(1000, Math.max(1, Number(c.req.query("limit") ?? 300)));
   return c.json({ ...readRecentLogs(limit), version: VERSION, commit: COMMIT });
 });
 
-api.get("/version", (c) => c.json({ version: VERSION, commit: COMMIT }));
+api.get("/version", (c) => isAdmin(c)
+  ? c.json({ version: VERSION, commit: COMMIT })
+  : c.json({ error: "admin only" }, 403));
 
 api.post("/updates/check", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   try {
     const result = await checkLatestRelease();
     log.info("updates.manual_check", { currentVersion: VERSION, latestVersion: result.latestVersion });
