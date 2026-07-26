@@ -1,5 +1,12 @@
+ARG YTZERO_VERSION=dev
+ARG YTZERO_COMMIT=unknown
+
 # ---- build UI ----
 FROM oven/bun:1.3 AS ui-build
+ARG YTZERO_VERSION
+ARG YTZERO_COMMIT
+ENV YTZERO_VERSION=${YTZERO_VERSION} \
+    YTZERO_COMMIT=${YTZERO_COMMIT}
 WORKDIR /ui
 COPY ui/package.json ui/bun.lock* ./
 RUN bun install
@@ -21,8 +28,8 @@ RUN bun install --production
 COPY app/src ./src
 COPY --from=ui-build /ui/dist ./public
 
-ARG YTZERO_VERSION=dev
-ARG YTZERO_COMMIT=unknown
+ARG YTZERO_VERSION
+ARG YTZERO_COMMIT
 ENV PORT=3001 \
     IDLE_TIMEOUT_SECONDS=120 \
     DB_PATH=/data/db/ytzero.db \

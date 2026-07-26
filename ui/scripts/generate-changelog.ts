@@ -7,6 +7,7 @@ interface ReleaseEntry {
   publishedAt: string;
   url: string;
   notes: string[];
+  current?: boolean;
 }
 
 interface GitHubRelease {
@@ -19,18 +20,39 @@ interface GitHubRelease {
   prerelease?: unknown;
 }
 
+interface GitHubCompare {
+  commits?: Array<{
+    sha?: unknown;
+    parents?: unknown[];
+    commit?: { message?: unknown; committer?: { date?: unknown } };
+  }>;
+}
+
 const outputPath = resolve(import.meta.dir, "../public/changelog.json");
 const repositoryPath = resolve(import.meta.dir, "../..");
 const CHANGELOG_RELEASE_LIMIT = 10;
 const releasesUrl = `https://api.github.com/repos/Pelski/ytzero/releases?per_page=${CHANGELOG_RELEASE_LIMIT}`;
 
-function notesFromBody(body: unknown): string[] {
+export function notesFromBody(body: unknown): string[] {
   if (typeof body !== "string") return [];
   return body
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => /^[-*]\s+/.test(line))
     .map((line) => line.replace(/^[-*]\s+/, ""));
+}
+
+export function notesFromCompare(value: unknown): string[] {
+  const commits = (value as GitHubCompare | null)?.commits;
+  if (!Array.isArray(commits)) return [];
+  return commits
+    .filter((commit) => !Array.isArray(commit.parents) || commit.parents.length <= 1)
+    .map((commit) => {
+      const subject = typeof commit.commit?.message === "string" ? commit.commit.message.split("\n", 1)[0].trim() : "";
+      const sha = typeof commit.sha === "string" ? commit.sha.slice(0, 7) : "";
+      return subject ? `${subject}${sha ? ` (\`${sha}\`)` : ""}` : "";
+    })
+    .filter(Boolean);
 }
 
 function runGit(args: string[]): string | null {
@@ -45,31 +67,63 @@ function runGit(args: string[]): string | null {
   }
 }
 
-function releaseFromCurrentTag(existingVersions: Set<string>): ReleaseEntry | null {
-  const tag = runGit(["describe", "--tags", "--exact-match", "HEAD"]) ?? "";
-  if (!/^v\d+\.\d+\.\d+/.test(tag) || existingVersions.has(tag)) return null;
+export function currentBuildTag(environmentVersion: string | undefined, exactGitTag: string | null): string | null {
+  const candidate = environmentVersion || exactGitTag || "";
+  return /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(candidate) ? candidate : null;
+}
 
-  const previous = runGit(["describe", "--tags", "--abbrev=0", `${tag}^`]) ?? "";
+async function releaseFromCurrentTag(tag: string, previousVersion: string | undefined, headers: Record<string, string>): Promise<ReleaseEntry> {
+  const previous = runGit(["describe", "--tags", "--abbrev=0", `${tag}^`]) ?? previousVersion ?? "";
   const range = previous ? `${previous}..${tag}` : tag;
   const log = runGit(["log", "--no-merges", "--pretty=format:%s (`%h`)", range]);
+  let notes = log ? log.split("\n").map((line) => line.trim()).filter(Boolean) : [];
+  let publishedAt = runGit(["show", "-s", "--format=%cI", tag]) ?? "";
+
+  // Docker builds intentionally exclude .git. The tag ref already exists when
+  // tag CI starts, even though the GitHub Release may still be publishing, so
+  // compare it with the latest previously published release.
+  if (notes.length === 0 && previous) {
+    try {
+      const compareUrl = `https://api.github.com/repos/Pelski/ytzero/compare/${encodeURIComponent(previous)}...${encodeURIComponent(tag)}`;
+      const response = await fetch(compareUrl, { headers });
+      if (!response.ok) throw new Error(`GitHub compare API returned ${response.status}`);
+      const compared = await response.json() as GitHubCompare;
+      notes = notesFromCompare(compared);
+      const lastCommit = compared.commits?.at(-1);
+      if (typeof lastCommit?.commit?.committer?.date === "string") publishedAt = lastCommit.commit.committer.date;
+    } catch (error) {
+      console.warn(`Current changelog notes unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   return {
     version: tag,
     name: tag,
-    publishedAt: new Date().toISOString(),
+    publishedAt,
     url: `https://github.com/Pelski/ytzero/releases/tag/${encodeURIComponent(tag)}`,
-    notes: log ? log.split("\n").map((line) => line.trim()).filter(Boolean) : [],
+    notes,
+    current: true,
   };
 }
 
-async function generate() {
-  let releases: ReleaseEntry[];
+async function cachedReleases(): Promise<ReleaseEntry[]> {
   try {
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "YT-Zero-changelog-build",
-      "X-GitHub-Api-Version": "2022-11-28",
-    };
-    if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+    const cached = JSON.parse(await readFile(outputPath, "utf8")) as { releases?: unknown };
+    return Array.isArray(cached.releases) ? cached.releases as ReleaseEntry[] : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function generate() {
+  let releases: ReleaseEntry[];
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "YT-Zero-changelog-build",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  try {
     const response = await fetch(releasesUrl, { headers });
     if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
     const raw = await response.json() as GitHubRelease[];
@@ -83,17 +137,18 @@ async function generate() {
         notes: notesFromBody(release.body),
       }));
   } catch (error) {
-    try {
-      JSON.parse(await readFile(outputPath, "utf8"));
-      console.warn(`Changelog refresh skipped: ${error instanceof Error ? error.message : String(error)}`);
-      return;
-    } catch {
-      throw error;
-    }
+    releases = await cachedReleases();
+    if (releases.length === 0) throw error;
+    console.warn(`Changelog refresh skipped: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  const currentTag = releaseFromCurrentTag(new Set(releases.map((release) => release.version)));
-  if (currentTag) releases.unshift(currentTag);
+  releases = releases.map(({ current: _current, ...release }) => release);
+  const currentTag = currentBuildTag(process.env.YTZERO_VERSION, runGit(["describe", "--tags", "--exact-match", "HEAD"]));
+  if (currentTag) {
+    const existing = releases.find((release) => release.version === currentTag);
+    if (existing) existing.current = true;
+    else releases.unshift(await releaseFromCurrentTag(currentTag, releases[0]?.version, headers));
+  }
   releases = releases.slice(0, CHANGELOG_RELEASE_LIMIT);
   const content = `${JSON.stringify({ releases }, null, 2)}\n`;
   await mkdir(dirname(outputPath), { recursive: true });
@@ -102,4 +157,4 @@ async function generate() {
   console.log(`Bundled ${releases.length} changelog release(s)`);
 }
 
-await generate();
+if (import.meta.main) await generate();

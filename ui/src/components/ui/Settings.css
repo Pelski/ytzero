@@ -51,8 +51,9 @@
 }
 .settings-release-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings-release-head > div:first-child { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.settings-release-title { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
 .settings-release-head strong { font-size: 14px; }
-.settings-release-head span { color: var(--text-2); font-size: 11.5px; }
+.settings-release-head > div:first-child > span { color: var(--text-2); font-size: 11.5px; }
 .settings-release-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 6px; }
 .settings-release ul { display: grid; gap: 6px; margin: 12px 0 0; padding-left: 18px; }
 .settings-release li { color: var(--text-2); font-size: 12.5px; line-height: 1.45; overflow-wrap: anywhere; }

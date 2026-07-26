@@ -3255,7 +3255,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                     <article className="settings-release" key={release.version}>
                       <header className="settings-release-head">
                         <div>
-                          <strong>{release.name}</strong>
+                          <div className="settings-release-title">
+                            <strong>{release.name}</strong>
+                            {release.current && <Badge variant="accent" size="sm">{t("currentVersion")}</Badge>}
+                          </div>
                           {release.publishedAt && <span>{new Date(release.publishedAt).toLocaleDateString(locale)}</span>}
                         </div>
                         <div className="settings-release-actions">

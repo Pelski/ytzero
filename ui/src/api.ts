@@ -550,6 +550,7 @@ export interface AppRelease {
   publishedAt: string;
   url: string;
   notes: string[];
+  current?: boolean;
 }
 
 export interface AppChangelog {
