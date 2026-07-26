@@ -1,12 +1,15 @@
-# YT Zero
-
-> A self-hosted YouTube inbox for people who want subscriptions, not recommendations.
-
-[![Release](https://img.shields.io/github/v/release/Pelski/ytzero)](https://github.com/Pelski/ytzero/releases)
-[![Docker image](https://img.shields.io/badge/docker-ghcr.io%2Fpelski%2Fytzero-2496ED?logo=docker&logoColor=white)](https://github.com/Pelski/ytzero/pkgs/container/ytzero)
-[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
-[![Wiki](https://img.shields.io/badge/docs-wiki-555)](https://github.com/Pelski/ytzero/wiki)
-[![GitHub stars](https://img.shields.io/github/stars/Pelski/ytzero?style=flat)](https://github.com/Pelski/ytzero/stargazers)
+<div align="center">
+  <img src="docs/assets/icon.svg" width="112" height="112" alt="YT Zero logo">
+  <h1>YT Zero</h1>
+  <p><strong>A self-hosted YouTube inbox for people who want subscriptions, not recommendations.</strong></p>
+  <p>
+    <a href="https://github.com/Pelski/ytzero/releases"><img src="https://img.shields.io/github/v/release/Pelski/ytzero" alt="Latest release"></a>
+    <a href="https://github.com/Pelski/ytzero/pkgs/container/ytzero"><img src="https://img.shields.io/badge/docker-ghcr.io%2Fpelski%2Fytzero-2496ED?logo=docker&amp;logoColor=white" alt="Docker image"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0-only"></a>
+    <a href="https://github.com/Pelski/ytzero/wiki"><img src="https://img.shields.io/badge/docs-wiki-555" alt="Documentation wiki"></a>
+    <a href="https://github.com/Pelski/ytzero/stargazers"><img src="https://img.shields.io/github/stars/Pelski/ytzero?style=flat" alt="GitHub stars"></a>
+  </p>
+</div>
 
 YT Zero turns YouTube back into a simple reader for channels you chose on purpose. No Google account. No API key. No algorithmic home feed pushing videos you did not ask for.
 
@@ -179,14 +182,17 @@ Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)*
 - **[Profiles](https://github.com/Pelski/ytzero/wiki/Profiles)** — multi-account profiles.
 - **[Authentication](https://github.com/Pelski/ytzero/wiki/Authentication)** — login methods and setup.
 - **[Child Lock](https://github.com/Pelski/ytzero/wiki/Child-Lock)** — PIN-protecting settings.
+- **[Browser Extensions](https://github.com/Pelski/ytzero/wiki/Browser-Extensions)** — recommended companion extension and redirect helpers.
 - **[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)** — downloads, offline playback, and retention.
 - **[Backup & Updates](https://github.com/Pelski/ytzero/wiki/Backup-and-Updates)** — keeping your data safe.
 - **[How It Works](https://github.com/Pelski/ytzero/wiki/How-It-Works)** — what is fetched and stored.
 - **[Development](https://github.com/Pelski/ytzero/wiki/Development)** — tech stack and repository layout.
 
-## Browser extension
+## Browser extensions
 
-Use [YTZero Redirect](https://github.com/pekempy/YTZero-Redirect), a Firefox and Chrome extension by [@pekempy](https://github.com/pekempy). Set your YT Zero address once, then YouTube video, Shorts, playlist, channel, and handle URLs automatically take you to the matching page in your self-hosted YT Zero instance — with no telemetry or data collection.
+For the best browser experience, use **[YT Zero Enhance](https://github.com/Pelski/ytzero-enhance)**, the recommended companion extension for YT Zero. It connects to your self-hosted instance, redirects supported links, enhances the embedded player with YT Zero-style controls and profile settings, and adds reliable keyboard shortcuts, chapters, SponsorBlock segments, picture-in-picture, fullscreen, theatre mode, and frame capture. It supports Chromium-based browsers, Firefox, and Safari; see its repository for current installation options.
+
+If you only want automatic redirects, [YTZero Redirect](https://github.com/pekempy/YTZero-Redirect) is a lightweight Firefox and Chrome extension by [@pekempy](https://github.com/pekempy). Set your YT Zero address once, then YouTube video, Shorts, playlist, channel, and handle URLs automatically open on your self-hosted YT Zero instance — with no telemetry or data collection.
 
 ## Tech stack
 

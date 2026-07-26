@@ -11,6 +11,7 @@
 - [Profiles](Profiles)
 - [Authentication](Authentication)
 - [Child Lock](Child-Lock)
+- [Browser Extensions](Browser-Extensions)
 - [YT-DLP Integration](YT-DLP-Integration)
 
 **Operations**

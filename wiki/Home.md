@@ -16,6 +16,7 @@ YT Zero reads public YouTube RSS feeds, stores videos locally in SQLite, and giv
 - **[Profiles](Profiles)** — multi-account profiles with isolated per-profile state.
 - **[Authentication](Authentication)** — None, shared login, per-profile login, OIDC, or proxy headers.
 - **[Child Lock](Child-Lock)** — PIN-protect household settings, configure child content restrictions, and monitor or stop active child viewing.
+- **[Browser Extensions](Browser-Extensions)** — improve the embedded player and redirect supported links to your instance.
 
 ## Operations
 
