@@ -540,6 +540,11 @@ export interface AppLogs {
   commit: string;
 }
 
+export interface AppLogStreamEvent {
+  line: string;
+  size: number;
+}
+
 export interface AppVersion {
   version: string;
   commit: string;
@@ -873,6 +878,7 @@ export const api = {
   clearExternal: () => http<{ deleted: number }>("/external", { method: "DELETE" }),
   removeExternal: (id: string) => http<{ deleted: number }>(`/external/${id}`, { method: "DELETE" }),
   logs: (limit = 300) => http<AppLogs>(`/logs?limit=${limit}`),
+  logsStream: (limit = 300) => new EventSource(`/api/logs/stream?limit=${limit}`),
   version: () => http<AppVersion>("/version"),
   changelog: async (version?: string) => {
     const suffix = version ? `?version=${encodeURIComponent(version)}` : "";

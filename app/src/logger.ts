@@ -6,8 +6,25 @@ const LOG_PATH = process.env.LOG_PATH ?? resolve(import.meta.dir, "../../data/lo
 const MAX_READ_BYTES = 512 * 1024;
 
 type LogLevel = "info" | "warn" | "error";
+export type LogStreamEvent = { line: string; size: number };
 
 let activeLogDay: string | null = null;
+const logSubscribers = new Set<(event: LogStreamEvent) => void>();
+
+export function subscribeToLogs(listener: (event: LogStreamEvent) => void) {
+  logSubscribers.add(listener);
+  return () => logSubscribers.delete(listener);
+}
+
+function publishLog(event: LogStreamEvent) {
+  for (const listener of logSubscribers) {
+    try {
+      listener(event);
+    } catch {
+      // A broken live viewer must never interrupt application logging.
+    }
+  }
+}
 
 function archivePath(path: string, day: string) {
   const dir = dirname(path);
@@ -49,6 +66,7 @@ function write(level: LogLevel, event: string, meta?: Record<string, unknown>) {
     mkdirSync(dirname(LOG_PATH), { recursive: true });
     activeLogDay = rotateDailyLog(LOG_PATH, zonedDayHour(now, timeZone).day, activeLogDay, timeZone);
     appendFileSync(LOG_PATH, `${line}\n`);
+    publishLog({ line, size: statSync(LOG_PATH).size });
   } catch (e) {
     console.error(`[ytzero] failed to write log file: ${e instanceof Error ? e.message : String(e)}`);
   }

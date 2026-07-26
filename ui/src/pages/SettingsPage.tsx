@@ -3,7 +3,7 @@ import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppVersion, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -78,6 +78,7 @@ function permissionAreaForTab(tab: Tab): ProfilePermissionArea | null {
 type FeedMaxAgeUnit = "days" | "weeks" | "months" | "years" | "off";
 const FEED_MAX_AGE_UNITS: Exclude<FeedMaxAgeUnit, "off">[] = ["days", "weeks", "months", "years"];
 const FEED_MAX_AGE_VALUES = Array.from({ length: 30 }, (_, i) => String(i + 1));
+const LOG_LINE_LIMIT = 300;
 
 function isFeedMaxAgeUnit(value: unknown): value is FeedMaxAgeUnit {
   return typeof value === "string" && (FEED_MAX_AGE_UNITS as string[]).includes(value);
@@ -1201,6 +1202,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [clearingExternal, setClearingExternal] = useState(false);
   const [logs, setLogs] = useState<AppLogs | null>(null);
   const [loadingLogs, setLoadingLogs] = useState(false);
+  const [logsAutoScroll, setLogsAutoScroll] = useState(true);
+  const logsViewerRef = useRef<HTMLDivElement>(null);
   const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
   const [changelog, setChangelog] = useState<AppChangelog | null>(null);
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
@@ -1373,9 +1376,55 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   useEffect(() => {
     if (!isPrimary || tab !== "advanced") return;
     if (advancedSubTab === "external") loadExternal();
-    if (advancedSubTab === "logs") loadLogs();
     if (advancedSubTab === "changelog") loadChangelog();
   }, [isPrimary, tab, advancedSubTab, loadExternal, loadLogs, loadChangelog]);
+
+  useEffect(() => {
+    if (!isPrimary || tab !== "advanced" || advancedSubTab !== "logs") return;
+    setLoadingLogs(true);
+    const source = api.logsStream(LOG_LINE_LIMIT);
+    let receivedSnapshot = false;
+
+    const handleSnapshot = (event: MessageEvent<string>) => {
+      try {
+        setLogs(JSON.parse(event.data) as AppLogs);
+        receivedSnapshot = true;
+        setLoadingLogs(false);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+    const handleLine = (event: MessageEvent<string>) => {
+      try {
+        const entry = JSON.parse(event.data) as AppLogStreamEvent;
+        setLogs((current) => current ? {
+          ...current,
+          size: entry.size,
+          lines: [...current.lines, entry.line].slice(-LOG_LINE_LIMIT),
+        } : current);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    source.addEventListener("snapshot", handleSnapshot);
+    source.addEventListener("log", handleLine);
+    source.onerror = () => {
+      if (!receivedSnapshot) loadLogs();
+    };
+
+    return () => {
+      source.removeEventListener("snapshot", handleSnapshot);
+      source.removeEventListener("log", handleLine);
+      source.close();
+    };
+  }, [isPrimary, tab, advancedSubTab, loadLogs]);
+
+  useLayoutEffect(() => {
+    if (advancedSubTab !== "logs" || !logsAutoScroll || !logs?.lines.length) return;
+    const viewer = logsViewerRef.current;
+    if (viewer) viewer.scrollTop = viewer.scrollHeight;
+  }, [advancedSubTab, logs, logsAutoScroll]);
 
   const loadFollowedPlaylists = useCallback(() => {
     api.followedPlaylists().then((result) => setFollowedPlaylists(result.playlists)).catch(console.error);
@@ -3190,10 +3239,18 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             <EmptyState icon={<FileText />} title={t("logsEmpty")} />
           ) : (
             <>
-              <div className="logs-meta">
-                {t("logsShowing", { count: logs.lines.length, size: logs.size.toLocaleString(locale) })}
-              </div>
-              <div className="logs-viewer">
+              <Inline justify="between" className="logs-meta">
+                <span>{t("logsShowing", { count: logs.lines.length, size: logs.size.toLocaleString(locale) })}</span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  aria-pressed={logsAutoScroll}
+                  onClick={() => setLogsAutoScroll((enabled) => !enabled)}
+                >
+                  {logsAutoScroll ? t("logsAutoScrollDisable") : t("logsAutoScrollEnable")}
+                </Button>
+              </Inline>
+              <div className="logs-viewer" ref={logsViewerRef}>
                 {logs.lines.map((line, i) => (
                   <LogLine key={`${i}-${line}`} line={line} />
                 ))}

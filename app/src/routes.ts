@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { db, getSetting, setSetting, getUserSetting, setUserSetting, SETTING_DEFAULTS, GLOBAL_SETTING_KEYS, USER_SETTING_KEYS } from "./db";
 import {
   type ChannelAbout,
@@ -27,7 +28,7 @@ import { createImportSession, deleteImportSession, getImportSession } from "./im
 import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
-import { log, readRecentLogs } from "./logger";
+import { log, readRecentLogs, subscribeToLogs } from "./logger";
 import { isValidTimeZone, zonedDayHour } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
@@ -3740,6 +3741,42 @@ api.get("/logs", (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const limit = Math.min(1000, Math.max(1, Number(c.req.query("limit") ?? 300)));
   return c.json({ ...readRecentLogs(limit), version: VERSION, commit: COMMIT });
+});
+
+api.get("/logs/stream", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const limit = Math.min(1000, Math.max(1, Number(c.req.query("limit") ?? 300)));
+  c.header("X-Accel-Buffering", "no");
+  c.header("Cache-Control", "no-cache, no-transform");
+
+  return streamSSE(c, async (stream) => {
+    let stopped = false;
+    let nextEventId = 1;
+    let writes = Promise.resolve();
+    const enqueue = (event: string, data: unknown) => {
+      if (stopped) return;
+      writes = writes.then(() => stream.writeSSE({
+        event,
+        data: JSON.stringify(data),
+        id: String(nextEventId++),
+      }));
+    };
+
+    // Subscribe before the synchronous snapshot read. This closes the gap in
+    // which a new log line could otherwise be missed between history and SSE.
+    const unsubscribe = subscribeToLogs((entry) => enqueue("log", entry));
+    enqueue("snapshot", { ...readRecentLogs(limit), version: VERSION, commit: COMMIT });
+
+    await new Promise<void>((resolveStream) => {
+      const heartbeat = setInterval(() => enqueue("ping", { at: Date.now() }), 15_000);
+      stream.onAbort(() => {
+        stopped = true;
+        clearInterval(heartbeat);
+        unsubscribe();
+        resolveStream();
+      });
+    });
+  });
 });
 
 api.get("/version", (c) => isAdmin(c)

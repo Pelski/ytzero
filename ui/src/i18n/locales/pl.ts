@@ -304,6 +304,8 @@ export const pl: Locale = {
     logsReportHint: "Zgłaszasz błąd? Dołącz do zgłoszenia wersję i commit:",
     logsEmpty: "Brak logów",
     logsShowing: "Pokazuję {count} linii, rozmiar pliku {size} bajtów",
+    logsAutoScrollDisable: "Zatrzymaj autoscroll",
+    logsAutoScrollEnable: "Włącz autoscroll",
     changelog: "Changelog",
     changelogHint: "Historia zmian dołączona lokalnie podczas budowania tej wersji aplikacji.",
     changelogEmpty: "Brak wpisów w changelogu",

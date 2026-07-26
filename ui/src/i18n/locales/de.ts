@@ -302,6 +302,8 @@ export const de: Locale = {
     logsReportHint: "Fehler melden? Bitte Version und Commit angeben:",
     logsEmpty: "Noch keine Protokolleinträge",
     logsShowing: "Zeige {count} Zeilen, Dateigröße {size} Bytes",
+    logsAutoScrollDisable: "Automatisches Scrollen anhalten",
+    logsAutoScrollEnable: "Automatisches Scrollen aktivieren",
     changelog: "Änderungsprotokoll",
     changelogHint: "Die beim Erstellen dieser App-Version lokal eingebundene Änderungshistorie.",
     changelogEmpty: "Keine Einträge im Änderungsprotokoll",

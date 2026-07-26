@@ -303,6 +303,8 @@ export const en = {
     logsReportHint: "Reporting a bug? Include the version and commit:",
     logsEmpty: "No logs yet",
     logsShowing: "Showing {count} lines, file size {size} bytes",
+    logsAutoScrollDisable: "Pause auto-scroll",
+    logsAutoScrollEnable: "Enable auto-scroll",
     changelog: "Changelog",
     changelogHint: "Change history bundled locally when this application version was built.",
     changelogEmpty: "No changelog entries",
