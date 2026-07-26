@@ -873,8 +873,9 @@ export const api = {
   removeExternal: (id: string) => http<{ deleted: number }>(`/external/${id}`, { method: "DELETE" }),
   logs: (limit = 300) => http<AppLogs>(`/logs?limit=${limit}`),
   version: () => http<AppVersion>("/version"),
-  changelog: async () => {
-    const response = await fetch("/changelog.json");
+  changelog: async (version?: string) => {
+    const suffix = version ? `?version=${encodeURIComponent(version)}` : "";
+    const response = await fetch(`/changelog.json${suffix}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json() as Promise<AppChangelog>;
   },

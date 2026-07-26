@@ -1329,7 +1329,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   }, []);
 
   const loadChangelog = useCallback(() => {
-    Promise.all([api.version(), api.changelog()])
+    api.version()
+      .then(async (version) => [version, await api.changelog(version.version)] as const)
       .then(([version, bundledChangelog]) => {
         setAppVersion(version);
         setChangelog(bundledChangelog);

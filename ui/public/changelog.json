@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "v0.17.3",
+      "name": "v0.17.3",
+      "publishedAt": "2026-07-26T14:30:47+02:00",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.3",
+      "notes": [
+        "Fixed missing changelog #78 (`10be120`)",
+        "Remember feed sorting option #71 (`ecb5f8f`)"
+      ],
+      "current": true
+    },
+    {
       "version": "v0.14.0",
       "name": "v0.14.0",
       "publishedAt": "2026-07-24T12:03:15Z",
@@ -87,15 +98,6 @@
       "notes": [
         "Pulse - more details (`c407bfe`)",
         "Sorry, fixed video import improvements and added processing tab on a channel (`6f59ccf`)"
-      ]
-    },
-    {
-      "version": "v0.10.0",
-      "name": "v0.10.0",
-      "publishedAt": "2026-07-22T08:44:25Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.0",
-      "notes": [
-        "Follow playlist only on channels, new view with subscribed playlists #46 (`c19817c`)"
       ]
     }
   ]

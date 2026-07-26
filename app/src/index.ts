@@ -11,6 +11,9 @@ import { createAppManifest } from "./app-manifest";
 import { collectDiagnosticSnapshot } from "./diagnostics";
 
 const app = new Hono();
+// Serve the built UI (ui/dist is copied to ./public in the Docker image,
+// or set UI_DIST when running locally).
+const uiDir = process.env.UI_DIST ?? "./public";
 
 // Health probe for container runtimes, reverse proxies and installers. Declared
 // before the API router so the session middleware never sees it — probes have no
@@ -57,9 +60,21 @@ app.get("/apple-touch-icon.png", (c) => c.body(createAppIconPng(iconColor(), 180
 app.get("/icon-192.png", (c) => c.body(createAppIconPng(iconColor(), 192), 200, pngHeaders));
 app.get("/icon-512.png", (c) => c.body(createAppIconPng(iconColor(), 512), 200, pngHeaders));
 
-// Serve the built UI (ui/dist is copied to ./public in the Docker image,
-// or set UI_DIST when running locally).
-const uiDir = process.env.UI_DIST ?? "./public";
+// This filename is stable across releases, unlike hashed JS/CSS assets. Never
+// let a browser or reverse proxy reuse the previous container's changelog.
+app.get("/changelog.json", async (c) => {
+  const file = Bun.file(`${uiDir}/changelog.json`);
+  if (!await file.exists()) return c.notFound();
+  return new Response(file, {
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    },
+  });
+});
+
 app.use("/*", serveStatic({ root: uiDir }));
 app.get("*", serveStatic({ path: `${uiDir}/index.html` }));
 
