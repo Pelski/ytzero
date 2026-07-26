@@ -3252,13 +3252,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 <EmptyState icon={<FileText />} title={t("changelogEmpty")} />
               ) : (
                 <div className="settings-release-list">
-                  {changelog.releases.map((release) => (
+                  {changelog.releases.map((release, releaseIndex) => (
                     <article className="settings-release" key={release.version}>
                       <header className="settings-release-head">
                         <div>
                           <div className="settings-release-title">
                             <strong>{release.name}</strong>
-                            {release.current && <Badge variant="accent" size="sm">{t("currentVersion")}</Badge>}
+                            {releaseIndex === 0 && <Badge variant="accent" size="sm">{t("changelogLatest")}</Badge>}
                           </div>
                           {release.publishedAt && <span>{new Date(release.publishedAt).toLocaleDateString(locale)}</span>}
                         </div>

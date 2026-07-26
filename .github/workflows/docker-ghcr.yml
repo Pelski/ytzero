@@ -5,16 +5,18 @@ on:
     branches:
       - main
     # A README, wiki page or issue-workflow change cannot affect the image.
-    # Tag pushes intentionally bypass this filter: every release must publish
-    # an image for that exact source snapshot.
     paths:
       - "app/**"
       - "ui/**"
       - "Dockerfile"
       - ".dockerignore"
       - ".github/workflows/docker-ghcr.yml"
-    tags:
-      - "v*.*.*"
+  # A release created with GITHUB_TOKEN does not emit a new release workflow
+  # run. workflow_run is therefore the reliable hand-off from release.yml and
+  # also guarantees that changelog.json cannot race the release publication.
+  workflow_run:
+    workflows: ["Publish Release"]
+    types: [completed]
   workflow_dispatch:
 
 env:
@@ -22,8 +24,68 @@ env:
   IMAGE_NAME: pelski/ytzero
 
 jobs:
+  prepare:
+    name: Prepare release metadata and changelog
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.build-version.outputs.version }}
+      commit: ${{ steps.build-version.outputs.commit }}
+      short_commit: ${{ steps.build-version.outputs.short_commit }}
+      is_release: ${{ steps.build-version.outputs.is_release }}
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Resolve the image version from the checked-out source
+        id: build-version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          commit="$(git rev-parse HEAD)"
+          version="edge"
+          is_release="false"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
+            version="$(git describe --tags --exact-match --match 'v*.*.*' HEAD)"
+            is_release="true"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
+          echo "short_commit=${commit:0:7}" >> "${GITHUB_OUTPUT}"
+          echo "is_release=${is_release}" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up the Bun runtime
+        uses: oven-sh/setup-bun@v2
+
+      - name: Generate changelog before the container build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          YTZERO_VERSION: ${{ steps.build-version.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd ui
+          bun install --frozen-lockfile
+          bun run generate:changelog
+
+      - name: Store the prepared changelog
+        uses: actions/upload-artifact@v7
+        with:
+          name: prepared-changelog
+          path: ui/public/changelog.json
+          if-no-files-found: error
+          retention-days: 1
+
   build:
     name: Build the Linux image for ${{ matrix.platform }}
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -42,8 +104,16 @@ jobs:
         env:
           platform: ${{ matrix.platform }}
 
-      - name: Check out the repository
+      - name: Check out the prepared source
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+
+      - name: Restore the prepared changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: prepared-changelog
+          path: ui/public
 
       - name: Generate OCI image metadata
         id: meta
@@ -69,10 +139,11 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          # On a vX.Y.Z tag this is the version; on main it is the branch name.
+          # A completed release workflow supplies vX.Y.Z; main builds use edge.
           build-args: |
-            YTZERO_VERSION=${{ github.ref_type == 'tag' && github.ref_name || 'edge' }}
-            YTZERO_COMMIT=${{ github.sha }}
+            YTZERO_VERSION=${{ needs.prepare.outputs.version }}
+            YTZERO_COMMIT=${{ needs.prepare.outputs.commit }}
+            YTZERO_CHANGELOG_PREGENERATED=1
           cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
@@ -94,7 +165,7 @@ jobs:
   merge:
     name: Publish the multi-platform image
     runs-on: ubuntu-latest
-    needs: build
+    needs: [prepare, build]
     permissions:
       contents: read
       packages: write
@@ -112,13 +183,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # main → edge + sha-xxxx (bleeding edge)
-          # tag vX.Y.Z → X.Y.Z, X.Y, X oraz latest (stabilny release)
+          # ukończony release vX.Y.Z → X.Y.Z, X.Y, X oraz latest
           tags: |
-            type=edge,branch=main
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,prefix=sha-
+            type=edge,branch=main,enable=${{ needs.prepare.outputs.is_release != 'true' }}
+            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
+            type=semver,pattern={{major}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
+            type=raw,value=sha-${{ needs.prepare.outputs.short_commit }}
 
       - name: Sign in to the GitHub Container Registry
         uses: docker/login-action@v4

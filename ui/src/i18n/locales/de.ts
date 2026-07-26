@@ -305,6 +305,7 @@ export const de: Locale = {
     changelog: "Änderungsprotokoll",
     changelogHint: "Die beim Erstellen dieser App-Version lokal eingebundene Änderungshistorie.",
     changelogEmpty: "Keine Einträge im Änderungsprotokoll",
+    changelogLatest: "Neueste",
     currentVersion: "Aktuelle Version",
     checkForUpdates: "Nach Updates suchen",
     checkingUpdates: "Wird geprüft...",

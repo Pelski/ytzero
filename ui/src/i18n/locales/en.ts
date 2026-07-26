@@ -306,6 +306,7 @@ export const en = {
     changelog: "Changelog",
     changelogHint: "Change history bundled locally when this application version was built.",
     changelogEmpty: "No changelog entries",
+    changelogLatest: "Latest",
     currentVersion: "Current version",
     checkForUpdates: "Check for updates",
     checkingUpdates: "Checking...",

@@ -4,7 +4,8 @@ name: Publish Release
 # made since the previous tag, plus a tarball with a prebuilt UI that
 # scripts/install.sh downloads (native installs must not build the frontend
 # on the target host).
-# Docker images are built by docker-ghcr.yml for the same tag.
+# After this workflow succeeds, docker-ghcr.yml builds the image for the same
+# tagged commit and the already-published release.
 on:
   push:
     tags:
@@ -26,12 +27,26 @@ jobs:
       - name: Set up the Bun runtime
         uses: oven-sh/setup-bun@v2
 
-      - name: Build the production web client
+      - name: Install web client dependencies
         run: |
           set -euo pipefail
           cd ui
           bun install --frozen-lockfile
-          bun run build
+
+      - name: Generate the bundled changelog
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          YTZERO_VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd ui
+          bun run generate:changelog
+
+      - name: Build the production web client with the prepared changelog
+        run: |
+          set -euo pipefail
+          cd ui
+          bun run build:prepared
 
       # Same layout as the Docker image: src/, package.json and the built UI in
       # public/, so both runtimes start with the identical command.

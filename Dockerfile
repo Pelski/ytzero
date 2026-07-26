@@ -5,13 +5,14 @@ ARG YTZERO_COMMIT=unknown
 FROM oven/bun:1.3 AS ui-build
 ARG YTZERO_VERSION
 ARG YTZERO_COMMIT
+ARG YTZERO_CHANGELOG_PREGENERATED=0
 ENV YTZERO_VERSION=${YTZERO_VERSION} \
     YTZERO_COMMIT=${YTZERO_COMMIT}
 WORKDIR /ui
 COPY ui/package.json ui/bun.lock* ./
 RUN bun install
 COPY ui/ .
-RUN bun run build
+RUN if [ "${YTZERO_CHANGELOG_PREGENERATED}" = "1" ]; then bun run build:prepared; else bun run build; fi
 
 # ---- runtime ----
 FROM oven/bun:1.3-slim
