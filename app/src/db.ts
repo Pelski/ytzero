@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS videos (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
+CREATE INDEX IF NOT EXISTS idx_videos_channel_published ON videos(channel_id, published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published_at DESC);
 CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 
@@ -558,6 +559,10 @@ try { db.exec("ALTER TABLE channels ADD COLUMN playlists_cache_version INTEGER N
 // refresh. Separate timestamps keep their round-robin scheduler independent.
 try { db.exec("ALTER TABLE channels ADD COLUMN full_sync_attempted_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN last_full_synced_at TEXT"); } catch {}
+// Adaptive RSS scheduling state is derived from local refresh attempts and is
+// intentionally excluded from portable backups.
+try { db.exec("ALTER TABLE channels ADD COLUMN feed_refresh_attempted_at TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN feed_refresh_failures INTEGER NOT NULL DEFAULT 0"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_json TEXT"); } catch {}
 // Priority downloads (viewer is actively waiting) jump the queue and may
 // preempt the running job.

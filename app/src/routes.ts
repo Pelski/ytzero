@@ -3720,7 +3720,7 @@ api.get("/config", (c) => {
 // ---------- refresh ----------
 
 api.post("/refresh", async (c) => {
-  const result = await refreshAll();
+  const result = await refreshAll({ force: true });
   log.info("refresh.manual_requested", { channels: result.channels, added: result.added, errors: result.errors.length });
   return c.json(result);
 });

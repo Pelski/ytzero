@@ -206,6 +206,7 @@ below.
 - `discovery_recommendations`
 - derived Discovery `last_terms`
 - `update_check_state`, `notifications`, `bulk_undo`
+- adaptive feed scheduler attempt timestamps and failure counters on `channels`
 - pending child time requests and one-day child time extras
 - active/expired authentication sessions
 - in-progress download jobs and errors

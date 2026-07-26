@@ -48,12 +48,16 @@ describe("portable backup classification and restore", () => {
     setSetting("auth_oidc_client_secret", "DO-NOT-EXPORT-THIS");
     setSetting("auth_shared_password_hash", "HASH-DO-NOT-EXPORT");
     db.prepare("UPDATE users SET oidc_subject = ? WHERE id = 1").run("profile-identity-do-not-export@example.com");
+    db.prepare("UPDATE channels SET feed_refresh_attempted_at = ?, feed_refresh_failures = ? WHERE channel_id = 'UCportable'")
+      .run("2099-12-31 23:59:58", 987654321);
     const options = backup.backupOptions();
     const zip = await backup.createPortableBackup({ preset: "configuration", profiles: options.profiles.map((profile) => profile.id) });
     const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
     expect(serialized).not.toContain("DO-NOT-EXPORT-THIS");
     expect(serialized).not.toContain("HASH-DO-NOT-EXPORT");
     expect(serialized).not.toContain("profile-identity-do-not-export@example.com");
+    expect(serialized).not.toContain("2099-12-31 23:59:58");
+    expect(serialized).not.toContain("987654321");
     expect(serialized).not.toContain("auth_sessions");
     expect(serialized).not.toContain("download_cookie");
   });

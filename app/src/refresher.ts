@@ -10,6 +10,7 @@ import { runAutomaticUpdateChecks } from "./updates";
 import { notifyFollowedPlaylistVideos } from "./notifications";
 import { IMPORTED_CHANNEL_ID } from "./takeout";
 import { maintenanceActive } from "./maintenance";
+import { selectRefreshBatch, type AdaptiveRefreshOptions, type RefreshCandidate } from "./adaptiveRefresh";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -39,6 +40,59 @@ const VIDEO_MAINTENANCE_CUTOFF = `-${VIDEO_MAINTENANCE_MAX_AGE_DAYS} days`;
 function positiveNumber(value: string | undefined, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+const FEED_REFRESH_BATCH_SIZE = 10;
+const FEED_REFRESH_FAIRNESS_SLOTS = 2;
+
+function adaptiveRefreshOptions(force = false): AdaptiveRefreshOptions {
+  const minIntervalMin = positiveNumber(process.env.ADAPTIVE_REFRESH_MIN_MINUTES, 10);
+  const maxIntervalMin = Math.max(minIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_MAX_MINUTES, 12 * 60));
+  const unknownIntervalMin = Math.min(maxIntervalMin, Math.max(minIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_UNKNOWN_MINUTES, 2 * 60)));
+  return {
+    nowMs: Date.now(),
+    batchSize: FEED_REFRESH_BATCH_SIZE,
+    fairnessSlots: FEED_REFRESH_FAIRNESS_SLOTS,
+    minIntervalMs: minIntervalMin * 60_000,
+    maxIntervalMs: maxIntervalMin * 60_000,
+    unknownIntervalMs: unknownIntervalMin * 60_000,
+    force,
+  };
+}
+
+function feedRefreshCandidates(): RefreshCandidate[] {
+  const channelRows = db.prepare(`
+    SELECT c.channel_id, c.added_at, c.last_refreshed_at,
+           c.feed_refresh_attempted_at, c.feed_refresh_failures
+    FROM channels c
+    WHERE c.channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
+      AND c.manual_status = 'active'
+  `).all() as {
+    channel_id: string;
+    added_at: string | null;
+    last_refreshed_at: string | null;
+    feed_refresh_attempted_at: string | null;
+    feed_refresh_failures: number;
+  }[];
+  if (channelRows.length === 0) return [];
+
+  const recentUploads = db.prepare(`
+    SELECT published_at FROM videos
+    WHERE channel_id = ?
+      AND published_at IS NOT NULL AND published_at != ''
+      AND live_status NOT IN ('live', 'upcoming')
+    ORDER BY published_at DESC
+    LIMIT 6
+  `);
+
+  return channelRows.map((row) => ({
+    channelId: row.channel_id,
+    addedAt: row.added_at,
+    lastRefreshedAt: row.last_refreshed_at,
+    lastAttemptedAt: row.feed_refresh_attempted_at,
+    consecutiveFailures: Number(row.feed_refresh_failures) || 0,
+    publishedAt: (recentUploads.all(row.channel_id) as { published_at: string }[]).map((video) => video.published_at),
+  }));
 }
 
 function followedChannelStatusCounts(): Record<string, number> {
@@ -978,7 +1032,7 @@ export async function backfillImportedVideos(limit = 15) {
 
 let refreshing = false;
 
-export async function refreshAll(): Promise<{ channels: number; added: number; errors: string[] }> {
+export async function refreshAll(options: { force?: boolean } = {}): Promise<{ channels: number; added: number; errors: string[] }> {
   if (maintenanceActive()) {
     log.info("refresh.skipped", { reason: "maintenance" });
     return { channels: 0, added: 0, errors: [] };
@@ -992,24 +1046,37 @@ export async function refreshAll(): Promise<{ channels: number; added: number; e
   try {
     // Any channel at least one profile follows. A channel followed by several
     // profiles is fetched once here (dedup), then surfaces in each feed.
-    const channels = db.prepare(
-      `SELECT channel_id FROM channels
-       WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
-         AND manual_status = 'active'
-       ORDER BY COALESCE(last_refreshed_at, '1970-01-01') ASC LIMIT 10`
-    ).all() as { channel_id: string }[];
-    log.info("refresh.start", { channels: channels.length, followedByStatus: followedChannelStatusCounts() });
+    const channels = selectRefreshBatch(feedRefreshCandidates(), adaptiveRefreshOptions(options.force));
+    log.info("refresh.start", {
+      channels: channels.length,
+      adaptive: channels.filter((channel) => channel.reason === "adaptive").length,
+      fairness: channels.filter((channel) => channel.reason === "fairness").length,
+      force: Boolean(options.force),
+      followedByStatus: followedChannelStatusCounts(),
+    });
+    const markAttempted = db.prepare("UPDATE channels SET feed_refresh_attempted_at = datetime('now') WHERE channel_id = ?");
+    const markSucceeded = db.prepare("UPDATE channels SET feed_refresh_failures = 0 WHERE channel_id = ?");
+    const markFailed = db.prepare("UPDATE channels SET feed_refresh_failures = feed_refresh_failures + 1 WHERE channel_id = ?");
     let added = 0;
     const errors: string[] = [];
-    for (const { channel_id } of channels) {
+    for (let index = 0; index < channels.length; index++) {
+      const channel = channels[index];
+      const channelId = channel.channelId;
+      markAttempted.run(channelId);
       try {
-        const r = await refreshChannel(channel_id);
+        const r = await refreshChannel(channelId);
         added += r.added;
-        await refreshLiveStatus(channel_id);
+        await refreshLiveStatus(channelId);
+        markSucceeded.run(channelId);
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
-        errors.push(`${channel_id}: ${error}`);
-        log.error("channel.refresh_failed", { channelId: channel_id, error });
+        errors.push(`${channelId}: ${error}`);
+        markFailed.run(channelId);
+        log.error("channel.refresh_failed", { channelId, error });
+        if (error.includes("429")) {
+          log.warn("refresh.halted", { reason: "youtube_rate_limit", remaining: channels.length - index - 1 });
+          break;
+        }
       }
       await Bun.sleep(1500);
     }
@@ -1175,7 +1242,13 @@ export function startScheduler() {
   const refreshIntervalMin = positiveNumber(process.env.REFRESH_INTERVAL_MINUTES, 5);
   setTimeout(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), 3_000);
   setInterval(() => refreshAll().catch((e) => log.error("refresh.cron_failed", { error: e instanceof Error ? e.message : String(e) })), refreshIntervalMin * 60_000);
-  log.info("scheduler.feed_refresh", { intervalMin: refreshIntervalMin, batchSize: 10 });
+  log.info("scheduler.feed_refresh", {
+    intervalMin: refreshIntervalMin,
+    batchSize: FEED_REFRESH_BATCH_SIZE,
+    fairnessSlots: FEED_REFRESH_FAIRNESS_SLOTS,
+    adaptiveMinIntervalMin: positiveNumber(process.env.ADAPTIVE_REFRESH_MIN_MINUTES, 10),
+    adaptiveMaxIntervalMin: positiveNumber(process.env.ADAPTIVE_REFRESH_MAX_MINUTES, 12 * 60),
+  });
 
   const fullSyncIntervalMin = positiveNumber(process.env.FULL_SYNC_INTERVAL_MINUTES, 15);
   const runFullSync = () => {

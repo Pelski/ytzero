@@ -12,6 +12,9 @@ YT Zero is configured through environment variables. All of them are optional an
 | `AVATAR_DIR` | `./data/avatars` | Uploaded profile avatars. |
 | `LOG_PATH` | `./data/logs/ytzero.log` | Log file. Logs always also go to stdout; this file is what the in-app log viewer reads. |
 | `REFRESH_INTERVAL_MINUTES` | `5` | Followed-channel RSS refresh interval. |
+| `ADAPTIVE_REFRESH_MIN_MINUTES` | `10` | Minimum automatic interval for one channel feed. This is the hard cooldown that prevents frequent uploaders from being polled continuously. |
+| `ADAPTIVE_REFRESH_MAX_MINUTES` | `720` | Maximum automatic interval for one channel feed. This guarantees that infrequent channels remain in the refresh rotation. |
+| `ADAPTIVE_REFRESH_UNKNOWN_MINUTES` | `120` | Automatic interval used until a channel has at least three known publication dates. |
 | `FULL_SYNC_INTERVAL_MINUTES` | `15` | Interval between full, rotating channel scans. One subscribed channel is scanned per run, using the same process as the manual channel sync button. |
 | `LIVE_INTERVAL_MINUTES` | `3` | Followed-channel live-status check interval. This does not refetch old video metadata. |
 | `DURATION_INTERVAL_MINUTES` | `3` | Interval for the background job that backfills missing video durations. |
@@ -115,6 +118,10 @@ and mounts:
 
 ## Background refresh
 
-Durations and Shorts metadata are filled lazily for videos from the last 90 days (configurable with `VIDEO_MAINTENANCE_MAX_AGE_DAYS`). Older videos are not revisited by automatic maintenance; their metadata can still be resolved when accessed or manually synchronized. Channel RSS refreshes only the latest feed entries. Live-status checks operate per followed channel and do not refetch old video metadata.
+Durations and Shorts metadata are filled lazily for videos from the last 90 days (configurable with `VIDEO_MAINTENANCE_MAX_AGE_DAYS`). Older videos are not revisited by automatic maintenance; their metadata can still be resolved when accessed or manually synchronized.
+
+Channel RSS refresh is adaptive. YT Zero estimates each channel's upload cadence from the median gap between its latest publication dates, prioritises feeds that are overdue relative to that cadence, and reserves two places in every ten-channel batch for oldest-first rotation. Repeated failures receive exponential backoff, and an HTTP 429 stops the rest of the current batch. The three `ADAPTIVE_REFRESH_*` variables set the per-channel bounds without increasing the ten-request batch budget. A manual refresh bypasses the automatic cooldown.
+
+Channel RSS refreshes only the latest feed entries. Live-status checks operate per followed channel and do not refetch old video metadata.
 
 For details on what is fetched and stored, see [How It Works](How-It-Works).
