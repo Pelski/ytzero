@@ -5,11 +5,12 @@
 // `locked`, and the UI locks the screen.
 import { db, getUserSetting, setUserSetting } from "./db";
 import { recordWatchTagSignals } from "./contentSignals";
+import { zonedDayHour } from "./timeZone";
 
 export type ChildGrant = "15m" | "1h" | "video_end" | "today_off";
 export const CHILD_GRANTS: ChildGrant[] = ["15m", "1h", "video_end", "today_off"];
 
-const today = () => (db.prepare("SELECT date('now','localtime') AS d").get() as { d: string }).d;
+const today = () => zonedDayHour().day;
 
 export function isChildUser(userId: number): boolean {
   const row = db.prepare("SELECT is_child FROM users WHERE id = ?").get(userId) as { is_child: number } | null;
@@ -46,12 +47,13 @@ export function recordWatchTick(userId: number, videoId: string) {
   if (!last) return;
   const delta = (now - last.at) / 1000;
   if (delta <= 0 || delta > 15) return;
+  const local = zonedDayHour(new Date(now));
   db.prepare(
     `INSERT INTO watch_time_log (user_id, video_id, day, hour, seconds)
-     VALUES (?, ?, date('now','localtime'), CAST(strftime('%H','now','localtime') AS INTEGER), ?)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(user_id, video_id, day, hour) DO UPDATE SET seconds = seconds + excluded.seconds`
-  ).run(userId, videoId, delta);
-  recordWatchTagSignals(userId, videoId, delta);
+  ).run(userId, videoId, local.day, local.hour, delta);
+  recordWatchTagSignals(userId, videoId, delta, local);
 }
 
 /** The video the user was most recently watching (for "until video ends"). */

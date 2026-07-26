@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { configureTimeZoneProvider, DEFAULT_TIME_ZONE } from "./timeZone";
 
 const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -328,8 +329,8 @@ CREATE TABLE IF NOT EXISTS scheduling_event_log (
   bucket       TEXT NOT NULL,
   source       TEXT NOT NULL DEFAULT 'manual',
   tags_json    TEXT NOT NULL DEFAULT '[]',
-  local_day    TEXT NOT NULL DEFAULT (date('now', 'localtime')),
-  local_hour   INTEGER NOT NULL DEFAULT (CAST(strftime('%H', 'now', 'localtime') AS INTEGER)),
+  local_day    TEXT NOT NULL DEFAULT (date('now')),
+  local_hour   INTEGER NOT NULL DEFAULT (CAST(strftime('%H', 'now') AS INTEGER)),
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_scheduling_event_user_time ON scheduling_event_log(user_id, local_day, local_hour);
@@ -360,7 +361,7 @@ CREATE TABLE IF NOT EXISTS sponsorblock_skip_log (
   segment_uuid    TEXT NOT NULL,
   category        TEXT NOT NULL,
   skipped_seconds REAL NOT NULL,
-  day             TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+  day             TEXT NOT NULL DEFAULT (date('now')),
   created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_sponsorblock_skip_day ON sponsorblock_skip_log(user_id, day);
@@ -630,6 +631,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   profile_admin_only_areas: '{"version":3,"adminOnlyAreas":["channels","followed_playlists","imports","appearance","feed","navigation","playback","plugins","profiles"]}',
   app_name: "YT Zero",
   app_icon_color: "#0a5fff",
+  // One instance-wide IANA timezone drives logs, daily rotation, child limits,
+  // and Insights/Pulse independently of the container or browser timezone.
+  timezone: "UTC",
   shorts_tab: "1",
   show_top_channels: "1",
   // How far back the main feed reaches. Videos older than this stay in the
@@ -685,6 +689,7 @@ export const GLOBAL_SETTING_KEYS = new Set([
   "profile_admin_only_areas",
   "app_name",
   "app_icon_color",
+  "timezone",
   "auth_method",
   "auth_shared_username",
   "auth_shared_password_hash",
@@ -716,6 +721,8 @@ export function getSetting(key: string): string | null {
   const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null;
   return row?.value ?? null;
 }
+
+configureTimeZoneProvider(() => getSetting("timezone") ?? DEFAULT_TIME_ZONE);
 
 export function setSetting(key: string, value: string) {
   db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);

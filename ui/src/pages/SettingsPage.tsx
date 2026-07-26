@@ -24,8 +24,18 @@ import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
 import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, Field, IconButton, Inline, Input, InputGroup, PageHeader, Popover, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
+import { formatAppDate } from "../dateTime";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
+
+const TIME_ZONES = (() => {
+  const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
+  const supported = intl.supportedValuesOf?.("timeZone") ?? [
+    "Europe/London", "Europe/Warsaw", "America/New_York", "America/Chicago",
+    "America/Denver", "America/Los_Angeles", "Asia/Tokyo", "Australia/Sydney",
+  ];
+  return [...new Set(["UTC", ...supported])];
+})();
 
 // Tabs unavailable to a profile are omitted entirely, not shown as dead ends.
 const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean }[] = [
@@ -1151,7 +1161,7 @@ function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
 }
 
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
-  const { t, language, setLanguage, locale } = useI18n();
+  const { t, language, setLanguage, locale, timeZone, setTimeZone } = useI18n();
   useDocumentTitle(t("settingsTitle"));
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -1219,7 +1229,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [appName, setAppName] = useState("YT Zero");
   const [appNameInput, setAppNameInput] = useState("YT Zero");
   const [appIconColor, setAppIconColor] = useState("#0a5fff");
-  // App-wide settings (app name, icon color, child lock) are owned by the
+  // App-wide settings (app name, icon color, timezone, child lock) are owned by the
   // primary profile; other profiles see them read-only.
   const [isPrimary, setIsPrimary] = useState(true);
   const [isChildProfile, setIsChildProfile] = useState<boolean | null>(null);
@@ -1674,6 +1684,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     await api.updateSettings({ app_icon_color: color });
     emit("app-name-changed");
     showToast(t("appIconColorSaved"));
+  };
+
+  const saveTimeZone = async (next: string) => {
+    await setTimeZone(next);
+    showToast(t("timeZoneSaved"));
   };
 
   const savePlayer = async (patch: Record<string, string>) => {
@@ -2476,6 +2491,16 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   />
                 </div>
               </SettingRow>
+
+              <SettingRow label={t("timeZoneLabel")} description={t("timeZoneHint")}>
+                <SelectMenu
+                  searchable
+                  label={t("timeZoneLabel")}
+                  value={timeZone}
+                  options={[...new Set([timeZone, ...TIME_ZONES])].map((zone) => ({ value: zone, label: zone }))}
+                  onChange={saveTimeZone}
+                />
+              </SettingRow>
             </>
           ) : (
             <Text tone="secondary">{t("primaryOnlyHint")}</Text>
@@ -3260,7 +3285,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             <strong>{release.name}</strong>
                             {releaseIndex === 0 && <Badge variant="accent" size="sm">{t("changelogLatest")}</Badge>}
                           </div>
-                          {release.publishedAt && <span>{new Date(release.publishedAt).toLocaleDateString(locale)}</span>}
+                          {release.publishedAt && <span>{formatAppDate(release.publishedAt, locale, timeZone)}</span>}
                         </div>
                         <div className="settings-release-actions">
                           <ButtonAnchor size="sm" variant="ghost" href={release.url} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink size={13} />}>

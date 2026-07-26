@@ -1,5 +1,11 @@
 YT Zero is configured through environment variables. All of them are optional and have sensible defaults.
 
+The application timezone is configured inside **Settings → Display → Timezone**
+using an IANA name such as `Europe/London`. It controls dates and times across
+the UI, scheduling, logs, Insights/Pulse, backups, imports, cleanup boundaries,
+and child daily limits. It does not depend on the browser timezone or the
+container's `TZ` environment variable.
+
 ## Environment variables
 
 | Variable | Default | Description |
@@ -10,7 +16,7 @@ YT Zero is configured through environment variables. All of them are optional an
 | `IMG_CACHE_DIR` | `./data/imgcache` | Thumbnail and image cache directory. |
 | `IMG_CACHE_TTL_DAYS` | `5` | How long a cached image is fresh before a refetch is attempted. |
 | `AVATAR_DIR` | `./data/avatars` | Uploaded profile avatars. |
-| `LOG_PATH` | `./data/logs/ytzero.log` | Active log file. Logs also go to stdout and rotate daily (UTC) to dated files such as `ytzero-2026-07-26.log`; archives are retained. The in-app viewer reads the active file. |
+| `LOG_PATH` | `./data/logs/ytzero.log` | Active log file. Logs also go to stdout and rotate daily in the timezone selected in Settings, to dated files such as `ytzero-2026-07-26.log`; archives are retained. The in-app viewer reads the active file. |
 | `REFRESH_INTERVAL_MINUTES` | `5` | Followed-channel RSS refresh interval. |
 | `ADAPTIVE_REFRESH_MIN_MINUTES` | `10` | Minimum automatic interval for one channel feed. This is the hard cooldown that prevents frequent uploaders from being polled continuously. |
 | `ADAPTIVE_REFRESH_MAX_MINUTES` | `720` | Maximum automatic interval for one channel feed. This guarantees that infrequent channels remain in the refresh rotation. |

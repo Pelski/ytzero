@@ -7,6 +7,8 @@ import { inflateRawSync } from "node:zlib";
 import { acquireMaintenance } from "./maintenance";
 import { isChannelManualStatus } from "./channelStatus";
 import { parseAdminOnlyAreas, serializeAdminOnlyAreas } from "./profilePermissions";
+import { DEFAULT_TIME_ZONE, isValidTimeZone } from "./timeZone";
+import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -64,7 +66,7 @@ export const BACKUP_PRESETS: Record<string, string[]> = {
 };
 
 const SECTION_BY_ID = new Map(BACKUP_SECTIONS.map((section) => [section.id, section]));
-const SAFE_GLOBAL_SETTINGS = new Set(["app_name", "app_icon_color", "profile_admin_only_areas"]);
+const SAFE_GLOBAL_SETTINGS = new Set(["app_name", "app_icon_color", "profile_admin_only_areas", "timezone"]);
 const SECRET_SETTING_KEYS = new Set([...GLOBAL_SETTING_KEYS].filter((key) => key.startsWith("auth_") || key.includes("hash") || key.includes("secret")));
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -72,6 +74,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 
 function portableGlobalSettingValue(key: string, value: unknown): string {
   if (key === "profile_admin_only_areas") return serializeAdminOnlyAreas(parseAdminOnlyAreas(String(value)));
+  if (key === "timezone") return isValidTimeZone(value) ? value : DEFAULT_TIME_ZONE;
   return String(value);
 }
 
@@ -396,7 +399,13 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
         if (selected.has("profile.analytics")) { if (state.plan!.strategy === "replace") for (const table of ["watch_time_log","scheduling_event_log","watch_tag_time_log","sponsorblock_skip_log"]) db.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(uid); for (const row of get("profile.analytics")??[]) { if(row.type==="watch-time") db.prepare("INSERT INTO watch_time_log(user_id,video_id,day,hour,seconds) VALUES(?,?,?,?,?) ON CONFLICT DO UPDATE SET seconds=max(seconds,excluded.seconds)").run(uid,row.video_id,row.day,row.hour,row.seconds); else if(row.type==="scheduling" && !db.prepare("SELECT 1 FROM scheduling_event_log WHERE user_id=? AND video_id=? AND created_at=?").get(uid,row.video_id,row.created_at)) db.prepare("INSERT INTO scheduling_event_log(user_id,video_id,channel_id,bucket,source,tags_json,local_day,local_hour,created_at) VALUES(?,?,?,?,?,?,?,?,?)").run(uid,row.video_id,row.channel_id,row.bucket,row.source,row.tags_json,row.local_day,row.local_hour,row.created_at); else if(row.type==="tag-time") { const tagId=(db.prepare("SELECT id FROM tags WHERE user_id=? AND name=? COLLATE NOCASE").get(uid,row.tag_name) as any)?.id??stableNegativeId(`${state.manifest.sourceInstallationId}:${row.tag_name}`); db.prepare("INSERT INTO watch_tag_time_log(user_id,tag_id,tag_name,tag_color,day,hour,seconds) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO UPDATE SET seconds=max(seconds,excluded.seconds)").run(uid,tagId,row.tag_name,row.tag_color,row.day,row.hour,row.seconds); } else if(row.type==="sponsorblock") db.prepare("INSERT OR IGNORE INTO sponsorblock_skip_log(event_id,user_id,video_id,segment_uuid,category,skipped_seconds,day,created_at) VALUES(?,?,?,?,?,?,?,?)").run(row.event_id,uid,row.video_id,row.segment_uuid,row.category,row.skipped_seconds,row.day,row.created_at); } }
         const sourceProfile = (data.get("profiles.index:")??[]).find((p:any)=>p.id===profile.id); if (selected.has("profile.avatar") && sourceProfile?.avatar && entries.has(sourceProfile.avatar)) { const ext=sourceProfile.avatar.split(".").pop(); const stage=resolve(sessionPaths(id).dir,`avatar-${uid}.${ext}.stage`), target=resolve(AVATAR_DIR,`${uid}.${ext}`); writeFileSync(stage,entries.get(sourceProfile.avatar)!); db.prepare("UPDATE users SET avatar=? WHERE id=?").run(`${uid}.${ext}:${Date.now()}`,uid); avatarStages.push({from:stage,to:target}); }
       }
-    }); tx(); mkdirSync(AVATAR_DIR,{recursive:true}); for(const file of avatarStages) renameSync(file.from,file.to); rmSync(sessionPaths(id).dir,{recursive:true,force:true}); return { ok:true, snapshot, counts };
+    }); tx();
+    if (selected.has("instance.settings")) {
+      const timeZone = getSetting("timezone") ?? DEFAULT_TIME_ZONE;
+      const now = new Date();
+      for (const bucket of SCHEDULE_BUCKETS) db.prepare("UPDATE user_videos SET show_from=? WHERE status='queued' AND bucket=?").run(computeShowFrom(bucket, now, timeZone), bucket);
+    }
+    mkdirSync(AVATAR_DIR,{recursive:true}); for(const file of avatarStages) renameSync(file.from,file.to); rmSync(sessionPaths(id).dir,{recursive:true,force:true}); return { ok:true, snapshot, counts };
   } catch (error) { for(const file of avatarStages) try{rmSync(file.from,{force:true});}catch{} throw error; } finally { releaseMaintenance(); }
 }
 

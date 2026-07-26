@@ -5,6 +5,8 @@ import { en } from "./locales/en";
 import { pl } from "./locales/pl";
 import { de } from "./locales/de";
 import type { I18nKey, Language, Locale } from "./types";
+import { DEFAULT_TIME_ZONE, normalizeTimeZone, parseAppTimestamp } from "../dateTime";
+import { subscribe } from "../events";
 
 export type { Language, I18nKey, Bucket } from "./types";
 
@@ -49,6 +51,8 @@ function resolveIconLabel(language: Language, id: string): string {
 type I18nValue = {
   language: Language;
   setLanguage: (language: Language) => Promise<void>;
+  timeZone: string;
+  setTimeZone: (timeZone: string) => Promise<void>;
   t: (key: I18nKey, params?: TParams) => string;
   bucketLabel: (bucket: Bucket) => string;
   iconLabel: (id: string) => string;
@@ -59,20 +63,27 @@ const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => normalizeLanguage(localStorage.getItem(LANGUAGE_KEY)));
+  const [timeZone, setTimeZoneState] = useState(DEFAULT_TIME_ZONE);
 
-  useEffect(() => {
-    api
+  const loadAppSettings = useCallback(() => {
+    return api
       .settings()
       .then((r) => {
         const next = normalizeLanguage(r.settings.language);
         setLanguageState(next);
+        setTimeZoneState(normalizeTimeZone(r.settings.timezone));
         localStorage.setItem(LANGUAGE_KEY, next);
         document.documentElement.lang = next;
       })
       .catch(() => {
         document.documentElement.lang = language;
       });
-  }, []);
+  }, [language]);
+
+  useEffect(() => {
+    void loadAppSettings();
+    return subscribe("app-settings-changed", () => { void loadAppSettings(); });
+  }, [loadAppSettings]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -84,14 +95,22 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     await api.updateSettings({ language: next });
   }, []);
 
+  const setTimeZone = useCallback(async (next: string) => {
+    const normalized = normalizeTimeZone(next);
+    await api.updateSettings({ timezone: normalized });
+    setTimeZoneState(normalized);
+  }, []);
+
   const value = useMemo<I18nValue>(() => ({
     language,
     setLanguage,
+    timeZone,
+    setTimeZone,
     t: (key, params) => interpolate(locales[language].messages[key], params),
     bucketLabel: (bucket) => locales[language].buckets[bucket],
     iconLabel: (id) => resolveIconLabel(language, id),
     locale: LOCALE_TAGS[language],
-  }), [language, setLanguage]);
+  }), [language, setLanguage, setTimeZone, timeZone]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }
@@ -156,7 +175,7 @@ export function formatViewsCount(views: number | null, language: Language): stri
 
 export function formatTimeAgo(iso: string | null, language: Language): string {
   if (!iso) return "";
-  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMs = Date.now() - parseAppTimestamp(iso).getTime();
   const min = Math.floor(diffMs / 60_000);
   const h = Math.floor(min / 60);
   const d = Math.floor(h / 24);

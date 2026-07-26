@@ -7,20 +7,21 @@ import { useI18n } from "../i18n";
 import { img } from "../img";
 import { Button, EmptyState, IconButton, List, ListButton, Popover, ScrollArea } from "./ui";
 import "./NotificationCenter.css";
+import { formatAppDate, parseAppTimestamp } from "../dateTime";
 
-function notificationTime(value: string, locale: string, justNow: string): string {
-  const date = new Date(`${value.replace(" ", "T")}Z`);
+function notificationTime(value: string, locale: string, timeZone: string, justNow: string): string {
+  const date = parseAppTimestamp(value);
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
   if (Math.abs(seconds) < 60) return justNow;
   const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   if (Math.abs(seconds) < 3600) return formatter.format(Math.round(seconds / 60), "minute");
   if (Math.abs(seconds) < 86_400) return formatter.format(Math.round(seconds / 3600), "hour");
   if (Math.abs(seconds) < 604_800) return formatter.format(Math.round(seconds / 86_400), "day");
-  return new Intl.DateTimeFormat(locale, { day: "2-digit", month: "short" }).format(date);
+  return formatAppDate(date, locale, timeZone, { day: "2-digit", month: "short" });
 }
 
 export default function NotificationCenter() {
-  const { t, locale } = useI18n();
+  const { t, locale, timeZone } = useI18n();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -88,7 +89,7 @@ export default function NotificationCenter() {
                   description={playlistVideo ? t("playlistVideoNotificationDescription", { playlist: notification.payload.playlistTitle || "" }) : t("updateNotificationDescription", { version: notification.payload.version ?? "" })}
                   meta={playlistVideo && notification.payload.thumbnail ? <img className="profile-notification-thumbnail" src={img(notification.payload.thumbnail)} alt="" /> : undefined}
                 >
-                  <time>{notificationTime(notification.created_at, locale, t("notificationJustNow"))}</time>
+                  <time>{notificationTime(notification.created_at, locale, timeZone, t("notificationJustNow"))}</time>
                 </ListButton>;
             })}
           </List>

@@ -85,13 +85,14 @@ export function parseAdminOnlyAreas(raw: string | null | undefined): ProfilePerm
       if (!Array.isArray(document.adminOnlyAreas)) {
         return [...DEFAULT_ADMIN_ONLY_AREAS];
       }
+      const adminOnlyAreas = document.adminOnlyAreas;
       if (document.version === PROFILE_PERMISSIONS_VERSION) {
-        if (document.adminOnlyAreas.some((area) => !isProfilePermissionArea(area))) return [...DEFAULT_ADMIN_ONLY_AREAS];
-        return PROFILE_PERMISSION_AREAS.filter((area) => document.adminOnlyAreas!.includes(area));
+        if (adminOnlyAreas.some((area) => !isProfilePermissionArea(area))) return [...DEFAULT_ADMIN_ONLY_AREAS];
+        return PROFILE_PERMISSION_AREAS.filter((area) => adminOnlyAreas.includes(area));
       }
       if (document.version === 2
-        && document.adminOnlyAreas.every((area) => typeof area === "string" && (LEGACY_PERMISSION_AREAS as readonly string[]).includes(area))) {
-        return migrateLegacyAreas(document.adminOnlyAreas as string[], false);
+        && adminOnlyAreas.every((area) => typeof area === "string" && (LEGACY_PERMISSION_AREAS as readonly string[]).includes(area))) {
+        return migrateLegacyAreas(adminOnlyAreas as string[], false);
       }
       return [...DEFAULT_ADMIN_ONLY_AREAS];
     }
@@ -164,6 +165,7 @@ export function permissionAreasForSettings(body: unknown): ProfilePermissionArea
 export function settingsMutationRequiresAdmin(body: unknown): boolean {
   if (!body || typeof body !== "object" || Array.isArray(body)) return true;
   return Object.keys(body).some((key) => key === "update_check_interval"
+    || key === "timezone"
     || key === "child_lock_enabled"
     || key === "child_lock_pin_hash"
     || key === "profile_admin_only_areas"

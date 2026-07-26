@@ -15,6 +15,7 @@ import { formatAddedVideos, formatPlaylistVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
 import { Badge, Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
+import { formatAppDate, parseAppTimestamp } from "../dateTime";
 
 type Tab = "videos" | "shorts" | "playlists" | "processing";
 
@@ -23,7 +24,7 @@ const CHANNEL_PAGE_SIZE = 40;
 const AUTO_DOWNLOAD_MIN_DURATIONS = [0, 60, 5 * 60, 10 * 60, 20 * 60, 30 * 60, 45 * 60, 60 * 60];
 
 export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) {
-  const { t, language, locale } = useI18n();
+  const { t, language, locale, timeZone } = useI18n();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -433,10 +434,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
               )}
               <div className="channel-meta-row">
                 {about.joinedDate && (() => {
-                  const d = new Date(about.joinedDate);
+                  const d = parseAppTimestamp(about.joinedDate);
                   const formatted = isNaN(d.getTime())
                     ? about.joinedDate
-                    : d.toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
+                    : formatAppDate(d, locale, timeZone, { year: "numeric", month: "long", day: "numeric" });
                   return <span>{t("joined")} {formatted}</span>;
                 })()}
                 {about.viewCount && <span>{about.viewCount} {t("views")}</span>}

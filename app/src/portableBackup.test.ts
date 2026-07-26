@@ -10,7 +10,7 @@ process.env.AVATAR_DIR = resolve(root, "avatars");
 
 const backup = await import("./portableBackup");
 const permissions = await import("./profilePermissions");
-const { db, setSetting, setUserSetting, getUserSetting } = await import("./db");
+const { db, setSetting, setUserSetting, getSetting, getUserSetting } = await import("./db");
 
 beforeAll(() => {
   db.prepare("INSERT INTO channels(channel_id,title,url) VALUES(?,?,?)").run("UCportable", "Portable channel", "https://youtube.com/channel/UCportable");
@@ -78,6 +78,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "enhance_frame_fps", "60");
     setUserSetting(1, "feed_sort", "arrival");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
+    setSetting("timezone", "Europe/London");
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
@@ -87,6 +88,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "enhance_frame_fps", "24");
     setUserSetting(1, "feed_sort", "published");
     setSetting("profile_admin_only_areas", "[]");
+    setSetting("timezone", "UTC");
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
@@ -103,5 +105,6 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "feed_sort")).toBe("arrival");
     expect((db.prepare("SELECT value FROM settings WHERE key='profile_admin_only_areas'").get() as { value: string }).value)
       .toBe(permissions.serializeAdminOnlyAreas(["channels", "followed_playlists", "imports", "plugins"]));
+    expect(getSetting("timezone")).toBe("Europe/London");
   });
 });

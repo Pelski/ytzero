@@ -5,6 +5,7 @@ import { DL_DEFAULTS, resetDownloadsState } from "./downloader";
 import { SUBTITLE_LANGUAGES } from "./subtitleLanguages";
 import { maintenanceActive } from "./maintenance";
 import { log } from "./logger";
+import { storedUtcTimestampMs } from "./timeZone";
 
 export interface PluginManifest {
   id: string;
@@ -704,7 +705,7 @@ function localRecommendations(uid: number, limit: number, settings: Record<strin
         score += settings.external_adjustment;
         reasons.push("temporary source");
       }
-      const ageDays = video.published_at ? (Date.now() - new Date(video.published_at).getTime()) / 86_400_000 : 90;
+      const ageDays = video.published_at ? (Date.now() - storedUtcTimestampMs(video.published_at)) / 86_400_000 : 90;
       score += Math.max(0, settings.recency_points - Math.floor(ageDays / 7));
       return { kind: "local" as const, score, reasons, video };
     })
@@ -996,7 +997,7 @@ function storedDiscoveryAgeMs(uid: number) {
     : db.prepare("SELECT MAX(generated_at) AS generated_at FROM discovery_recommendations WHERE user_id = ?")
       .get(uid) as { generated_at: string | null } | null;
   if (!row?.generated_at) return DISCOVERY_REFRESH_INTERVAL_MS;
-  const ts = new Date(row.generated_at).getTime();
+  const ts = storedUtcTimestampMs(row.generated_at);
   if (!Number.isFinite(ts)) return DISCOVERY_REFRESH_INTERVAL_MS;
   return Math.max(0, Date.now() - ts);
 }

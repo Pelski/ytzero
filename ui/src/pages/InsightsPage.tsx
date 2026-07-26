@@ -8,6 +8,7 @@ import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { EmptyState, SelectMenu } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
+import { formatCalendarDay } from "../dateTime";
 
 const RANGES = [7, 30, 90, 365];
 
@@ -86,8 +87,7 @@ export default function InsightsPage() {
   }, [days, profileId]);
 
   const weekdayLabels = useMemo(() => Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(2024, 0, 1 + index);
-    return new Intl.DateTimeFormat(locale, { weekday: "short" }).format(date);
+    return formatCalendarDay(`2024-01-0${index + 1}`, locale, { weekday: "short" });
   }), [locale]);
 
   if (!data && loading) return <div className="insights-loading"><Activity className="spin" /> {t("loading")}</div>;
@@ -119,7 +119,7 @@ export default function InsightsPage() {
     { key: "progress", label: t("insightsInProgress"), value: data.completion.in_progress },
     { key: "brief", label: t("insightsBrief"), value: data.completion.brief },
   ];
-  const formatDiscoveryDate = (day: string) => new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(new Date(`${day}T12:00:00`));
+  const formatDiscoveryDate = (day: string) => formatCalendarDay(day, locale, { day: "numeric", month: "short" });
   const hasSharedInterests = data.shared_interests.channels.length > 0;
   const sponsorCategory = (id: string) => SB_CATEGORIES.find((category) => category.id === id);
 
@@ -162,7 +162,7 @@ export default function InsightsPage() {
               <div className="insights-daily-bars">
                 {data.daily.map((item, index) => <div className="insights-daily-column" key={item.day} title={`${item.day}: ${formatDuration(item.seconds, locale)}`}>
                   <span style={{ height: `${Math.max(item.seconds / maxDay * 100, item.seconds ? 4 : 0)}%` }} />
-                  {(index === 0 || index === data.daily.length - 1) && <em>{new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(new Date(`${item.day}T12:00:00`))}</em>}
+                  {(index === 0 || index === data.daily.length - 1) && <em>{formatCalendarDay(item.day, locale, { day: "numeric", month: "short" })}</em>}
                 </div>)}
               </div>
             </div>

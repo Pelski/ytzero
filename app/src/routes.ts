@@ -28,6 +28,8 @@ import { applyRuleToAllVideos } from "./autotags";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "./userPlaylists";
 import { applyFilterRuleToAll } from "./filterRules";
 import { log, readRecentLogs } from "./logger";
+import { isValidTimeZone, zonedDayHour } from "./timeZone";
+import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
@@ -338,7 +340,7 @@ api.post("/backup/export", async (c) => {
     bytes: archive.length,
     ms: Date.now() - startedAt,
   });
-  const date = new Date().toISOString().slice(0, 10);
+  const date = zonedDayHour().day;
   const body = archive.buffer.slice(archive.byteOffset, archive.byteOffset + archive.byteLength) as ArrayBuffer;
   return new Response(body, { headers: {
     "Content-Type": "application/zip",
@@ -527,42 +529,6 @@ function videoSelect(uid: number) {
          COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id
   LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}`;
-}
-
-function localSQLite(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:00`;
-}
-
-function computeShowFrom(bucket: string): string {
-  const now = new Date();
-  const d = new Date(now);
-  const h = now.getHours();
-
-  if (bucket === "today") {
-    return localSQLite(now);
-  } else if (bucket === "tonight") {
-    // Today at 19:00 if before, otherwise immediately.
-    if (h < 19) d.setHours(19, 0, 0, 0);
-    else return localSQLite(now);
-  } else if (bucket === "tomorrow") {
-    // Always tomorrow 06:00
-    d.setDate(d.getDate() + 1);
-    d.setHours(6, 0, 0, 0);
-  } else if (bucket === "tomorrow_evening") {
-    // Always tomorrow 19:00
-    d.setDate(d.getDate() + 1);
-    d.setHours(19, 0, 0, 0);
-  } else if (bucket === "weekend") {
-    const day = d.getDay(); // 0=Sun, 6=Sat
-    if (day === 0 || day === 6) {
-      return localSQLite(now); // already weekend → now
-    }
-    const daysUntilSat = (6 - day + 7) % 7;
-    d.setDate(d.getDate() + daysUntilSat);
-    d.setHours(0, 0, 0, 0);
-  }
-  return localSQLite(d);
 }
 
 // ---------- feed ----------
@@ -944,9 +910,9 @@ api.post("/videos/:id/sponsorblock-skip", async (c) => {
   }
   const result = db.prepare(`
     INSERT OR IGNORE INTO sponsorblock_skip_log
-      (event_id, user_id, video_id, segment_uuid, category, skipped_seconds)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(eventId, uid, videoId, segmentUuid, category, seconds);
+      (event_id, user_id, video_id, segment_uuid, category, skipped_seconds, day)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(eventId, uid, videoId, segmentUuid, category, seconds, zonedDayHour().day);
   const recorded = result.changes > 0;
   if (recorded) log.info("sponsorblock.skip_recorded", { userId: uid, videoId, category, seconds });
   return c.json({ ok: true, recorded });
@@ -3127,14 +3093,24 @@ api.put("/settings", async (c) => {
   const uid = currentUserId(c);
   const primary = isAdmin(c);
   const body = await c.req.json();
+  if ("timezone" in body && !isValidTimeZone(body.timezone)) {
+    return c.json({ error: "invalid timezone" }, 400);
+  }
   for (const key of Object.keys(SETTING_DEFAULTS)) {
     if (key === "child_lock_pin_hash" || key === "child_lock_enabled") continue;
     if (!(key in body)) continue;
     if (GLOBAL_SETTING_KEYS.has(key)) {
-      // Only the primary profile owns app-wide settings (app name, icon color).
+      // Only an administrator owns app-wide settings (name, icon, timezone).
       if (primary) setSetting(key, String(body[key]));
     } else {
       setUserSetting(uid, key, String(body[key]));
+    }
+  }
+  if (primary && "timezone" in body) {
+    const now = new Date();
+    for (const bucket of SCHEDULE_BUCKETS) {
+      db.prepare("UPDATE user_videos SET show_from = ? WHERE status = 'queued' AND bucket = ?")
+        .run(computeShowFrom(bucket, now, String(body.timezone)), bucket);
     }
   }
   return c.json({ ok: true });

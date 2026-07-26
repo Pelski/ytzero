@@ -163,6 +163,10 @@ below.
 
 - `settings`: only registered, non-secret global settings. Exclude Child Lock
   hashes and every authentication secret or activation setting.
+  The configured IANA timezone is portable instance configuration; it controls
+  displayed dates, scheduling, local log timestamps, daily rotation, child
+  limits, and Insights/Pulse day and hour aggregation without depending on the
+  host or browser timezone.
   The administrator-only profile permission areas are portable configuration.
   Enabling Child Lock and its PIN remain local and are never exported.
 - `user_settings`: registered settings for selected profiles.

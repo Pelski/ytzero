@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { feedVisibilityWhere } from "./feedQuery";
 import { cleanupSelectionWhere, type CleanupFilter } from "./cleanupQuery";
+import { configuredTimeZone, zonedDateTimeToUtc } from "./timeZone";
 
 export type { CleanupChannelFilter, CleanupFilter, CleanupTagFilter } from "./cleanupQuery";
 export { cleanupSelectionWhere } from "./cleanupQuery";
@@ -23,7 +24,10 @@ export function buildCleanupWhere(
     uid,
     { includeHidden: !!filter.include_hidden },
   );
-  const selection = cleanupSelectionWhere(filter, uid);
+  const normalizedFilter = filter.before && /^\d{4}-\d{2}-\d{2}$/.test(filter.before)
+    ? { ...filter, before: zonedDateTimeToUtc(filter.before, 0, 0, 0, configuredTimeZone()).toISOString() }
+    : filter;
+  const selection = cleanupSelectionWhere(normalizedFilter, uid);
   const selectionSql = selection.where.length ? selection.where.join(" AND ") : "1=1";
   const where = [...visibility.where];
   const params = [...visibility.params];

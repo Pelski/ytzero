@@ -10,9 +10,9 @@ import {
 
 describe("profile administrator permissions", () => {
   test("uses safe defaults for missing or invalid settings", () => {
-    expect(parseAdminOnlyAreas(null)).toEqual(DEFAULT_ADMIN_ONLY_AREAS);
-    expect(parseAdminOnlyAreas("not-json")).toEqual(DEFAULT_ADMIN_ONLY_AREAS);
-    expect(parseAdminOnlyAreas('["unknown"]')).toEqual(DEFAULT_ADMIN_ONLY_AREAS);
+    expect(parseAdminOnlyAreas(null)).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
+    expect(parseAdminOnlyAreas("not-json")).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
+    expect(parseAdminOnlyAreas('["unknown"]')).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
   });
 
   test("accepts explicit v3 delegation and normalizes order and duplicates", () => {
@@ -55,6 +55,7 @@ describe("profile administrator permissions", () => {
 
   test("keeps advanced and authentication settings administrator-only", () => {
     expect(settingsMutationRequiresAdmin({ update_check_interval: "daily" })).toBe(true);
+    expect(settingsMutationRequiresAdmin({ timezone: "Europe/London" })).toBe(true);
     expect(settingsMutationRequiresAdmin({ auth_method: "shared" })).toBe(true);
     expect(settingsMutationRequiresAdmin({ show_shorts: "1" })).toBe(false);
   });

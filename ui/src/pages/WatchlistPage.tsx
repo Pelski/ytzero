@@ -13,6 +13,7 @@ import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { EmptyState, IconButton, LocalToast, PageHeader, SectionHeader, SelectMenu } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { img } from "../img";
+import { addCalendarDays, appDayKey, formatAppDate, formatAppTime, parseAppTimestamp } from "../dateTime";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 const BUCKET_SECTIONS: { id: string; labelKey: I18nKey; Icon: typeof Sun; buckets: Bucket[] }[] = [
@@ -26,24 +27,21 @@ type TranslateFn = ReturnType<typeof useI18n>["t"];
 const WATCHLIST_SORTS = ["schedule", "duration-asc", "duration-desc", "title-asc", "channel-asc"] as const;
 type WatchlistSort = (typeof WATCHLIST_SORTS)[number];
 
-function formatShowFrom(showFrom: string, t: TranslateFn, locale: string): string {
-  const d = new Date(showFrom);
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const tomorrowStart = new Date(todayStart.getTime() + 86400000);
-  const targetStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+function formatShowFrom(showFrom: string, t: TranslateFn, locale: string, timeZone: string): string {
+  const targetDay = appDayKey(showFrom, timeZone);
+  const today = appDayKey(new Date(), timeZone);
+  const time = formatAppTime(showFrom, locale, timeZone);
 
-  if (targetStart.getTime() === todayStart.getTime()) return t("todayAtTime", { time });
-  if (targetStart.getTime() === tomorrowStart.getTime()) return t("tomorrowAtTime", { time });
+  if (targetDay === today) return t("todayAtTime", { time });
+  if (targetDay === addCalendarDays(today, 1)) return t("tomorrowAtTime", { time });
 
-  const weekday = d.toLocaleDateString(locale, { weekday: "long" });
-  const date = d.toLocaleDateString(locale, { day: "numeric", month: "short" });
+  const weekday = formatAppDate(showFrom, locale, timeZone, { weekday: "long" });
+  const date = formatAppDate(showFrom, locale, timeZone, { day: "numeric", month: "short" });
   return t("scheduledAt", { weekday, date, time });
 }
 
 export default function WatchlistPage() {
-  const { t, bucketLabel, locale } = useI18n();
+  const { t, bucketLabel, locale, timeZone } = useI18n();
   useDocumentTitle(t("navWatchlist"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +64,7 @@ export default function WatchlistPage() {
   const bySchedule = (a: Video, b: Video) => {
     const bucketDiff = BUCKET_ORDER.indexOf(a.bucket!) - BUCKET_ORDER.indexOf(b.bucket!);
     if (bucketDiff !== 0) return bucketDiff;
-    return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
+    return parseAppTimestamp(a.show_from ?? 0).getTime() - parseAppTimestamp(b.show_from ?? 0).getTime();
   };
   // Videos without a known duration sort to the end in both directions.
   const byDuration = (direction: 1 | -1) => (a: Video, b: Video) => {
@@ -136,7 +134,7 @@ export default function WatchlistPage() {
                         <div className="muted scheduled-channel">{v.channel_title}</div>
                       </div>
                       <div className="muted scheduled-date">
-                        {v.show_from ? formatShowFrom(v.show_from, t, locale) : ""}
+                        {v.show_from ? formatShowFrom(v.show_from, t, locale, timeZone) : ""}
                       </div>
                       <div className="scheduled-actions">
                         <SchedulePicker

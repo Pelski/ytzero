@@ -1,5 +1,6 @@
 import { inflateRawSync } from "node:zlib";
 import { decodeHtmlEntities } from "./htmlEntities";
+import { configuredTimeZone, zonedDateTimeToUtc } from "./timeZone";
 
 // Placeholder channel every imported video is parked on until the background
 // enrichment fetches its real metadata (title/channel/thumbnail). Kept external
@@ -99,9 +100,13 @@ function plausibleUtc(ms: number): string | null {
 }
 
 function toSqliteUtc(value: string | number): string | null {
+  if (typeof value === "string") {
+    const localized = parseLocalizedDate(value);
+    if (localized) return localized;
+  }
   const direct = plausibleUtc(typeof value === "number" ? value : Date.parse(value));
   if (direct) return direct;
-  return typeof value === "string" ? parseLocalizedDate(value) : null;
+  return null;
 }
 
 // Takeout HTML exports localize timestamps ("23 lip 2026, 14:30:05 CEST");
@@ -124,10 +129,16 @@ const LOCALIZED_MONTHS: Record<string, number> = {
   august: 8, september: 9, october: 10, november: 11, december: 12,
 };
 
-// Matches Date.parse's behavior for English dates: no timezone in the string
-// means server-local time, then converted to UTC.
-function localizedUtc(y: number, mo: number, d: number, h: number, mi: number, s: number): string | null {
-  return plausibleUtc(new Date(y, mo - 1, d, h, mi, s).getTime());
+function localizedUtc(y: number, mo: number, d: number, h: number, mi: number, s: number, source: string): string | null {
+  const zone = source.toUpperCase().match(/\b(UTC|GMT|CET|CEST|MESZ)\b/)?.[1];
+  const offsetMinutes = zone === "CET" ? 60 : zone === "CEST" || zone === "MESZ" ? 120 : zone === "UTC" || zone === "GMT" ? 0 : null;
+  if (offsetMinutes != null) {
+    return plausibleUtc(Date.UTC(y, mo - 1, d, h, mi - offsetMinutes, s));
+  }
+  return plausibleUtc(zonedDateTimeToUtc(
+    `${String(y).padStart(4, "0")}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`,
+    h, mi, s, configuredTimeZone(),
+  ).getTime());
 }
 
 function parseLocalizedDate(raw: string): string | null {
@@ -136,11 +147,11 @@ function parseLocalizedDate(raw: string): string | null {
   let m = s.match(/^(\d{1,2})\.?\s+([\p{L}]+)\.?\s+(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})/u);
   if (m) {
     const month = LOCALIZED_MONTHS[m[2].toLowerCase()];
-    return month ? localizedUtc(+m[3], month, +m[1], +m[4], +m[5], +m[6]) : null;
+    return month ? localizedUtc(+m[3], month, +m[1], +m[4], +m[5], +m[6], s) : null;
   }
   // "23.07.2026, 14:30:05" (numeric day-first)
   m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4}),?\s+(\d{1,2}):(\d{2}):(\d{2})/);
-  if (m) return localizedUtc(+m[3], +m[2], +m[1], +m[4], +m[5], +m[6]);
+  if (m) return localizedUtc(+m[3], +m[2], +m[1], +m[4], +m[5], +m[6], s);
   return null;
 }
 
@@ -205,7 +216,7 @@ export function parseWatchHistoryHtml(content: string): TakeoutHistoryEntry[] {
     // "</div>" directly or a trailing "<br></div>" (newer exports).
     const when = block.match(/<br\s*\/?>([^<>]+?)\s*(?:<br\s*\/?>\s*)?<\/div>/);
     const rawDate = when
-      ? decodeHtmlEntities(when[1]).replace(/[\u00a0\u202f]/g, " ").trim().replace(/\s+[A-Z]{2,5}$/, "")
+      ? decodeHtmlEntities(when[1]).replace(/[\u00a0\u202f]/g, " ").trim()
       : "";
     entries.push({
       videoId: watch[1],

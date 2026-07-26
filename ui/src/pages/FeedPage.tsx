@@ -14,6 +14,7 @@ import VideoCard, { type CardFeedback } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 import { Button, ButtonLink, Divider, EmptyState, IconButton } from "../components/ui";
+import { parseAppTimestamp } from "../dateTime";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
 type FeedSort = "published" | "arrival";
@@ -352,11 +353,11 @@ export default function FeedPage({
   // Time-based queued sections — only show videos that have unlocked.
   const now = new Date();
   const dueQueuedVideos = queued
-    .filter((v) => v.bucket && (!v.show_from || new Date(v.show_from) <= now))
+    .filter((v) => v.bucket && (!v.show_from || parseAppTimestamp(v.show_from) <= now))
     .sort((a, b) => {
       const bucketDiff = BUCKET_ORDER.indexOf(a.bucket!) - BUCKET_ORDER.indexOf(b.bucket!);
       if (bucketDiff !== 0) return bucketDiff;
-      return new Date(a.show_from ?? 0).getTime() - new Date(b.show_from ?? 0).getTime();
+      return parseAppTimestamp(a.show_from ?? 0).getTime() - parseAppTimestamp(b.show_from ?? 0).getTime();
     });
   const inProgressIds = new Set(inProgress.map((video) => video.video_id));
   const feedVideos = videos.filter((video) => !inProgressIds.has(video.video_id));

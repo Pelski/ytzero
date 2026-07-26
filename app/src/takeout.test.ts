@@ -95,7 +95,7 @@ describe("parseWatchHistoryHtml", () => {
 
   test("parses Polish abbreviated-month dates", () => {
     const [e] = parseWatchHistoryHtml(localized("5 mar 2024, 17:45:37 CET"));
-    expect(e.watchedAt).toMatch(/^2024-03-05 /);
+    expect(e.watchedAt).toBe("2024-03-05 16:45:37");
   });
 
   test("parses dates followed by a trailing <br> before </div> (real export shape)", () => {

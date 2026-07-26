@@ -1,5 +1,6 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readSync, renameSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
+import { configuredTimeZone, formatZonedTimestamp, zonedDayHour } from "./timeZone";
 
 const LOG_PATH = process.env.LOG_PATH ?? resolve(import.meta.dir, "../../data/logs/ytzero.log");
 const MAX_READ_BYTES = 512 * 1024;
@@ -19,10 +20,10 @@ function archivePath(path: string, day: string) {
   return candidate;
 }
 
-/** Rotate before the first write of a new UTC day. Returns the new active day. */
-export function rotateDailyLog(path: string, currentDay: string, knownDay: string | null = null) {
+/** Rotate before the first write of a new configured local day. */
+export function rotateDailyLog(path: string, currentDay: string, knownDay: string | null = null, timeZone = "UTC") {
   if (!existsSync(path)) return currentDay;
-  const fileDay = knownDay ?? statSync(path).mtime.toISOString().slice(0, 10);
+  const fileDay = knownDay ?? zonedDayHour(statSync(path).mtime, timeZone).day;
   if (fileDay === currentDay) return currentDay;
   renameSync(path, archivePath(path, fileDay));
   return currentDay;
@@ -39,13 +40,14 @@ function serializeMeta(meta?: Record<string, unknown>) {
 
 function write(level: LogLevel, event: string, meta?: Record<string, unknown>) {
   const now = new Date();
-  const line = `${now.toISOString()} ${level.toUpperCase()} ${event}${serializeMeta(meta)}`;
+  const timeZone = configuredTimeZone();
+  const line = `${formatZonedTimestamp(now, timeZone)} ${level.toUpperCase()} ${event}${serializeMeta(meta)}`;
   if (level === "error") console.error(line);
   else if (level === "warn") console.warn(line);
   else console.log(line);
   try {
     mkdirSync(dirname(LOG_PATH), { recursive: true });
-    activeLogDay = rotateDailyLog(LOG_PATH, now.toISOString().slice(0, 10), activeLogDay);
+    activeLogDay = rotateDailyLog(LOG_PATH, zonedDayHour(now, timeZone).day, activeLogDay, timeZone);
     appendFileSync(LOG_PATH, `${line}\n`);
   } catch (e) {
     console.error(`[ytzero] failed to write log file: ${e instanceof Error ? e.message : String(e)}`);

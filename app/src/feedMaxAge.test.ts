@@ -15,6 +15,11 @@ describe("feed max-age cutoff", () => {
     expect(feedMaxAgeCutoff(9, "months", NOW)).toBe("2025-10-24T12:00:00.000Z");
   });
 
+  test("preserves local wall time across daylight-saving changes", () => {
+    expect(feedMaxAgeCutoff(1, "months", new Date("2026-04-24T11:00:00.000Z"), "Europe/London"))
+      .toBe("2026-03-24T12:00:00.000Z");
+  });
+
   test("settings arrive as strings and are accepted", () => {
     expect(feedMaxAgeCutoff("6", "months", NOW)).toBe(feedMaxAgeCutoff(6, "months", NOW));
   });

@@ -219,6 +219,7 @@ export interface AppSettings {
   child_lock_enabled: string;
   profile_admin_only_areas: string;
   app_name: string;
+  timezone: string;
   app_icon_color: string;
   shorts_tab: string;
   show_top_channels: string;
@@ -692,7 +693,7 @@ export interface CleanupTagFilter {
 
 export interface CleanupFilter {
   status?: "inbox" | "queued" | "all";
-  /** ISO timestamp; matches videos published strictly before this instant. */
+  /** App-local YYYY-MM-DD boundary or ISO timestamp; matches videos strictly before it. */
   before?: string | null;
   channels?: CleanupChannelFilter | null;
   tags?: CleanupTagFilter | null;

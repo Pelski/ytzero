@@ -6,14 +6,10 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
-
-function historyDayKey(value: string) {
-  const date = new Date(value.replace(" ", "T"));
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
+import { appDayKey, calendarDayDifference, formatCalendarDay } from "../dateTime";
 
 export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) {
-  const { t, locale } = useI18n();
+  const { t, locale, timeZone } = useI18n();
   useDocumentTitle(t("historyTitle"));
   const [videos, setVideos] = useState<Video[]>([]);
   const [page, setPage] = useState(0);
@@ -39,22 +35,21 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
 
   useEffect(load, [load]);
 
-  const groups = videos.reduce<{ key: number; videos: Video[] }[]>((result, video) => {
-    const key = video.watched_at ? historyDayKey(video.watched_at) : 0;
+  const groups = videos.reduce<{ key: string; videos: Video[] }[]>((result, video) => {
+    const key = video.watched_at ? appDayKey(video.watched_at, timeZone) : "";
     const last = result[result.length - 1];
     if (last?.key === key) last.videos.push(video);
     else result.push({ key, videos: [video] });
     return result;
   }, []);
 
-  const groupLabel = (day: number) => {
-    const today = new Date();
-    const startToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-    const daysAgo = Math.round((startToday - day) / 86_400_000);
+  const groupLabel = (day: string) => {
+    const today = appDayKey(new Date(), timeZone);
+    const daysAgo = calendarDayDifference(today, day);
     if (daysAgo === 0) return t("historyToday");
     if (daysAgo === 1) return t("historyYesterday");
     if (daysAgo === 2) return t("historyDayBeforeYesterday");
-    const date = new Intl.DateTimeFormat(locale, { day: "numeric", month: "long", year: new Date(day).getFullYear() === today.getFullYear() ? undefined : "numeric" }).format(new Date(day));
+    const date = formatCalendarDay(day, locale, { day: "numeric", month: "long", year: day.slice(0, 4) === today.slice(0, 4) ? undefined : "numeric" });
     return `${t("historyDaysAgo", { days: daysAgo })} · ${date}`;
   };
 

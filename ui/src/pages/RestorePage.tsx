@@ -5,6 +5,8 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { useI18n } from "../i18n";
 import { Alert, Badge, Button, ButtonAnchor, Checkbox, FileDropzone, Inline, PageHeader, SelectMenu, SettingRow, SettingsSection, Stack, Tabs } from "../components/ui";
 import "./RestorePage.css";
+import { appDayKey, formatAppDateTime } from "../dateTime";
+import { emit } from "../events";
 
 type RestoreTab = "export" | "restore";
 type Mapping = { action: "create" | "merge" | "skip"; targetProfileId?: number };
@@ -37,7 +39,7 @@ function size(bytes: number) {
 }
 
 export default function RestorePage({ showToast }: { showToast: (message: string) => void }) {
-  const { language } = useI18n();
+  const { language, locale, timeZone } = useI18n();
   const tx = (en: string, pl: string) => language === "pl" ? pl : en;
   const sectionLabel = (id: string) => language === "pl" ? (LABELS_PL[id] ?? id) : (LABELS[id] ?? id);
   useDocumentTitle(tx("Backup and restore", "Kopia zapasowa i przywracanie"));
@@ -77,7 +79,7 @@ export default function RestorePage({ showToast }: { showToast: (message: string
       const blob = await api.exportBackup({ preset, profiles, sections });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
-      anchor.href = url; anchor.download = `ytzero-backup-${new Date().toISOString().slice(0, 10)}.zip`; anchor.click();
+      anchor.href = url; anchor.download = `ytzero-backup-${appDayKey(new Date(), timeZone)}.zip`; anchor.click();
       setTimeout(() => URL.revokeObjectURL(url), 1_000);
     } catch (cause) { showToast(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
@@ -110,7 +112,7 @@ export default function RestorePage({ showToast }: { showToast: (message: string
   const commit = async () => {
     if (!analysis || !dryRun) return;
     setBusy(true);
-    try { setResult(await api.restoreCommit(analysis.sessionId, dryRun.planRevision)); setAnalysis(null); setDryRun(null); }
+    try { setResult(await api.restoreCommit(analysis.sessionId, dryRun.planRevision)); emit("app-settings-changed"); setAnalysis(null); setDryRun(null); }
     catch (cause) { showToast(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
@@ -151,7 +153,7 @@ export default function RestorePage({ showToast }: { showToast: (message: string
       </SettingsSection>}
 
       {analysis && !dryRun && <>
-        <Alert variant="success" icon={<ShieldCheck />} title={tx("Integrity verified", "Integralność potwierdzona")}>{tx("Created", "Utworzono")} {new Date(analysis.manifest.createdAt).toLocaleString()} — YT Zero {analysis.manifest.appVersion}, {size(analysis.archiveBytes)}.{analysis.sameSource ? tx(" This backup came from this installation.", " Ta kopia pochodzi z tej instalacji.") : ""}</Alert>
+        <Alert variant="success" icon={<ShieldCheck />} title={tx("Integrity verified", "Integralność potwierdzona")}>{tx("Created", "Utworzono")} {formatAppDateTime(analysis.manifest.createdAt, locale, timeZone)} — YT Zero {analysis.manifest.appVersion}, {size(analysis.archiveBytes)}.{analysis.sameSource ? tx(" This backup came from this installation.", " Ta kopia pochodzi z tej instalacji.") : ""}</Alert>
         {analysis.warnings.map((warning) => <Alert key={warning} variant="warning">{warning}</Alert>)}
         <SettingsSection title={tx("Profile destinations", "Profile docelowe")} description={tx("Create a profile, merge into an existing one, or skip it.", "Utwórz profil, scal dane z istniejącym albo pomiń.")}>
           {analysis.manifest.profiles.map((source) => {

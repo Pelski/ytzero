@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2, Clock, FileArchive, FileText, FolderUp, History, ListMusic,
@@ -13,12 +13,7 @@ import {
   Alert, Badge, Button, Checkbox, FileDropzone, Inline, Input, PageHeader, SectionHeader,
   SegmentedControl, SettingsSection, Stack, Switch, Text,
 } from "../components/ui";
-
-function defaultHistoryFrom(): string {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() - 1);
-  return d.toISOString().slice(0, 10);
-}
+import { addCalendarYears, appDayKey } from "../dateTime";
 
 function formatFileSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -29,7 +24,7 @@ function formatFileSize(bytes: number): string {
 const fileKey = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
 
 export default function ImportPage({ showToast }: { showToast: (msg: string) => void }) {
-  const { t, language } = useI18n();
+  const { t, language, timeZone } = useI18n();
   useDocumentTitle(t("importTakeout"));
   const navigate = useNavigate();
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -45,7 +40,10 @@ export default function ImportPage({ showToast }: { showToast: (msg: string) => 
   const [excludedPlaylists, setExcludedPlaylists] = useState<Set<string>>(new Set());
   const [historyEnabled, setHistoryEnabled] = useState(true);
   const [historyMode, setHistoryMode] = useState<"since" | "all">("since");
-  const [historyFrom, setHistoryFrom] = useState(defaultHistoryFrom);
+  const [historyFrom, setHistoryFrom] = useState("");
+  useEffect(() => {
+    if (!historyFrom) setHistoryFrom(addCalendarYears(appDayKey(new Date(), timeZone), -1));
+  }, [historyFrom, timeZone]);
 
   const addFiles = (files: File[]) => {
     if (files.length === 0) return;

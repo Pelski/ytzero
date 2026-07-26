@@ -22,6 +22,7 @@ import {
   Tabs,
 } from "../components/ui";
 import "./CleanupPage.css";
+import { addCalendarDays, appDayKey } from "../dateTime";
 
 type CleanupStatus = NonNullable<CleanupFilter["status"]>;
 type CleanupAction = "archive" | "watched";
@@ -31,16 +32,8 @@ type Side = "clean" | "remain";
 const DATE_PRESET_DAYS = [7, 14, 30, 90] as const;
 const EMPTY_PREVIEW: CleanupPreviewResult = { videos: [], total: 0, page: 0, limit: 0 };
 
-function daysAgoDateInput(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-const TODAY = new Date().toISOString().slice(0, 10);
-
 export default function CleanupPage() {
-  const { t, language } = useI18n();
+  const { t, language, timeZone } = useI18n();
   useDocumentTitle(t("cleanupTitle"));
 
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -75,7 +68,7 @@ export default function CleanupPage() {
 
   const filter: CleanupFilter = useMemo(() => ({
     status,
-    before: beforeDate ? `${beforeDate}T00:00:00.000Z` : null,
+    before: beforeDate || null,
     channels: channelIds.length ? { mode: channelMode, ids: channelIds } : null,
     tags: (includeTagIds.length || excludeTagIds.length) ? { include: includeTagIds, exclude: excludeTagIds } : null,
     include_hidden: includeHidden,
@@ -245,11 +238,11 @@ export default function CleanupPage() {
               type="date"
               className="ui-input"
               value={beforeDate}
-              max={TODAY}
+              max={appDayKey(new Date(), timeZone)}
               onChange={(e) => setBeforeDate(e.target.value)}
             />
             {DATE_PRESET_DAYS.map((days) => (
-              <button key={days} type="button" className="chip" onClick={() => setBeforeDate(daysAgoDateInput(days))}>
+              <button key={days} type="button" className="chip" onClick={() => setBeforeDate(addCalendarDays(appDayKey(new Date(), timeZone), -days))}>
                 {t("cleanupDaysAgo", { n: days })}
               </button>
             ))}

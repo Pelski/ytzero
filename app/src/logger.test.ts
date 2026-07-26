@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { rotateDailyLog } from "./logger";
@@ -17,7 +17,7 @@ function tempLogPath() {
 }
 
 describe("daily log rotation", () => {
-  test("keeps the active file during the same UTC day", () => {
+  test("keeps the active file during the same configured day", () => {
     const path = tempLogPath();
     writeFileSync(path, "today\n");
 
@@ -25,7 +25,7 @@ describe("daily log rotation", () => {
     expect(existsSync(path)).toBe(true);
   });
 
-  test("archives the active file on the first write of a new UTC day", () => {
+  test("archives the active file on the first write of a new configured day", () => {
     const path = tempLogPath();
     writeFileSync(path, "yesterday\n");
 
@@ -42,5 +42,16 @@ describe("daily log rotation", () => {
     rotateDailyLog(path, "2026-07-27", "2026-07-26");
 
     expect(existsSync(join(dirname(path), "ytzero-2026-07-26.1.log"))).toBe(true);
+  });
+
+  test("uses the configured timezone when recovering the active day after restart", () => {
+    const path = tempLogPath();
+    writeFileSync(path, "after local midnight\n");
+    const modified = new Date("2026-07-26T22:30:00.000Z"); // July 27 in Warsaw
+    utimesSync(path, modified, modified);
+
+    rotateDailyLog(path, "2026-07-27", null, "Europe/Warsaw");
+
+    expect(existsSync(path)).toBe(true);
   });
 });

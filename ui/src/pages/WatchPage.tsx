@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
+import { formatAppDate } from "../dateTime";
 import { useDocumentTitle } from "../useDocumentTitle";
 import TagChip from "../components/TagChip";
 import LocalPlayer, { type LocalPlayerShortcut } from "../components/LocalPlayer";
@@ -184,7 +185,7 @@ function Linkify({ text, baseUrl, channelHandles = new Map() }: { text: string; 
 }
 
 export default function WatchPage() {
-  const { t, bucketLabel, language, locale } = useI18n();
+  const { t, bucketLabel, language, locale, timeZone } = useI18n();
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -1737,7 +1738,7 @@ export default function WatchPage() {
                 <span className="stat"><Eye /> {formatViewsCount(videoInfo.viewCount, language)}</span>
               )}
               {videoInfo.publishedAt && (
-                <span className="stat"><CalendarDays /> {new Date(videoInfo.publishedAt).toLocaleDateString(locale)}</span>
+                <span className="stat"><CalendarDays /> {formatAppDate(videoInfo.publishedAt, locale, timeZone)}</span>
               )}
             </div>
             {videoInfo.description && (
@@ -2006,7 +2007,7 @@ export default function WatchPage() {
                 <span className="stat"><ThumbsUp /> {compactNumber(video.likes, language)}</span>
               )}
               {video.published_at && (
-                <span className="stat"><CalendarDays /> {new Date(video.published_at).toLocaleDateString(locale)}</span>
+                <span className="stat"><CalendarDays /> {formatAppDate(video.published_at, locale, timeZone)}</span>
               )}
               {!isChildProfile && (
                 <a
