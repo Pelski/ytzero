@@ -395,6 +395,7 @@ interface VideoRow {
   description: string;
   thumbnail: string;
   published_at: string | null;
+  found_at: string;
   published_at_approximate: number;
   members_only: number;
   is_private: number;
@@ -492,7 +493,7 @@ function attachTags(uid: number, videos: VideoRow[]) {
 function videoSelect(uid: number) {
   return `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
-         v.published_at, v.published_at_approximate, v.members_only, v.is_private,
+         v.published_at, v.created_at AS found_at, v.published_at_approximate, v.members_only, v.is_private,
          v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
          v.is_short, v.views, v.likes, uv.liked, uv.watched,
          v.duration, uv.watch_position, uv.watch_duration, v.external,
@@ -643,13 +644,14 @@ api.get("/feed", (c) => {
     }
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const feedSort = c.req.query("sort") === "arrival" ? "arrival" : "published";
   const rows = db
-    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${isMainFeed ? feedSortSql() : "COALESCE(v.published_at, v.created_at)"} DESC LIMIT ? OFFSET ?`)
+    .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${isMainFeed ? feedSortSql(feedSort) : "COALESCE(v.published_at, v.created_at)"} DESC, v.video_id DESC LIMIT ? OFFSET ?`)
     .all(...params, limit, page * limit) as VideoRow[];
   return c.json({ videos: attachTags(uid, rows), page, limit });
 });
 
-// The next/previous video in the main feed, in publish-date order, skipping
+// The next/previous video in the selected main-feed order, skipping
 // anything already watched. Backs the "autoplay my feed" setting — resolved
 // server-side (rather than walking the client's loaded pages) so it always
 // matches the full feed regardless of how many pages the UI has fetched.
@@ -657,16 +659,21 @@ api.get("/feed/adjacent", (c) => {
   const uid = currentUserId(c);
   const videoId = c.req.query("video_id");
   const direction = c.req.query("direction") === "newest" ? "newest" : "oldest";
+  const feedSort = c.req.query("sort") === "arrival" ? "arrival" : "published";
+  const sortColumn = feedSortSql(feedSort);
   if (!videoId) return c.json({ video: null });
-  const anchor = db.prepare("SELECT published_at FROM videos WHERE video_id = ?").get(videoId) as { published_at: string | null } | null;
-  if (!anchor?.published_at) return c.json({ video: null });
+  const anchor = db.prepare("SELECT video_id, published_at, created_at FROM videos WHERE video_id = ?").get(videoId) as { video_id: string; published_at: string | null; created_at: string } | null;
+  const anchorTime = feedSort === "arrival" ? anchor?.created_at : anchor?.published_at;
+  if (!anchor || !anchorTime) return c.json({ video: null });
 
   const { where, params } = feedVisibilityWhere(c.req.query(), uid);
-  where.push(direction === "oldest" ? "v.published_at > ?" : "v.published_at < ?");
-  params.push(anchor.published_at);
+  const comparison = direction === "oldest" ? ">" : "<";
+  where.push(`(${sortColumn} ${comparison} ? OR (${sortColumn} = ? AND v.video_id ${comparison} ?))`);
+  params.push(anchorTime, anchorTime, anchor.video_id);
   where.push("COALESCE(uv.watched, 0) = 0");
   const whereSql = `WHERE ${where.join(" AND ")}`;
-  const order = direction === "oldest" ? "v.published_at ASC" : "v.published_at DESC";
+  const orderDirection = direction === "oldest" ? "ASC" : "DESC";
+  const order = `${sortColumn} ${orderDirection}, v.video_id ${orderDirection}`;
   const row = db.prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${order} LIMIT 1`).get(...params) as VideoRow | undefined;
   return c.json({ video: row ? attachTags(uid, [row])[0] : null });
 });

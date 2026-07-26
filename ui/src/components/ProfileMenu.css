@@ -78,7 +78,30 @@
   transform: scale(1);
 }
 .ui-popover__content.profile-card-size-popover { min-width: min(220px, calc(100vw - 24px)); }
-.profile-card-size-popover .ui-popover__title { font-size: 10px; font-weight: 600; letter-spacing: .02em; }
+.profile-card-size-popover .ui-popover__title,
+.profile-feed-sort-row .ui-control-label {
+  color: var(--text-2);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.profile-feed-sort-row {
+  align-items: stretch;
+  border-top: 0;
+  flex-direction: column;
+  gap: 9px;
+  padding: 4px 0 6px;
+}
+.profile-feed-sort-row .ui-setting-row__copy,
+.profile-feed-sort-row .ui-setting-row__control,
+.profile-feed-sort-control { width: 100%; }
+.profile-feed-sort-control .ui-segmented__option {
+  font-size: 12px;
+  font-weight: 500;
+  min-height: 32px;
+  padding: 6px 10px;
+}
 .cleanup-menu-item-chevron { color: var(--text-3); }
 
 /* grid size toggle */

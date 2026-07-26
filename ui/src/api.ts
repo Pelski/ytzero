@@ -21,6 +21,7 @@ export interface Video {
   description: string;
   thumbnail: string;
   published_at: string | null;
+  found_at: string;
   published_at_approximate: number;
   members_only: number;
   is_private: number;
@@ -785,6 +786,7 @@ export const api = {
     show_all?: boolean;
     processing?: boolean;
     limit?: number;
+    sort?: "published" | "arrival";
   }) => {
     const qs = new URLSearchParams();
     if (p.page) qs.set("page", String(p.page));
@@ -799,12 +801,14 @@ export const api = {
     if (p.show_all) qs.set("show_all", "1");
     if (p.processing) qs.set("processing", "1");
     if (p.limit) qs.set("limit", String(p.limit));
+    if (p.sort === "arrival") qs.set("sort", "arrival");
     return http<{ videos: Video[] }>(`/feed?${qs}`);
   },
-  feedAdjacent: (videoId: string, direction: "oldest" | "newest", opts: { tags?: number[]; showAll?: boolean } = {}) => {
+  feedAdjacent: (videoId: string, direction: "oldest" | "newest", opts: { tags?: number[]; showAll?: boolean; sort?: "published" | "arrival" } = {}) => {
     const qs = new URLSearchParams({ video_id: videoId, direction });
     if (opts.tags?.length) qs.set("tags", opts.tags.join(","));
     if (opts.showAll) qs.set("show_all", "1");
+    if (opts.sort === "arrival") qs.set("sort", "arrival");
     return http<{ video: Video | null }>(`/feed/adjacent?${qs}`);
   },
   cleanupPreview: (filter: CleanupFilter, side: "clean" | "remain", opts: { excludeVideoIds?: string[]; page?: number } = {}) =>

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import "./ProfileMenu.css";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, ChevronRight, Eraser, Lock, LogOut, Puzzle, Settings, SlidersHorizontal, X } from "lucide-react";
 import { api, type AppSettings, type AuthStatus, type Profile } from "../api";
 import { emit, subscribe } from "../events";
 import { useI18n } from "../i18n";
 import { parseVideoCardSize, persistVideoCardSize } from "../videoCardSize";
-import { Button, IconButton, Menu, MenuItem, MenuSeparator, Popover, ScrollArea, SettingRow, SteppedSlider, Switch } from "./ui";
+import { Button, IconButton, Menu, MenuItem, MenuSeparator, Popover, ScrollArea, SegmentedControl, SettingRow, SteppedSlider, Switch } from "./ui";
 import NotificationCenter from "./NotificationCenter";
 import Tooltip from "./Tooltip";
 import { ENHANCE_EXTENSION_STATUS } from "../enhanceBridge";
@@ -28,6 +28,9 @@ export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "
 export default function ProfileMenu() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const feedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [open, setOpen] = useState(false);
   const [cardSizeOpen, setCardSizeOpen] = useState(false);
@@ -123,6 +126,13 @@ export default function ProfileMenu() {
     }
   };
 
+  const changeFeedSort = (next: "published" | "arrival") => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "arrival") params.set("sort", "arrival");
+    else params.delete("sort");
+    setSearchParams(params, { replace: true });
+  };
+
   if (!active) return null;
 
   return (
@@ -216,6 +226,23 @@ export default function ProfileMenu() {
           trigger={<IconButton variant="ghost" size="sm" className="profile-card-size-trigger" label={t("videoCardSize")} icon={<SlidersHorizontal />} />}
         >
           <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => { setCardSize(next); persistVideoCardSize(next).then(() => emit("video-card-size-changed")).catch(() => {}); }} />
+          {location.pathname === "/" && (
+            <>
+              <MenuSeparator />
+              <SettingRow label={t("feedSortLabel")} className="profile-feed-sort-row">
+                <SegmentedControl
+                  className="profile-feed-sort-control"
+                  value={feedSort}
+                  onChange={changeFeedSort}
+                  label={t("feedSortLabel")}
+                  options={[
+                    { value: "published", label: t("feedSortUploaded") },
+                    { value: "arrival", label: t("feedSortFound") },
+                  ]}
+                />
+              </SettingRow>
+            </>
+          )}
           <MenuSeparator />
           <Menu>
             <MenuItem icon={<Eraser size={16} />} suffix={<ChevronRight size={15} className="cleanup-menu-item-chevron" />} onClick={() => { setCardSizeOpen(false); navigate("/cleanup"); }}>{t("cleanupFeed")}</MenuItem>

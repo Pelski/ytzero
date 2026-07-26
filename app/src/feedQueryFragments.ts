@@ -69,9 +69,12 @@ export function followedPlaylistExists(uid: number) {
   )`;
 }
 
-export function feedSortSql() {
+export type FeedSort = "published" | "arrival";
+
+export function feedSortSql(sort: FeedSort = "published") {
   // Playlist membership must not make old videos look newly published. The
   // feed already excludes incomplete rows, so the real publication date is
-  // always available here.
-  return "v.published_at";
+  // always available in the default view. created_at is when YT Zero first
+  // inserted the video, which powers the explicit arrival-order view.
+  return sort === "arrival" ? "v.created_at" : "v.published_at";
 }

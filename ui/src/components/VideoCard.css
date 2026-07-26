@@ -67,3 +67,7 @@
     animation: none;
   }
 }
+
+.video-card .v-time--arrival {
+  white-space: normal;
+}

@@ -107,6 +107,7 @@ function VideoCard({
   onSelectToggle,
   readOnly = false,
   entering = false,
+  showFoundTime = false,
 }: {
   video: Video;
   onPlay: (v: Video) => void;
@@ -126,6 +127,8 @@ function VideoCard({
   readOnly?: boolean;
   /** Briefly animate a card that has just moved into this grid. */
   entering?: boolean;
+  /** Main-feed arrival view: show both YouTube publication and first-seen times. */
+  showFoundTime?: boolean;
 }) {
   const { t, language, locale } = useI18n();
   const navigate = useNavigate();
@@ -141,6 +144,7 @@ function VideoCard({
   const [committedFeedback, setCommittedFeedback] = useState<CardFeedback | null>(null);
   const canDownloadLocally = video.live_status !== "live" && video.live_status !== "upcoming";
   const publishedTime = formatTimeAgo(video.published_at, language);
+  const foundTime = formatTimeAgo(video.found_at ? `${video.found_at.replace(" ", "T")}Z` : null, language);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
   const blockNextThumbClickRef = useRef(false);
@@ -614,7 +618,12 @@ function VideoCard({
                 <Link to={`/channel/${video.channel_id}`} className={`v-channel${publishedTime ? "" : " no-date"}`}>
                   {video.channel_title}
                 </Link>
-                {publishedTime && <span className="v-time">{publishedTime}</span>}
+                {publishedTime && !showFoundTime && <span className="v-time">{publishedTime}</span>}
+                {showFoundTime && foundTime && (
+                  <span className="v-time v-time--arrival">
+                    {t("uploadedTime", { time: publishedTime })} · {t("foundTime", { time: foundTime })}
+                  </span>
+                )}
               </div>
               {video.source_playlist_id && video.source_playlist_title && (
                 <Link className="v-source-playlist" to={`/playlist/${video.source_playlist_id}`}>{video.source_playlist_title}</Link>

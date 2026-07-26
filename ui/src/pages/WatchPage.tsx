@@ -192,6 +192,7 @@ export default function WatchPage() {
   const feedContext = searchParams.get("feedContext") === "1";
   const feedTags = searchParams.get("tags") ?? "";
   const feedShowAll = searchParams.get("show_all") === "1";
+  const feedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
   const [video, setVideo] = useState<Video | null>(null);
   const [videoMissing, setVideoMissing] = useState(false);
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
@@ -629,11 +630,11 @@ export default function WatchPage() {
     let cancelled = false;
     const direction = settings?.feed_autoplay_direction === "newest" ? "newest" : "oldest";
     const tagIds = feedTags ? feedTags.split(",").map(Number).filter(Boolean) : [];
-    api.feedAdjacent(id, direction, { tags: tagIds, showAll: feedShowAll })
+    api.feedAdjacent(id, direction, { tags: tagIds, showAll: feedShowAll, sort: feedSort })
       .then((r) => { if (!cancelled) nextInFeedRef.current = r.video; })
       .catch(() => { if (!cancelled) nextInFeedRef.current = null; });
     return () => { cancelled = true; };
-  }, [id, feedContext, feedTags, feedShowAll, settings?.feed_autoplay_direction]);
+  }, [id, feedContext, feedTags, feedShowAll, feedSort, settings?.feed_autoplay_direction]);
 
   useEffect(() => {
     if (!video || settings?.sponsorblock_enabled !== "1") {
@@ -719,8 +720,9 @@ export default function WatchPage() {
     const params = new URLSearchParams({ feedContext: "1" });
     if (feedTags) params.set("tags", feedTags);
     if (feedShowAll) params.set("show_all", "1");
+    if (feedSort === "arrival") params.set("sort", "arrival");
     navigate(`/watch/${upNextVideo.video_id}?${params.toString()}`);
-  }, [upNextVideo, feedTags, feedShowAll, navigate]);
+  }, [upNextVideo, feedTags, feedShowAll, feedSort, navigate]);
 
   const toggleFeedAutoplay = useCallback((next: boolean) => {
     setSettings((s) => s ? { ...s, feed_autoplay_enabled: next ? "1" : "0" } : s);

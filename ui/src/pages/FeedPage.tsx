@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./FeedPage.css";
 import { subscribe } from "../events";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload, Users } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -16,6 +16,7 @@ import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gri
 import { Button, ButtonLink, Divider, EmptyState, IconButton } from "../components/ui";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
+type FeedSort = "published" | "arrival";
 
 function FeedOnboarding() {
   const { t } = useI18n();
@@ -121,6 +122,8 @@ export default function FeedPage({
   const { t } = useI18n();
   useDocumentTitle();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const feedSort: FeedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
   const [videos, setVideos] = useState<Video[]>([]);
   const [queued, setQueued] = useState<Video[]>([]);
   const [inProgress, setInProgress] = useState<Video[]>([]);
@@ -157,8 +160,9 @@ export default function FeedPage({
     const params = new URLSearchParams({ feedContext: "1" });
     if (selectedTags.length) params.set("tags", selectedTags.join(","));
     if (showAll) params.set("show_all", "1");
+    if (feedSort === "arrival") params.set("sort", "arrival");
     navigate(`/watch/${v.video_id}?${params.toString()}`);
-  }, [navigate, selectedTags, showAll]);
+  }, [navigate, selectedTags, showAll, feedSort]);
   const hScrollWrapRef = useRef<HTMLDivElement>(null);
   const [hCardWidth, setHCardWidth] = useState(220);
   const [hCardMin, setHCardMin] = useState(248);
@@ -197,14 +201,14 @@ export default function FeedPage({
     if (requestedPage === 0) setLoading(true);
     else setLoadingMore(true);
     try {
-      const feed = await api.feed({ tags: selectedTags, page: requestedPage, show_all: showAll });
+      const feed = await api.feed({ tags: selectedTags, page: requestedPage, show_all: showAll, sort: feedSort });
       setVideos((prev) => (requestedPage === 0 ? feed.videos : [...prev, ...feed.videos]));
       setHasMore(feed.videos.length === 40);
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [selectedTags, page, showAll]);
+  }, [selectedTags, page, showAll, feedSort]);
 
   useEffect(() => {
     load().catch(console.error);
@@ -500,6 +504,7 @@ export default function FeedPage({
                 onPlay={handleFeedPlay}
                 onChanged={removeFromFeed}
                 entering={v.video_id === enteringFeedVideoId}
+                showFoundTime={feedSort === "arrival"}
               />
             ))}
           </div>
