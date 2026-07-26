@@ -10,7 +10,7 @@ YT Zero is configured through environment variables. All of them are optional an
 | `IMG_CACHE_DIR` | `./data/imgcache` | Thumbnail and image cache directory. |
 | `IMG_CACHE_TTL_DAYS` | `5` | How long a cached image is fresh before a refetch is attempted. |
 | `AVATAR_DIR` | `./data/avatars` | Uploaded profile avatars. |
-| `LOG_PATH` | `./data/logs/ytzero.log` | Log file. Logs always also go to stdout; this file is what the in-app log viewer reads. |
+| `LOG_PATH` | `./data/logs/ytzero.log` | Active log file. Logs also go to stdout and rotate daily (UTC) to dated files such as `ytzero-2026-07-26.log`; archives are retained. The in-app viewer reads the active file. |
 | `REFRESH_INTERVAL_MINUTES` | `5` | Followed-channel RSS refresh interval. |
 | `ADAPTIVE_REFRESH_MIN_MINUTES` | `10` | Minimum automatic interval for one channel feed. This is the hard cooldown that prevents frequent uploaders from being polled continuously. |
 | `ADAPTIVE_REFRESH_MAX_MINUTES` | `720` | Maximum automatic interval for one channel feed. This guarantees that infrequent channels remain in the refresh rotation. |
