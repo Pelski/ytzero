@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./ProfileMenu.css";
 import { createPortal } from "react-dom";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Check, ChevronRight, Eraser, Lock, LogOut, Puzzle, Settings, SlidersHorizontal, X } from "lucide-react";
 import { api, type AppSettings, type AuthStatus, type Profile, type ProfilePermissions } from "../api";
 import { emit, subscribe } from "../events";
@@ -25,12 +25,15 @@ export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "
   );
 }
 
-export default function ProfileMenu({ isAdmin, profilePermissions }: { isAdmin: boolean; profilePermissions: ProfilePermissions }) {
+export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onFeedSortChange }: {
+  isAdmin: boolean;
+  profilePermissions: ProfilePermissions;
+  feedSort: "published" | "arrival";
+  onFeedSortChange: (next: "published" | "arrival") => void;
+}) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const location = useLocation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const feedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [open, setOpen] = useState(false);
   const [cardSizeOpen, setCardSizeOpen] = useState(false);
@@ -125,13 +128,6 @@ export default function ProfileMenu({ isAdmin, profilePermissions }: { isAdmin: 
     } catch {
       load();
     }
-  };
-
-  const changeFeedSort = (next: "published" | "arrival") => {
-    const params = new URLSearchParams(searchParams);
-    if (next === "arrival") params.set("sort", "arrival");
-    else params.delete("sort");
-    setSearchParams(params, { replace: true });
   };
 
   if (!active) return null;
@@ -234,7 +230,7 @@ export default function ProfileMenu({ isAdmin, profilePermissions }: { isAdmin: 
                 <SegmentedControl
                   className="profile-feed-sort-control"
                   value={feedSort}
-                  onChange={changeFeedSort}
+                  onChange={onFeedSortChange}
                   label={t("feedSortLabel")}
                   options={[
                     { value: "published", label: t("feedSortUploaded") },

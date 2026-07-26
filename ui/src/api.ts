@@ -236,6 +236,7 @@ export interface AppSettings {
   update_check_interval: string;
   feed_autoplay_enabled: string;
   feed_autoplay_direction: string;
+  feed_sort: string;
 }
 
 export interface AppNotification {

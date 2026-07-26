@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./FeedPage.css";
 import { subscribe } from "../events";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -115,15 +115,15 @@ function useHScroll() {
 export default function FeedPage({
   onPlay,
   showToast,
+  feedSort,
 }: {
   onPlay: (v: Video) => void;
   showToast: (m: string) => void;
+  feedSort: FeedSort;
 }) {
   const { t } = useI18n();
   useDocumentTitle();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const feedSort: FeedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
   const [videos, setVideos] = useState<Video[]>([]);
   const [queued, setQueued] = useState<Video[]>([]);
   const [inProgress, setInProgress] = useState<Video[]>([]);

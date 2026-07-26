@@ -652,6 +652,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // "Autoplay my feed" (#55): auto-advance through the main feed on video end.
   feed_autoplay_enabled: "0",
   feed_autoplay_direction: "oldest", // oldest | newest
+  // Main-feed chronology is a portable per-profile viewing preference.
+  feed_sort: "published", // published | arrival
   // ---------- authentication (all app-wide, owned by the primary profile) ----------
   // none | shared | per_profile | oidc | proxy_header
   auth_method: "none",

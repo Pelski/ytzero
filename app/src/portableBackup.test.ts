@@ -76,6 +76,7 @@ describe("portable backup classification and restore", () => {
     db.prepare("UPDATE channels SET manual_status='banned' WHERE channel_id='UCportable'").run();
     setUserSetting(1, "player_screenshot_filename", "{title}_{timestamp_ms}");
     setUserSetting(1, "enhance_frame_fps", "60");
+    setUserSetting(1, "feed_sort", "arrival");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
@@ -84,6 +85,7 @@ describe("portable backup classification and restore", () => {
     db.prepare("DELETE FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").run();
     setUserSetting(1, "player_screenshot_filename", "changed");
     setUserSetting(1, "enhance_frame_fps", "24");
+    setUserSetting(1, "feed_sort", "published");
     setSetting("profile_admin_only_areas", "[]");
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
@@ -98,6 +100,7 @@ describe("portable backup classification and restore", () => {
     expect((db.prepare("SELECT manual_status FROM channels WHERE channel_id='UCportable'").get() as { manual_status: string }).manual_status).toBe("banned");
     expect(getUserSetting(1, "player_screenshot_filename")).toBe("{title}_{timestamp_ms}");
     expect(getUserSetting(1, "enhance_frame_fps")).toBe("60");
+    expect(getUserSetting(1, "feed_sort")).toBe("arrival");
     expect((db.prepare("SELECT value FROM settings WHERE key='profile_admin_only_areas'").get() as { value: string }).value)
       .toBe(permissions.serializeAdminOnlyAreas(["channels", "followed_playlists", "imports", "plugins"]));
   });

@@ -50,6 +50,7 @@ describe("profile administrator permissions", () => {
     expect(permissionAreasForSettings({ show_shorts: "1", sidebar_nav: "[]" })).toEqual(["navigation"]);
     expect(permissionAreasForSettings({ player_speed: "1.5", sponsorblock_enabled: "1" })).toEqual(["playback"]);
     expect(permissionAreasForSettings({ language: "pl", player_speed: "1.5" })).toEqual(["appearance", "playback"]);
+    expect(permissionAreasForSettings({ feed_sort: "arrival" })).toEqual([]);
   });
 
   test("keeps advanced and authentication settings administrator-only", () => {

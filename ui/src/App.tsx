@@ -198,7 +198,14 @@ function SidebarPlaylists() {
   );
 }
 
-function TopBar({ appName, appIconColor, isAdmin, profilePermissions }: { appName: string; appIconColor: string; isAdmin: boolean; profilePermissions: ProfilePermissions }) {
+function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, onFeedSortChange }: {
+  appName: string;
+  appIconColor: string;
+  isAdmin: boolean;
+  profilePermissions: ProfilePermissions;
+  feedSort: "published" | "arrival";
+  onFeedSortChange: (next: "published" | "arrival") => void;
+}) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -248,7 +255,12 @@ function TopBar({ appName, appIconColor, isAdmin, profilePermissions }: { appNam
           <Search />
         </button>
       </form>
-      <ProfileMenu isAdmin={isAdmin} profilePermissions={profilePermissions} />
+      <ProfileMenu
+        isAdmin={isAdmin}
+        profilePermissions={profilePermissions}
+        feedSort={feedSort}
+        onFeedSortChange={onFeedSortChange}
+      />
     </div>
   );
 }
@@ -334,6 +346,26 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
       setNavConfig(navCfg);
     }).catch(() => {});
   }, []);
+
+  const feedSort = appSettings?.feed_sort === "arrival" ? "arrival" : "published";
+  const changeFeedSort = useCallback((next: "published" | "arrival") => {
+    setAppSettings((current) => current ? { ...current, feed_sort: next } : current);
+    api.updateSettings({ feed_sort: next }).catch(loadSettings);
+    if (location.pathname === "/" && new URLSearchParams(location.search).has("sort")) {
+      const params = new URLSearchParams(location.search);
+      params.delete("sort");
+      navigate({ pathname: "/", search: params.toString() }, { replace: true });
+    }
+  }, [loadSettings, location.pathname, location.search, navigate]);
+
+  // Preserve links created by the earlier URL-only implementation and migrate
+  // their explicit arrival order into the profile preference.
+  useEffect(() => {
+    if (location.pathname !== "/" || !appSettings) return;
+    if (new URLSearchParams(location.search).get("sort") === "arrival" && feedSort !== "arrival") {
+      changeFeedSort("arrival");
+    }
+  }, [location.pathname, location.search, appSettings, feedSort, changeFeedSort]);
 
   useEffect(loadSettings, [loadSettings]);
   useEffect(() => {
@@ -468,7 +500,14 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
       </script>
     )}
     <div className="layout">
-      <TopBar appName={appName} appIconColor={appIconColor} isAdmin={isAdmin} profilePermissions={profilePermissions} />
+      <TopBar
+        appName={appName}
+        appIconColor={appIconColor}
+        isAdmin={isAdmin}
+        profilePermissions={profilePermissions}
+        feedSort={feedSort}
+        onFeedSortChange={changeFeedSort}
+      />
       <div className="layout-body">
         <aside className="sidebar">
           {navItems.map(renderNavLink)}
@@ -497,7 +536,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
         <main className="main">
           <div className="content">
             <Routes>
-              <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} />} />
+              <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} feedSort={feedSort} />} />
               <Route path="/search" element={<SearchPage onPlay={play} hideExternalSearch={childStatus?.local_only ?? false} />} />
               <Route path="/discovery" element={<DiscoveryPage onPlay={play} />} />
               <Route path="/shorts" element={<ShortsPage />} />

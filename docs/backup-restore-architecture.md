@@ -166,6 +166,7 @@ below.
   The administrator-only profile permission areas are portable configuration.
   Enabling Child Lock and its PIN remain local and are never exported.
 - `user_settings`: registered settings for selected profiles.
+  This includes `feed_sort`, the portable per-profile choice between publication and first-seen chronology.
 - `profile_admin_only_areas` is portable instance configuration. Its versioned document uses schema v3; restore normalizes legacy `settings` access into separate appearance, feed, navigation, and playback permissions.
   This includes the player screenshot format, quality, and filename template;
   they are portable presentation preferences and contain no captured image data.
