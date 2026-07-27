@@ -32,6 +32,8 @@ COPY --from=ui-build /ui/dist ./public
 ARG YTZERO_VERSION
 ARG YTZERO_COMMIT
 ENV PORT=3001 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
     IDLE_TIMEOUT_SECONDS=120 \
     DB_PATH=/data/db/ytzero.db \
     IMG_CACHE_DIR=/data/imgcache \

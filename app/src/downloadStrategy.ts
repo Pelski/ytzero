@@ -23,14 +23,17 @@ export function downloadCookieAttempts(cookiesConfigured: boolean): boolean[] {
 
 function sanitizePathComponent(segment: string): string {
   return segment
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
+    .normalize("NFC")
+    .replace(/[\u0000-\u001f]/g, "")
+    .replace(/[\\/:|]+/g, " - ")
+    .replace(/[*?"<>]+/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\.+$/, "");
 }
 
 export function renderDownloadOutputTemplate(template: string, values: Record<string, string>, videoId: string): string {
-  const rendered = (template.trim() || "{id}").replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? "");
+  const rendered = (template.trim() || "{id}").replace(/\{(\w+)\}/g, (_, key: string) => sanitizePathComponent(values[key] ?? ""));
   const segments = rendered.split("/").map(sanitizePathComponent).filter(Boolean);
   let base = segments.join("/") || videoId;
   if (!base.includes(videoId)) base += ` [${videoId}]`;

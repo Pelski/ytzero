@@ -23,4 +23,12 @@ describe("download strategy", () => {
     expect(renderDownloadOutputTemplate(template, base, "abc123")).toBe("Season 1/2026-07-27 - Episode [abc123]");
     expect(renderDownloadOutputTemplate(template, { ...base, playlist: "" }, "abc123")).toBe("2026-07-27 - Episode [abc123]");
   });
+
+  test("keeps Unicode filenames readable and replaces unsafe punctuation cleanly", () => {
+    expect(renderDownloadOutputTemplate(
+      "{title}-{id}",
+      { title: "Radny | Świat według Kiepskich: AC/DC?", id: "kDELi-mhCSc" },
+      "kDELi-mhCSc",
+    )).toBe("Radny - Świat według Kiepskich - AC - DC-kDELi-mhCSc");
+  });
 });

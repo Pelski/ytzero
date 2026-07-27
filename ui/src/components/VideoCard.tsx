@@ -92,6 +92,20 @@ function formatDurationSeconds(totalSeconds: number): string {
     : `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function thumbnailColorStyle(videoId: string): CSSProperties {
+  let hash = 2166136261;
+  for (let index = 0; index < videoId.length; index++) {
+    hash ^= videoId.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const firstHue = 194 + (Math.abs(hash) % 35);
+  const secondHue = 218 + (Math.abs(hash >>> 8) % 34);
+  return {
+    "--thumbnail-color-a": `hsl(${firstHue} 68% 38%)`,
+    "--thumbnail-color-b": `hsl(${secondHue} 66% 30%)`,
+  } as CSSProperties;
+}
+
 function VideoCard({
   video,
   onPlay,
@@ -146,6 +160,7 @@ function VideoCard({
   const [swiping, setSwiping] = useState(false);
   const [committedDir, setCommittedDir] = useState<"left" | "right" | null>(null);
   const [committedFeedback, setCommittedFeedback] = useState<CardFeedback | null>(null);
+  const [loadedThumbnailSrc, setLoadedThumbnailSrc] = useState<string | null>(null);
   const canDownloadLocally = video.live_status !== "live" && video.live_status !== "upcoming";
   const publishedTime = formatTimeAgo(video.published_at, language);
   const foundTime = formatTimeAgo(video.found_at ? `${video.found_at.replace(" ", "T")}Z` : null, language);
@@ -450,16 +465,24 @@ function VideoCard({
               onDragStart={(e) => e.preventDefault()}
               aria-label={video.title}
             >
-              <VideoThumbnail
-                src={img(video.thumbnail)}
-                watched={watched}
-                progress={video.status !== "archived" || showWatchProgress
-                  ? watchProgress(video.watch_position, video.watch_duration)
-                  : null}
-                variant="card"
-                loading="lazy"
-                draggable={false}
-              />
+              <span
+                className={`video-card-thumbnail-color${loadedThumbnailSrc === video.thumbnail ? " video-card-thumbnail-color--loaded" : ""}`}
+                style={thumbnailColorStyle(video.video_id)}
+                onLoadCapture={(event) => {
+                  if ((event.target as HTMLElement).classList.contains("video-thumbnail-image")) setLoadedThumbnailSrc(video.thumbnail);
+                }}
+              >
+                <VideoThumbnail
+                  src={img(video.thumbnail)}
+                  watched={watched}
+                  progress={video.status !== "archived" || showWatchProgress
+                    ? watchProgress(video.watch_position, video.watch_duration)
+                    : null}
+                  variant="card"
+                  loading="lazy"
+                  draggable={false}
+                />
+              </span>
             </Link>
           </Tooltip>
           {processing && <span className="video-card-processing" role="status" aria-label={t("processing")}><span className="video-card-processing__spinner" /></span>}
