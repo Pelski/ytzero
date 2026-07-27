@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import confetti from "canvas-confetti";
 import "./WatchPage.css";
 import { emit, emitToast } from "../events";
+import { scheduleSettingWrite } from "../settingsWriteQueue";
+import { queueProgressWrite } from "../progressWriteQueue";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Archive,
@@ -482,9 +484,10 @@ export default function WatchPage() {
   const changeSubtitleSize = useCallback((size: number) => {
     const value = String(size);
     setSettings((current) => current ? { ...current, player_sub_size: value } : current);
-    api.updateSettings({ player_sub_size: value })
-      .then(() => emit("player-settings-changed"))
-      .catch(console.error);
+    scheduleSettingWrite("player_sub_size", { player_sub_size: value }, {
+      onSaved: () => emit("player-settings-changed"),
+      onError: console.error,
+    });
   }, []);
 
   const requestYouTubePlayback = useCallback(() => {
@@ -825,10 +828,10 @@ export default function WatchPage() {
         const isPlaying = enhancedState ? !enhancedState.paused && !enhancedState.ended : p.getPlayerState?.() === 1;
         if (!isPlaying) return;
         if (!isStream) {
-          api.saveProgress(id, position, playerDuration).catch(() => {});
+          queueProgressWrite(id, position, playerDuration);
           if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
-            api.saveProgress(id, playerDuration, playerDuration).catch(() => {});
+            queueProgressWrite(id, playerDuration, playerDuration);
             api.complete(id).catch(() => {});
             api.archiveVideo(id).catch(() => {});
           }
@@ -857,7 +860,7 @@ export default function WatchPage() {
     const saveOnExit = () => {
       if (progressRef.current && !archivedRef.current) {
         const { position, duration } = progressRef.current;
-        api.saveProgress(id, position, duration).catch(() => {});
+        queueProgressWrite(id, position, duration);
         progressRef.current = null;
       }
     };

@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { scheduleSettingWrite } from "./settingsWriteQueue";
 
 export const VIDEO_CARD_SIZE_MIN = 180;
 export const VIDEO_CARD_SIZE_MAX = 480;
@@ -16,5 +16,5 @@ export function applyVideoCardSize(value: string | number | null | undefined) {
 export function persistVideoCardSize(size: number) {
   const value = String(parseVideoCardSize(String(size)));
   applyVideoCardSize(value);
-  return api.updateSettings({ grid_size: value });
+  scheduleSettingWrite("grid_size", { grid_size: value });
 }

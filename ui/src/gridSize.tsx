@@ -1,5 +1,5 @@
 import { Grid2X2, Grid3X3, Square } from "lucide-react";
-import { api } from "./api";
+import { scheduleSettingWrite } from "./settingsWriteQueue";
 
 export type GridSize = "sm" | "md" | "lg";
 
@@ -18,5 +18,5 @@ export function readGridSize(): GridSize {
 
 export function persistGridSize(size: GridSize) {
   localStorage.setItem(GRID_SIZE_STORAGE_KEY, size);
-  api.updateSettings({ grid_size: size }).catch(() => {});
+  scheduleSettingWrite("grid_size", { grid_size: size });
 }

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { database } from "./database";
 
 interface FilterRule {
   id: number;
@@ -27,7 +27,7 @@ function matches(rule: FilterRule, title: string, description: string): boolean 
 }
 
 // Archive for one profile, but only if the video is still in their inbox.
-const archiveForUser = db.prepare(
+const archiveForUser = database.prepare(
   `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'archived')
    ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'archived' WHERE user_videos.status = 'inbox'`
 );
@@ -38,8 +38,8 @@ const archiveForUser = db.prepare(
  * the video is archived for that profile on the first reject hit (or the first
  * whitelist miss), exactly as in the single-user version — just per user.
  */
-export function applyFilterRules(videoId: string, channelId: string, title: string, description: string) {
-  const rules = db
+export async function applyFilterRules(videoId: string, channelId: string, title: string, description: string) {
+  const rules = await database
     .prepare("SELECT * FROM filter_rules WHERE channel_id IS NULL OR channel_id = ?")
     .all(channelId) as FilterRule[];
   const byUser = new Map<number, FilterRule[]>();
@@ -53,7 +53,7 @@ export function applyFilterRules(videoId: string, channelId: string, title: stri
     for (const rule of userRules) {
       const hit = matches(rule, title, description);
       if ((rule.action === "reject" && hit) || (rule.action === "whitelist" && !hit)) {
-        archiveForUser.run(userId, videoId);
+        await archiveForUser.run(userId, videoId);
         break;
       }
     }
@@ -61,15 +61,15 @@ export function applyFilterRules(videoId: string, channelId: string, title: stri
 }
 
 /** Apply a single rule to all of its owner's inbox videos. Returns count archived. */
-export function applyFilterRuleToAll(ruleId: number): number {
-  const rule = db.prepare("SELECT * FROM filter_rules WHERE id = ?").get(ruleId) as FilterRule | null;
+export async function applyFilterRuleToAll(ruleId: number): Promise<number> {
+  const rule = await database.prepare("SELECT * FROM filter_rules WHERE id = ?").get(ruleId) as FilterRule | null;
   if (!rule || rule.user_id == null) return 0;
 
   const where = rule.channel_id
     ? "COALESCE(uv.status, 'inbox') = 'inbox' AND v.channel_id = ?"
     : "COALESCE(uv.status, 'inbox') = 'inbox'";
   const args = rule.channel_id ? [rule.user_id, rule.channel_id] : [rule.user_id];
-  const videos = db.prepare(
+  const videos = await database.prepare(
     `SELECT v.video_id, v.channel_id, v.title, v.description
      FROM videos v
      LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
@@ -81,7 +81,7 @@ export function applyFilterRuleToAll(ruleId: number): number {
     const hit = matches(rule, v.title, v.description);
     const shouldArchive = rule.action === "reject" ? hit : !hit;
     if (shouldArchive) {
-      archiveForUser.run(rule.user_id, v.video_id);
+      await archiveForUser.run(rule.user_id, v.video_id);
       count++;
     }
   }

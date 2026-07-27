@@ -1,0 +1,53 @@
+.database-settings.ui-setting-row {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.database-settings > .ui-setting-row__control {
+  width: 100%;
+}
+
+.database-settings__content,
+.database-settings__migration,
+.database-settings__warning-content {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.database-settings__warning-content {
+  gap: 8px;
+}
+
+.database-settings__status,
+.database-settings__connection {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.database-settings__status .ui-text {
+  overflow-wrap: anywhere;
+}
+
+.database-settings__connection > .ui-input {
+  flex: 1 1 360px;
+  min-width: 0;
+}
+
+@container settings-section (max-width: 520px) {
+  .database-settings__connection {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .database-settings__connection > .ui-input,
+  .database-settings__connection > .ui-button {
+    flex-basis: auto;
+    width: 100%;
+  }
+}

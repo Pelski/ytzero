@@ -696,6 +696,7 @@ export const pl: Locale = {
     // ---------- logowanie ----------
     authTab: "Logowanie",
     advanced: "Zaawansowane",
+    dangerous: "Niebezpieczne",
     authMethod: "Metoda logowania",
     authMethodNone: "Brak (sieć lokalna)",
     authMethodShared: "Wspólny login + profile",

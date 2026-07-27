@@ -40,9 +40,9 @@ describe("portable backup ZIP security", () => {
 });
 
 describe("portable backup classification and restore", () => {
-  test("registry contains no secret section", () => {
+  test("registry contains no secret section", async () => {
     expect(backup.BACKUP_SECTIONS.some((section) => section.sensitivity === "secret")).toBe(false);
-    expect(backup.backupOptions().exclusions.join(" ")).toContain("passkeys");
+    expect((await backup.backupOptions()).exclusions.join(" ")).toContain("passkeys");
   });
 
   test("configuration export excludes authentication values and runtime tables", async () => {
@@ -54,7 +54,7 @@ describe("portable backup classification and restore", () => {
     db.prepare("UPDATE users SET oidc_subject = ? WHERE id = 1").run("profile-identity-do-not-export@example.com");
     db.prepare("UPDATE channels SET feed_refresh_attempted_at = ?, feed_refresh_failures = ? WHERE channel_id = 'UCportable'")
       .run("2099-12-31 23:59:58", 987654321);
-    const options = backup.backupOptions();
+    const options = await backup.backupOptions();
     const zip = await backup.createPortableBackup({ preset: "configuration", profiles: options.profiles.map((profile) => profile.id) });
     const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
     expect(serialized).not.toContain("DO-NOT-EXPORT-THIS");
@@ -71,7 +71,7 @@ describe("portable backup classification and restore", () => {
   });
 
   test("analyze is read-only and repeated merge restore is idempotent", async () => {
-    const options = backup.backupOptions();
+    const options = await backup.backupOptions();
     const profile = options.profiles[0];
     db.prepare("UPDATE channels SET manual_status='banned' WHERE channel_id='UCportable'").run();
     db.prepare(`UPDATE channels SET refresh_schedule_days='[1,3]', refresh_schedule_time='["08:02","18:02"]' WHERE channel_id='UCportable'`).run();
@@ -94,10 +94,10 @@ describe("portable backup classification and restore", () => {
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
-    const plan = backup.planPortableRestore(1, analyzed.sessionId, { mappings, sections: analyzed.manifest.sections.map((section) => section.id), strategy: "merge" });
+    const plan = await backup.planPortableRestore(1, analyzed.sessionId, { mappings, sections: analyzed.manifest.sections.map((section) => section.id), strategy: "merge" });
     await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
     const again = await backup.analyzePortableBackup(1, zip);
-    const planAgain = backup.planPortableRestore(1, again.sessionId, { mappings, sections: again.manifest.sections.map((section) => section.id), strategy: "merge" });
+    const planAgain = await backup.planPortableRestore(1, again.sessionId, { mappings, sections: again.manifest.sections.map((section) => section.id), strategy: "merge" });
     await backup.commitPortableRestore(1, again.sessionId, planAgain.planRevision);
     expect((db.prepare("SELECT count(*) n FROM history WHERE user_id=1 AND video_id='portable001' AND watched_at='2026-07-25 10:00:00'").get() as { n: number }).n).toBe(1);
     expect(db.prepare("SELECT uc.followed, c.external FROM user_channels uc JOIN channels c USING(channel_id) WHERE uc.user_id=1 AND uc.channel_id='UCportable'").get()).toEqual({ followed: 1, external: 0 });

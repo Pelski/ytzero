@@ -17,6 +17,7 @@
     "openid-client": "^6.8.4"
   },
   "devDependencies": {
-    "@types/bun": "^1.1.10"
+    "@types/bun": "^1.1.10",
+    "typescript": "5.9.3"
   }
 }

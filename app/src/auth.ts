@@ -21,7 +21,8 @@ import type {
   RegistrationResponseJSON,
 } from "@simplewebauthn/server";
 import * as oidc from "openid-client";
-import { db, getSetting } from "./db";
+import { getSetting } from "./db";
+import { database } from "./database";
 
 export type AuthMethod = "none" | "shared" | "per_profile" | "oidc" | "proxy_header";
 
@@ -73,37 +74,37 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 export type SessionScope = "account" | "profile";
 
-export function createSession(userId: number | null, scope: SessionScope, isAdmin = false): string {
+export async function createSession(userId: number | null, scope: SessionScope, isAdmin = false): Promise<string> {
   const token = crypto.randomUUID();
   const expires = new Date(Date.now() + SESSION_TTL_MS).toISOString();
-  db.prepare(
+  await database.prepare(
     "INSERT INTO auth_sessions (token, user_id, scope, is_admin, expires_at, last_seen) VALUES (?, ?, ?, ?, ?, datetime('now'))"
   ).run(token, userId, scope, isAdmin ? 1 : 0, expires);
   return token;
 }
 
-export function validateSession(
+export async function validateSession(
   token: string | undefined
-): { user_id: number | null; scope: SessionScope; is_admin: boolean } | null {
+): Promise<{ user_id: number | null; scope: SessionScope; is_admin: boolean } | null> {
   if (!token) return null;
-  const row = db
+  const row = await database
     .prepare("SELECT user_id, scope, is_admin, expires_at FROM auth_sessions WHERE token = ?")
-    .get(token) as { user_id: number | null; scope: SessionScope; is_admin: number; expires_at: string } | null;
+    .get<{ user_id: number | null; scope: SessionScope; is_admin: number; expires_at: string }>(token);
   if (!row) return null;
   if (new Date(row.expires_at).getTime() <= Date.now()) {
-    db.prepare("DELETE FROM auth_sessions WHERE token = ?").run(token);
+    await database.prepare("DELETE FROM auth_sessions WHERE token = ?").run(token);
     return null;
   }
-  db.prepare("UPDATE auth_sessions SET last_seen = datetime('now') WHERE token = ?").run(token);
+  await database.prepare("UPDATE auth_sessions SET last_seen = datetime('now') WHERE token = ?").run(token);
   return { user_id: row.user_id, scope: row.scope, is_admin: row.is_admin === 1 };
 }
 
-export function destroySession(token: string | undefined) {
-  if (token) db.prepare("DELETE FROM auth_sessions WHERE token = ?").run(token);
+export async function destroySession(token: string | undefined) {
+  if (token) await database.prepare("DELETE FROM auth_sessions WHERE token = ?").run(token);
 }
 
-export function cleanupSessions() {
-  db.prepare("DELETE FROM auth_sessions WHERE expires_at <= datetime('now')").run();
+export async function cleanupSessions() {
+  await database.prepare("DELETE FROM auth_sessions WHERE expires_at <= datetime('now')").run();
 }
 
 export function authSessionCookie(token: string) {
@@ -154,30 +155,30 @@ type CredRow = {
   created_at: string;
 };
 
-function credsFor(userId: number | null): CredRow[] {
+async function credsFor(userId: number | null): Promise<CredRow[]> {
   const rows =
     userId === null
-      ? db.prepare("SELECT * FROM webauthn_credentials WHERE user_id IS NULL").all()
-      : db.prepare("SELECT * FROM webauthn_credentials WHERE user_id = ?").all(userId);
-  return rows as CredRow[];
+      ? await database.prepare("SELECT * FROM webauthn_credentials WHERE user_id IS NULL").all<CredRow>()
+      : await database.prepare("SELECT * FROM webauthn_credentials WHERE user_id = ?").all<CredRow>(userId);
+  return rows;
 }
 
-export function hasPasskeys(userId: number | null): boolean {
-  return credsFor(userId).length > 0;
+export async function hasPasskeys(userId: number | null): Promise<boolean> {
+  return (await credsFor(userId)).length > 0;
 }
 
-export function listPasskeys(userId: number | null) {
-  return credsFor(userId).map((r) => ({ id: r.id, label: r.label ?? null, created_at: r.created_at }));
+export async function listPasskeys(userId: number | null) {
+  return (await credsFor(userId)).map((r) => ({ id: r.id, label: r.label ?? null, created_at: r.created_at }));
 }
 
-export function deletePasskey(id: number, userId: number | null) {
-  if (userId === null) db.prepare("DELETE FROM webauthn_credentials WHERE id = ? AND user_id IS NULL").run(id);
-  else db.prepare("DELETE FROM webauthn_credentials WHERE id = ? AND user_id = ?").run(id, userId);
+export async function deletePasskey(id: number, userId: number | null) {
+  if (userId === null) await database.prepare("DELETE FROM webauthn_credentials WHERE id = ? AND user_id IS NULL").run(id);
+  else await database.prepare("DELETE FROM webauthn_credentials WHERE id = ? AND user_id = ?").run(id, userId);
 }
 
 // Registration: create options for the given account/profile (userId NULL = shared).
 export async function passkeyRegisterOptions(c: any, userId: number | null, userName: string) {
-  const existing = credsFor(userId);
+  const existing = await credsFor(userId);
   const options = await generateRegistrationOptions({
     rpName: getSetting("app_name") || "YT Zero",
     rpID: rpId(c),
@@ -207,7 +208,7 @@ export async function passkeyRegisterVerify(
   });
   if (!verification.verified || !verification.registrationInfo) throw new Error("verification failed");
   const cred = verification.registrationInfo.credential;
-  db.prepare(
+  await database.prepare(
     "INSERT INTO webauthn_credentials (user_id, credential_id, public_key, counter, transports, label) VALUES (?, ?, ?, ?, ?, ?)"
   ).run(
     flow.userId,
@@ -223,7 +224,7 @@ export async function passkeyRegisterVerify(
 // Login: options can target a specific profile (per_profile) or any (shared = NULL,
 // or "all profiles" for discovery). We allow credentials across the relevant scope.
 export async function passkeyLoginOptions(c: any, userId: number | null) {
-  const creds = userId === null ? allLoginCreds() : credsFor(userId);
+  const creds = userId === null ? await allLoginCreds() : await credsFor(userId);
   const options = await generateAuthenticationOptions({
     rpID: rpId(c),
     userVerification: "preferred",
@@ -238,10 +239,10 @@ export async function passkeyLoginOptions(c: any, userId: number | null) {
 
 // For shared login the credential has user_id NULL; for per_profile/oidc-mapped
 // login the resolved profile is whatever owns the credential.
-function allLoginCreds(): CredRow[] {
+async function allLoginCreds(): Promise<CredRow[]> {
   const method = authMethod();
   if (method === "shared") return credsFor(null);
-  return db.prepare("SELECT * FROM webauthn_credentials WHERE user_id IS NOT NULL").all() as CredRow[];
+  return database.prepare("SELECT * FROM webauthn_credentials WHERE user_id IS NOT NULL").all<CredRow>();
 }
 
 export async function passkeyLoginVerify(
@@ -251,9 +252,9 @@ export async function passkeyLoginVerify(
 ): Promise<{ user_id: number | null }> {
   const flow = takeFlow(flowId);
   if (!flow) throw new Error("challenge expired");
-  const cred = db
+  const cred = await database
     .prepare("SELECT * FROM webauthn_credentials WHERE credential_id = ?")
-    .get(response.id) as CredRow | null;
+    .get<CredRow>(response.id);
   if (!cred) throw new Error("unknown credential");
   const verification = await verifyAuthenticationResponse({
     response,
@@ -268,7 +269,7 @@ export async function passkeyLoginVerify(
     },
   });
   if (!verification.verified) throw new Error("verification failed");
-  db.prepare("UPDATE webauthn_credentials SET counter = ? WHERE id = ?").run(
+  await database.prepare("UPDATE webauthn_credentials SET counter = ? WHERE id = ?").run(
     verification.authenticationInfo.newCounter,
     cred.id
   );
@@ -387,14 +388,15 @@ export async function oidcCallback(
   const claimValue = String((claims as any)[claimName] ?? (claims as any).sub ?? "");
   if (!claimValue) throw new Error("identity claim missing");
 
-  let row = db.prepare("SELECT id FROM users WHERE oidc_subject = ?").get(claimValue) as { id: number } | null;
+  let row = await database.prepare("SELECT id FROM users WHERE oidc_subject = ?").get<{ id: number }>(claimValue);
   if (!row) {
     if (getSetting("auth_oidc_autocreate") === "1") {
-      const nextOrder = (db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM users").get() as { n: number }).n;
+      const nextOrder = (await database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM users").get<{ n: number }>())!.n;
       const name = String((claims as any).name ?? (claims as any).preferred_username ?? claimValue);
-      const created = db
+      const created = await database
         .prepare("INSERT INTO users (name, avatar_color, oidc_subject, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id")
-        .get(name, "#7c5cff", claimValue, nextOrder, crypto.randomUUID()) as { id: number };
+        .get<{ id: number }>(name, "#7c5cff", claimValue, nextOrder, crypto.randomUUID());
+      if (!created) throw new Error("profile creation did not return an id");
       row = created;
     } else {
       throw new Error("no profile mapped to this identity");
@@ -405,11 +407,11 @@ export async function oidcCallback(
 
 // ---------- proxy header ----------
 
-export function resolveProxyUser(c: any): number | null {
+export async function resolveProxyUser(c: any): Promise<number | null> {
   const headerName = (getSetting("auth_proxy_header") || "Remote-User").toLowerCase();
   const value = c.req.header(headerName);
   if (!value) return null;
-  const row = db.prepare("SELECT id FROM users WHERE proxy_match = ?").get(value) as { id: number } | null;
+  const row = await database.prepare("SELECT id FROM users WHERE proxy_match = ?").get<{ id: number }>(value);
   return row?.id ?? null;
 }
 

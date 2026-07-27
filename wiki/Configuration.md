@@ -13,6 +13,8 @@ container's `TZ` environment variable.
 | `PORT` | `3001` | HTTP server port. |
 | `IDLE_TIMEOUT_SECONDS` | `120` | HTTP idle timeout. Manual channel sync can take longer than Bun's 10-second default when playlist scanning is enabled. |
 | `DB_PATH` | `./data/db/ytzero.db` | SQLite database path. |
+| `SQLITE_BUSY_TIMEOUT_MS` | `5000` | How long SQLite waits for another process to release a database lock before returning `SQLITE_BUSY` (`0`–`60000`). |
+| `SQLITE_OPTIMIZE_INTERVAL_HOURS` | `24` | Interval for bounded planner-statistics maintenance on a long-lived SQLite connection (`1`–`168`). |
 | `IMG_CACHE_DIR` | `./data/imgcache` | Thumbnail and image cache directory. |
 | `IMG_CACHE_TTL_DAYS` | `5` | How long a cached image is fresh before a refetch is attempted. |
 | `AVATAR_DIR` | `./data/avatars` | Uploaded profile avatars. |
@@ -36,6 +38,10 @@ container's `TZ` environment variable.
 | `WEBAUTHN_RP_ID` | _(request hostname)_ | Override the WebAuthn Relying Party ID (the registrable domain) when the auto-derived hostname is wrong. |
 | `YTZERO_AUTH_DISABLE` | _(unset)_ | Set to `1` to force the **None** auth method regardless of the saved setting. Emergency unlock if an auth method locks you out — see [Authentication](Authentication#recovery-anti-lockout). |
 | `YTZERO_VERSION` | `dev` | Version reported by `/api/health`. Set by the Docker build and by the native installer; there is no reason to set it by hand. |
+| `DATABASE_URL` | _(unset)_ | PostgreSQL connection URL. When unset, YT Zero uses SQLite at `DB_PATH`. Migrate from Advanced settings before enabling this value. |
+| `DATABASE_STATE_PATH` | next to the data directory | Machine-local marker used to detect an unexpected engine/location change. It contains fingerprints and migration receipt IDs, never credentials. |
+| `SQLITE_BUSY_TIMEOUT_MS` | `5000` | How long SQLite waits for a writer lock, from `0` to `60000` ms. |
+| `SQLITE_OPTIMIZE_INTERVAL_HOURS` | `24` | Interval for bounded `PRAGMA optimize`, from 1 to 168 hours. |
 
 The path defaults above are relative to the source tree, not to the working
 directory: unset, they resolve to a `data/` directory next to `app/`. Docker and
@@ -121,6 +127,25 @@ and mounts:
 ```text
 ./data:/data
 ```
+
+### Moving from SQLite to PostgreSQL
+
+1. Create an empty PostgreSQL database. Do not point YT Zero at it yet.
+2. Open **Settings → Advanced → Database**, paste the PostgreSQL URL, and run the migration. YT Zero pauses new mutations, copies a consistent SQLite snapshot in batches, recreates constraints, and verifies row counts plus primary-key checksums. The source SQLite file is not modified.
+3. Set `DATABASE_URL` to the same URL and restart YT Zero.
+4. Return to Advanced settings. The app verifies the migration receipt stored in PostgreSQL before it lets you confirm the new active database.
+
+The connection URL is accepted only for the migration request and is not saved in application state or logs. Keep it in your secret-management mechanism. The target must be empty; a partial or existing schema is rejected.
+
+For Docker Compose, the optional override can be used with the main file:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.postgres.yml up -d
+```
+
+Back up PostgreSQL with the tools supplied by your PostgreSQL operator (for example `pg_dump` plus tested restore procedures). Portable YT Zero backups remain engine-independent, but they intentionally exclude secrets, downloads, caches, and database implementation metadata.
+
+On a brand-new installation you may set `DATABASE_URL` from the first start. YT Zero initializes an empty PostgreSQL database from its pristine schema. If the local SQLite file already contains channels, videos, history, or per-video state, automatic initialization is refused and the explicit Settings migration above is required.
 
 ## Background refresh
 

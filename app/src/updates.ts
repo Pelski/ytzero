@@ -1,4 +1,5 @@
-import { db, getUserSetting } from "./db";
+import { getUserSetting } from "./db";
+import { database } from "./database";
 import { log } from "./logger";
 import { COMMIT, isReleaseNewer, VERSION } from "./version";
 import { createNotification } from "./notifications";
@@ -64,11 +65,11 @@ let automaticCheckRunning = false;
 export async function runAutomaticUpdateChecks(): Promise<void> {
   if (automaticCheckRunning) return;
   const now = Date.now();
-  const dueUsers = (db.prepare(`
+  const dueUsers = (await database.prepare(`
     SELECT u.id, s.last_checked_at
     FROM users u
     LEFT JOIN update_check_state s ON s.user_id = u.id
-  `).all() as { id: number; last_checked_at: string | null }[]).filter((user) => {
+  `).all<{ id: number; last_checked_at: string | null }>()).filter((user) => {
     const hours = Number(getUserSetting(user.id, "update_check_interval"));
     if (!INTERVAL_HOURS.has(hours)) return false;
     const last = user.last_checked_at ? Date.parse(`${user.last_checked_at.replace(" ", "T")}Z`) : 0;
@@ -77,18 +78,18 @@ export async function runAutomaticUpdateChecks(): Promise<void> {
   if (dueUsers.length === 0) return;
 
   automaticCheckRunning = true;
-  const markChecked = db.prepare(`
+  const markChecked = database.prepare(`
     INSERT INTO update_check_state (user_id, last_checked_at) VALUES (?, datetime('now'))
     ON CONFLICT(user_id) DO UPDATE SET last_checked_at = excluded.last_checked_at
   `);
   try {
     // Mark attempts even when GitHub is unavailable, otherwise the five-minute
     // scheduler would hammer the endpoint until it succeeds.
-    for (const user of dueUsers) markChecked.run(user.id);
+    for (const user of dueUsers) await markChecked.run(user.id);
     const result = await checkLatestRelease();
     if (result.updateAvailable && result.latestVersion) {
       const payload = { version: result.latestVersion, url: result.latestUrl, publishedAt: result.publishedAt };
-      for (const user of dueUsers) createNotification(user.id, "app_update", `app_update:${result.latestVersion}`, payload, "/settings?tab=advanced&section=changelog");
+      for (const user of dueUsers) await createNotification(user.id, "app_update", `app_update:${result.latestVersion}`, payload, "/settings?tab=advanced&section=changelog");
     }
     log.info("updates.automatic_check", { profiles: dueUsers.length, latestVersion: result.latestVersion, updateAvailable: result.updateAvailable });
   } catch (error) {

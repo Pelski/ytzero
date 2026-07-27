@@ -5,7 +5,7 @@ const { AUTH_SESSION_COOKIE, createSession } = await import("../src/auth");
 setSetting("auth_method", "oidc");
 setSetting("auth_oidc_mode", "mapped");
 setSetting("auth_oidc_claim", "email");
-const cookie = `${AUTH_SESSION_COOKIE}=${createSession(1, "profile")}`;
+const cookie = `${AUTH_SESSION_COOKIE}=${await createSession(1, "profile")}`;
 
 async function request(path: string, method: string, body?: unknown) {
   return api.request(`http://localhost${path}`, {

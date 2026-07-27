@@ -695,6 +695,7 @@ export const en = {
     // ---------- authentication ----------
     authTab: "Authentication",
     advanced: "Advanced",
+    dangerous: "Dangerous",
     authMethod: "Login method",
     authMethodNone: "None (local network)",
     authMethodShared: "Shared login + profiles",

@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { publishAppEvent, subscribeToAppEvents } from "./appEvents";
-import { db, getSetting, setSetting, getUserSetting, setUserSetting, SETTING_DEFAULTS, GLOBAL_SETTING_KEYS, USER_SETTING_KEYS } from "./db";
+import { database, databaseConfig } from "./database";
+import { getSetting, setSetting, getUserSetting, setUserSetting, SETTING_DEFAULTS, GLOBAL_SETTING_KEYS, USER_SETTING_KEYS } from "./db";
 import {
   type ChannelAbout,
   fetchChannelAbout,
@@ -45,6 +46,9 @@ import { feedVisibilityWhere, feedSortSql, followedExists, followedPlaylistExist
 import { buildCleanupWhere, countCleanupMatches, listCleanupVideoIds, snapshotUserVideoState, applyCleanupAction, restoreUserVideoState, saveBulkUndo, loadBulkUndo, clearBulkUndo, type CleanupFilter } from "./cleanup";
 import { analyzePortableBackup, backupOptions, commitPortableRestore, createPortableBackup, deleteRestoreSession, planPortableRestore } from "./portableBackup";
 import { isChannelManualStatus } from "./channelStatus";
+import { acquireMaintenance, beginMutation, maintenanceStatus } from "./maintenance";
+import { migrateSQLiteToPostgres } from "./postgresMigration";
+import { acceptCurrentDatabase, databaseRuntimeStatus, recordCompletedPostgresMigration } from "./databaseState";
 import { isProfilePermissionArea, parseAdminOnlyAreas, permissionAreaForMutation, permissionAreasForSettings, serializeAdminOnlyAreas, settingsMutationRequiresAdmin, type ProfilePermissionArea } from "./profilePermissions";
 import {
   authMethod,
@@ -202,14 +206,15 @@ function profileCookie(userId: number) {
   return `${PROFILE_COOKIE}=${userId}; Path=/; Max-Age=${365 * 24 * 60 * 60}; SameSite=Lax`;
 }
 
-const userExists = db.prepare("SELECT 1 FROM users WHERE id = ?");
-const firstUserId = db.prepare("SELECT id FROM users ORDER BY sort_order ASC, id ASC LIMIT 1");
+const userExists = database.prepare("SELECT 1 FROM users WHERE id = ?");
+const firstUserId = database.prepare("SELECT id FROM users ORDER BY sort_order ASC, id ASC LIMIT 1");
 // The primary profile (lowest id = the original "Default"). It is the only one
 // that owns app-wide settings (app name, icon color, child lock) and can't be
 // deleted.
-const primaryUserIdStmt = db.prepare("SELECT id FROM users ORDER BY id ASC LIMIT 1");
+const primaryUserIdStmt = database.prepare("SELECT id FROM users ORDER BY id ASC LIMIT 1");
+const primaryUserIdValue = (await primaryUserIdStmt.get() as { id: number }).id;
 function primaryUserId(): number {
-  return (primaryUserIdStmt.get() as { id: number }).id;
+  return primaryUserIdValue;
 }
 function isPrimaryUser(c: any): boolean {
   return currentUserId(c) === primaryUserId();
@@ -233,10 +238,10 @@ function currentUserId(c: any): number {
 
 // Falls back to the cookie-selected profile (or the first profile). Used by the
 // 'none' method and by any session whose scope allows free profile switching.
-function profileFromCookie(c: any): number {
+async function profileFromCookie(c: any): Promise<number> {
   const raw = Number(parseCookies(c.req.header("cookie"))[PROFILE_COOKIE]);
-  const valid = Number.isInteger(raw) && raw > 0 && userExists.get(raw);
-  return valid ? raw : (firstUserId.get() as { id: number } | null)?.id ?? 0;
+  const valid = Number.isInteger(raw) && raw > 0 && await userExists.get(raw);
+  return valid ? raw : (await firstUserId.get() as { id: number } | null)?.id ?? 0;
 }
 
 // Endpoints reachable without an authenticated session (login flow + app config).
@@ -250,12 +255,12 @@ api.use("*", async (c, next) => {
   const path = new URL(c.req.url).pathname.replace(/^\/api/, "");
 
   if (method === "none") {
-    c.set("userId", profileFromCookie(c));
+    c.set("userId", await profileFromCookie(c));
     return next();
   }
 
   if (method === "proxy_header") {
-    const uid = resolveProxyUser(c);
+    const uid = await resolveProxyUser(c);
     if (uid) {
       c.set("userId", uid);
       return next();
@@ -266,15 +271,35 @@ api.use("*", async (c, next) => {
   }
 
   // shared | per_profile | oidc → server-side session
-  const session = validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
+  const session = await validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
   if (session) {
-    c.set("userId", session.scope === "account" ? profileFromCookie(c) : session.user_id ?? 0);
+    c.set("userId", session.scope === "account" ? await profileFromCookie(c) : session.user_id ?? 0);
     c.set("sessionAdmin", session.is_admin);
     return next();
   }
   c.set("userId", 0);
   if (isAuthFreePath(path)) return next();
   return c.json({ error: "unauthenticated", method }, 401);
+});
+
+// Maintenance operations (restore and database migration) take an exclusive
+// application-level write lease. Existing mutations are allowed to finish;
+// new authenticated ones receive a retryable response until maintenance ends.
+api.use("*", async (c, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(c.req.method.toUpperCase())) return next();
+  const path = new URL(c.req.url).pathname.replace(/^\/api/, "");
+  const ownsMaintenance = path === "/restore/commit" || path.startsWith("/database/migration/");
+  if (ownsMaintenance) return next();
+  const release = beginMutation();
+  if (!release) {
+    c.header("Retry-After", "2");
+    return c.json({ error: "maintenance in progress", maintenance: maintenanceStatus() }, 503);
+  }
+  try {
+    await next();
+  } finally {
+    release();
+  }
 });
 
 /** True when the active auth method permits internal profile switching. */
@@ -323,10 +348,45 @@ api.use("*", async (c, next) => {
 
 // ---------- portable backup and restore (admin only) ----------
 
-api.get("/backup/options", (c) => {
+api.get("/database/status", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  return c.json(databaseRuntimeStatus());
+});
+
+api.post("/database/migration/sqlite-to-postgres", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  if (databaseConfig.engine !== "sqlite") return c.json({ error: "migration must be started while SQLite is active" }, 409);
+  const { target_url } = await c.req.json().catch(() => ({}));
+  if (typeof target_url !== "string" || !/^postgres(?:ql)?:\/\//i.test(target_url)) {
+    return c.json({ error: "valid PostgreSQL URL required" }, 400);
+  }
+  const release = await acquireMaintenance("SQLite to PostgreSQL migration");
+  try {
+    const result = await migrateSQLiteToPostgres(databaseConfig.sqlitePath, target_url);
+    recordCompletedPostgresMigration(target_url, result.receiptId);
+    log.info("database.migrated", { source: "sqlite", target: "postgres", receiptId: result.receiptId, tables: result.tables, rows: result.rows });
+    return c.json({ ...result, next: "Set DATABASE_URL to the PostgreSQL URL and restart the application." });
+  } finally {
+    release();
+  }
+});
+
+api.post("/database/migration/confirm", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const status = databaseRuntimeStatus();
+  if (status.state !== "migration_ready" || databaseConfig.engine !== "postgres" || !status.pendingReceiptId) {
+    return c.json({ error: "no verified migrated database is awaiting confirmation" }, 409);
+  }
+  const receipt = await database.prepare("SELECT id FROM database_migration_receipts WHERE id = ?").get(status.pendingReceiptId);
+  if (!receipt) return c.json({ error: "migration receipt not found in the active database" }, 409);
+  acceptCurrentDatabase();
+  return c.json({ ok: true, status: databaseRuntimeStatus() });
+});
+
+api.get("/backup/options", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   c.header("Cache-Control", "private, no-store");
-  return c.json(backupOptions());
+  return c.json(await backupOptions());
 });
 
 api.post("/backup/export", async (c) => {
@@ -377,7 +437,7 @@ api.post("/restore/plan", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const { sessionId, mappings, sections, strategy } = await c.req.json().catch(() => ({}));
   if (typeof sessionId !== "string" || !mappings || !Array.isArray(sections)) return c.json({ error: "invalid restore plan" }, 400);
-  const result = planPortableRestore(currentUserId(c), sessionId, { mappings, sections, strategy });
+  const result = await planPortableRestore(currentUserId(c), sessionId, { mappings, sections, strategy });
   log.info("restore.planned", { userId: currentUserId(c), ...result.changes, warnings: result.warnings.length });
   return c.json(result);
 });
@@ -428,11 +488,11 @@ interface VideoRow {
   channel_title: string;
 }
 
-function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => string | null | undefined) {
+async function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => string | null | undefined) {
   const ids = [...new Set(items.map(videoId).filter((id): id is string => !!id))];
   if (ids.length === 0) return items.map((item) => ({ ...item, watched: 0, watch_position: null, watch_duration: null }));
   const placeholders = ids.map(() => "?").join(",");
-  const rows = db.prepare(
+  const rows = await database.prepare(
     `SELECT video_id, watched, watch_position, watch_duration
      FROM user_videos WHERE user_id = ? AND video_id IN (${placeholders})`
   ).all(uid, ...ids) as { video_id: string; watched: number | null; watch_position: number | null; watch_duration: number | null }[];
@@ -448,12 +508,12 @@ function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => st
   });
 }
 
-function attachTags(uid: number, videos: VideoRow[]) {
+async function attachTags(uid: number, videos: VideoRow[]) {
   if (videos.length === 0) return [];
   // downloads_allowed: the profile may use downloads at all (not a child);
   // downloads_enabled additionally requires the plugin to be turned on. The UI
   // shows the download action for allowed-but-disabled and links to settings.
-  const downloadsAllowed = !isChildUser(uid);
+  const downloadsAllowed = !await isChildUser(uid);
   const downloadsEnabled = pluginEnabled("downloads") && downloadsAllowed;
   // Live percentage for the one video the downloader is fetching right now,
   // so lists can paint a download progress bar without a dedicated request.
@@ -461,7 +521,7 @@ function attachTags(uid: number, videos: VideoRow[]) {
   const ids = videos.map((v) => v.video_id);
   const ph = ids.map(() => "?").join(",");
   // Tags are per profile: only surface tags owned by the active user.
-  const videoTags = db
+  const videoTags = await database
     .prepare(
       `SELECT vt.video_id, t.id, t.name, t.color, t.filter_only, vt.source FROM video_tags vt
        JOIN tags t ON t.id = vt.tag_id AND t.user_id = ? WHERE vt.video_id IN (${ph})`
@@ -469,13 +529,13 @@ function attachTags(uid: number, videos: VideoRow[]) {
     .all(uid, ...ids) as any[];
   const channelIds = [...new Set(videos.map((v) => v.channel_id))];
   const chPh = channelIds.map(() => "?").join(",");
-  const channelTags = db
+  const channelTags = await database
     .prepare(
       `SELECT ct.channel_id, t.id, t.name, t.color, t.filter_only FROM channel_tags ct
        JOIN tags t ON t.id = ct.tag_id AND t.user_id = ? WHERE ct.channel_id IN (${chPh})`
     )
     .all(uid, ...channelIds) as any[];
-  const playlistChannelTags = db
+  const playlistChannelTags = await database
     .prepare(
       `SELECT DISTINCT cpv.video_id, t.id, t.name, t.color, t.filter_only
        FROM channel_playlist_videos cpv
@@ -535,7 +595,7 @@ function videoSelect(uid: number) {
 
 // ---------- feed ----------
 
-api.get("/feed", (c) => {
+api.get("/feed", async (c) => {
   const uid = currentUserId(c);
   const page = Math.max(0, Number(c.req.query("page") ?? 0));
   const limit = Math.min(100, Number(c.req.query("limit") ?? 40));
@@ -626,24 +686,24 @@ api.get("/feed", (c) => {
   }
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const feedSort = c.req.query("sort") === "arrival" ? "arrival" : "published";
-  const rows = db
+  const rows = await database
     .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${isMainFeed ? feedSortSql(feedSort) : "COALESCE(v.published_at, v.created_at)"} DESC, v.video_id DESC LIMIT ? OFFSET ?`)
     .all(...params, limit, page * limit) as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows), page, limit });
+  return c.json({ videos: await attachTags(uid, rows), page, limit });
 });
 
 // The next/previous video in the selected main-feed order, skipping
 // anything already watched. Backs the "autoplay my feed" setting — resolved
 // server-side (rather than walking the client's loaded pages) so it always
 // matches the full feed regardless of how many pages the UI has fetched.
-api.get("/feed/adjacent", (c) => {
+api.get("/feed/adjacent", async (c) => {
   const uid = currentUserId(c);
   const videoId = c.req.query("video_id");
   const direction = c.req.query("direction") === "newest" ? "newest" : "oldest";
   const feedSort = c.req.query("sort") === "arrival" ? "arrival" : "published";
   const sortColumn = feedSortSql(feedSort);
   if (!videoId) return c.json({ video: null });
-  const anchor = db.prepare("SELECT video_id, published_at, created_at FROM videos WHERE video_id = ?").get(videoId) as { video_id: string; published_at: string | null; created_at: string } | null;
+  const anchor = await database.prepare("SELECT video_id, published_at, created_at FROM videos WHERE video_id = ?").get(videoId) as { video_id: string; published_at: string | null; created_at: string } | null;
   const anchorTime = feedSort === "arrival" ? anchor?.created_at : anchor?.published_at;
   if (!anchor || !anchorTime) return c.json({ video: null });
 
@@ -655,8 +715,8 @@ api.get("/feed/adjacent", (c) => {
   const whereSql = `WHERE ${where.join(" AND ")}`;
   const orderDirection = direction === "oldest" ? "ASC" : "DESC";
   const order = `${sortColumn} ${orderDirection}, v.video_id ${orderDirection}`;
-  const row = db.prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${order} LIMIT 1`).get(...params) as VideoRow | undefined;
-  return c.json({ video: row ? attachTags(uid, [row])[0] : null });
+  const row = await database.prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${order} LIMIT 1`).get(...params) as VideoRow | undefined;
+  return c.json({ video: row ? (await attachTags(uid, [row]))[0] : null });
 });
 
 // ---------- feed cleanup ----------
@@ -676,11 +736,11 @@ api.post("/cleanup/preview", async (c) => {
 
   const { where, params } = buildCleanupWhere(filter, uid, side, excludeIds);
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const rows = db
+  const rows = await database
     .prepare(`${videoSelect(uid)} ${whereSql} ORDER BY ${feedSortSql()} DESC LIMIT ? OFFSET ?`)
     .all(...params, CLEANUP_PAGE_SIZE, page * CLEANUP_PAGE_SIZE) as VideoRow[];
-  const total = countCleanupMatches(filter, uid, side, excludeIds);
-  return c.json({ videos: attachTags(uid, rows), total, page, limit: CLEANUP_PAGE_SIZE });
+  const total = await countCleanupMatches(filter, uid, side, excludeIds);
+  return c.json({ videos: await attachTags(uid, rows), total, page, limit: CLEANUP_PAGE_SIZE });
 });
 
 api.post("/cleanup/apply", async (c) => {
@@ -690,32 +750,32 @@ api.post("/cleanup/apply", async (c) => {
   const excludeIds = body.exclude_video_ids ?? [];
   if (body.action !== "archive" && body.action !== "watched") return c.json({ error: "invalid action" }, 400);
 
-  const videoIds = listCleanupVideoIds(filter, uid, excludeIds);
+  const videoIds = await listCleanupVideoIds(filter, uid, excludeIds);
   if (videoIds.length === 0) return c.json({ affected: 0 });
 
-  const snapshot = snapshotUserVideoState(uid, videoIds);
-  applyCleanupAction(uid, videoIds, body.action);
+  const snapshot = await snapshotUserVideoState(uid, videoIds);
+  await applyCleanupAction(uid, videoIds, body.action);
   // Both outcomes end in status=archived, so a pending auto download nobody
   // will see anymore should stop the same way a single reject/watch does.
-  for (const id of videoIds) cancelAutoDownloadIfUnwanted(id);
-  saveBulkUndo(uid, body.action, snapshot);
+  for (const id of videoIds) await cancelAutoDownloadIfUnwanted(id);
+  await saveBulkUndo(uid, body.action, snapshot);
   refreshDiscoveryInBackground(uid);
   return c.json({ affected: videoIds.length });
 });
 
-api.post("/cleanup/undo", (c) => {
+api.post("/cleanup/undo", async (c) => {
   const uid = currentUserId(c);
-  const entry = loadBulkUndo(uid);
+  const entry = await loadBulkUndo(uid);
   if (!entry) return c.json({ error: "nothing to undo" }, 404);
-  restoreUserVideoState(uid, entry.snapshot);
-  clearBulkUndo(uid);
+  await restoreUserVideoState(uid, entry.snapshot);
+  await clearBulkUndo(uid);
   refreshDiscoveryInBackground(uid);
   return c.json({ restored: entry.count });
 });
 
-api.get("/in-progress", (c) => {
+api.get("/in-progress", async (c) => {
   const uid = currentUserId(c);
-  const rows = db.prepare(`
+  const rows = await database.prepare(`
     ${videoSelect(uid)}
     JOIN (SELECT video_id, MAX(watched_at) AS last_watched FROM history WHERE user_id = ${uid} GROUP BY video_id) lw ON lw.video_id = v.video_id
     WHERE v.published_at IS NOT NULL AND v.published_at != ''
@@ -727,7 +787,7 @@ api.get("/in-progress", (c) => {
     ORDER BY lw.last_watched DESC
     LIMIT 20
   `).all() as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows) });
+  return c.json({ videos: await attachTags(uid, rows) });
 });
 
 api.get("/search/youtube", async (c) => {
@@ -739,7 +799,7 @@ api.get("/search/youtube", async (c) => {
   try {
     const search = await searchYouTube(q.trim());
     return c.json({
-      results: attachWatchedState(uid, search.results, (result) => result.videoId),
+      results: await attachWatchedState(uid, search.results, (result) => result.videoId),
       channels: search.channels,
     });
   } catch (e) {
@@ -749,14 +809,14 @@ api.get("/search/youtube", async (c) => {
 
 // ---------- child profiles (time limits & requests) ----------
 
-api.get("/child/status", (c) => c.json(childStatus(currentUserId(c))));
+api.get("/child/status", async (c) => c.json(await childStatus(currentUserId(c))));
 
-api.get("/child/now-watching", (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ watching: [] });
-  const active = activeChildPlayback();
+api.get("/child/now-watching", async (c) => {
+  if (await isChildUser(currentUserId(c))) return c.json({ watching: [] });
+  const active = await activeChildPlayback();
   if (active.length === 0) return c.json({ watching: [] });
-  const rows = active.flatMap(({ userId, videoId }) => {
-    const row = db.prepare(
+  const rows = (await Promise.all(active.map(async ({ userId, videoId }) => {
+    const row = await database.prepare(
       `SELECT u.id AS user_id, u.name, u.avatar, u.avatar_color,
               v.video_id, v.title, v.thumbnail, v.channel_id,
               COALESCE(ch.custom_title, ch.title) AS channel_title, ch.thumbnail AS channel_thumbnail
@@ -765,22 +825,22 @@ api.get("/child/now-watching", (c) => {
        WHERE u.id = ? AND u.is_child = 1`
     ).get(videoId, userId) as any;
     if (!row) return [];
-    const status = childStatus(userId);
+    const status = await childStatus(userId);
     return [{
       ...row,
       avatar: row.avatar ? `/api/profiles/${row.user_id}/avatar?v=${encodeURIComponent(row.avatar)}` : "",
       remaining_seconds: status.remaining_seconds,
       unlimited_today: status.unlimited_today,
     }];
-  });
+  }))).flat();
   return c.json({ watching: rows });
 });
 
-api.post("/child/now-watching/:id/stop", (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+api.post("/child/now-watching/:id/stop", async (c) => {
+  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   const childId = Number(c.req.param("id"));
-  if (!Number.isInteger(childId) || !isChildUser(childId)) return c.json({ error: "not found" }, 404);
-  lockChildByParent(childId);
+  if (!Number.isInteger(childId) || !await isChildUser(childId)) return c.json({ error: "not found" }, 404);
+  await lockChildByParent(childId);
   publishAppEvent("child-status");
   publishAppEvent("child-watching");
   log.info("child.playback_stopped", { user_id: childId, by_user_id: currentUserId(c) });
@@ -790,14 +850,14 @@ api.post("/child/now-watching/:id/stop", (c) => {
 // Child asks for more watch time; parents see it on their home feed for 1 h.
 api.post("/child/time-request", async (c) => {
   const uid = currentUserId(c);
-  if (!isChildUser(uid)) return c.json({ error: "not a child profile" }, 403);
+  if (!await isChildUser(uid)) return c.json({ error: "not a child profile" }, 403);
   const { video_id } = await c.req.json().catch(() => ({}));
-  const existing = db.prepare(
+  const existing = await database.prepare(
     "SELECT id FROM child_time_requests WHERE user_id = ? AND status = 'pending' AND created_at > datetime('now', '-1 hour')"
   ).get(uid) as { id: number } | null;
   if (existing) return c.json({ ok: true, id: existing.id });
   const videoId = typeof video_id === "string" && video_id ? video_id : lastWatchedVideo(uid);
-  const row = db.prepare(
+  const row = await database.prepare(
     "INSERT INTO child_time_requests (user_id, video_id) VALUES (?, ?) RETURNING id"
   ).get(uid, videoId) as { id: number };
   publishAppEvent("child-requests");
@@ -806,9 +866,9 @@ api.post("/child/time-request", async (c) => {
 });
 
 // Pending requests, for parent (non-child) profiles.
-api.get("/child/time-requests", (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ requests: [] });
-  const rows = db.prepare(
+api.get("/child/time-requests", async (c) => {
+  if (await isChildUser(currentUserId(c))) return c.json({ requests: [] });
+  const rows = await database.prepare(
     `SELECT r.id, r.user_id, r.video_id, r.created_at, u.name, u.avatar, u.avatar_color
      FROM child_time_requests r JOIN users u ON u.id = r.user_id
      WHERE r.status = 'pending' AND r.created_at > datetime('now', '-1 hour')
@@ -830,16 +890,16 @@ api.get("/child/time-requests", (c) => {
 });
 
 api.post("/child/time-requests/:id/resolve", async (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   const reqId = Number(c.req.param("id"));
-  const request = db.prepare(
+  const request = await database.prepare(
     "SELECT * FROM child_time_requests WHERE id = ? AND status = 'pending'"
   ).get(reqId) as { id: number; user_id: number; video_id: string | null } | null;
   if (!request) return c.json({ error: "not found" }, 404);
   const { action, grant, pin } = await c.req.json().catch(() => ({}));
 
   if (action === "dismiss") {
-    db.prepare("UPDATE child_time_requests SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ?").run(reqId);
+    await database.prepare("UPDATE child_time_requests SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ?").run(reqId);
     publishAppEvent("child-requests");
     return c.json({ ok: true });
   }
@@ -850,15 +910,15 @@ api.post("/child/time-requests/:id/resolve", async (c) => {
   // attempts count against the child profile's lockout.
   if (isChildLockEnabled()) {
     if (!isSixDigitPin(pin) || !(await verifyChildLockPin(pin))) {
-      registerChildLockFailure(request.user_id);
+      await registerChildLockFailure(request.user_id);
       publishAppEvent("child-status");
       publishAppEvent("child-watching");
       return c.json({ error: "invalid PIN", pin_locked: isPinLocked(request.user_id) }, 401);
     }
     clearChildLockFailures(request.user_id);
   }
-  applyGrant(request.user_id, grant as ChildGrant, request.video_id);
-  db.prepare(
+  await applyGrant(request.user_id, grant as ChildGrant, request.video_id);
+  await database.prepare(
     "UPDATE child_time_requests SET status = 'approved', grant_type = ?, resolved_at = datetime('now') WHERE id = ?"
   ).run(grant, reqId);
   publishAppEvent("child-status");
@@ -869,11 +929,11 @@ api.post("/child/time-requests/:id/resolve", async (c) => {
 });
 
 // Clear a child profile's failed-PIN lockout (primary only).
-api.post("/profiles/:id/unlock-child", (c) => {
+api.post("/profiles/:id/unlock-child", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
   const id = Number(c.req.param("id"));
-  if (!isChildUser(id)) return c.json({ error: "not a child profile" }, 400);
-  unlockChildProfile(id);
+  if (!await isChildUser(id)) return c.json({ error: "not a child profile" }, 400);
+  await unlockChildProfile(id);
   publishAppEvent("child-status");
   publishAppEvent("child-watching");
   log.info("child.pin_unlocked", { id });
@@ -882,11 +942,11 @@ api.post("/profiles/:id/unlock-child", (c) => {
 
 // ---------- household viewing insights ----------
 
-api.get("/insights", (c) => {
+api.get("/insights", async (c) => {
   const uid = currentUserId(c);
   // The page compares every household profile, so keep it on the parent side
   // of the product just like child controls and the activity panel.
-  if (isChildUser(uid)) return c.json({ error: "parent profile required" }, 403);
+  if (await isChildUser(uid)) return c.json({ error: "parent profile required" }, 403);
 
   const requestedDays = Number(c.req.query("days") ?? 30);
   const days = INSIGHT_RANGES.includes(requestedDays as (typeof INSIGHT_RANGES)[number]) ? requestedDays : 30;
@@ -896,7 +956,7 @@ api.get("/insights", (c) => {
     return c.json({ error: "invalid profile" }, 400);
   }
   try {
-    return c.json(buildHouseholdInsights(days, profileId));
+    return c.json(await buildHouseholdInsights(days, profileId));
   } catch (error) {
     if (error instanceof Error && error.message === "profile not found") {
       return c.json({ error: error.message }, 404);
@@ -921,7 +981,7 @@ api.post("/videos/:id/sponsorblock-skip", async (c) => {
       segmentUuid.length > 240 || eventId.length > 400) {
     return c.json({ error: "invalid SponsorBlock skip" }, 400);
   }
-  const result = db.prepare(`
+  const result = await database.prepare(`
     INSERT OR IGNORE INTO sponsorblock_skip_log
       (event_id, user_id, video_id, segment_uuid, category, skipped_seconds, day)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -933,25 +993,25 @@ api.post("/videos/:id/sponsorblock-skip", async (c) => {
 
 // ---------- built-in plugins ----------
 
-api.get("/plugins", (c) => {
+api.get("/plugins", async (c) => {
   const uid = currentUserId(c);
-  return c.json({ plugins: listPlugins(getUserSetting(uid, "language")) });
+  return c.json({ plugins: await listPlugins(getUserSetting(uid, "language")) });
 });
 
 api.put("/plugins/:id", async (c) => {
   const { enabled } = await c.req.json() as { enabled?: boolean };
   try {
-    setPluginEnabled(c.req.param("id"), !!enabled);
-    return c.json({ plugins: listPlugins(getUserSetting(currentUserId(c), "language")) });
+    await setPluginEnabled(c.req.param("id"), !!enabled);
+    return c.json({ plugins: await listPlugins(getUserSetting(currentUserId(c), "language")) });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
   }
 });
 
-api.get("/plugins/:id/settings", (c) => {
+api.get("/plugins/:id/settings", async (c) => {
   try {
     const uid = currentUserId(c);
-    return c.json(getPluginSettings(uid, c.req.param("id"), getUserSetting(uid, "language")));
+    return c.json(await getPluginSettings(uid, c.req.param("id"), getUserSetting(uid, "language")));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
   }
@@ -961,7 +1021,7 @@ api.put("/plugins/:id/settings", async (c) => {
   try {
     const uid = currentUserId(c);
     const body = await c.req.json();
-    return c.json(setPluginSettings(uid, c.req.param("id"), body, getUserSetting(uid, "language")));
+    return c.json(await setPluginSettings(uid, c.req.param("id"), body, getUserSetting(uid, "language")));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
   }
@@ -1003,32 +1063,32 @@ api.get("/downloads", async (c) => {
   return c.json({
     enabled: pluginEnabled("downloads"),
     ytdlp_version: await ytdlpStatus(),
-    stats: downloadStats(),
+    stats: await downloadStats(),
     active: activeDownloadProgress(),
-    downloads: listDownloads(),
+    downloads: await listDownloads(),
   });
 });
 
 api.post("/videos/:id/download", async (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
   const id = c.req.param("id");
-  const video = db.prepare("SELECT live_status, is_private FROM videos WHERE video_id = ?").get(id) as { live_status: string; is_private: number } | null;
+  const video = await database.prepare("SELECT live_status, is_private FROM videos WHERE video_id = ?").get(id) as { live_status: string; is_private: number } | null;
   if (!video) return c.json({ error: "not found" }, 404);
   if (video.is_private === 1) return c.json({ error: "private videos cannot be downloaded" }, 409);
   if (video.live_status === "live" || video.live_status === "upcoming") {
     return c.json({ error: "live streams cannot be downloaded while they are active" }, 409);
   }
   const body = await c.req.json().catch(() => ({} as { priority?: boolean }));
-  if (body.priority) prioritizeDownload(id);
-  else enqueueDownload(id, "manual");
-  return c.json({ ok: true, download: getDownload(id) });
+  if (body.priority) await prioritizeDownload(id);
+  else await enqueueDownload(id, "manual");
+  return c.json({ ok: true, download: await getDownload(id) });
 });
 
 // Download state for one video, with live progress while it's the active job.
-api.get("/videos/:id/download", (c) => {
+api.get("/videos/:id/download", async (c) => {
   const id = c.req.param("id");
-  const download = getDownload(id);
+  const download = await getDownload(id);
   const progress = activeDownloadProgress();
   return c.json({
     download,
@@ -1036,23 +1096,23 @@ api.get("/videos/:id/download", (c) => {
   });
 });
 
-api.delete("/videos/:id/download", (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
-  removeDownload(c.req.param("id"));
+api.delete("/videos/:id/download", async (c) => {
+  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  await removeDownload(c.req.param("id"));
   return c.json({ ok: true });
 });
 
 api.put("/videos/:id/download/pin", async (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   const { pinned } = await c.req.json() as { pinned?: boolean };
-  setDownloadPinned(c.req.param("id"), !!pinned);
-  return c.json({ ok: true, download: getDownload(c.req.param("id")) });
+  await setDownloadPinned(c.req.param("id"), !!pinned);
+  return c.json({ ok: true, download: await getDownload(c.req.param("id")) });
 });
 
 // Serves the downloaded file to the <video> element. Range support is what
 // makes seeking work, so it's handled explicitly.
-api.get("/videos/:id/stream", (c) => {
-  const row = getDownload(c.req.param("id"));
+api.get("/videos/:id/stream", async (c) => {
+  const row = await getDownload(c.req.param("id"));
   if (!row || row.status !== "done" || !row.path || !existsSync(row.path)) {
     return c.json({ error: "not downloaded" }, 404);
   }
@@ -1091,17 +1151,17 @@ api.get("/videos/:id/stream", (c) => {
 //   GET .../hls/segNNNNN.ts -> a media segment (produced on demand)
 api.get("/videos/:id/hls/:file", async (c) => {
   const uid = currentUserId(c);
-  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-  if (!liveStreamEnabled()) return c.json({ error: "streaming disabled" }, 409);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (!await liveStreamEnabled()) return c.json({ error: "streaming disabled" }, 409);
   const id = c.req.param("id");
   const file = c.req.param("file");
 
   if (file === "index.m3u8") {
-    const done = getDownload(id);
+    const done = await getDownload(id);
     if (done && done.status === "done" && done.path && existsSync(done.path)) {
       return c.json({ error: "already downloaded" }, 409);
     }
-    if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+    if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
     const playlist = await getHlsPlaylist(id);
     if (!playlist) return c.json({ error: "stream unavailable" }, 502);
     return new Response(playlist, {
@@ -1118,19 +1178,19 @@ api.get("/videos/:id/hls/:file", async (c) => {
 
 // ---------- subtitles for the local player ----------
 
-function subtitleList(videoId: string) {
-  return listSubtitleFiles(videoId).map((s) => ({
+async function subtitleList(videoId: string) {
+  return (await listSubtitleFiles(videoId)).map((s) => ({
     lang: s.lang,
     url: `/api/videos/${videoId}/subtitles/${encodeURIComponent(s.lang)}`,
   }));
 }
 
-api.get("/videos/:id/subtitles", (c) => {
-  return c.json({ subtitles: subtitleList(c.req.param("id")) });
+api.get("/videos/:id/subtitles", async (c) => {
+  return c.json({ subtitles: await subtitleList(c.req.param("id")) });
 });
 
 api.get("/videos/:id/subtitles/:lang", async (c) => {
-  const file = listSubtitleFiles(c.req.param("id")).find((s) => s.lang === c.req.param("lang"));
+  const file = (await listSubtitleFiles(c.req.param("id"))).find((s) => s.lang === c.req.param("lang"));
   if (!file || !existsSync(file.path)) return c.json({ error: "not found" }, 404);
   let text = await Bun.file(file.path).text();
   if (file.ext === "srt") text = srtToVtt(text);
@@ -1150,20 +1210,20 @@ api.post("/videos/:id/subtitles", async (c) => {
   if (typeof lang !== "string" || !SUBTITLE_LANGUAGE_CODES.has(lang)) {
     return c.json({ error: "invalid language" }, 400);
   }
-  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
   const ok = await fetchSubtitles(id, lang);
-  const subtitles = subtitleList(id);
+  const subtitles = await subtitleList(id);
   return c.json({ ok, downloaded: subtitles.some((s) => s.lang === lang), subtitles });
 });
 
 // Download a locally saved video as a file rather than streaming it in the
 // player. Kept separate from /stream so local playback retains range support.
-api.get("/videos/:id/file", (c) => {
-  const row = getDownload(c.req.param("id"));
+api.get("/videos/:id/file", async (c) => {
+  const row = await getDownload(c.req.param("id"));
   if (!row || row.status !== "done" || !row.path || !existsSync(row.path)) {
     return c.json({ error: "not downloaded" }, 404);
   }
-  const title = (db.prepare("SELECT title FROM videos WHERE video_id = ?").get(c.req.param("id")) as { title: string } | null)?.title
+  const title = (await database.prepare("SELECT title FROM videos WHERE video_id = ?").get(c.req.param("id")) as { title: string } | null)?.title
     ?? c.req.param("id");
   const extension = row.path.endsWith(".webm") ? "webm" : "mp4";
   const filename = `${title.replace(/[\\/:*?\"<>|]/g, "_")}.${extension}`;
@@ -1185,7 +1245,7 @@ api.get("/discovery/recommendations", async (c) => {
   const localVideos = data.recommendations
     .filter((r) => r.kind === "local" && r.video)
     .map((r) => r.video as VideoRow);
-  const tagged = attachTags(uid, localVideos);
+  const tagged = await attachTags(uid, localVideos);
   let localIndex = 0;
   return c.json({
     enabled: data.enabled,
@@ -1196,73 +1256,73 @@ api.get("/discovery/recommendations", async (c) => {
   });
 });
 
-api.post("/discovery/recommendations/:id/dismiss", (c) => {
-  dismissDiscoveryRecommendation(currentUserId(c), c.req.param("id"));
+api.post("/discovery/recommendations/:id/dismiss", async (c) => {
+  await dismissDiscoveryRecommendation(currentUserId(c), c.req.param("id"));
   return c.json({ ok: true });
 });
 
-api.get("/live", (c) => {
+api.get("/live", async (c) => {
   const uid = currentUserId(c);
   if (childHidesLive(uid)) return c.json({ videos: [] });
-  const rows = db
+  const rows = await database
     .prepare(`${videoSelect(uid)} WHERE v.live_status IN ('live','upcoming') AND ${followedExists(uid)} ORDER BY v.live_status = 'live' DESC, v.published_at DESC`)
     .all() as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows) });
+  return c.json({ videos: await attachTags(uid, rows) });
 });
 
 // Unlike the global Live page, a channel page can be opened before the channel
 // is followed, so this intentionally does not require a subscription.
-api.get("/channels/:id/live", (c) => {
+api.get("/channels/:id/live", async (c) => {
   const uid = currentUserId(c);
   if (childHidesLive(uid)) return c.json({ videos: [] });
-  const rows = db
+  const rows = await database
     .prepare(`${videoSelect(uid)} WHERE v.channel_id = ? AND v.live_status = 'live' ORDER BY COALESCE(v.published_at, v.created_at) DESC`)
     .all(c.req.param("id")) as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows) });
+  return c.json({ videos: await attachTags(uid, rows) });
 });
 
-api.get("/watchlist", (c) => {
+api.get("/watchlist", async (c) => {
   const uid = currentUserId(c);
-  const rows = db
+  const rows = await database
     .prepare(`${videoSelect(uid)} WHERE uv.status = 'queued' ORDER BY uv.queued_at DESC`)
     .all() as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows) });
+  return c.json({ videos: await attachTags(uid, rows) });
 });
 
-api.get("/archive", (c) => {
+api.get("/archive", async (c) => {
   const uid = currentUserId(c);
   const page = Math.max(0, Number(c.req.query("page") ?? 0));
-  const rows = db
+  const rows = await database
     .prepare(`${videoSelect(uid)} WHERE uv.status = 'archived' ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT 60 OFFSET ?`)
     .all(page * 60) as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows), page });
+  return c.json({ videos: await attachTags(uid, rows), page });
 });
 
 // External ("orphan") videos pulled in for one-off watching: anything that
 // belongs to an external channel (not followed, brought in just to watch).
 // Watched ones (with a saved position) float to the top.
-api.get("/external", (c) => {
+api.get("/external", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const uid = currentUserId(c);
-  const rows = db
+  const rows = await database
     .prepare(`${videoSelect(uid)} WHERE c.external = 1
       ORDER BY (uv.watch_position IS NOT NULL) DESC, v.created_at DESC LIMIT 200`)
     .all() as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows) });
+  return c.json({ videos: await attachTags(uid, rows) });
 });
 
 // Clear orphan externals. Protects anything the user actively saved
 // (queued, liked or added to a playlist), then drops now-empty external channels.
-api.delete("/external", (c) => {
+api.delete("/external", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   // Protect anything ANY profile actively saved (queued, liked, or in a playlist).
-  const res = db.prepare(`
+  const res = await database.prepare(`
     DELETE FROM videos
     WHERE channel_id IN (SELECT channel_id FROM channels WHERE external = 1)
       AND video_id NOT IN (SELECT video_id FROM user_videos WHERE status = 'queued' OR liked = 1)
       AND video_id NOT IN (SELECT video_id FROM user_playlist_videos)
   `).run();
-  db.prepare(`
+  await database.prepare(`
     DELETE FROM channels
     WHERE external = 1 AND channel_id NOT IN (SELECT DISTINCT channel_id FROM videos)
   `).run();
@@ -1270,15 +1330,15 @@ api.delete("/external", (c) => {
 });
 
 // Remove a single external video, then drop its channel if now empty + external.
-api.delete("/external/:id", (c) => {
+api.delete("/external/:id", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const id = c.req.param("id");
-  const res = db.prepare(`
+  const res = await database.prepare(`
     DELETE FROM videos
     WHERE video_id = ?
       AND channel_id IN (SELECT channel_id FROM channels WHERE external = 1)
   `).run(id);
-  db.prepare(`
+  await database.prepare(`
     DELETE FROM channels
     WHERE external = 1 AND channel_id NOT IN (SELECT DISTINCT channel_id FROM videos)
   `).run();
@@ -1288,7 +1348,7 @@ api.delete("/external/:id", (c) => {
 api.get("/videos/:id/info", async (c) => {
   const uid = currentUserId(c);
   // Restricted child profiles may only open videos already in the library.
-  if (childLocalOnly(uid) && !videoExistsStmt.get(c.req.param("id"))) {
+  if (childLocalOnly(uid) && !await videoExistsStmt.get(c.req.param("id"))) {
     return c.json({ error: "restricted" }, 403);
   }
   try {
@@ -1304,7 +1364,7 @@ api.get("/videos/:id/info", async (c) => {
     const avatar = about?.avatar ?? "";
 
     // Upsert channel: insert as external if new, or update avatar if missing
-    db.prepare(`
+    await database.prepare(`
       INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
       VALUES (?, ?, ?, ?, 0, 1)
       ON CONFLICT(channel_id) DO UPDATE SET
@@ -1312,33 +1372,33 @@ api.get("/videos/:id/info", async (c) => {
                          THEN excluded.thumbnail ELSE channels.thumbnail END
     `).run(info.channelId, info.channelTitle, `https://www.youtube.com/channel/${info.channelId}`, avatar);
 
-    const insertVideo = db.prepare(`
+    const insertVideo = database.prepare(`
       INSERT OR IGNORE INTO videos
         (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, external)
       VALUES (?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?, 1)
     `);
 
     // Insert the watched video (no-op if already in DB as a real video)
-    const inserted = insertVideo.run(
+    const inserted = await insertVideo.run(
       info.videoId, info.channelId, info.title, info.description,
       info.thumbnail, info.publishedAt, info.liveStatus, info.viewCount, info.duration
     );
     if (info.duration) {
-      db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL")
+      await database.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL")
         .run(info.duration, info.videoId);
     }
 
     // Insert the channel's recent uploads as external so the related panel fills.
     if (feed) {
-      const insertMany = db.transaction((videos: typeof feed.videos) => {
+      const insertMany = database.transaction(async (videos: typeof feed.videos) => {
         for (const v of videos) {
-          insertVideo.run(
+          await insertVideo.run(
             v.videoId, info.channelId, v.title, v.description,
             v.thumbnail, v.publishedAt, "none", v.views, null
           );
         }
       });
-      insertMany(feed.videos);
+      await insertMany(feed.videos);
     }
     log.info("external.video_info_loaded", {
       videoId: info.videoId,
@@ -1356,14 +1416,14 @@ api.get("/videos/:id/info", async (c) => {
 async function refreshVideoChapters(videoId: string) {
   const chapters = await fetchVideoChapters(videoId);
   // Persist only when the video is in our DB (UPDATE no-ops otherwise).
-  db.prepare("UPDATE videos SET chapters_json = ?, chapters_fetched_at = datetime('now') WHERE video_id = ?")
+  await database.prepare("UPDATE videos SET chapters_json = ?, chapters_fetched_at = datetime('now') WHERE video_id = ?")
     .run(JSON.stringify(chapters), videoId);
   return chapters;
 }
 
 api.get("/videos/:id/chapters", async (c) => {
   const videoId = c.req.param("id");
-  const cached = db.prepare("SELECT chapters_json, chapters_fetched_at, is_private FROM videos WHERE video_id = ?")
+  const cached = await database.prepare("SELECT chapters_json, chapters_fetched_at, is_private FROM videos WHERE video_id = ?")
     .get(videoId) as { chapters_json: string | null; chapters_fetched_at: string | null; is_private: number } | null;
   if (cached?.is_private === 1) return c.json({ chapters: [] });
 
@@ -1394,8 +1454,8 @@ interface StoredVideoCreator {
   isOwner: boolean;
 }
 
-function storedVideoCreators(videoId: string): StoredVideoCreator[] {
-  return (db.prepare(`
+async function storedVideoCreators(videoId: string): Promise<StoredVideoCreator[]> {
+  return (await database.prepare(`
     SELECT vc.channel_id AS channelId,
            COALESCE(NULLIF(c.custom_title, ''), c.title) AS title,
            c.thumbnail AS avatar,
@@ -1412,7 +1472,7 @@ function storedVideoCreators(videoId: string): StoredVideoCreator[] {
 
 api.get("/videos/:id/creators", async (c) => {
   const videoId = c.req.param("id");
-  const video = db.prepare(`
+  const video = await database.prepare(`
     SELECT v.video_id, v.channel_id,
            COALESCE(NULLIF(c.custom_title, ''), c.title) AS title,
            c.thumbnail AS avatar,
@@ -1440,7 +1500,7 @@ api.get("/videos/:id/creators", async (c) => {
     isOwner: true,
   };
   if (video.is_private === 1) return c.json({ creators: [fallback] });
-  const cached = storedVideoCreators(videoId);
+  const cached = await storedVideoCreators(videoId);
   const missingCollaboratorHandles = cached.length > 1 && cached.some((creator) => !creator.handle);
   if (cached.length > 0 && !missingCollaboratorHandles && ageMs(video.creators_fetched_at) <= CREATORS_DB_TTL) {
     return c.json({ creators: cached });
@@ -1449,49 +1509,49 @@ api.get("/videos/:id/creators", async (c) => {
   try {
     const fetched = await fetchVideoCreators(videoId);
     const creators = fetched.length > 1 ? fetched : [fallback];
-    db.transaction(() => {
-      db.prepare("DELETE FROM video_creators WHERE video_id = ?").run(videoId);
-      const ensureChannel = db.prepare(`
+    await database.transaction(async () => {
+      await database.prepare("DELETE FROM video_creators WHERE video_id = ?").run(videoId);
+      const ensureChannel = database.prepare(`
         INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
         VALUES (?, ?, ?, ?, 0, 1)
         ON CONFLICT(channel_id) DO UPDATE SET
           title = CASE WHEN channels.title = '' THEN excluded.title ELSE channels.title END,
           thumbnail = CASE WHEN channels.thumbnail = '' THEN excluded.thumbnail ELSE channels.thumbnail END
       `);
-      const addCreator = db.prepare(`
+      const addCreator = database.prepare(`
         INSERT INTO video_creators (video_id, channel_id, handle, sort_order, is_owner) VALUES (?, ?, ?, ?, ?)
       `);
-      creators.forEach((creator, index) => {
-        ensureChannel.run(
+      for (const [index, creator] of creators.entries()) {
+        await ensureChannel.run(
           creator.channelId,
           creator.title,
           `https://www.youtube.com/channel/${creator.channelId}`,
           creator.avatar,
         );
-        addCreator.run(videoId, creator.channelId, creator.handle, index, creator.isOwner ? 1 : 0);
-      });
-      db.prepare("UPDATE videos SET creators_fetched_at = datetime('now') WHERE video_id = ?").run(videoId);
+        await addCreator.run(videoId, creator.channelId, creator.handle, index, creator.isOwner ? 1 : 0);
+      }
+      await database.prepare("UPDATE videos SET creators_fetched_at = datetime('now') WHERE video_id = ?").run(videoId);
     })();
-    return c.json({ creators: storedVideoCreators(videoId) });
+    return c.json({ creators: await storedVideoCreators(videoId) });
   } catch (error) {
     log.warn("video.creators.fetch_failed", { videoId, error: error instanceof Error ? error.message : String(error) });
     return c.json({ creators: cached.length > 0 ? cached : [fallback] });
   }
 });
 
-api.get("/videos/:id", (c) => {
+api.get("/videos/:id", async (c) => {
   const uid = currentUserId(c);
-  const row = db
+  const row = await database
     .prepare(`${videoSelect(uid)} WHERE v.video_id = ?`)
     .get(c.req.param("id")) as VideoRow | null;
   if (!row) return c.json({ error: "not found" }, 404);
   if (childHidesLive(uid) && (row.live_status === "live" || row.live_status === "upcoming")) {
     return c.json({ error: "live streams are disabled for this profile" }, 403);
   }
-  const [video] = attachTags(uid, [row]);
+  const [video] = await attachTags(uid, [row]);
 
   // Collect all tag IDs for this video (direct + via channel)
-  const tagRows = db.prepare(`
+  const tagRows = await database.prepare(`
     SELECT DISTINCT x.tag_id FROM (
       SELECT tag_id FROM video_tags WHERE video_id = ?
       UNION
@@ -1518,7 +1578,7 @@ api.get("/videos/:id", (c) => {
   if (tagRows.length > 0) {
     const tagIds = tagRows.map((t) => t.tag_id);
     const ph = tagIds.map(() => "?").join(",");
-    fill(db.prepare(
+    fill(await database.prepare(
       `${videoSelect(uid)} WHERE v.video_id != ? AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
@@ -1528,7 +1588,7 @@ api.get("/videos/:id", (c) => {
 
   // Step 2 — same channel, fill what's missing
   if (need() > 0) {
-    fill(db.prepare(
+    fill(await database.prepare(
       `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id != ? AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(row.channel_id, row.video_id, need() * 2) as VideoRow[]);
@@ -1539,7 +1599,7 @@ api.get("/videos/:id", (c) => {
     const tagIds = tagRows.map((t) => t.tag_id);
     const ph = tagIds.map(() => "?").join(",");
     const seenPh = [...seen].map(() => "?").join(",");
-    fill(db.prepare(
+    fill(await database.prepare(
       `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
@@ -1550,21 +1610,21 @@ api.get("/videos/:id", (c) => {
   // Step 4 — any recent non-archived non-short inbox/queued videos
   if (need() > 0) {
     const seenPh = [...seen].map(() => "?").join(",");
-    fill(db.prepare(
+    fill(await database.prepare(
       `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
     ).all(...seen, need() * 2) as VideoRow[]);
   }
 
   // Active profile's channel-level player overrides (NULL = use global).
-  const channelPlayerRow = db.prepare(
+  const channelPlayerRow = await database.prepare(
     "SELECT playback_speed, caption_mode, caption_language FROM user_channels WHERE user_id = ? AND channel_id = ?"
   ).get(uid, row.channel_id) as { playback_speed: string | null; caption_mode: string | null; caption_language: string | null } | null;
   (video as any).channel_playback_speed = channelPlayerRow?.playback_speed ?? null;
   (video as any).channel_caption_mode = channelPlayerRow?.caption_mode ?? null;
   (video as any).channel_caption_language = channelPlayerRow?.caption_language ?? null;
 
-  return c.json({ video, related: attachTags(uid, related) });
+  return c.json({ video, related: await attachTags(uid, related) });
 });
 
 // ---------- video actions ----------
@@ -1573,15 +1633,15 @@ const BUCKETS = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 
 // Upsert helpers for the active profile's per-video state. A row is created on
 // first action; subsequent actions update it. (videoExists guards FK errors.)
-const videoExistsStmt = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
+const videoExistsStmt = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 
 // Whether this install has ever had a channel or video added, by any profile —
 // gates the full "start from scratch" onboarding (see GET /channels), as
 // opposed to a profile that simply hasn't followed anything yet.
-const anyChannelStmt = db.prepare("SELECT 1 FROM channels LIMIT 1");
-const anyVideoStmt = db.prepare("SELECT 1 FROM videos LIMIT 1");
-function instanceHasData(): boolean {
-  return !!anyChannelStmt.get() || !!anyVideoStmt.get();
+const anyChannelStmt = database.prepare("SELECT 1 FROM channels LIMIT 1");
+const anyVideoStmt = database.prepare("SELECT 1 FROM videos LIMIT 1");
+async function instanceHasData(): Promise<boolean> {
+  return !!await anyChannelStmt.get() || !!await anyVideoStmt.get();
 }
 
 api.post("/videos/:id/queue", async (c) => {
@@ -1589,35 +1649,35 @@ api.post("/videos/:id/queue", async (c) => {
   const id = c.req.param("id");
   const { bucket } = await c.req.json();
   if (!BUCKETS.includes(bucket)) return c.json({ error: "invalid bucket" }, 400);
-  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
   const showFrom = computeShowFrom(bucket);
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, status, bucket, queued_at, show_from)
      VALUES (?, ?, 'queued', ?, datetime('now'), ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'queued', bucket = excluded.bucket, queued_at = excluded.queued_at, show_from = excluded.show_from`
   ).run(uid, id, bucket, showFrom);
-  recordSchedulingSignal(uid, id, bucket);
+  await recordSchedulingSignal(uid, id, bucket);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
-api.post("/videos/:id/archive", (c) => {
+api.post("/videos/:id/archive", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-  db.prepare(
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'archived')
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'archived', bucket = NULL, show_from = NULL`
   ).run(uid, id);
   // Rejecting a video also stops a pending auto download nobody else waits for.
-  cancelAutoDownloadIfUnwanted(id);
+  await cancelAutoDownloadIfUnwanted(id);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
-api.post("/videos/:id/restore", (c) => {
+api.post("/videos/:id/restore", async (c) => {
   const uid = currentUserId(c);
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'inbox')
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'inbox', bucket = NULL, show_from = NULL`
   ).run(uid, c.req.param("id"));
@@ -1625,9 +1685,9 @@ api.post("/videos/:id/restore", (c) => {
   return c.json({ ok: true });
 });
 
-api.post("/videos/:id/dequeue", (c) => {
+api.post("/videos/:id/dequeue", async (c) => {
   const uid = currentUserId(c);
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'inbox')
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'inbox', bucket = NULL, queued_at = NULL, show_from = NULL`
   ).run(uid, c.req.param("id"));
@@ -1635,37 +1695,37 @@ api.post("/videos/:id/dequeue", (c) => {
   return c.json({ ok: true });
 });
 
-api.post("/videos/:id/watch", (c) => {
+api.post("/videos/:id/watch", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  if (videoExistsStmt.get(id)) {
-    db.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
+  if (await videoExistsStmt.get(id)) {
+    await database.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
     refreshDiscoveryInBackground(uid);
   }
   return c.json({ ok: true });
 });
 
-api.post("/videos/:id/complete", (c) => {
+api.post("/videos/:id/complete", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-  db.prepare(
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
      ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1`
   ).run(uid, id);
-  db.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
+  await database.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
-api.delete("/videos/:id/complete", (c) => {
+api.delete("/videos/:id/complete", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-  db.transaction(() => {
-    const state = db.prepare("SELECT watched FROM user_videos WHERE user_id = ? AND video_id = ?")
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  await database.transaction(async () => {
+    const state = await database.prepare("SELECT watched FROM user_videos WHERE user_id = ? AND video_id = ?")
       .get(uid, id) as { watched: number | null } | null;
-    db.prepare(
+    await database.prepare(
       `INSERT INTO user_videos (user_id, video_id, status, watched) VALUES (?, ?, 'inbox', NULL)
        ON CONFLICT(user_id, video_id) DO UPDATE SET
          status = 'inbox', watched = NULL, watch_position = NULL, watch_duration = NULL,
@@ -1675,7 +1735,7 @@ api.delete("/videos/:id/complete", (c) => {
     // so undoing an accidental click does not erase older, legitimate watches.
     // Checking the old state also keeps repeated DELETE requests idempotent.
     if (state?.watched === 1) {
-      db.prepare(
+      await database.prepare(
         `DELETE FROM history WHERE id = (
            SELECT id FROM history WHERE user_id = ? AND video_id = ?
            ORDER BY watched_at DESC, id DESC LIMIT 1
@@ -1691,8 +1751,8 @@ api.put("/videos/:id/like", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
   const { liked } = await c.req.json() as { liked: boolean };
-  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-  db.prepare(
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, liked) VALUES (?, ?, ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET liked = excluded.liked`
   ).run(uid, id, liked ? 1 : null);
@@ -1704,19 +1764,19 @@ api.put("/videos/:id/progress", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
   const { position, duration } = await c.req.json() as { position: number; duration: number };
-  if (!videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-  db.prepare(
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, watch_position, watch_duration) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id, video_id) DO UPDATE SET watch_position = excluded.watch_position, watch_duration = excluded.watch_duration`
   ).run(uid, id, position, duration);
-  recordWatchTick(uid, id);
+  await recordWatchTick(uid, id);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
-api.delete("/videos/:id/progress", (c) => {
+api.delete("/videos/:id/progress", async (c) => {
   const uid = currentUserId(c);
-  db.prepare(
+  await database.prepare(
     "UPDATE user_videos SET watch_position = NULL, watch_duration = NULL WHERE user_id = ? AND video_id = ?"
   ).run(uid, c.req.param("id"));
   refreshDiscoveryInBackground(uid);
@@ -1727,10 +1787,10 @@ api.post("/videos/:id/tags", async (c) => {
   const uid = currentUserId(c);
   const { tag_id } = await c.req.json();
   // Only allow tagging with a tag the active profile owns.
-  if (!db.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) {
+  if (!await database.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) {
     return c.json({ error: "tag not found" }, 404);
   }
-  db.prepare("INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) VALUES (?, ?, 'manual')").run(
+  await database.prepare("INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) VALUES (?, ?, 'manual')").run(
     c.req.param("id"),
     tag_id
   );
@@ -1738,9 +1798,9 @@ api.post("/videos/:id/tags", async (c) => {
   return c.json({ ok: true });
 });
 
-api.delete("/videos/:id/tags/:tagId", (c) => {
+api.delete("/videos/:id/tags/:tagId", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("DELETE FROM video_tags WHERE video_id = ? AND tag_id = ?").run(
+  await database.prepare("DELETE FROM video_tags WHERE video_id = ? AND tag_id = ?").run(
     c.req.param("id"),
     c.req.param("tagId")
   );
@@ -1750,10 +1810,10 @@ api.delete("/videos/:id/tags/:tagId", (c) => {
 
 // ---------- history ----------
 
-api.get("/history", (c) => {
+api.get("/history", async (c) => {
   const uid = currentUserId(c);
   const page = Math.max(0, Number(c.req.query("page") ?? 0));
-  const rows = db
+  const rows = await database
     .prepare(
       `SELECT MAX(h.id) AS history_id, MAX(h.watched_at) AS watched_at,
               v.video_id, v.channel_id, v.title, v.description, v.duration,
@@ -1769,12 +1829,12 @@ api.get("/history", (c) => {
        ORDER BY MAX(h.watched_at) DESC LIMIT 60 OFFSET ?`
     )
     .all(uid, uid, page * 60) as (VideoRow & { history_id: number; watched_at: string })[];
-  return c.json({ videos: attachTags(uid, rows as VideoRow[]), page });
+  return c.json({ videos: await attachTags(uid, rows as VideoRow[]), page });
 });
 
-api.delete("/history/:id", (c) => {
+api.delete("/history/:id", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("DELETE FROM history WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  await database.prepare("DELETE FROM history WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
@@ -1793,19 +1853,19 @@ function serializeChannel(ch: any) {
   };
 }
 
-function channelSyncIsDisabled(channelId: string): boolean {
-  const row = db.prepare("SELECT manual_status FROM channels WHERE channel_id=?").get(channelId) as { manual_status: string } | null;
+async function channelSyncIsDisabled(channelId: string): Promise<boolean> {
+  const row = await database.prepare("SELECT manual_status FROM channels WHERE channel_id=?").get(channelId) as { manual_status: string } | null;
   return Boolean(row && row.manual_status !== "active");
 }
 
-function playlistChannelSyncIsDisabled(playlistId: string): boolean {
-  const row = db.prepare("SELECT c.manual_status FROM channel_playlists cp JOIN channels c ON c.channel_id=cp.channel_id WHERE cp.playlist_id=?").get(playlistId) as { manual_status: string } | null;
+async function playlistChannelSyncIsDisabled(playlistId: string): Promise<boolean> {
+  const row = await database.prepare("SELECT c.manual_status FROM channel_playlists cp JOIN channels c ON c.channel_id=cp.channel_id WHERE cp.playlist_id=?").get(playlistId) as { manual_status: string } | null;
   return Boolean(row && row.manual_status !== "active");
 }
 
-api.get("/channels", (c) => {
+api.get("/channels", async (c) => {
   const uid = currentUserId(c);
-  const channels = db.prepare(
+  const channels = await database.prepare(
     `SELECT ch.*, uc.added_at AS subscribed_at,
        (SELECT MAX(v.published_at) FROM videos v WHERE v.channel_id = ch.channel_id) AS latest_video_at,
        (SELECT COUNT(*) FROM videos v WHERE v.channel_id = ch.channel_id) AS video_count
@@ -1813,7 +1873,7 @@ api.get("/channels", (c) => {
      JOIN user_channels uc ON uc.channel_id = ch.channel_id AND uc.user_id = ? AND uc.followed = 1
      WHERE ch.external = 0 ORDER BY COALESCE(ch.custom_title, ch.title) COLLATE NOCASE`
   ).all(uid) as any[];
-  const tags = db
+  const tags = await database
     .prepare(
       `SELECT ct.channel_id, t.id, t.name, t.color FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id AND t.user_id = ?`
     )
@@ -1840,28 +1900,28 @@ api.get("/channels", (c) => {
     // Distinguishes a genuinely fresh install (show the full onboarding) from a
     // profile that simply isn't following anything yet on an instance that
     // already has channels/videos from another profile or an import.
-    instance_has_data: instanceHasData(),
+    instance_has_data: await instanceHasData(),
   });
 });
 
 api.post("/channels", async (c) => {
   // A child may subscribe only after a parent unlocked settings for this browser.
-  if (isChildUser(currentUserId(c)) && !hasChildLockSession(c)) return c.json({ error: "settings locked" }, 423);
+  if (await isChildUser(currentUserId(c)) && !hasChildLockSession(c)) return c.json({ error: "settings locked" }, 423);
   const uid = currentUserId(c);
   const { url, custom_name } = await c.req.json();
   if (!url) return c.json({ error: "url required" }, 400);
   const info = await resolveChannelId(url);
-  const inserted = db.prepare(
+  const inserted = await database.prepare(
     "INSERT OR IGNORE INTO channels (channel_id, title, url, thumbnail) VALUES (?, ?, ?, ?)"
   ).run(info.channelId, info.title, `https://www.youtube.com/channel/${info.channelId}`, info.thumbnail);
   // Subscribe the active profile (and unmark external if it was an orphan).
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_channels (user_id, channel_id, followed) VALUES (?, ?, 1)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = 1`
   ).run(uid, info.channelId);
-  db.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(info.channelId);
+  await database.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(info.channelId);
   const customTitle = typeof custom_name === "string" ? custom_name.trim() : "";
-  if (customTitle) db.prepare("UPDATE channels SET custom_title = ? WHERE channel_id = ?").run(customTitle, info.channelId);
+  if (customTitle) await database.prepare("UPDATE channels SET custom_title = ? WHERE channel_id = ?").run(customTitle, info.channelId);
   log.info("channel.added", { channelId: info.channelId, title: info.title, inserted: inserted.changes > 0, userId: uid });
   refreshChannel(info.channelId)
     .then(() => refreshLiveStatus(info.channelId))
@@ -1876,10 +1936,10 @@ api.post("/channels/assign-all", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const { user_id } = await c.req.json().catch(() => ({}));
   const uid = Number(user_id);
-  if (!Number.isInteger(uid) || !db.prepare("SELECT 1 FROM users WHERE id = ?").get(uid)) {
+  if (!Number.isInteger(uid) || !await database.prepare("SELECT 1 FROM users WHERE id = ?").get(uid)) {
     return c.json({ error: "profile not found" }, 404);
   }
-  const res = db.prepare(
+  const res = await database.prepare(
     `INSERT OR IGNORE INTO user_channels (user_id, channel_id, followed)
      SELECT ?, channel_id, 1 FROM channels WHERE external = 0`
   ).run(uid);
@@ -1889,9 +1949,9 @@ api.post("/channels/assign-all", async (c) => {
 
 // Unsubscribe the active profile. The channel/videos stay (other profiles may
 // follow it; the refresher stops touching it once nobody does).
-api.delete("/channels/:id", (c) => {
+api.delete("/channels/:id", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("DELETE FROM user_channels WHERE user_id = ? AND channel_id = ?").run(uid, c.req.param("id"));
+  await database.prepare("DELETE FROM user_channels WHERE user_id = ? AND channel_id = ?").run(uid, c.req.param("id"));
   return c.json({ ok: true });
 });
 
@@ -1899,14 +1959,14 @@ api.delete("/channels/:id", (c) => {
 // original YouTube title (kept untouched in `title`).
 api.put("/channels/:id/name", async (c) => {
   const channelId = c.req.param("id");
-  if (!db.prepare("SELECT 1 FROM channels WHERE channel_id = ?").get(channelId)) {
+  if (!await database.prepare("SELECT 1 FROM channels WHERE channel_id = ?").get(channelId)) {
     return c.json({ error: "not found" }, 404);
   }
   const { custom_title } = await c.req.json().catch(() => ({}));
   const value = typeof custom_title === "string" && custom_title.trim() ? custom_title.trim() : null;
-  db.prepare("UPDATE channels SET custom_title = ? WHERE channel_id = ?").run(value, channelId);
+  await database.prepare("UPDATE channels SET custom_title = ? WHERE channel_id = ?").run(value, channelId);
   log.info("channel.renamed", { channelId, custom_title: value });
-  const ch = db.prepare("SELECT * FROM channels WHERE channel_id = ?").get(channelId) as any;
+  const ch = await database.prepare("SELECT * FROM channels WHERE channel_id = ?").get(channelId) as any;
   return c.json({ ok: true, channel: serializeChannel(ch) });
 });
 
@@ -1914,7 +1974,7 @@ api.put("/channels/:id/status", async (c) => {
   const channelId = c.req.param("id");
   const { status } = await c.req.json().catch(() => ({}));
   if (!isChannelManualStatus(status)) return c.json({ error: "invalid channel status" }, 400);
-  const result = db.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(status, channelId);
+  const result = await database.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(status, channelId);
   if (result.changes === 0) return c.json({ error: "not found" }, 404);
   log.info("channel.manual_status_changed", { channelId, status });
   return c.json({ ok: true, status });
@@ -1924,25 +1984,25 @@ api.post("/channels/:id/tags", async (c) => {
   const uid = currentUserId(c);
   const { tag_id } = await c.req.json();
   const channelId = c.req.param("id");
-  if (!db.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) {
+  if (!await database.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) {
     return c.json({ error: "tag not found" }, 404);
   }
-  db.prepare("INSERT OR IGNORE INTO channel_tags (channel_id, tag_id) VALUES (?, ?)").run(channelId, tag_id);
+  await database.prepare("INSERT OR IGNORE INTO channel_tags (channel_id, tag_id) VALUES (?, ?)").run(channelId, tag_id);
   // Propagate to all existing videos of this channel
-  db.prepare(
+  await database.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT video_id, ?, 'channel' FROM videos WHERE channel_id = ?"
   ).run(tag_id, channelId);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
-api.delete("/channels/:id/tags/:tagId", (c) => {
+api.delete("/channels/:id/tags/:tagId", async (c) => {
   const uid = currentUserId(c);
   const channelId = c.req.param("id");
   const tagId = c.req.param("tagId");
-  db.prepare("DELETE FROM channel_tags WHERE channel_id = ? AND tag_id = ?").run(channelId, tagId);
+  await database.prepare("DELETE FROM channel_tags WHERE channel_id = ? AND tag_id = ?").run(channelId, tagId);
   // Remove channel-propagated tags from videos (keep manually added ones)
-  db.prepare(
+  await database.prepare(
     "DELETE FROM video_tags WHERE tag_id = ? AND source = 'channel' AND video_id IN (SELECT video_id FROM videos WHERE channel_id = ?)"
   ).run(tagId, channelId);
   refreshDiscoveryInBackground(uid);
@@ -1961,14 +2021,14 @@ const PLAYLISTS_DB_TTL = 7 * 24 * 60 * 60_000;
 const CHAPTERS_DB_TTL = 7 * 24 * 60 * 60_000;
 const CREATORS_DB_TTL = 7 * 24 * 60 * 60_000;
 
-const ensureExternalChannelRow = db.prepare(`
+const ensureExternalChannelRow = database.prepare(`
   INSERT OR IGNORE INTO channels (channel_id, title, url, followed, external)
   VALUES (?, ?, ?, 0, 1)
 `);
 
-function persistChannelAbout(channelId: string, about: ChannelAbout) {
-  ensureExternalChannelRow.run(channelId, about.title || channelId, `https://www.youtube.com/channel/${channelId}`);
-  db.prepare(
+async function persistChannelAbout(channelId: string, about: ChannelAbout) {
+  await ensureExternalChannelRow.run(channelId, about.title || channelId, `https://www.youtube.com/channel/${channelId}`);
+  await database.prepare(
     `UPDATE channels SET about_json = ?, about_fetched_at = datetime('now'),
        thumbnail = COALESCE(?, thumbnail), title = COALESCE(?, title), subscriber_count = COALESCE(?, subscriber_count)
      WHERE channel_id = ?`
@@ -1990,10 +2050,10 @@ async function refreshChannelAbout(channelId: string): Promise<ChannelAbout> {
     ? { ...about, subscriberCount: watchSubscriber.subscriberCount }
     : about;
   const aboutForStorage = await preserveChannelMedia(channelId, aboutWithSubscriber);
-  persistChannelAbout(channelId, aboutForStorage);
-  fetchChannelVideosDurations(channelId).then((durations) => {
-    const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
-    for (const d of durations) upd.run(d.duration, d.videoId);
+  await persistChannelAbout(channelId, aboutForStorage);
+  fetchChannelVideosDurations(channelId).then(async (durations) => {
+    const upd = database.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
+    for (const d of durations) await upd.run(d.duration, d.videoId);
   }).catch((error) => {
     log.warn("channel.about_duration_backfill_failed", { channelId, error: error instanceof Error ? error.message : String(error) });
   });
@@ -2002,10 +2062,10 @@ async function refreshChannelAbout(channelId: string): Promise<ChannelAbout> {
 
 api.get("/channels/:id/about", async (c) => {
   const channelId = c.req.param("id");
-  const syncDisabled = channelSyncIsDisabled(channelId);
+  const syncDisabled = await channelSyncIsDisabled(channelId);
   // Real counts from our own data — stable regardless of how many pages the
   // UI has loaded (NULL is_short counts as a regular video, matching the UI).
-  const row = db.prepare(`
+  const row = await database.prepare(`
     SELECT
       COALESCE(SUM(published_at IS NOT NULL AND published_at != '' AND COALESCE(is_short, 0) = 0), 0) AS videos,
       COALESCE(SUM(published_at IS NOT NULL AND published_at != '' AND is_short = 1), 0) AS shorts,
@@ -2015,13 +2075,13 @@ api.get("/channels/:id/about", async (c) => {
   const counts = row;
   // The channel page header shows the custom name too; the scraped about
   // payload keeps the original underneath.
-  const customTitle = (db.prepare("SELECT custom_title FROM channels WHERE channel_id = ?").get(channelId) as { custom_title: string | null } | null)?.custom_title ?? null;
+  const customTitle = (await database.prepare("SELECT custom_title FROM channels WHERE channel_id = ?").get(channelId) as { custom_title: string | null } | null)?.custom_title ?? null;
   const withCustomTitle = <T extends { title: string }>(about: T): T =>
     customTitle ? { ...about, title: customTitle } : about;
 
   // Serve the cached about from the DB; only touch YouTube when it's missing
   // or stale (and then in the background, so the page never waits on it).
-  const cachedRow = db.prepare("SELECT about_json, about_fetched_at, subscriber_count FROM channels WHERE channel_id = ?")
+  const cachedRow = await database.prepare("SELECT about_json, about_fetched_at, subscriber_count FROM channels WHERE channel_id = ?")
     .get(channelId) as { about_json: string | null; about_fetched_at: string | null; subscriber_count: string | null } | null;
 
   if (cachedRow?.about_json) {
@@ -2041,7 +2101,7 @@ api.get("/channels/:id/about", async (c) => {
   }
 
   if (syncDisabled) {
-    const ch = db.prepare("SELECT title, thumbnail, subscriber_count FROM channels WHERE channel_id = ?")
+    const ch = await database.prepare("SELECT title, thumbnail, subscriber_count FROM channels WHERE channel_id = ?")
       .get(channelId) as { title: string; thumbnail: string | null; subscriber_count: string | null } | null;
     if (!ch) return c.json({ error: "not found" }, 404);
     return c.json({ channelId, title: customTitle || ch.title || "", description: "", avatar: ch.thumbnail ?? "", banner: "", subscriberCount: ch.subscriber_count ?? "", stats: [], links: [], joinedDate: "", viewCount: "", handle: "", counts });
@@ -2053,7 +2113,7 @@ api.get("/channels/:id/about", async (c) => {
   } catch (e) {
     // YouTube can rate-limit (429) or change layout — fall back to the basic
     // columns so the page still shows avatar/title/subs instead of breaking.
-    const ch = db.prepare("SELECT title, thumbnail, subscriber_count FROM channels WHERE channel_id = ?")
+    const ch = await database.prepare("SELECT title, thumbnail, subscriber_count FROM channels WHERE channel_id = ?")
       .get(channelId) as { title: string; thumbnail: string | null; subscriber_count: string | null } | null;
     if (!ch) return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
     log.warn("channel.about.fallback", { channelId, error: e instanceof Error ? e.message : String(e) });
@@ -2074,8 +2134,8 @@ api.get("/channels/:id/about", async (c) => {
   }
 });
 
-function attachPlaylistFollowState(userId: number, playlists: any[]) {
-  const followed = db.prepare("SELECT playlist_id FROM user_followed_playlists WHERE user_id = ?").all(userId) as { playlist_id: string }[];
+async function attachPlaylistFollowState(userId: number, playlists: any[]) {
+  const followed = await database.prepare("SELECT playlist_id FROM user_followed_playlists WHERE user_id = ?").all(userId) as { playlist_id: string }[];
   const ids = new Set(followed.map((row) => row.playlist_id));
   return playlists.map((playlist) => ({ ...playlist, followed: ids.has(playlist.playlistId) }));
 }
@@ -2084,9 +2144,9 @@ async function refreshChannelPlaylists(channelId: string, force = false) {
   const playlists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, force));
   // Channel pages are available for unsubscribed/external creators too. Their
   // parent row may not exist yet, but channel_playlists has a strict FK.
-  ensureExternalChannelRow.run(channelId, channelId, `https://www.youtube.com/channel/${channelId}`);
-  saveChannelPlaylists(channelId, playlists);
-  db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
+  await ensureExternalChannelRow.run(channelId, channelId, `https://www.youtube.com/channel/${channelId}`);
+  await saveChannelPlaylists(channelId, playlists);
+  await database.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
     .run(JSON.stringify(playlists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
   return playlists;
 }
@@ -2094,37 +2154,37 @@ async function refreshChannelPlaylists(channelId: string, force = false) {
 api.get("/channels/:id/playlists", async (c) => {
   const uid = currentUserId(c);
   const channelId = c.req.param("id");
-  const syncDisabled = channelSyncIsDisabled(channelId);
-  const cached = db.prepare("SELECT playlists_json, playlists_fetched_at, playlists_cache_version FROM channels WHERE channel_id = ?")
+  const syncDisabled = await channelSyncIsDisabled(channelId);
+  const cached = await database.prepare("SELECT playlists_json, playlists_fetched_at, playlists_cache_version FROM channels WHERE channel_id = ?")
     .get(channelId) as { playlists_json: string | null; playlists_fetched_at: string | null; playlists_cache_version: number } | null;
 
   if (cached?.playlists_json) {
     try {
       const playlists = JSON.parse(cached.playlists_json);
       if (!syncDisabled && cached.playlists_cache_version < CHANNEL_PLAYLIST_CACHE_VERSION) {
-        return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId, true)) });
+        return c.json({ playlists: await attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId, true)) });
       }
       // Pre-pagination cache entries commonly contain exactly YouTube's first
       // page of 30 cards. Upgrade them synchronously so this request already
       // shows the missing playlists instead of waiting for the weekly refresh.
       if (!syncDisabled && Array.isArray(playlists) && playlists.length === 30) {
-        return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
+        return c.json({ playlists: await attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
       }
-      if (Array.isArray(playlists)) saveChannelPlaylists(channelId, playlists);
+      if (Array.isArray(playlists)) await saveChannelPlaylists(channelId, playlists);
     } catch { /* corrupted cache — fall through to a fresh fetch */ }
     if (!syncDisabled && ageMs(cached.playlists_fetched_at) > PLAYLISTS_DB_TTL) {
       refreshChannelPlaylists(channelId).catch((e) =>
         log.warn("channel.playlists.refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) }));
     }
     try {
-      return c.json({ playlists: attachPlaylistFollowState(uid, JSON.parse(cached.playlists_json)) });
+      return c.json({ playlists: await attachPlaylistFollowState(uid, JSON.parse(cached.playlists_json)) });
     } catch { /* corrupted cache — fall through */ }
   }
 
   if (syncDisabled) return c.json({ playlists: [] });
 
   try {
-    return c.json({ playlists: attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
+    return c.json({ playlists: await attachPlaylistFollowState(uid, await refreshChannelPlaylists(channelId)) });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
@@ -2132,7 +2192,7 @@ api.get("/channels/:id/playlists", async (c) => {
 
 api.post("/channels/:id/playlists/sync", async (c) => {
   const channelId = c.req.param("id");
-  if (channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
+  if (await channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
   try {
     const result = await syncChannelPlaylists(channelId);
     log.info("channel.playlists.sync_requested", { channelId, count: result.playlists.length, synced: result.synced, added: result.added, errors: result.errors });
@@ -2142,7 +2202,7 @@ api.post("/channels/:id/playlists/sync", async (c) => {
       synced: result.synced,
       added: result.added,
       errors: result.errors,
-      playlists: attachPlaylistFollowState(currentUserId(c), result.playlists),
+      playlists: await attachPlaylistFollowState(currentUserId(c), result.playlists),
     });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
@@ -2151,7 +2211,7 @@ api.post("/channels/:id/playlists/sync", async (c) => {
 
 api.post("/channels/:id/metadata/sync", async (c) => {
   const channelId = c.req.param("id");
-  if (channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
+  if (await channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
   try {
     return c.json({ ok: true, ...(await syncChannelMissingMetadata(channelId)) });
   } catch (e) {
@@ -2164,7 +2224,7 @@ api.put("/channels/:id/follow", async (c) => {
   const uid = currentUserId(c);
   const { followed } = await c.req.json<{ followed: boolean }>();
   const channelId = c.req.param("id");
-  const existing = db.prepare("SELECT 1 FROM channels WHERE channel_id = ?").get(channelId);
+  const existing = await database.prepare("SELECT 1 FROM channels WHERE channel_id = ?").get(channelId);
 
   // A channel reached through YouTube search may not have any local videos yet,
   // so it has no `channels` row. Create that parent row before writing the
@@ -2173,7 +2233,7 @@ api.put("/channels/:id/follow", async (c) => {
     try {
       const info = await resolveChannelId(channelId);
       if (info.channelId !== channelId) return c.json({ error: "channel id mismatch" }, 400);
-      db.prepare(
+      await database.prepare(
         "INSERT OR IGNORE INTO channels (channel_id, title, url, thumbnail) VALUES (?, ?, ?, ?)"
       ).run(channelId, info.title, `https://www.youtube.com/channel/${channelId}`, info.thumbnail);
       refreshChannel(channelId)
@@ -2187,11 +2247,11 @@ api.put("/channels/:id/follow", async (c) => {
   // Unfollowing a channel that has since disappeared locally is already the
   // desired state, and avoids inserting a relation with no parent channel.
   if (!followed && !existing) return c.json({ ok: true });
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_channels (user_id, channel_id, followed) VALUES (?, ?, ?)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = excluded.followed`
   ).run(uid, channelId, followed ? 1 : 0);
-  if (followed) db.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(channelId);
+  if (followed) await database.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(channelId);
   return c.json({ ok: true });
 });
 
@@ -2201,7 +2261,7 @@ api.put("/channels/:id/speed", async (c) => {
   const uid = currentUserId(c);
   const { speed } = await c.req.json<{ speed: string | null }>();
   const value = !speed || speed === "default" ? null : speed;
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_channels (user_id, channel_id, playback_speed) VALUES (?, ?, ?)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET playback_speed = excluded.playback_speed`
   ).run(uid, c.req.param("id"), value);
@@ -2219,7 +2279,7 @@ api.put("/channels/:id/captions", async (c) => {
     ? language
     : null;
   if (mode === "language" && !captionLanguage) return c.json({ error: "valid caption language required" }, 400);
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_channels (user_id, channel_id, caption_mode, caption_language) VALUES (?, ?, ?, ?)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET caption_mode = excluded.caption_mode, caption_language = excluded.caption_language`
   ).run(currentUserId(c), c.req.param("id"), mode, captionLanguage);
@@ -2241,7 +2301,7 @@ api.put("/channels/:id/members-only-feed", async (c) => {
     hidden: [1, 1],
   } as const;
   const [hideFromFeed, hideOnChannel] = values[visibility];
-  db.prepare(
+  await database.prepare(
     `INSERT INTO user_channels (user_id, channel_id, hide_members_only_from_feed, hide_members_only_on_channel, members_only_visibility) VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET hide_members_only_from_feed = excluded.hide_members_only_from_feed, hide_members_only_on_channel = excluded.hide_members_only_on_channel, members_only_visibility = excluded.members_only_visibility`
   ).run(currentUserId(c), c.req.param("id"), hideFromFeed, hideOnChannel, visibility);
@@ -2257,21 +2317,21 @@ api.put("/channels/:id/download-min-duration", async (c) => {
     return c.json({ error: "seconds must be null or an integer between 0 and 86400" }, 400);
   }
   const value = seconds === null ? null : seconds as number;
-  const result = db.prepare("UPDATE channels SET auto_download_min_duration_override = ? WHERE channel_id = ?")
+  const result = await database.prepare("UPDATE channels SET auto_download_min_duration_override = ? WHERE channel_id = ?")
     .run(value, c.req.param("id"));
   if (result.changes === 0) return c.json({ error: "not found" }, 404);
   return c.json({ ok: true, seconds: value });
 });
 
 // Literal paths before parameterised /channels/:id to avoid shadowing
-api.get("/channels/unfollowed", (c) => {
+api.get("/channels/unfollowed", async (c) => {
   const uid = currentUserId(c);
-  const channels = db.prepare(
+  const channels = await database.prepare(
     `SELECT ch.* FROM channels ch
      JOIN user_channels uc ON uc.channel_id = ch.channel_id AND uc.user_id = ? AND uc.followed = 0
      WHERE ch.external = 0 ORDER BY COALESCE(ch.custom_title, ch.title) COLLATE NOCASE`
   ).all(uid) as any[];
-  const tags = db.prepare(
+  const tags = await database.prepare(
     `SELECT ct.channel_id, t.id, t.name, t.color
      FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id AND t.user_id = ?`
   ).all(uid) as any[];
@@ -2285,9 +2345,9 @@ api.get("/channels/unfollowed", (c) => {
   });
 });
 
-api.get("/channels/top", (c) => {
+api.get("/channels/top", async (c) => {
   const uid = currentUserId(c);
-  const rows = db.prepare(`
+  const rows = await database.prepare(`
     SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail, c.subscriber_count,
            COUNT(h.id) AS watch_count,
            CAST(EXISTS(
@@ -2305,12 +2365,12 @@ api.get("/channels/top", (c) => {
   return c.json({ channels: rows });
 });
 
-api.get("/channels/recent", (c) => {
+api.get("/channels/recent", async (c) => {
   const uid = currentUserId(c);
   const shortsFilter = getUserSetting(uid, "show_shorts") === "1"
     ? ""
     : "AND COALESCE(is_short, 0) = 0";
-  const rows = db.prepare(`
+  const rows = await database.prepare(`
     SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail,
            (SELECT thumbnail FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1) AS latest_thumbnail,
            (SELECT video_id FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1) AS latest_video_id
@@ -2322,25 +2382,25 @@ api.get("/channels/recent", (c) => {
     ) DESC
     LIMIT 20
   `).all(uid) as any[];
-  return c.json({ channels: attachWatchedState(uid, rows, (row) => row.latest_video_id) });
+  return c.json({ channels: await attachWatchedState(uid, rows, (row) => row.latest_video_id) });
 });
 
-api.get("/channels/:id", (c) => {
+api.get("/channels/:id", async (c) => {
   const uid = currentUserId(c);
-  const ch = db.prepare("SELECT * FROM channels WHERE channel_id = ?").get(c.req.param("id")) as any;
+  const ch = await database.prepare("SELECT * FROM channels WHERE channel_id = ?").get(c.req.param("id")) as any;
   if (!ch) return c.json({ error: "not found" }, 404);
-  const tags = db
+  const tags = await database
     .prepare(
       `SELECT t.id, t.name, t.color FROM channel_tags ct JOIN tags t ON t.id = ct.tag_id AND t.user_id = ? WHERE ct.channel_id = ?`
     )
     .all(uid, c.req.param("id")) as any[];
   // followed reflects the active profile (null row = not subscribed).
-  const sub = db.prepare("SELECT followed, playback_speed, caption_mode, caption_language, hide_members_only_from_feed, hide_members_only_on_channel, members_only_visibility FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null; hide_members_only_from_feed: number | null; hide_members_only_on_channel: number | null; members_only_visibility: string | null } | null;
+  const sub = await database.prepare("SELECT followed, playback_speed, caption_mode, caption_language, hide_members_only_from_feed, hide_members_only_on_channel, members_only_visibility FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null; hide_members_only_from_feed: number | null; hide_members_only_on_channel: number | null; members_only_visibility: string | null } | null;
   return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, hide_members_only_from_feed: sub?.hide_members_only_from_feed ?? null, hide_members_only_on_channel: sub?.hide_members_only_on_channel ?? null, members_only_visibility: sub?.members_only_visibility === "feed" ? "everywhere" : sub?.members_only_visibility ?? "default", tags } });
 });
 
-api.get("/channels/:id/refresh-schedule", (c) => {
-  const details = channelRefreshDiagnostics(c.req.param("id"));
+api.get("/channels/:id/refresh-schedule", async (c) => {
+  const details = await channelRefreshDiagnostics(c.req.param("id"));
   return details ? c.json(details) : c.json({ error: "not found" }, 404);
 });
 
@@ -2348,7 +2408,7 @@ api.put("/channels/:id/refresh-schedule", async (c) => {
   const body = await c.req.json<{ mode?: unknown; days?: unknown; times?: unknown; time?: unknown }>();
   if (body.mode !== "adaptive" && body.mode !== "manual") return c.json({ error: "mode must be adaptive or manual" }, 400);
   if (body.mode === "adaptive") {
-    const result = db.prepare("UPDATE channels SET refresh_schedule_days = NULL, refresh_schedule_time = NULL WHERE channel_id = ?").run(c.req.param("id"));
+    const result = await database.prepare("UPDATE channels SET refresh_schedule_days = NULL, refresh_schedule_time = NULL WHERE channel_id = ?").run(c.req.param("id"));
     if (result.changes === 0) return c.json({ error: "not found" }, 404);
   } else {
     const days = Array.isArray(body.days) ? [...new Set(body.days)] : [];
@@ -2357,17 +2417,17 @@ api.put("/channels/:id/refresh-schedule", async (c) => {
     const times = [...new Set(requestedTimes)].filter((time): time is string => typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time)).sort();
     const validTimes = requestedTimes.length > 0 && requestedTimes.every((time) => typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time));
     if (!validDays || !validTimes) return c.json({ error: "manual schedule requires weekdays and one or more HH:mm times" }, 400);
-    const result = db.prepare("UPDATE channels SET refresh_schedule_days = ?, refresh_schedule_time = ? WHERE channel_id = ?")
+    const result = await database.prepare("UPDATE channels SET refresh_schedule_days = ?, refresh_schedule_time = ? WHERE channel_id = ?")
       .run(JSON.stringify(days.map(Number).sort()), JSON.stringify(times), c.req.param("id"));
     if (result.changes === 0) return c.json({ error: "not found" }, 404);
   }
   log.info("channel.refresh_schedule_updated", { channelId: c.req.param("id"), mode: body.mode });
-  return c.json(channelRefreshDiagnostics(c.req.param("id"))!);
+  return c.json(await channelRefreshDiagnostics(c.req.param("id"))!);
 });
 
 api.post("/channels/:id/sync", async (c) => {
   const channelId = c.req.param("id");
-  if (channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
+  if (await channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
   try {
     const result = await syncChannel(channelId);
     log.info("channel.sync_requested", { channelId, added: result.added });
@@ -2383,7 +2443,7 @@ api.post("/channels/:id/sync", async (c) => {
 api.get("/channel-playlists/:id", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  let playlist = db.prepare(`
+  let playlist = await database.prepare(`
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
            ch.thumbnail AS channel_thumbnail,
@@ -2394,7 +2454,7 @@ api.get("/channel-playlists/:id", async (c) => {
   if (!playlist) {
     try {
       await syncPlaylist(id);
-      playlist = db.prepare(`
+      playlist = await database.prepare(`
         SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
                cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
                ch.thumbnail AS channel_thumbnail, 0 AS followed
@@ -2412,36 +2472,36 @@ api.get("/channel-playlists/:id", async (c) => {
 api.get("/channel-playlists/:id/videos", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  const exists = db.prepare("SELECT 1 FROM channel_playlists WHERE playlist_id = ?").get(id);
+  const exists = await database.prepare("SELECT 1 FROM channel_playlists WHERE playlist_id = ?").get(id);
   if (!exists) {
     try { await syncPlaylist(id); } catch (e) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
     }
   }
-  const rows = db.prepare(`${videoSelect(uid)}
+  const rows = await database.prepare(`${videoSelect(uid)}
     JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
     WHERE cpv.playlist_id = ?
     ORDER BY cpv.position ASC`).all(id) as VideoRow[];
-  const attached = attachTags(uid, rows);
+  const attached = await attachTags(uid, rows);
   return c.json({
     videos: attached.filter((video) => video.published_at != null && video.published_at !== ""),
     processing: attached.filter((video) => video.published_at == null || video.published_at === ""),
   });
 });
 
-api.post("/channel-playlists/:id/download", (c) => {
-  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+api.post("/channel-playlists/:id/download", async (c) => {
+  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
-  const playlist = db.prepare("SELECT title FROM channel_playlists WHERE playlist_id = ?").get(c.req.param("id")) as { title: string } | null;
+  const playlist = await database.prepare("SELECT title FROM channel_playlists WHERE playlist_id = ?").get(c.req.param("id")) as { title: string } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
-  const videoIds = (db.prepare(`
+  const videoIds = (await database.prepare(`
     SELECT v.video_id FROM channel_playlist_videos cpv
     JOIN videos v ON v.video_id = cpv.video_id
     WHERE cpv.playlist_id = ? AND v.is_private = 0
       AND v.live_status NOT IN ('live', 'upcoming')
     ORDER BY cpv.position ASC
   `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
-  const result = enqueuePlaylistDownloads(videoIds, playlist.title);
+  const result = await enqueuePlaylistDownloads(videoIds, playlist.title);
   log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.title, ...result });
   return c.json(result);
 });
@@ -2451,14 +2511,14 @@ api.put("/channel-playlists/:id/follow", async (c) => {
   const id = c.req.param("id");
   const { followed } = await c.req.json<{ followed: boolean }>();
   if (!followed) {
-    db.prepare("DELETE FROM user_followed_playlists WHERE user_id = ? AND playlist_id = ?").run(uid, id);
+    await database.prepare("DELETE FROM user_followed_playlists WHERE user_id = ? AND playlist_id = ?").run(uid, id);
     return c.json({ ok: true, followed: false });
   }
   try {
     // Establish the complete current snapshot before setting the feed baseline.
     // Only videos discovered by a later sync are allowed into the main feed.
     await syncPlaylist(id);
-    db.prepare(`INSERT INTO user_followed_playlists (user_id, playlist_id, followed_at, feed_from)
+    await database.prepare(`INSERT INTO user_followed_playlists (user_id, playlist_id, followed_at, feed_from)
       VALUES (?, ?, datetime('now'), datetime('now'))
       ON CONFLICT(user_id, playlist_id) DO UPDATE SET include_in_feed = 1`).run(uid, id);
     return c.json({ ok: true, followed: true });
@@ -2468,7 +2528,7 @@ api.put("/channel-playlists/:id/follow", async (c) => {
 });
 
 api.post("/channel-playlists/:id/sync", async (c) => {
-  if (playlistChannelSyncIsDisabled(c.req.param("id"))) return c.json({ error: "channel sync disabled" }, 409);
+  if (await playlistChannelSyncIsDisabled(c.req.param("id"))) return c.json({ error: "channel sync disabled" }, 409);
   try {
     const result = await syncPlaylist(c.req.param("id"));
     return c.json({ ok: true, added: result.added });
@@ -2477,9 +2537,9 @@ api.post("/channel-playlists/:id/sync", async (c) => {
   }
 });
 
-api.get("/followed-playlists", (c) => {
+api.get("/followed-playlists", async (c) => {
   const uid = currentUserId(c);
-  const playlists = db.prepare(`
+  const playlists = await database.prepare(`
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
            ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.include_in_feed
@@ -2492,9 +2552,9 @@ api.get("/followed-playlists", (c) => {
   return c.json({ playlists });
 });
 
-api.get("/followed-playlists/updates", (c) => {
+api.get("/followed-playlists/updates", async (c) => {
   const uid = currentUserId(c);
-  const playlists = db.prepare(`
+  const playlists = await database.prepare(`
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
            ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.feed_from, ufp.include_in_feed
@@ -2505,8 +2565,8 @@ api.get("/followed-playlists/updates", (c) => {
     ORDER BY cp.title COLLATE NOCASE
   `).all(uid) as any[];
 
-  const updates = playlists.map((playlist) => {
-    const rows = db.prepare(`${videoSelect(uid)}
+  const updates = await Promise.all(playlists.map(async (playlist) => {
+    const rows = await database.prepare(`${videoSelect(uid)}
       JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
       WHERE cpv.playlist_id = ?
         AND v.published_at IS NOT NULL AND v.published_at != ''
@@ -2518,10 +2578,10 @@ api.get("/followed-playlists/updates", (c) => {
         )
       ORDER BY COALESCE(v.published_at, cpv.discovered_at) DESC, cpv.position ASC
     `).all(playlist.playlist_id, playlist.feed_from, uid) as VideoRow[];
-    const newVideos = attachTags(uid, rows);
+    const newVideos = await attachTags(uid, rows);
     const { feed_from: _feedFrom, ...publicPlaylist } = playlist;
     return { ...publicPlaylist, new_video_count: newVideos.length, new_videos: newVideos };
-  });
+  }));
 
   return c.json({ playlists: updates });
 });
@@ -2529,14 +2589,14 @@ api.get("/followed-playlists/updates", (c) => {
 // ---------- user playlists ----------
 
 // True when the playlist belongs to the active profile.
-function ownsPlaylist(uid: number, id: number | string) {
-  return Boolean(db.prepare("SELECT 1 FROM user_playlists WHERE id = ? AND user_id = ?").get(id, uid));
+async function ownsPlaylist(uid: number, id: number | string) {
+  return Boolean(await database.prepare("SELECT 1 FROM user_playlists WHERE id = ? AND user_id = ?").get(id, uid));
 }
 
-api.get("/playlists", (c) => {
+api.get("/playlists", async (c) => {
   const uid = currentUserId(c);
   const videoId = c.req.query("video_id");
-  const rows = db
+  const rows = await database
     .prepare(
       `SELECT p.id, p.name, p.icon, p.sort_order, p.created_at,
               COUNT(pv.video_id) AS video_count
@@ -2555,8 +2615,8 @@ api.post("/playlists", async (c) => {
   const uid = currentUserId(c);
   const { name, icon = "ListMusic" } = await c.req.json();
   if (!name?.trim()) return c.json({ error: "name required" }, 400);
-  const nextOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS sort_order FROM user_playlists WHERE user_id = ?").get(uid) as { sort_order: number };
-  const row = db
+  const nextOrder = await database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS sort_order FROM user_playlists WHERE user_id = ?").get(uid) as { sort_order: number };
+  const row = await database
     .prepare("INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, name, icon, sort_order, created_at")
     .get(name.trim(), String(icon || "ListMusic").trim() || "ListMusic", nextOrder.sort_order, uid, crypto.randomUUID());
   return c.json({ playlist: row });
@@ -2566,27 +2626,27 @@ api.put("/playlists/:id", async (c) => {
   const uid = currentUserId(c);
   const id = Number(c.req.param("id"));
   const body = await c.req.json();
-  const current = db.prepare("SELECT * FROM user_playlists WHERE id = ? AND user_id = ?").get(id, uid) as any;
+  const current = await database.prepare("SELECT * FROM user_playlists WHERE id = ? AND user_id = ?").get(id, uid) as any;
   if (!current) return c.json({ error: "not found" }, 404);
   const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : current.name;
   const icon = typeof body.icon === "string" && body.icon.trim() ? body.icon.trim() : current.icon;
   const sortOrder = Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : current.sort_order;
-  const row = db
+  const row = await database
     .prepare("UPDATE user_playlists SET name = ?, icon = ?, sort_order = ? WHERE id = ? RETURNING id, name, icon, sort_order, created_at")
     .get(name, icon, sortOrder, id);
   return c.json({ playlist: row });
 });
 
-api.delete("/playlists/:id", (c) => {
+api.delete("/playlists/:id", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("DELETE FROM user_playlists WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  await database.prepare("DELETE FROM user_playlists WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
   return c.json({ ok: true });
 });
 
-api.get("/playlists/:id", (c) => {
+api.get("/playlists/:id", async (c) => {
   const uid = currentUserId(c);
   const id = Number(c.req.param("id"));
-  const playlist = db
+  const playlist = await database
     .prepare(
       `SELECT p.id, p.name, p.icon, p.sort_order, p.created_at, COUNT(pv.video_id) AS video_count
        FROM user_playlists p
@@ -2596,7 +2656,7 @@ api.get("/playlists/:id", (c) => {
     )
     .get(id, uid) as any;
   if (!playlist) return c.json({ error: "not found" }, 404);
-  const rows = db
+  const rows = await database
     .prepare(
       `${videoSelect(uid)}
        JOIN user_playlist_videos upv ON upv.video_id = v.video_id
@@ -2604,23 +2664,23 @@ api.get("/playlists/:id", (c) => {
        ORDER BY upv.added_at DESC`
     )
     .all(id) as VideoRow[];
-  return c.json({ playlist, videos: attachTags(uid, rows) });
+  return c.json({ playlist, videos: await attachTags(uid, rows) });
 });
 
-api.post("/playlists/:id/download", (c) => {
+api.post("/playlists/:id/download", async (c) => {
   const uid = currentUserId(c);
-  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
-  const playlist = db.prepare("SELECT name FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { name: string } | null;
+  const playlist = await database.prepare("SELECT name FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { name: string } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
-  const videoIds = (db.prepare(`
+  const videoIds = (await database.prepare(`
     SELECT v.video_id FROM user_playlist_videos upv
     JOIN videos v ON v.video_id = upv.video_id
     WHERE upv.playlist_id = ? AND v.is_private = 0
       AND v.live_status NOT IN ('live', 'upcoming')
     ORDER BY upv.added_at ASC
   `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
-  const result = enqueuePlaylistDownloads(videoIds, playlist.name);
+  const result = await enqueuePlaylistDownloads(videoIds, playlist.name);
   log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.name, ...result });
   return c.json(result);
 });
@@ -2629,16 +2689,16 @@ api.post("/playlists/:id/videos", async (c) => {
   const uid = currentUserId(c);
   const { video_id } = await c.req.json();
   if (!video_id) return c.json({ error: "video_id required" }, 400);
-  if (!ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
-  db.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)").run(c.req.param("id"), video_id);
+  if (!await ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
+  await database.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)").run(c.req.param("id"), video_id);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
 
-api.delete("/playlists/:id/videos/:videoId", (c) => {
+api.delete("/playlists/:id/videos/:videoId", async (c) => {
   const uid = currentUserId(c);
-  if (!ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
-  db.prepare("DELETE FROM user_playlist_videos WHERE playlist_id = ? AND video_id = ?").run(
+  if (!await ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
+  await database.prepare("DELETE FROM user_playlist_videos WHERE playlist_id = ? AND video_id = ?").run(
     c.req.param("id"),
     c.req.param("videoId")
   );
@@ -2646,10 +2706,10 @@ api.delete("/playlists/:id/videos/:videoId", (c) => {
   return c.json({ ok: true });
 });
 
-api.get("/playlists/:id/rules", (c) => {
+api.get("/playlists/:id/rules", async (c) => {
   const uid = currentUserId(c);
-  if (!ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
-  const rules = db.prepare("SELECT * FROM user_playlist_rules WHERE playlist_id = ? ORDER BY id").all(c.req.param("id"));
+  if (!await ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
+  const rules = await database.prepare("SELECT * FROM user_playlist_rules WHERE playlist_id = ? ORDER BY id").all(c.req.param("id"));
   return c.json({ rules });
 });
 
@@ -2659,25 +2719,25 @@ api.post("/playlists/:id/rules", async (c) => {
   if (!pattern?.trim()) return c.json({ error: "pattern required" }, 400);
   if (!["contains", "regex"].includes(match_type)) return c.json({ error: "invalid match_type" }, 400);
   if (!["title", "description", "both"].includes(field)) return c.json({ error: "invalid field" }, 400);
-  if (!ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
-  const row = db
+  if (!await ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
+  const row = await database
     .prepare("INSERT INTO user_playlist_rules (playlist_id, pattern, match_type, field) VALUES (?, ?, ?, ?) RETURNING *")
     .get(c.req.param("id"), pattern.trim(), match_type, field) as any;
-  const matched = applyPlaylistRuleToAllVideos(row.id);
+  const matched = await applyPlaylistRuleToAllVideos(row.id);
   return c.json({ rule: row, matched });
 });
 
-api.delete("/playlists/:id/rules/:ruleId", (c) => {
+api.delete("/playlists/:id/rules/:ruleId", async (c) => {
   const uid = currentUserId(c);
-  if (!ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
-  db.prepare("DELETE FROM user_playlist_rules WHERE playlist_id = ? AND id = ?").run(c.req.param("id"), c.req.param("ruleId"));
+  if (!await ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
+  await database.prepare("DELETE FROM user_playlist_rules WHERE playlist_id = ? AND id = ?").run(c.req.param("id"), c.req.param("ruleId"));
   return c.json({ ok: true });
 });
 
-api.post("/playlists/:id/rules/apply", (c) => {
+api.post("/playlists/:id/rules/apply", async (c) => {
   const uid = currentUserId(c);
-  if (!ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
-  const matched = applyPlaylistRulesForPlaylist(Number(c.req.param("id")));
+  if (!await ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
+  const matched = await applyPlaylistRulesForPlaylist(Number(c.req.param("id")));
   return c.json({ ok: true, matched });
 });
 
@@ -2688,19 +2748,19 @@ api.get("/playlists/:id/videos", async (c) => {
     // then return them for the player. Both calls share a cached feed fetch.
     const videos = await fetchPlaylistVideos(id);
     importPlaylistVideos(id).catch((e) => log.error("playlist.import.failed", { playlistId: id, error: e instanceof Error ? e.message : String(e) }));
-    return c.json({ videos: attachWatchedState(currentUserId(c), videos, (video) => video.videoId) });
+    return c.json({ videos: await attachWatchedState(currentUserId(c), videos, (video) => video.videoId) });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
 });
 
-api.get("/videos/:id/playlists", (c) => {
-  return c.json({ playlists: videoPlaylistsForUser(currentUserId(c), c.req.param("id")) });
+api.get("/videos/:id/playlists", async (c) => {
+  return c.json({ playlists: await videoPlaylistsForUser(currentUserId(c), c.req.param("id")) });
 });
 
 api.post("/channels/import", async (c) => {
   const uid = currentUserId(c);
-  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.parseBody();
   const file = body.file;
   if (!(file instanceof File)) return c.json({ error: "file required" }, 400);
@@ -2708,17 +2768,17 @@ api.post("/channels/import", async (c) => {
   const entries = content.trimStart().startsWith("<")
     ? parseOpml(content)
     : parseTakeoutCsv(content);
-  const insert = db.prepare(
+  const insert = database.prepare(
     "INSERT OR IGNORE INTO channels (channel_id, title, url) VALUES (?, ?, ?)"
   );
-  const subscribe = db.prepare(
+  const subscribe = database.prepare(
     `INSERT INTO user_channels (user_id, channel_id, followed) VALUES (?, ?, 1)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = 1`
   );
   let added = 0;
   for (const e of entries) {
-    const r = insert.run(e.channelId, e.title, `https://www.youtube.com/channel/${e.channelId}`);
-    subscribe.run(uid, e.channelId);
+    const r = await insert.run(e.channelId, e.title, `https://www.youtube.com/channel/${e.channelId}`);
+    await subscribe.run(uid, e.channelId);
     if (r.changes > 0) added++;
   }
   log.info("channels.imported", { fileName: file.name, found: entries.length, added });
@@ -2732,13 +2792,13 @@ api.post("/channels/import", async (c) => {
 
 const MAX_ZIP_BYTES = 300 * 1024 * 1024;
 
-const ensureImportedChannel = db.prepare(
+const ensureImportedChannel = database.prepare(
   `INSERT INTO channels (channel_id, title, url, followed, external) VALUES (?, ?, ?, 0, 1)
    ON CONFLICT(channel_id) DO NOTHING`
 );
 // Placeholder rows for videos we only know from the export. When the video is
 // already in the library, fill only what's missing (title, real channel).
-const ensureImportedVideo = db.prepare(
+const ensureImportedVideo = database.prepare(
   `INSERT INTO videos (video_id, channel_id, title, thumbnail, status, external)
    VALUES (?, ?, ?, ?, 'inbox', 1)
    ON CONFLICT(video_id) DO UPDATE SET
@@ -2747,26 +2807,26 @@ const ensureImportedVideo = db.prepare(
                        THEN excluded.channel_id ELSE videos.channel_id END`
 );
 
-function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[]): { playlistsCreated: number; videosAdded: number } {
-  const findPlaylist = db.prepare("SELECT id FROM user_playlists WHERE user_id = ? AND name = ? COLLATE NOCASE");
-  const createPlaylist = db.prepare("INSERT INTO user_playlists (name, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?) RETURNING id");
-  const nextOrder = db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM user_playlists WHERE user_id = ?");
-  const addMembership = db.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)");
+async function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[]): Promise<{ playlistsCreated: number; videosAdded: number }> {
+  const findPlaylist = database.prepare("SELECT id FROM user_playlists WHERE user_id = ? AND name = ? COLLATE NOCASE");
+  const createPlaylist = database.prepare("INSERT INTO user_playlists (name, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?) RETURNING id");
+  const nextOrder = database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM user_playlists WHERE user_id = ?");
+  const addMembership = database.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)");
 
   let playlistsCreated = 0;
   let videosAdded = 0;
-  db.transaction(() => {
-    ensureImportedChannel.run(IMPORTED_CHANNEL_ID, "Imported", "");
+  await database.transaction(async () => {
+    await ensureImportedChannel.run(IMPORTED_CHANNEL_ID, "Imported", "");
     for (const pl of playlists) {
-      let row = findPlaylist.get(uid, pl.name) as { id: number } | undefined;
+      let row = await findPlaylist.get(uid, pl.name) as { id: number } | undefined;
       if (!row) {
-        const order = (nextOrder.get(uid) as { n: number }).n;
-        row = createPlaylist.get(pl.name, order, uid, crypto.randomUUID()) as { id: number };
+        const order = (await nextOrder.get(uid) as { n: number }).n;
+        row = await createPlaylist.get(pl.name, order, uid, crypto.randomUUID()) as { id: number };
         playlistsCreated++;
       }
       for (const videoId of pl.videoIds) {
-        ensureImportedVideo.run(videoId, IMPORTED_CHANNEL_ID, "", `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
-        if (addMembership.run(row.id, videoId).changes > 0) videosAdded++;
+        await ensureImportedVideo.run(videoId, IMPORTED_CHANNEL_ID, "", `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
+        if ((await addMembership.run(row.id, videoId)).changes > 0) videosAdded++;
       }
     }
   })();
@@ -2775,33 +2835,33 @@ function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[]): { pl
 
 // History rows carry the original watch date; undated entries (localized HTML
 // exports) only mark the video as watched instead of faking a timestamp.
-function importTakeoutHistory(uid: number, entries: TakeoutHistoryEntry[], from: string | null): { historyAdded: number; watchedMarked: number } {
+async function importTakeoutHistory(uid: number, entries: TakeoutHistoryEntry[], from: string | null): Promise<{ historyAdded: number; watchedMarked: number }> {
   const existing = new Set(
-    (db.prepare("SELECT video_id, watched_at FROM history WHERE user_id = ?").all(uid) as { video_id: string; watched_at: string }[])
+    (await database.prepare("SELECT video_id, watched_at FROM history WHERE user_id = ?").all(uid) as { video_id: string; watched_at: string }[])
       .map((r) => `${r.video_id}@${r.watched_at}`)
   );
-  const addHistory = db.prepare("INSERT INTO history (video_id, user_id, watched_at) VALUES (?, ?, ?)");
-  const markWatched = db.prepare(
+  const addHistory = database.prepare("INSERT INTO history (video_id, user_id, watched_at) VALUES (?, ?, ?)");
+  const markWatched = database.prepare(
     `INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
      ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1`
   );
 
   let historyAdded = 0;
   let watchedMarked = 0;
-  db.transaction(() => {
-    ensureImportedChannel.run(IMPORTED_CHANNEL_ID, "Imported", "");
+  await database.transaction(async () => {
+    await ensureImportedChannel.run(IMPORTED_CHANNEL_ID, "Imported", "");
     for (const entry of entries) {
       if (entry.watchedAt ? (from !== null && entry.watchedAt < from) : from !== null) continue;
       const channelId = entry.channelId || IMPORTED_CHANNEL_ID;
       if (entry.channelId) {
-        ensureImportedChannel.run(entry.channelId, entry.channelTitle, `https://www.youtube.com/channel/${entry.channelId}`);
+        await ensureImportedChannel.run(entry.channelId, entry.channelTitle, `https://www.youtube.com/channel/${entry.channelId}`);
       }
-      ensureImportedVideo.run(entry.videoId, channelId, entry.title, `https://i.ytimg.com/vi/${entry.videoId}/hqdefault.jpg`);
-      markWatched.run(uid, entry.videoId);
+      await ensureImportedVideo.run(entry.videoId, channelId, entry.title, `https://i.ytimg.com/vi/${entry.videoId}/hqdefault.jpg`);
+      await markWatched.run(uid, entry.videoId);
       watchedMarked++;
       if (entry.watchedAt && !existing.has(`${entry.videoId}@${entry.watchedAt}`)) {
         existing.add(`${entry.videoId}@${entry.watchedAt}`);
-        addHistory.run(entry.videoId, uid, entry.watchedAt);
+        await addHistory.run(entry.videoId, uid, entry.watchedAt);
         historyAdded++;
       }
     }
@@ -2811,7 +2871,7 @@ function importTakeoutHistory(uid: number, entries: TakeoutHistoryEntry[], from:
 
 api.post("/import/analyze", async (c) => {
   const uid = currentUserId(c);
-  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.parseBody({ all: true });
   const raw = body["file"] ?? body["file[]"];
   const uploads = (Array.isArray(raw) ? raw : [raw]).filter((f): f is File => f instanceof File);
@@ -2868,7 +2928,7 @@ api.post("/import/analyze", async (c) => {
 
 api.post("/import/commit", async (c) => {
   const uid = currentUserId(c);
-  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.json();
   const bundle: TakeoutBundle | null = typeof body.sessionId === "string" ? getImportSession(body.sessionId, uid) : null;
   if (!bundle) return c.json({ error: "session expired, upload the file again" }, 410);
@@ -2877,24 +2937,24 @@ api.post("/import/commit", async (c) => {
 
   if (body.channels?.enabled) {
     const excluded = new Set<string>(Array.isArray(body.channels.excludedIds) ? body.channels.excludedIds : []);
-    const insert = db.prepare("INSERT OR IGNORE INTO channels (channel_id, title, url) VALUES (?, ?, ?)");
-    const subscribe = db.prepare(
+    const insert = database.prepare("INSERT OR IGNORE INTO channels (channel_id, title, url) VALUES (?, ?, ?)");
+    const subscribe = database.prepare(
       `INSERT INTO user_channels (user_id, channel_id, followed) VALUES (?, ?, 1)
        ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = 1`
     );
     for (const ch of bundle.channels) {
       if (excluded.has(ch.channelId)) continue;
-      insert.run(ch.channelId, ch.title, `https://www.youtube.com/channel/${ch.channelId}`);
-      subscribe.run(uid, ch.channelId);
+      await insert.run(ch.channelId, ch.title, `https://www.youtube.com/channel/${ch.channelId}`);
+      await subscribe.run(uid, ch.channelId);
       result.channelsAdded++;
     }
-    if (result.channelsAdded > 0) db.prepare("UPDATE channels SET external = 0 WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE user_id = ? AND followed = 1)").run(uid);
+    if (result.channelsAdded > 0) await database.prepare("UPDATE channels SET external = 0 WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE user_id = ? AND followed = 1)").run(uid);
   }
 
   if (body.playlists?.enabled) {
     const excluded = new Set<string>(Array.isArray(body.playlists.excludedNames) ? body.playlists.excludedNames : []);
     const picked = bundle.playlists.filter((p) => !excluded.has(p.name));
-    const r = importTakeoutPlaylists(uid, picked);
+    const r = await importTakeoutPlaylists(uid, picked);
     result.playlistsCreated = r.playlistsCreated;
     result.playlistVideosAdded = r.videosAdded;
   }
@@ -2903,7 +2963,7 @@ api.post("/import/commit", async (c) => {
     // "from" arrives as YYYY-MM-DD; entries are YYYY-MM-DD HH:MM:SS so plain
     // string comparison works.
     const from = typeof body.history.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.history.from) ? body.history.from : null;
-    const r = importTakeoutHistory(uid, bundle.history, from);
+    const r = await importTakeoutHistory(uid, bundle.history, from);
     result.historyAdded = r.historyAdded;
     result.watchedMarked = r.watchedMarked;
   }
@@ -2924,7 +2984,7 @@ api.post("/import/commit", async (c) => {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
-  const enrichPending = (db.prepare("SELECT COUNT(*) AS n FROM videos WHERE channel_id = ? AND is_private = 0").get(IMPORTED_CHANNEL_ID) as { n: number }).n;
+  const enrichPending = (await database.prepare("SELECT COUNT(*) AS n FROM videos WHERE channel_id = ? AND is_private = 0").get(IMPORTED_CHANNEL_ID) as { n: number }).n;
   const enrichBatch = num(process.env.IMPORT_ENRICH_BATCH_SIZE, 15);
   const enrichIntervalMin = num(process.env.IMPORT_ENRICH_INTERVAL_MINUTES, 2);
   const refreshIntervalMin = num(process.env.REFRESH_INTERVAL_MINUTES, 5);
@@ -2939,9 +2999,9 @@ api.post("/import/commit", async (c) => {
 
 // ---------- tags ----------
 
-api.get("/tags", (c) => {
+api.get("/tags", async (c) => {
   const uid = currentUserId(c);
-  const tags = db
+  const tags = await database
     .prepare(
       `SELECT t.*,
         (SELECT COUNT(*) FROM video_tags vt WHERE vt.tag_id = t.id) AS video_count,
@@ -2956,7 +3016,7 @@ api.post("/tags", async (c) => {
   const uid = currentUserId(c);
   const { name, color } = await c.req.json();
   if (!name?.trim()) return c.json({ error: "name required" }, 400);
-  const r = db
+  const r = await database
     .prepare("INSERT INTO tags (name, color, user_id, portable_uuid) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET color = excluded.color RETURNING *")
     .get(name.trim(), color ?? "#7c5cff", uid, crypto.randomUUID());
   return c.json({ tag: r });
@@ -2966,25 +3026,25 @@ api.patch("/tags/:id", async (c) => {
   const uid = currentUserId(c);
   const { name, color, filter_only } = await c.req.json();
   const id = c.req.param("id");
-  if (!db.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(id, uid)) return c.json({ error: "not found" }, 404);
-  if (name !== undefined) db.prepare("UPDATE tags SET name = ? WHERE id = ?").run(name.trim(), id);
-  if (color !== undefined) db.prepare("UPDATE tags SET color = ? WHERE id = ?").run(color, id);
-  if (filter_only !== undefined) db.prepare("UPDATE tags SET filter_only = ? WHERE id = ?").run(filter_only ? 1 : 0, id);
-  const tag = db.prepare("SELECT * FROM tags WHERE id = ?").get(id);
+  if (!await database.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(id, uid)) return c.json({ error: "not found" }, 404);
+  if (name !== undefined) await database.prepare("UPDATE tags SET name = ? WHERE id = ?").run(name.trim(), id);
+  if (color !== undefined) await database.prepare("UPDATE tags SET color = ? WHERE id = ?").run(color, id);
+  if (filter_only !== undefined) await database.prepare("UPDATE tags SET filter_only = ? WHERE id = ?").run(filter_only ? 1 : 0, id);
+  const tag = await database.prepare("SELECT * FROM tags WHERE id = ?").get(id);
   return c.json({ tag });
 });
 
-api.delete("/tags/:id", (c) => {
+api.delete("/tags/:id", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("DELETE FROM tags WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  await database.prepare("DELETE FROM tags WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
   return c.json({ ok: true });
 });
 
 // ---------- auto-tag rules ----------
 
-api.get("/rules", (c) => {
+api.get("/rules", async (c) => {
   const uid = currentUserId(c);
-  const rules = db
+  const rules = await database
     .prepare(
       `SELECT r.*, t.name AS tag_name, t.color AS tag_color FROM auto_tag_rules r JOIN tags t ON t.id = r.tag_id WHERE r.user_id = ? ORDER BY r.id`
     )
@@ -2997,11 +3057,11 @@ api.post("/rules", async (c) => {
   const { tag_id, pattern, match_type = "contains", field = "title" } = await c.req.json();
   if (!tag_id || !pattern?.trim()) return c.json({ error: "tag_id and pattern required" }, 400);
   // The tag must belong to the active profile.
-  if (!db.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) return c.json({ error: "tag not found" }, 404);
-  const r = db
+  if (!await database.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) return c.json({ error: "tag not found" }, 404);
+  const r = await database
     .prepare("INSERT INTO auto_tag_rules (tag_id, pattern, match_type, field, user_id) VALUES (?, ?, ?, ?, ?) RETURNING *")
     .get(tag_id, pattern.trim(), match_type, field, uid) as any;
-  const matched = applyRuleToAllVideos(r.id);
+  const matched = await applyRuleToAllVideos(r.id);
   return c.json({ rule: r, matched });
 });
 
@@ -3009,29 +3069,29 @@ api.patch("/rules/:id", async (c) => {
   const uid = currentUserId(c);
   const { tag_id, pattern, match_type, field } = await c.req.json();
   const id = c.req.param("id");
-  if (!db.prepare("SELECT 1 FROM auto_tag_rules WHERE id = ? AND user_id = ?").get(id, uid)) return c.json({ error: "not found" }, 404);
+  if (!await database.prepare("SELECT 1 FROM auto_tag_rules WHERE id = ? AND user_id = ?").get(id, uid)) return c.json({ error: "not found" }, 404);
   if (tag_id !== undefined) {
-    if (!db.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) return c.json({ error: "tag not found" }, 404);
-    db.prepare("UPDATE auto_tag_rules SET tag_id = ? WHERE id = ?").run(tag_id, id);
+    if (!await database.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(tag_id, uid)) return c.json({ error: "tag not found" }, 404);
+    await database.prepare("UPDATE auto_tag_rules SET tag_id = ? WHERE id = ?").run(tag_id, id);
   }
-  if (pattern !== undefined) db.prepare("UPDATE auto_tag_rules SET pattern = ? WHERE id = ?").run(pattern.trim(), id);
-  if (match_type !== undefined) db.prepare("UPDATE auto_tag_rules SET match_type = ? WHERE id = ?").run(match_type, id);
-  if (field !== undefined) db.prepare("UPDATE auto_tag_rules SET field = ? WHERE id = ?").run(field, id);
-  const rule = db.prepare("SELECT r.*, t.name AS tag_name, t.color AS tag_color FROM auto_tag_rules r JOIN tags t ON t.id = r.tag_id WHERE r.id = ?").get(id);
+  if (pattern !== undefined) await database.prepare("UPDATE auto_tag_rules SET pattern = ? WHERE id = ?").run(pattern.trim(), id);
+  if (match_type !== undefined) await database.prepare("UPDATE auto_tag_rules SET match_type = ? WHERE id = ?").run(match_type, id);
+  if (field !== undefined) await database.prepare("UPDATE auto_tag_rules SET field = ? WHERE id = ?").run(field, id);
+  const rule = await database.prepare("SELECT r.*, t.name AS tag_name, t.color AS tag_color FROM auto_tag_rules r JOIN tags t ON t.id = r.tag_id WHERE r.id = ?").get(id);
   return c.json({ rule });
 });
 
-api.delete("/rules/:id", (c) => {
+api.delete("/rules/:id", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("DELETE FROM auto_tag_rules WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  await database.prepare("DELETE FROM auto_tag_rules WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
   return c.json({ ok: true });
 });
 
 // ---------- filter rules ----------
 
-api.get("/filter-rules", (c) => {
+api.get("/filter-rules", async (c) => {
   const uid = currentUserId(c);
-  const rules = db.prepare(
+  const rules = await database.prepare(
     `SELECT fr.*, COALESCE(c.custom_title, c.title) AS channel_title FROM filter_rules fr
      LEFT JOIN channels c ON c.channel_id = fr.channel_id WHERE fr.user_id = ? ORDER BY fr.id`
   ).all(uid);
@@ -3042,10 +3102,10 @@ api.post("/filter-rules", async (c) => {
   const uid = currentUserId(c);
   const { pattern, match_type = "contains", field = "title", action = "reject", channel_id = null } = await c.req.json();
   if (!pattern?.trim()) return c.json({ error: "pattern required" }, 400);
-  const row = db
+  const row = await database
     .prepare("INSERT INTO filter_rules (pattern, match_type, field, action, channel_id, user_id) VALUES (?, ?, ?, ?, ?, ?) RETURNING *")
     .get(pattern.trim(), match_type, field, action, channel_id || null, uid) as any;
-  const archived = applyFilterRuleToAll(row.id);
+  const archived = await applyFilterRuleToAll(row.id);
   return c.json({ rule: row, archived });
 });
 
@@ -3053,19 +3113,19 @@ api.patch("/filter-rules/:id", async (c) => {
   const uid = currentUserId(c);
   const { pattern, match_type, field, action, channel_id } = await c.req.json();
   const id = c.req.param("id");
-  if (!db.prepare("SELECT 1 FROM filter_rules WHERE id = ? AND user_id = ?").get(id, uid)) return c.json({ error: "not found" }, 404);
-  if (pattern !== undefined) db.prepare("UPDATE filter_rules SET pattern = ? WHERE id = ?").run(pattern.trim(), id);
-  if (match_type !== undefined) db.prepare("UPDATE filter_rules SET match_type = ? WHERE id = ?").run(match_type, id);
-  if (field !== undefined) db.prepare("UPDATE filter_rules SET field = ? WHERE id = ?").run(field, id);
-  if (action !== undefined) db.prepare("UPDATE filter_rules SET action = ? WHERE id = ?").run(action, id);
-  if (channel_id !== undefined) db.prepare("UPDATE filter_rules SET channel_id = ? WHERE id = ?").run(channel_id || null, id);
-  const rule = db.prepare("SELECT fr.*, COALESCE(c.custom_title, c.title) AS channel_title FROM filter_rules fr LEFT JOIN channels c ON c.channel_id = fr.channel_id WHERE fr.id = ?").get(id);
+  if (!await database.prepare("SELECT 1 FROM filter_rules WHERE id = ? AND user_id = ?").get(id, uid)) return c.json({ error: "not found" }, 404);
+  if (pattern !== undefined) await database.prepare("UPDATE filter_rules SET pattern = ? WHERE id = ?").run(pattern.trim(), id);
+  if (match_type !== undefined) await database.prepare("UPDATE filter_rules SET match_type = ? WHERE id = ?").run(match_type, id);
+  if (field !== undefined) await database.prepare("UPDATE filter_rules SET field = ? WHERE id = ?").run(field, id);
+  if (action !== undefined) await database.prepare("UPDATE filter_rules SET action = ? WHERE id = ?").run(action, id);
+  if (channel_id !== undefined) await database.prepare("UPDATE filter_rules SET channel_id = ? WHERE id = ?").run(channel_id || null, id);
+  const rule = await database.prepare("SELECT fr.*, COALESCE(c.custom_title, c.title) AS channel_title FROM filter_rules fr LEFT JOIN channels c ON c.channel_id = fr.channel_id WHERE fr.id = ?").get(id);
   return c.json({ rule });
 });
 
-api.delete("/filter-rules/:id", (c) => {
+api.delete("/filter-rules/:id", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("DELETE FROM filter_rules WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  await database.prepare("DELETE FROM filter_rules WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
   return c.json({ ok: true });
 });
 
@@ -3103,7 +3163,7 @@ api.put("/profile-permissions", async (c) => {
     return c.json({ error: "invalid admin-only areas" }, 400);
   }
   const areas = [...new Set(body.admin_only_areas as ProfilePermissionArea[])];
-  setSetting("profile_admin_only_areas", serializeAdminOnlyAreas(areas));
+  await setSetting("profile_admin_only_areas", serializeAdminOnlyAreas(areas));
   return c.json({ permissions: { admin_only_areas: adminOnlyAreas() } });
 });
 
@@ -3112,8 +3172,8 @@ api.post("/child-lock/enable", async (c) => {
   if (isChildLockEnabled()) return c.json({ error: "child lock already enabled" }, 409);
   const body = await c.req.json().catch(() => ({}));
   if (!isSixDigitPin(body.pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
-  setSetting("child_lock_pin_hash", await hashChildLockPin(body.pin));
-  setSetting("child_lock_enabled", "1");
+  await setSetting("child_lock_pin_hash", await hashChildLockPin(body.pin));
+  await setSetting("child_lock_enabled", "1");
   publishAppEvent("child-requests");
   // Admin access no longer depends on the shared unlock cookie. Clear any stale
   // cookie so other profiles in this browser are protected immediately.
@@ -3141,7 +3201,7 @@ api.post("/child-lock/change-pin", async (c) => {
   if (!isChildLockEnabled()) return c.json({ error: "child lock is disabled" }, 400);
   const body = await c.req.json().catch(() => ({}));
   if (!isSixDigitPin(body.new_pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
-  setSetting("child_lock_pin_hash", await hashChildLockPin(body.new_pin));
+  await setSetting("child_lock_pin_hash", await hashChildLockPin(body.new_pin));
   publishAppEvent("child-requests");
   clearChildLockSession(c);
   return c.json({ child_lock: childLockStatus(c) });
@@ -3150,8 +3210,8 @@ api.post("/child-lock/change-pin", async (c) => {
 api.post("/child-lock/disable", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "only an admin can manage child lock" }, 403);
   if (!isChildLockEnabled()) return c.json({ child_lock: childLockStatus(c) });
-  setSetting("child_lock_enabled", "0");
-  setSetting("child_lock_pin_hash", "");
+  await setSetting("child_lock_enabled", "0");
+  await setSetting("child_lock_pin_hash", "");
   publishAppEvent("child-requests");
   clearChildLockSession(c);
   return c.json({ child_lock: childLockStatus(c) });
@@ -3182,15 +3242,15 @@ api.put("/settings", async (c) => {
     if (!(key in body)) continue;
     if (GLOBAL_SETTING_KEYS.has(key)) {
       // Only an administrator owns app-wide settings (name, icon, timezone).
-      if (primary) setSetting(key, String(body[key]));
+      if (primary) await setSetting(key, String(body[key]));
     } else {
-      setUserSetting(uid, key, String(body[key]));
+      await setUserSetting(uid, key, String(body[key]));
     }
   }
   if (primary && "timezone" in body) {
     const now = new Date();
     for (const bucket of SCHEDULE_BUCKETS) {
-      db.prepare("UPDATE user_videos SET show_from = ? WHERE status = 'queued' AND bucket = ?")
+      await database.prepare("UPDATE user_videos SET show_from = ? WHERE status = 'queued' AND bucket = ?")
         .run(computeShowFrom(bucket, now, String(body.timezone)), bucket);
     }
   }
@@ -3230,16 +3290,16 @@ function validOidcIdentity(identity: string, claim: string): boolean {
   return claim.toLowerCase() !== "email" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity);
 }
 
-function oidcIdentityExists(identity: string, claim: string, exceptId?: number): boolean {
+async function oidcIdentityExists(identity: string, claim: string, exceptId?: number): Promise<boolean> {
   const comparison = claim.toLowerCase() === "email" ? "lower(oidc_subject) = lower(?)" : "oidc_subject = ?";
-  const row = db.prepare(`SELECT id FROM users WHERE ${comparison}${exceptId ? " AND id != ?" : ""}`)
+  const row = await database.prepare(`SELECT id FROM users WHERE ${comparison}${exceptId ? " AND id != ?" : ""}`)
     .get(...(exceptId ? [identity, exceptId] : [identity]));
   return Boolean(row);
 }
 
-function serializeProfile(u: UserRow, activeId: number, includeOidcIdentity = false) {
+async function serializeProfile(u: UserRow, activeId: number, includeOidcIdentity = false) {
   const method = authMethod();
-  const status = u.is_child === 1 ? childStatus(u.id) : null;
+  const status = u.is_child === 1 ? await childStatus(u.id) : null;
   return {
     id: u.id,
     name: u.name,
@@ -3267,13 +3327,13 @@ function serializeProfile(u: UserRow, activeId: number, includeOidcIdentity = fa
   };
 }
 
-api.get("/profiles", (c) => {
+api.get("/profiles", async (c) => {
   const activeId = currentUserId(c);
-  const rows = db.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
+  const rows = await database.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
   const mapping = oidcProfileMapping();
   const admin = isAdmin(c);
   return c.json({
-    profiles: rows.map((u) => serializeProfile(u, activeId, admin && mapping.mapped)),
+    profiles: await Promise.all(rows.map((u) => serializeProfile(u, activeId, admin && mapping.mapped))),
     active_id: activeId,
     oidc_mapping: mapping.mapped ? { claim: mapping.claim, required: true } : null,
     can_create: !mapping.mapped || admin,
@@ -3292,35 +3352,35 @@ api.post("/profiles", async (c) => {
   if (mapping.mapped && !identity) return c.json({ error: `${mapping.claim} identity required` }, 400);
   if (identity && !isAdmin(c)) return c.json({ error: "only an admin can map an OIDC identity" }, 403);
   if (identity && !validOidcIdentity(identity, mapping.claim)) return c.json({ error: `invalid ${mapping.claim} identity` }, 400);
-  if (identity && oidcIdentityExists(identity, mapping.claim)) return c.json({ error: "OIDC identity is already assigned" }, 409);
+  if (identity && await oidcIdentityExists(identity, mapping.claim)) return c.json({ error: "OIDC identity is already assigned" }, 409);
   if (is_child && !isAdmin(c)) return c.json({ error: "only an admin can create a child profile" }, 403);
-  const nextOrder = (db.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM users").get() as { n: number }).n;
+  const nextOrder = (await database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM users").get() as { n: number }).n;
   const pinHash = isSixDigitPin(pin) ? await hashPin(pin) : null;
-  const row = db
+  const row = await database
     .prepare("INSERT INTO users (name, avatar_color, pin_hash, oidc_subject, is_child, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *")
     .get(name.trim(), avatar_color || "#7c5cff", pinHash, identity || null, is_child ? 1 : 0, nextOrder, crypto.randomUUID()) as UserRow;
-  if (is_child) setUserSetting(row.id, "child_local_only", "1");
+  if (is_child) await setUserSetting(row.id, "child_local_only", "1");
   if (is_child) {
     publishAppEvent("child-status");
     publishAppEvent("child-watching");
   }
   log.info("profile.created", { id: row.id, name: row.name });
-  return c.json({ profile: serializeProfile(row, currentUserId(c), isAdmin(c) && mapping.mapped) });
+  return c.json({ profile: await serializeProfile(row, currentUserId(c), isAdmin(c) && mapping.mapped) });
 });
 
 api.patch("/profiles/:id", async (c) => {
   const id = Number(c.req.param("id"));
-  const current = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
+  const current = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!current) return c.json({ error: "not found" }, 404);
   // Only the owner or the primary profile may edit a profile at all.
   if (!canManageProfile(c, id)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.json().catch(() => ({}));
   if (body.name !== undefined) {
     if (!String(body.name).trim()) return c.json({ error: "name required" }, 400);
-    db.prepare("UPDATE users SET name = ? WHERE id = ?").run(String(body.name).trim(), id);
+    await database.prepare("UPDATE users SET name = ? WHERE id = ?").run(String(body.name).trim(), id);
   }
   if (body.avatar_color !== undefined) {
-    db.prepare("UPDATE users SET avatar_color = ? WHERE id = ?").run(String(body.avatar_color), id);
+    await database.prepare("UPDATE users SET avatar_color = ? WHERE id = ?").run(String(body.avatar_color), id);
   }
   if (body.oidc_identity !== undefined) {
     if (!isAdmin(c)) return c.json({ error: "only an admin can map an OIDC identity" }, 403);
@@ -3329,18 +3389,18 @@ api.patch("/profiles/:id", async (c) => {
     const identity = normalizeOidcIdentity(body.oidc_identity, mapping.claim);
     if (!identity) return c.json({ error: `${mapping.claim} identity required` }, 400);
     if (!validOidcIdentity(identity, mapping.claim)) return c.json({ error: `invalid ${mapping.claim} identity` }, 400);
-    if (oidcIdentityExists(identity, mapping.claim, id)) return c.json({ error: "OIDC identity is already assigned" }, 409);
-    db.prepare("UPDATE users SET oidc_subject = ? WHERE id = ?").run(identity, id);
+    if (await oidcIdentityExists(identity, mapping.claim, id)) return c.json({ error: "OIDC identity is already assigned" }, 409);
+    await database.prepare("UPDATE users SET oidc_subject = ? WHERE id = ?").run(identity, id);
   }
   // is_child: admin-only, so a child profile can never unmark itself. The
   // primary profile is the household admin and cannot be a child profile.
   if (body.is_child !== undefined) {
     if (!isAdmin(c)) return c.json({ error: "only the primary profile can change this" }, 403);
     if (id === primaryUserId()) return c.json({ error: "the primary profile cannot be a child profile" }, 400);
-    db.prepare("UPDATE users SET is_child = ? WHERE id = ?").run(body.is_child ? 1 : 0, id);
+    await database.prepare("UPDATE users SET is_child = ? WHERE id = ?").run(body.is_child ? 1 : 0, id);
     // Restricted content is the safe default for a fresh child profile.
     if (body.is_child && getUserSetting(id, "child_local_only") == null) {
-      setUserSetting(id, "child_local_only", "1");
+      await setUserSetting(id, "child_local_only", "1");
     }
     log.info("profile.child_flag", { id, is_child: Boolean(body.is_child) });
   }
@@ -3350,12 +3410,12 @@ api.patch("/profiles/:id", async (c) => {
     const cc = body.child_config ?? {};
     if (cc.limit_minutes !== undefined) {
       const minutes = Math.max(0, Math.min(24 * 60, parseInt(cc.limit_minutes, 10) || 0));
-      setUserSetting(id, "child_limit_minutes", String(minutes));
+      await setUserSetting(id, "child_limit_minutes", String(minutes));
     }
-    if (cc.local_only !== undefined) setUserSetting(id, "child_local_only", cc.local_only ? "1" : "0");
-    if (cc.hide_shorts !== undefined) setUserSetting(id, "child_hide_shorts", cc.hide_shorts ? "1" : "0");
-    if (cc.hide_live !== undefined) setUserSetting(id, "child_hide_live", cc.hide_live ? "1" : "0");
-    if (cc.downloads_only !== undefined) setUserSetting(id, "child_downloads_only", cc.downloads_only ? "1" : "0");
+    if (cc.local_only !== undefined) await setUserSetting(id, "child_local_only", cc.local_only ? "1" : "0");
+    if (cc.hide_shorts !== undefined) await setUserSetting(id, "child_hide_shorts", cc.hide_shorts ? "1" : "0");
+    if (cc.hide_live !== undefined) await setUserSetting(id, "child_hide_live", cc.hide_live ? "1" : "0");
+    if (cc.downloads_only !== undefined) await setUserSetting(id, "child_downloads_only", cc.downloads_only ? "1" : "0");
   }
   // pin: "" / null clears it, a 6-digit string sets it. PIN is owner-only — not
   // even the primary profile can change or remove someone else's PIN. (Child
@@ -3363,27 +3423,27 @@ api.patch("/profiles/:id", async (c) => {
   if (body.pin !== undefined) {
     if (currentUserId(c) !== id) return c.json({ error: "only the profile owner can change its PIN" }, 403);
     if (body.pin === "" || body.pin === null) {
-      db.prepare("UPDATE users SET pin_hash = NULL WHERE id = ?").run(id);
+      await database.prepare("UPDATE users SET pin_hash = NULL WHERE id = ?").run(id);
     } else if (isSixDigitPin(body.pin)) {
-      db.prepare("UPDATE users SET pin_hash = ? WHERE id = ?").run(await hashPin(body.pin), id);
+      await database.prepare("UPDATE users SET pin_hash = ? WHERE id = ?").run(await hashPin(body.pin), id);
     } else {
       return c.json({ error: "PIN must have 6 digits" }, 400);
     }
   }
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
+  const row = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
   if (body.is_child !== undefined || body.child_config !== undefined || body.pin !== undefined) {
     publishAppEvent("child-status");
     publishAppEvent("child-watching");
   }
-  return c.json({ profile: serializeProfile(row, currentUserId(c), isAdmin(c) && oidcProfileMapping().mapped) });
+  return c.json({ profile: await serializeProfile(row, currentUserId(c), isAdmin(c) && oidcProfileMapping().mapped) });
 });
 
 api.delete("/profiles/:id", async (c) => {
   const id = Number(c.req.param("id"));
   if (id === primaryUserId()) return c.json({ error: "cannot delete the primary profile" }, 400);
-  const count = (db.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n;
+  const count = (await database.prepare("SELECT COUNT(*) AS n FROM users").get() as { n: number }).n;
   if (count <= 1) return c.json({ error: "cannot delete the last profile" }, 400);
-  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
+  const user = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!user) return c.json({ error: "not found" }, 404);
   // The owner may delete their own profile; an admin may remove any non-primary
   // profile without requiring that person to sign in first.
@@ -3397,7 +3457,7 @@ api.delete("/profiles/:id", async (c) => {
       return c.json({ error: "invalid PIN" }, 401);
     }
   }
-  db.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all per-user state
+  await database.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all per-user state
   if (user.is_child) {
     publishAppEvent("child-status");
     publishAppEvent("child-watching");
@@ -3405,7 +3465,7 @@ api.delete("/profiles/:id", async (c) => {
   log.info("profile.deleted", { id });
   if (deletingOwnProfile) {
     // The active profile just deleted itself → fall back to the first remaining one.
-    const next = firstUserId.get() as { id: number };
+    const next = await firstUserId.get() as { id: number };
     c.header("Set-Cookie", profileCookie(next.id));
     return c.json({ ok: true, active_id: next.id });
   }
@@ -3414,7 +3474,7 @@ api.delete("/profiles/:id", async (c) => {
 
 api.post("/profiles/:id/avatar", async (c) => {
   const id = Number(c.req.param("id"));
-  if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(id)) return c.json({ error: "not found" }, 404);
+  if (!await database.prepare("SELECT 1 FROM users WHERE id = ?").get(id)) return c.json({ error: "not found" }, 404);
   if (!canManageProfile(c, id)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.parseBody();
   const file = body.file;
@@ -3424,37 +3484,37 @@ api.post("/profiles/:id/avatar", async (c) => {
   const fileName = `${id}.${ext}`;
   await Bun.write(resolve(AVATAR_DIR, fileName), file);
   // Store filename+mtime token so the client URL busts cache on change.
-  db.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(`${fileName}:${Date.now()}`, id);
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
-  return c.json({ profile: serializeProfile(row, currentUserId(c)) });
+  await database.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(`${fileName}:${Date.now()}`, id);
+  const row = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
+  return c.json({ profile: await serializeProfile(row, currentUserId(c)) });
 });
 
 // Primary-only: clear another profile's PIN (e.g. it was forgotten). The owner
 // then sets a new one themselves — the primary never sets or learns the PIN.
-api.post("/profiles/:id/reset-pin", (c) => {
+api.post("/profiles/:id/reset-pin", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "only an admin can reset PINs" }, 403);
   const id = Number(c.req.param("id"));
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
+  const row = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!row) return c.json({ error: "not found" }, 404);
-  db.prepare("UPDATE users SET pin_hash = NULL WHERE id = ?").run(id);
+  await database.prepare("UPDATE users SET pin_hash = NULL WHERE id = ?").run(id);
   log.info("profile.pin_reset", { id, by: currentUserId(c) });
-  const updated = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
-  return c.json({ profile: serializeProfile(updated, currentUserId(c)) });
+  const updated = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
+  return c.json({ profile: await serializeProfile(updated, currentUserId(c)) });
 });
 
-api.delete("/profiles/:id/avatar", (c) => {
+api.delete("/profiles/:id/avatar", async (c) => {
   const id = Number(c.req.param("id"));
-  const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
+  const row = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!row) return c.json({ error: "not found" }, 404);
   if (!canManageProfile(c, id)) return c.json({ error: "not allowed" }, 403);
-  db.prepare("UPDATE users SET avatar = '' WHERE id = ?").run(id);
-  const updated = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
-  return c.json({ profile: serializeProfile(updated, currentUserId(c)) });
+  await database.prepare("UPDATE users SET avatar = '' WHERE id = ?").run(id);
+  const updated = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
+  return c.json({ profile: await serializeProfile(updated, currentUserId(c)) });
 });
 
-api.get("/profiles/:id/avatar", (c) => {
+api.get("/profiles/:id/avatar", async (c) => {
   const id = Number(c.req.param("id"));
-  const row = db.prepare("SELECT avatar FROM users WHERE id = ?").get(id) as { avatar: string } | null;
+  const row = await database.prepare("SELECT avatar FROM users WHERE id = ?").get(id) as { avatar: string } | null;
   if (!row?.avatar) return c.json({ error: "not found" }, 404);
   const fileName = row.avatar.split(":")[0];
   const file = Bun.file(resolve(AVATAR_DIR, fileName));
@@ -3468,15 +3528,15 @@ api.post("/profiles/switch", async (c) => {
     return c.json({ requires_relogin: true, logout_url: methodLogoutUrl() });
   }
   const { id, pin, child_lock_pin } = await c.req.json().catch(() => ({}));
-  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(Number(id)) as UserRow | null;
+  const user = await database.prepare("SELECT * FROM users WHERE id = ?").get(Number(id)) as UserRow | null;
   if (!user) return c.json({ error: "not found" }, 404);
   // Leaving a child profile always requires the app-wide child lock PIN (the
   // profile's own PIN only gates entering it, like on any other profile).
   // Three wrong attempts lock the child profile.
-  const current = db.prepare("SELECT * FROM users WHERE id = ?").get(currentUserId(c)) as UserRow | null;
+  const current = await database.prepare("SELECT * FROM users WHERE id = ?").get(currentUserId(c)) as UserRow | null;
   if (current && current.id !== user.id && current.is_child === 1 && isChildLockEnabled()) {
     if (!isSixDigitPin(child_lock_pin) || !(await verifyChildLockPin(child_lock_pin))) {
-      registerChildLockFailure(current.id);
+      await registerChildLockFailure(current.id);
       publishAppEvent("child-status");
       publishAppEvent("child-watching");
       return c.json({ error: "invalid PIN", pin_locked: isPinLocked(current.id) }, 401);
@@ -3499,12 +3559,12 @@ api.post("/profiles/switch", async (c) => {
 const OIDC_FLOW_COOKIE = "ytzero_oidc_flow";
 
 // What the SPA needs to decide between rendering the app or the login screen.
-api.get("/auth/status", (c) => {
+api.get("/auth/status", async (c) => {
   const method = authMethod();
   if (method === "none") return c.json({ method, authenticated: true, can_switch: true, is_admin: isAdmin(c) });
 
   if (method === "proxy_header") {
-    const uid = resolveProxyUser(c);
+    const uid = await resolveProxyUser(c);
     return c.json({
       method,
       authenticated: Boolean(uid),
@@ -3514,9 +3574,9 @@ api.get("/auth/status", (c) => {
     });
   }
 
-  const session = validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
+  const session = await validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
   const perProfilePasskeys =
-    (db.prepare("SELECT COUNT(*) AS n FROM webauthn_credentials WHERE user_id IS NOT NULL").get() as { n: number }).n > 0;
+    (await database.prepare("SELECT COUNT(*) AS n FROM webauthn_credentials WHERE user_id IS NOT NULL").get() as { n: number }).n > 0;
   return c.json({
     method,
     authenticated: Boolean(session),
@@ -3529,7 +3589,7 @@ api.get("/auth/status", (c) => {
     login: {
       password:
         method === "shared" ? Boolean(getSetting("auth_shared_password_hash")) : method === "per_profile",
-      passkey: method === "shared" ? hasPasskeys(null) : method === "per_profile" ? perProfilePasskeys : false,
+      passkey: method === "shared" ? await hasPasskeys(null) : method === "per_profile" ? perProfilePasskeys : false,
       oidc: method === "oidc",
     },
   });
@@ -3544,16 +3604,16 @@ api.post("/auth/password/login", async (c) => {
     if (!(await verifyPassword(String(password ?? ""), getSetting("auth_shared_password_hash") || ""))) {
       return c.json({ error: "invalid credentials" }, 401);
     }
-    c.header("Set-Cookie", authSessionCookie(createSession(null, "account")));
+    c.header("Set-Cookie", authSessionCookie(await createSession(null, "account")));
     log.info("auth.login", { method, scope: "account" });
     return c.json({ ok: true });
   }
   if (method === "per_profile") {
-    const row = db.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(String(username ?? "")) as UserRow | null;
+    const row = await database.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(String(username ?? "")) as UserRow | null;
     if (!row?.password_hash || !(await verifyPassword(String(password ?? ""), row.password_hash))) {
       return c.json({ error: "invalid credentials" }, 401);
     }
-    c.header("Set-Cookie", authSessionCookie(createSession(row.id, "profile")));
+    c.header("Set-Cookie", authSessionCookie(await createSession(row.id, "profile")));
     c.header("Set-Cookie", profileCookie(row.id), { append: true });
     log.info("auth.login", { method, scope: "profile", id: row.id });
     return c.json({ ok: true, active_id: row.id });
@@ -3572,7 +3632,7 @@ api.post("/auth/passkey/login/verify", async (c) => {
   const { flowId, response } = await c.req.json().catch(() => ({}));
   const { user_id } = await passkeyLoginVerify(c, flowId, response);
   const scope = user_id === null ? "account" : "profile";
-  c.header("Set-Cookie", authSessionCookie(createSession(user_id, scope)));
+  c.header("Set-Cookie", authSessionCookie(await createSession(user_id, scope)));
   if (user_id !== null) c.header("Set-Cookie", profileCookie(user_id), { append: true });
   log.info("auth.login", { method: authMethod(), scope, id: user_id });
   return c.json({ ok: true, active_id: user_id ?? undefined });
@@ -3588,7 +3648,7 @@ api.post("/auth/passkey/register/options", async (c) => {
   }
   const uid = currentUserId(c);
   if (!uid) return c.json({ error: "unauthenticated" }, 401);
-  const user = db.prepare("SELECT name FROM users WHERE id = ?").get(uid) as { name: string };
+  const user = await database.prepare("SELECT name FROM users WHERE id = ?").get(uid) as { name: string };
   const { options, flowId } = await passkeyRegisterOptions(c, uid, user.name);
   return c.json({ options, flowId });
 });
@@ -3599,17 +3659,17 @@ api.post("/auth/passkey/register/verify", async (c) => {
   return c.json({ ok: true });
 });
 
-api.delete("/auth/passkey/:id", (c) => {
+api.delete("/auth/passkey/:id", async (c) => {
   const id = Number(c.req.param("id"));
   // Shared credentials (user_id NULL) are primary-managed; others belong to the owner.
-  const cred = db.prepare("SELECT user_id FROM webauthn_credentials WHERE id = ?").get(id) as { user_id: number | null } | null;
+  const cred = await database.prepare("SELECT user_id FROM webauthn_credentials WHERE id = ?").get(id) as { user_id: number | null } | null;
   if (!cred) return c.json({ error: "not found" }, 404);
   if (cred.user_id === null) {
     if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
   } else if (cred.user_id !== currentUserId(c)) {
     return c.json({ error: "not allowed" }, 403);
   }
-  deletePasskey(id, cred.user_id);
+  await deletePasskey(id, cred.user_id);
   return c.json({ ok: true });
 });
 
@@ -3646,7 +3706,7 @@ api.get("/auth/oidc/callback", async (c) => {
     const flowId = parseCookies(c.req.header("cookie"))[OIDC_FLOW_COOKIE];
     const { user_id, mode, is_admin } = await oidcCallback(c, flowId, c.req.url);
     const scope = mode === "gateway" ? "account" : "profile";
-    c.header("Set-Cookie", authSessionCookie(createSession(scope === "account" ? null : user_id, scope, is_admin)));
+    c.header("Set-Cookie", authSessionCookie(await createSession(scope === "account" ? null : user_id, scope, is_admin)));
     if (user_id !== null) c.header("Set-Cookie", profileCookie(user_id), { append: true });
     c.header("Set-Cookie", `${OIDC_FLOW_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly`, { append: true });
     log.info("auth.login", { method: "oidc", scope, id: user_id, admin: is_admin });
@@ -3657,31 +3717,32 @@ api.get("/auth/oidc/callback", async (c) => {
   }
 });
 
-api.post("/auth/logout", (c) => {
-  destroySession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
+api.post("/auth/logout", async (c) => {
+  await destroySession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
   c.header("Set-Cookie", clearAuthSessionCookie());
   return c.json({ ok: true, logout_url: methodLogoutUrl() });
 });
 
 // ---------- auth configuration (primary profile only) ----------
 
-api.get("/auth/config", (c) => {
+api.get("/auth/config", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
-  const profiles = (db.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[]).map((u) => ({
+  const profileRows = await database.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
+  const profiles = await Promise.all(profileRows.map(async (u) => ({
     id: u.id,
     name: u.name,
     username: u.username ?? "",
     has_password: Boolean(u.password_hash),
-    has_passkey: hasPasskeys(u.id),
+    has_passkey: await hasPasskeys(u.id),
     oidc_subject: u.oidc_subject ?? "",
     proxy_match: u.proxy_match ?? "",
-  }));
+  })));
   return c.json({
     method: getSetting("auth_method") || "none",
     shared: {
       username: getSetting("auth_shared_username") || "",
       password_set: Boolean(getSetting("auth_shared_password_hash")),
-      passkeys: listPasskeys(null),
+      passkeys: await listPasskeys(null),
     },
     oidc: {
       issuer: getSetting("auth_oidc_issuer") || "",
@@ -3710,40 +3771,40 @@ api.put("/auth/config", async (c) => {
   const body = await c.req.json().catch(() => ({}));
 
   if (body.shared) {
-    if (body.shared.username !== undefined) setSetting("auth_shared_username", String(body.shared.username));
-    if (body.shared.password) setSetting("auth_shared_password_hash", await hashPassword(String(body.shared.password)));
-    else if (body.shared.password === "") setSetting("auth_shared_password_hash", "");
+    if (body.shared.username !== undefined) await setSetting("auth_shared_username", String(body.shared.username));
+    if (body.shared.password) await setSetting("auth_shared_password_hash", await hashPassword(String(body.shared.password)));
+    else if (body.shared.password === "") await setSetting("auth_shared_password_hash", "");
   }
 
   if (body.oidc) {
     const o = body.oidc;
-    if (o.issuer !== undefined) setSetting("auth_oidc_issuer", String(o.issuer).trim());
-    if (o.client_id !== undefined) setSetting("auth_oidc_client_id", String(o.client_id).trim());
-    if (o.client_secret) setSetting("auth_oidc_client_secret", String(o.client_secret)); // keep existing if not provided
-    if (o.scopes !== undefined) setSetting("auth_oidc_scopes", String(o.scopes));
-    if (o.mode !== undefined) setSetting("auth_oidc_mode", o.mode === "gateway" ? "gateway" : "mapped");
-    if (o.claim !== undefined) setSetting("auth_oidc_claim", String(o.claim));
-    if (o.autocreate !== undefined) setSetting("auth_oidc_autocreate", o.autocreate ? "1" : "0");
-    if (o.logout_url !== undefined) setSetting("auth_oidc_logout_url", String(o.logout_url).trim());
-    if (o.groups_claim !== undefined) setSetting("auth_oidc_groups_claim", String(o.groups_claim).trim() || "groups");
-    if (o.admin_group !== undefined) setSetting("auth_oidc_admin_group", String(o.admin_group).trim());
+    if (o.issuer !== undefined) await setSetting("auth_oidc_issuer", String(o.issuer).trim());
+    if (o.client_id !== undefined) await setSetting("auth_oidc_client_id", String(o.client_id).trim());
+    if (o.client_secret) await setSetting("auth_oidc_client_secret", String(o.client_secret)); // keep existing if not provided
+    if (o.scopes !== undefined) await setSetting("auth_oidc_scopes", String(o.scopes));
+    if (o.mode !== undefined) await setSetting("auth_oidc_mode", o.mode === "gateway" ? "gateway" : "mapped");
+    if (o.claim !== undefined) await setSetting("auth_oidc_claim", String(o.claim));
+    if (o.autocreate !== undefined) await setSetting("auth_oidc_autocreate", o.autocreate ? "1" : "0");
+    if (o.logout_url !== undefined) await setSetting("auth_oidc_logout_url", String(o.logout_url).trim());
+    if (o.groups_claim !== undefined) await setSetting("auth_oidc_groups_claim", String(o.groups_claim).trim() || "groups");
+    if (o.admin_group !== undefined) await setSetting("auth_oidc_admin_group", String(o.admin_group).trim());
     invalidateOidcConfig();
   }
 
   if (body.proxy) {
-    if (body.proxy.header !== undefined) setSetting("auth_proxy_header", String(body.proxy.header).trim() || "Remote-User");
-    if (body.proxy.logout_url !== undefined) setSetting("auth_proxy_logout_url", String(body.proxy.logout_url).trim());
+    if (body.proxy.header !== undefined) await setSetting("auth_proxy_header", String(body.proxy.header).trim() || "Remote-User");
+    if (body.proxy.logout_url !== undefined) await setSetting("auth_proxy_logout_url", String(body.proxy.logout_url).trim());
   }
 
   if (Array.isArray(body.profiles)) {
     for (const p of body.profiles) {
       const id = Number(p.id);
-      if (!db.prepare("SELECT 1 FROM users WHERE id = ?").get(id)) continue;
-      if (p.username !== undefined) db.prepare("UPDATE users SET username = ? WHERE id = ?").run(String(p.username).trim() || null, id);
-      if (p.password) db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(String(p.password)), id);
-      else if (p.password === "") db.prepare("UPDATE users SET password_hash = NULL WHERE id = ?").run(id);
-      if (p.oidc_subject !== undefined) db.prepare("UPDATE users SET oidc_subject = ? WHERE id = ?").run(String(p.oidc_subject).trim() || null, id);
-      if (p.proxy_match !== undefined) db.prepare("UPDATE users SET proxy_match = ? WHERE id = ?").run(String(p.proxy_match).trim() || null, id);
+      if (!await database.prepare("SELECT 1 FROM users WHERE id = ?").get(id)) continue;
+      if (p.username !== undefined) await database.prepare("UPDATE users SET username = ? WHERE id = ?").run(String(p.username).trim() || null, id);
+      if (p.password) await database.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(String(p.password)), id);
+      else if (p.password === "") await database.prepare("UPDATE users SET password_hash = NULL WHERE id = ?").run(id);
+      if (p.oidc_subject !== undefined) await database.prepare("UPDATE users SET oidc_subject = ? WHERE id = ?").run(String(p.oidc_subject).trim() || null, id);
+      if (p.proxy_match !== undefined) await database.prepare("UPDATE users SET proxy_match = ? WHERE id = ?").run(String(p.proxy_match).trim() || null, id);
     }
   }
 
@@ -3765,10 +3826,10 @@ function mappingField(method: string): "username" | "oidc_subject" | "proxy_matc
 
 // Every profile must carry the method's identifier (and it must be unique), so an
 // admin can't half-configure the mapping and accidentally lock people out.
-function validateMapping(method: string): { missing: string[]; duplicates: string[]; credMissing: string[] } | null {
+async function validateMapping(method: string): Promise<{ missing: string[]; duplicates: string[]; credMissing: string[] } | null> {
   const field = mappingField(method);
   if (!field) return null;
-  const rows = db.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
+  const rows = await database.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
   const valueOf = (u: UserRow) => String((u as any)[field] ?? "").trim();
   const missing = rows.filter((u) => !valueOf(u)).map((u) => u.name);
   const seen = new Map<string, true>();
@@ -3782,7 +3843,9 @@ function validateMapping(method: string): { missing: string[]; duplicates: strin
   // per_profile additionally needs a way to authenticate each profile.
   const credMissing =
     method === "per_profile"
-      ? rows.filter((u) => !u.password_hash && !hasPasskeys(u.id)).map((u) => u.name)
+      ? (await Promise.all(rows.map(async (u) => ({ user: u, hasPasskey: await hasPasskeys(u.id) }))))
+          .filter(({ user, hasPasskey }) => !user.password_hash && !hasPasskey)
+          .map(({ user }) => user.name)
       : [];
   if (missing.length === 0 && dups.size === 0 && credMissing.length === 0) return null;
   return { missing, duplicates: [...dups], credMissing };
@@ -3795,7 +3858,7 @@ api.post("/auth/method", async (c) => {
   const valid = ["none", "shared", "per_profile", "oidc", "proxy_header"];
   if (!valid.includes(method)) return c.json({ error: "invalid method" }, 400);
 
-  if (method === "shared" && !getSetting("auth_shared_password_hash") && !hasPasskeys(null)) {
+  if (method === "shared" && !getSetting("auth_shared_password_hash") && !await hasPasskeys(null)) {
     return c.json({ error: "set a shared password or passkey first" }, 400);
   }
   if (method === "oidc") {
@@ -3803,7 +3866,7 @@ api.post("/auth/method", async (c) => {
     if (!probe.ok) return c.json({ error: `OIDC not reachable: ${probe.error}` }, 400);
   }
   // per_profile / oidc-mapped / proxy_header: require a complete, unique mapping.
-  const m = validateMapping(method);
+  const m = await validateMapping(method);
   if (m) {
     const parts: string[] = [];
     if (m.missing.length) parts.push(`missing for: ${m.missing.join(", ")}`);
@@ -3812,7 +3875,7 @@ api.post("/auth/method", async (c) => {
     return c.json({ error: `incomplete profile mapping — ${parts.join("; ")}`, mapping: m }, 400);
   }
 
-  setSetting("auth_method", method);
+  await setSetting("auth_method", method);
   log.info("auth.method_changed", { method });
   return c.json({ ok: true });
 });
@@ -3916,25 +3979,25 @@ api.post("/updates/check", async (c) => {
   }
 });
 
-api.get("/notifications", (c) => {
+api.get("/notifications", async (c) => {
   const uid = currentUserId(c);
-  const rows = db.prepare(`
+  const rows = await database.prepare(`
     SELECT id, kind, payload, target, read_at, created_at
     FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 30
   `).all(uid) as { id: number; kind: string; payload: string; target: string; read_at: string | null; created_at: string }[];
-  const unread = (db.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ? AND read_at IS NULL").get(uid) as { count: number }).count;
+  const unread = (await database.prepare("SELECT count(*) AS count FROM notifications WHERE user_id = ? AND read_at IS NULL").get(uid) as { count: number }).count;
   return c.json({ notifications: rows.map((row) => ({ ...row, payload: JSON.parse(row.payload || "{}") })), unread });
 });
 
-api.post("/notifications/:id/read", (c) => {
+api.post("/notifications/:id/read", async (c) => {
   const uid = currentUserId(c);
-  db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE id = ? AND user_id = ?").run(Number(c.req.param("id")), uid);
+  await database.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE id = ? AND user_id = ?").run(Number(c.req.param("id")), uid);
   publishAppEvent("notifications");
   return c.json({ ok: true });
 });
 
-api.post("/notifications/read-all", (c) => {
-  db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE user_id = ?").run(currentUserId(c));
+api.post("/notifications/read-all", async (c) => {
+  await database.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE user_id = ?").run(currentUserId(c));
   publishAppEvent("notifications");
   return c.json({ ok: true });
 });

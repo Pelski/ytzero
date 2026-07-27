@@ -2,13 +2,16 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { configureTimeZoneProvider, DEFAULT_TIME_ZONE } from "./timeZone";
+import { configureSQLiteConnection, optimizeSQLite } from "./sqliteMaintenance";
+import { applySQLiteMigrations } from "./sqliteMigrations";
+import { database, databaseConfig } from "./database";
+import { migrateSQLiteToPostgres } from "./postgresMigration";
 
-const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
+export const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
 
 export const db = new Database(DB_PATH, { create: true });
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA foreign_keys = ON;");
+configureSQLiteConnection(db);
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS channels (
@@ -38,10 +41,7 @@ CREATE TABLE IF NOT EXISTS videos (
   queued_at    TEXT,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_videos_channel ON videos(channel_id);
 CREATE INDEX IF NOT EXISTS idx_videos_channel_published ON videos(channel_id, published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_videos_published ON videos(published_at DESC);
-CREATE INDEX IF NOT EXISTS idx_videos_status ON videos(status);
 
 CREATE TABLE IF NOT EXISTS video_creators (
   video_id   TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
@@ -726,15 +726,30 @@ for (const [key, value] of Object.entries(SETTING_DEFAULTS)) {
   }
 }
 
+const settingCache = new Map(
+  (db.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[])
+    .map((row) => [row.key, row.value]),
+);
+const userSettingCache = new Map(
+  (db.prepare("SELECT user_id, key, value FROM user_settings").all() as { user_id: number; key: string; value: string }[])
+    .map((row) => [`${row.user_id}:${row.key}`, row.value]),
+);
+let runtimeSettingsReady = false;
+
 export function getSetting(key: string): string | null {
-  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | null;
-  return row?.value ?? null;
+  return settingCache.get(key) ?? null;
 }
 
 configureTimeZoneProvider(() => getSetting("timezone") ?? DEFAULT_TIME_ZONE);
 
-export function setSetting(key: string, value: string) {
-  db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+export function setSetting(key: string, value: string): Promise<void> {
+  if (databaseConfig.engine === "sqlite" || !runtimeSettingsReady) {
+    db.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(key, value);
+    settingCache.set(key, value);
+    return Promise.resolve();
+  }
+  return database.prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+    .run(key, value).then(() => { settingCache.set(key, value); });
 }
 
 export function isGlobalSetting(key: string): boolean {
@@ -742,14 +757,31 @@ export function isGlobalSetting(key: string): boolean {
 }
 
 export function getUserSetting(userId: number, key: string): string | null {
-  const row = db.prepare("SELECT value FROM user_settings WHERE user_id = ? AND key = ?").get(userId, key) as { value: string } | null;
-  return row?.value ?? SETTING_DEFAULTS[key] ?? null;
+  return userSettingCache.get(`${userId}:${key}`) ?? SETTING_DEFAULTS[key] ?? null;
 }
 
-export function setUserSetting(userId: number, key: string, value: string) {
-  db.prepare(
+export function setUserSetting(userId: number, key: string, value: string): Promise<void> {
+  if (databaseConfig.engine === "sqlite" || !runtimeSettingsReady) {
+    db.prepare(
+      "INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value"
+    ).run(userId, key, value);
+    userSettingCache.set(`${userId}:${key}`, value);
+    return Promise.resolve();
+  }
+  return database.prepare(
     "INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value"
-  ).run(userId, key, value);
+  ).run(userId, key, value).then(() => { userSettingCache.set(`${userId}:${key}`, value); });
+}
+
+export async function reloadSettingCache(): Promise<void> {
+  settingCache.clear();
+  for (const row of await database.prepare("SELECT key, value FROM settings").all() as { key: string; value: string }[]) {
+    settingCache.set(row.key, row.value);
+  }
+  userSettingCache.clear();
+  for (const row of await database.prepare("SELECT user_id, key, value FROM user_settings").all() as { user_id: number; key: string; value: string }[]) {
+    userSettingCache.set(`${row.user_id}:${row.key}`, row.value);
+  }
 }
 
 // ---------- one-time multi-user migration ----------
@@ -849,3 +881,33 @@ db.exec(`CREATE TABLE IF NOT EXISTS portable_object_mappings (
 )`);
 
 if (!getSetting("installation_id")) setSetting("installation_id", crypto.randomUUID());
+
+// Keep planner statistics current, but only after every schema/index migration
+// above has completed. The feed-order index makes the primary feed plan stable
+// after statistics are introduced (covered by sqliteMaintenance tests).
+applySQLiteMigrations(db);
+optimizeSQLite(db, true);
+
+// The synchronous SQLite bootstrap above remains the canonical local schema
+// builder. Runtime reads, however, must come from the selected engine. A
+// migrated PostgreSQL database already contains these tables and values.
+if (databaseConfig.engine === "postgres") {
+  const schema = await database.prepare("SELECT to_regclass('public.settings') AS settings_table").get() as { settings_table: string | null } | null;
+  if (!schema?.settings_table) {
+    const localRows = (db.prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM channels) +
+        (SELECT COUNT(*) FROM videos) +
+        (SELECT COUNT(*) FROM history) +
+        (SELECT COUNT(*) FROM user_videos) AS count
+    `).get() as { count: number }).count;
+    if (localRows > 0) {
+      throw new Error("PostgreSQL is empty but the SQLite source contains data; start with SQLite and use Settings > Advanced > Database to migrate safely");
+    }
+    await migrateSQLiteToPostgres(DB_PATH, databaseConfig.url);
+  }
+  runtimeSettingsReady = true;
+  await reloadSettingCache();
+} else {
+  runtimeSettingsReady = true;
+}

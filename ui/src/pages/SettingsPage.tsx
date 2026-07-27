@@ -26,6 +26,8 @@ import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divi
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
 import { formatAppDate } from "../dateTime";
 import { mergeRemoteChangelog } from "../changelog";
+import DatabaseSettings from "../components/DatabaseSettings";
+import { scheduleSettingWrite } from "../settingsWriteQueue";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -82,6 +84,7 @@ type FeedMaxAgeUnit = "days" | "weeks" | "months" | "years" | "off";
 const FEED_MAX_AGE_UNITS: Exclude<FeedMaxAgeUnit, "off">[] = ["days", "weeks", "months", "years"];
 const FEED_MAX_AGE_VALUES = Array.from({ length: 30 }, (_, i) => String(i + 1));
 const LOG_LINE_LIMIT = 300;
+const PLUGIN_SETTING_SAVE_DEBOUNCE_MS = 300;
 
 function isFeedMaxAgeUnit(value: unknown): value is FeedMaxAgeUnit {
   return typeof value === "string" && (FEED_MAX_AGE_UNITS as string[]).includes(value);
@@ -1173,7 +1176,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const section = searchParams.get("section");
   const channelSubTab: "list" | "playlists" | "filters" = section === "filters" || section === "playlists" ? section : "list";
   const tagSubTab: "list" | "rules" = section === "rules" ? "rules" : "list";
-  const advancedSubTab: "external" | "logs" | "changelog" = section === "logs" || section === "changelog" ? section : "external";
+  const advancedSubTab: "external" | "logs" | "changelog" | "dangerous" = section === "logs" || section === "changelog" || section === "dangerous" ? section : "external";
   const setSettingsRoute = (nextTab: Tab, nextSection?: string) => {
     const next = new URLSearchParams();
     next.set("tab", nextTab);
@@ -1183,7 +1186,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const setTab = (nextTab: Tab) => setSettingsRoute(nextTab);
   const setChannelSubTab = (nextSection: "list" | "playlists" | "filters") => setSettingsRoute("channels", nextSection === "list" ? undefined : nextSection);
   const setTagSubTab = (nextSection: "list" | "rules") => setSettingsRoute("tags", nextSection === "list" ? undefined : nextSection);
-  const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog") => setSettingsRoute("advanced", nextSection === "external" ? undefined : nextSection);
+  const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog" | "dangerous") => setSettingsRoute("advanced", nextSection === "external" ? undefined : nextSection);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -1195,6 +1198,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [pluginSettings, setPluginSettings] = useState<Record<string, PluginSettingsResponse>>({});
   const [pluginSettingsModalId, setPluginSettingsModalId] = useState<string | null>(null);
   const [resettingPluginId, setResettingPluginId] = useState<string | null>(null);
+  const pluginSettingSaveQueues = useRef(new Map<string, Promise<void>>());
+  const pluginSettingSaveVersions = useRef(new Map<string, number>());
+  const pluginSettingSaveTimers = useRef(new Map<string, number>());
   const [loading, setLoading] = useState(true);
   const [addingChannel, setAddingChannel] = useState(false);
   const [updatingChannelId, setUpdatingChannelId] = useState<string | null>(null);
@@ -1567,7 +1573,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     }
   };
 
-  const updatePluginSetting = async (pluginId: string, key: string, value: number | string) => {
+  const updatePluginSetting = (pluginId: string, key: string, value: number | string) => {
     setPluginSettings((current) => {
       const currentPlugin = current[pluginId];
       if (!currentPlugin) return current;
@@ -1579,14 +1585,48 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         },
       };
     });
-    try {
-      const next = await api.updatePluginSettings(pluginId, { [key]: value });
-      setPluginSettings((current) => ({ ...current, [pluginId]: next }));
-      emit("plugins-changed");
-    } catch (e) {
-      loadPlugins();
-      showToast(e instanceof Error ? e.message : String(e));
-    }
+    const saveKey = `${pluginId}:${key}`;
+    const version = (pluginSettingSaveVersions.current.get(saveKey) ?? 0) + 1;
+    pluginSettingSaveVersions.current.set(saveKey, version);
+    const pendingTimer = pluginSettingSaveTimers.current.get(saveKey);
+    if (pendingTimer != null) window.clearTimeout(pendingTimer);
+    const timer = window.setTimeout(() => {
+      pluginSettingSaveTimers.current.delete(saveKey);
+      const previous = pluginSettingSaveQueues.current.get(saveKey) ?? Promise.resolve();
+      const save = previous.catch(() => {}).then(async () => {
+        try {
+          const next = await api.updatePluginSettings(pluginId, { [key]: value });
+          if (pluginSettingSaveVersions.current.get(saveKey) !== version) return;
+          setPluginSettings((current) => {
+            const currentPlugin = current[pluginId];
+            if (!currentPlugin) return current;
+            return {
+              ...current,
+              [pluginId]: {
+                ...next,
+                settings: { ...next.settings, ...currentPlugin.settings, [key]: next.settings[key] },
+                terms: currentPlugin.terms ?? next.terms,
+              },
+            };
+          });
+          emit("plugins-changed");
+        } catch (e) {
+          if (pluginSettingSaveVersions.current.get(saveKey) !== version) return;
+          try {
+            const latest = await api.pluginSettings(pluginId);
+            setPluginSettings((current) => ({ ...current, [pluginId]: latest }));
+          } catch {
+            // Preserve the optimistic value if even the recovery read failed.
+          }
+          showToast(e instanceof Error ? e.message : String(e));
+        }
+      });
+      pluginSettingSaveQueues.current.set(saveKey, save);
+      void save.finally(() => {
+        if (pluginSettingSaveQueues.current.get(saveKey) === save) pluginSettingSaveQueues.current.delete(saveKey);
+      });
+    }, PLUGIN_SETTING_SAVE_DEBOUNCE_MS);
+    pluginSettingSaveTimers.current.set(saveKey, timer);
   };
 
   const updatePluginBlockedTerms = async (pluginId: string, blockedTerms: string[]) => {
@@ -1604,13 +1644,29 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         },
       };
     });
-    try {
-      const next = await api.updatePluginSettings(pluginId, { blockedTerms });
-      setPluginSettings((current) => ({ ...current, [pluginId]: next }));
-    } catch (e) {
-      loadPlugins();
-      showToast(e instanceof Error ? e.message : String(e));
-    }
+    const saveKey = `${pluginId}:blockedTerms`;
+    const version = (pluginSettingSaveVersions.current.get(saveKey) ?? 0) + 1;
+    pluginSettingSaveVersions.current.set(saveKey, version);
+    const previous = pluginSettingSaveQueues.current.get(saveKey) ?? Promise.resolve();
+    const save = previous.catch(() => {}).then(async () => {
+      try {
+        const next = await api.updatePluginSettings(pluginId, { blockedTerms });
+        if (pluginSettingSaveVersions.current.get(saveKey) !== version) return;
+        setPluginSettings((current) => ({ ...current, [pluginId]: next }));
+      } catch (e) {
+        if (pluginSettingSaveVersions.current.get(saveKey) !== version) return;
+        try {
+          const latest = await api.pluginSettings(pluginId);
+          setPluginSettings((current) => ({ ...current, [pluginId]: latest }));
+        } catch {
+          // Preserve the optimistic value if even the recovery read failed.
+        }
+        showToast(e instanceof Error ? e.message : String(e));
+      }
+    });
+    pluginSettingSaveQueues.current.set(saveKey, save);
+    await save;
+    if (pluginSettingSaveQueues.current.get(saveKey) === save) pluginSettingSaveQueues.current.delete(saveKey);
   };
 
   const resetPlugin = async (pluginId: string) => {
@@ -1743,11 +1799,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     showToast(t("appNameSaved"));
   };
 
-  const saveAppIconColor = async (color: string) => {
+  const saveAppIconColor = (color: string) => {
     setAppIconColor(color);
-    await api.updateSettings({ app_icon_color: color });
-    emit("app-name-changed");
-    showToast(t("appIconColorSaved"));
+    scheduleSettingWrite("app_icon_color", { app_icon_color: color }, {
+      onSaved: () => { emit("app-name-changed"); showToast(t("appIconColorSaved")); },
+      onError: (error) => { load(); showToast(error instanceof Error ? error.message : String(error)); },
+    });
   };
 
   const saveTimeZone = async (next: string) => {
@@ -2725,7 +2782,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 <ColorPicker
                   label={t("subtitleColor")}
                   value={subColor}
-                  onChange={(next) => { setSubColor(next); savePlayer({ player_sub_color: next }); }}
+                  onChange={(next) => {
+                    setSubColor(next);
+                    scheduleSettingWrite("player_sub_color", { player_sub_color: next }, {
+                      onSaved: () => { emit("player-settings-changed"); showToast(t("playerSettingsSaved")); },
+                      onError: (error) => { load(); showToast(error instanceof Error ? error.message : String(error)); },
+                    });
+                  }}
                 />
               </label>
               <label className="sub-style-field sub-style-field--wide">
@@ -3148,10 +3211,16 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isCurrentTabLocked && tab === "advanced" && (
         <SettingsSection>
-          {isPrimary && <SettingRow label={t("backupRestore")} description={t("backupRestoreHint")}>
-            <ButtonLink to="/restore" leadingIcon={<ArchiveRestore size={16} />}>{t("backupRestoreOpen")}</ButtonLink>
-          </SettingRow>}
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "logs", label: t("logs") }, { value: "changelog", label: t("changelog") }]} />
+          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "logs", label: t("logs") }, { value: "changelog", label: t("changelog") }, { value: "dangerous", label: t("dangerous") }]} />
+
+          {advancedSubTab === "dangerous" && isPrimary && (
+            <>
+              <SettingRow label={t("backupRestore")} description={t("backupRestoreHint")}>
+                <ButtonLink to="/restore" leadingIcon={<ArchiveRestore size={16} />}>{t("backupRestoreOpen")}</ButtonLink>
+              </SettingRow>
+              <DatabaseSettings showToast={showToast} />
+            </>
+          )}
 
           {advancedSubTab === "external" && (
             <>

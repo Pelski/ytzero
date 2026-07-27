@@ -3,7 +3,8 @@
 // parent-granted extensions, and a lockout after repeated wrong child-lock
 // PINs. Enforcement is cooperative — the server stops counting and reports
 // `locked`, and the UI locks the screen.
-import { db, getUserSetting, setUserSetting } from "./db";
+import { database } from "./database";
+import { getUserSetting, setUserSetting } from "./db";
 import { recordWatchTagSignals } from "./contentSignals";
 import { zonedDayHour } from "./timeZone";
 import { publishAppEvent } from "./appEvents";
@@ -13,8 +14,8 @@ export const CHILD_GRANTS: ChildGrant[] = ["15m", "1h", "video_end", "today_off"
 
 const today = () => zonedDayHour().day;
 
-export function isChildUser(userId: number): boolean {
-  const row = db.prepare("SELECT is_child FROM users WHERE id = ?").get(userId) as { is_child: number } | null;
+export async function isChildUser(userId: number): Promise<boolean> {
+  const row = await database.prepare("SELECT is_child FROM users WHERE id = ?").get(userId) as { is_child: number } | null;
   return row?.is_child === 1;
 }
 
@@ -35,24 +36,26 @@ const lastChildEvent = new Map<number, number>();
 const childIdleTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 /** Active playback heartbeats, used by the small parent "now watching" panel. */
-export function activeChildPlayback(maxAgeMs = 12_000) {
+export async function activeChildPlayback(maxAgeMs = 12_000) {
   const cutoff = Date.now() - maxAgeMs;
-  return [...lastTick.entries()]
-    .filter(([userId, tick]) => tick.at >= cutoff && isChildUser(userId))
-    .map(([userId, tick]) => ({ userId, videoId: tick.videoId }));
+  const recent = [...lastTick.entries()].filter(([, tick]) => tick.at >= cutoff);
+  return (await Promise.all(recent.map(async ([userId, tick]) =>
+    await isChildUser(userId) ? { userId, videoId: tick.videoId } : null
+  ))).filter((entry): entry is { userId: number; videoId: string } => entry !== null);
 }
 
-export function recordWatchTick(userId: number, videoId: string) {
+export async function recordWatchTick(userId: number, videoId: string) {
   if (isParentLocked(userId)) return;
   const now = Date.now();
   const last = lastTick.get(userId);
   lastTick.set(userId, { at: now, videoId });
-  if (isChildUser(userId) && now - (lastChildEvent.get(userId) ?? 0) >= 2_000) {
+  const child = await isChildUser(userId);
+  if (child && now - (lastChildEvent.get(userId) ?? 0) >= 2_000) {
     lastChildEvent.set(userId, now);
     publishAppEvent("child-status");
     publishAppEvent("child-watching");
   }
-  if (isChildUser(userId)) {
+  if (child) {
     const idleTimer = childIdleTimers.get(userId);
     if (idleTimer) clearTimeout(idleTimer);
     childIdleTimers.set(userId, setTimeout(() => {
@@ -64,12 +67,12 @@ export function recordWatchTick(userId: number, videoId: string) {
   const delta = (now - last.at) / 1000;
   if (delta <= 0 || delta > 15) return;
   const local = zonedDayHour(new Date(now));
-  db.prepare(
+  await database.prepare(
     `INSERT INTO watch_time_log (user_id, video_id, day, hour, seconds)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(user_id, video_id, day, hour) DO UPDATE SET seconds = seconds + excluded.seconds`
   ).run(userId, videoId, local.day, local.hour, delta);
-  recordWatchTagSignals(userId, videoId, delta, local);
+  await recordWatchTagSignals(userId, videoId, delta, local);
 }
 
 /** The video the user was most recently watching (for "until video ends"). */
@@ -77,8 +80,8 @@ export function lastWatchedVideo(userId: number): string | null {
   return lastTick.get(userId)?.videoId ?? null;
 }
 
-function usedSecondsToday(userId: number): number {
-  return (db.prepare("SELECT COALESCE(SUM(seconds), 0) AS s FROM watch_time_log WHERE user_id = ? AND day = ?")
+async function usedSecondsToday(userId: number): Promise<number> {
+  return (await database.prepare("SELECT COALESCE(SUM(seconds), 0) AS s FROM watch_time_log WHERE user_id = ? AND day = ?")
     .get(userId, today()) as { s: number }).s;
 }
 
@@ -100,19 +103,19 @@ export function isParentLocked(userId: number): boolean {
   return getUserSetting(userId, "child_parent_locked") === "1";
 }
 
-export function lockChildByParent(userId: number) {
-  setUserSetting(userId, "child_parent_locked", "1");
+export async function lockChildByParent(userId: number) {
+  await setUserSetting(userId, "child_parent_locked", "1");
   lastTick.delete(userId);
 }
 
 /** Count one failed attempt; returns true when this attempt locked the profile. */
-export function registerChildLockFailure(userId: number): boolean {
-  if (!isChildUser(userId)) return false;
+export async function registerChildLockFailure(userId: number): Promise<boolean> {
+  if (!await isChildUser(userId)) return false;
   const failures = (pinFailures.get(userId) ?? 0) + 1;
   pinFailures.set(userId, failures);
   if (failures < PIN_LOCK_ATTEMPTS) return false;
   pinFailures.delete(userId);
-  setUserSetting(userId, "child_pin_lock_until", new Date(Date.now() + PIN_LOCK_MINUTES * 60_000).toISOString());
+  await setUserSetting(userId, "child_pin_lock_until", new Date(Date.now() + PIN_LOCK_MINUTES * 60_000).toISOString());
   return true;
 }
 
@@ -120,10 +123,10 @@ export function clearChildLockFailures(userId: number) {
   pinFailures.delete(userId);
 }
 
-export function unlockChildProfile(userId: number) {
+export async function unlockChildProfile(userId: number) {
   pinFailures.delete(userId);
-  setUserSetting(userId, "child_pin_lock_until", "");
-  setUserSetting(userId, "child_parent_locked", "");
+  await setUserSetting(userId, "child_pin_lock_until", "");
+  await setUserSetting(userId, "child_parent_locked", "");
 }
 
 // ---------- status & grants ----------
@@ -144,8 +147,8 @@ export interface ChildStatus {
   has_pending_request: boolean;
 }
 
-export function childStatus(userId: number): ChildStatus {
-  if (!isChildUser(userId)) {
+export async function childStatus(userId: number): Promise<ChildStatus> {
+  if (!await isChildUser(userId)) {
     return {
       is_child: false, limit_seconds: null, used_seconds: 0, extra_seconds: 0,
       unlimited_today: false, remaining_seconds: null, locked: false, lock_reason: null,
@@ -154,8 +157,8 @@ export function childStatus(userId: number): ChildStatus {
     };
   }
   const limit = childLimitSeconds(userId);
-  const used = usedSecondsToday(userId);
-  const extras = db.prepare("SELECT extra_seconds, unlimited FROM child_time_extras WHERE user_id = ? AND day = ?")
+  const used = await usedSecondsToday(userId);
+  const extras = await database.prepare("SELECT extra_seconds, unlimited FROM child_time_extras WHERE user_id = ? AND day = ?")
     .get(userId, today()) as { extra_seconds: number; unlimited: number } | null;
   const extra = extras?.extra_seconds ?? 0;
   const unlimited = extras?.unlimited === 1;
@@ -163,7 +166,7 @@ export function childStatus(userId: number): ChildStatus {
   const pinLocked = isPinLocked(userId);
   const parentLocked = isParentLocked(userId);
   const timeLocked = remaining != null && remaining <= 0;
-  const pending = db.prepare(
+  const pending = await database.prepare(
     "SELECT 1 FROM child_time_requests WHERE user_id = ? AND status = 'pending' AND created_at > datetime('now', '-1 hour')"
   ).get(userId);
   return {
@@ -185,21 +188,21 @@ export function childStatus(userId: number): ChildStatus {
 
 /** Child profile restricted to locally downloaded files (no YouTube playback). */
 export function childDownloadsOnly(userId: number): boolean {
-  return isChildUser(userId) && getUserSetting(userId, "child_downloads_only") === "1";
+  return getUserSetting(userId, "child_downloads_only") === "1";
 }
 
 export function childLocalOnly(userId: number): boolean {
-  return isChildUser(userId) && getUserSetting(userId, "child_local_only") === "1";
+  return getUserSetting(userId, "child_local_only") === "1";
 }
 
 export function childHidesLive(userId: number): boolean {
-  return isChildUser(userId) && getUserSetting(userId, "child_hide_live") === "1";
+  return getUserSetting(userId, "child_hide_live") === "1";
 }
 
-export function applyGrant(userId: number, grant: ChildGrant, videoId: string | null) {
+export async function applyGrant(userId: number, grant: ChildGrant, videoId: string | null) {
   const day = today();
   if (grant === "today_off") {
-    db.prepare(
+    await database.prepare(
       `INSERT INTO child_time_extras (user_id, day, unlimited) VALUES (?, ?, 1)
        ON CONFLICT(user_id, day) DO UPDATE SET unlimited = 1`
     ).run(userId, day);
@@ -207,7 +210,7 @@ export function applyGrant(userId: number, grant: ChildGrant, videoId: string | 
   }
   let seconds = grant === "1h" ? 3600 : 900;
   if (grant === "video_end" && videoId) {
-    const row = db.prepare(
+    const row = await database.prepare(
       "SELECT watch_position, watch_duration FROM user_videos WHERE user_id = ? AND video_id = ?"
     ).get(userId, videoId) as { watch_position: number | null; watch_duration: number | null } | null;
     if (row?.watch_duration && row.watch_position != null) {
@@ -219,11 +222,11 @@ export function applyGrant(userId: number, grant: ChildGrant, videoId: string | 
   // time equals the grant even when usage overshot the limit (a slow lock,
   // another device), but never shrink extras that are already larger.
   const limit = childLimitSeconds(userId) ?? 0;
-  const used = usedSecondsToday(userId);
-  const current = (db.prepare("SELECT extra_seconds FROM child_time_extras WHERE user_id = ? AND day = ?")
+  const used = await usedSecondsToday(userId);
+  const current = (await database.prepare("SELECT extra_seconds FROM child_time_extras WHERE user_id = ? AND day = ?")
     .get(userId, day) as { extra_seconds: number } | null)?.extra_seconds ?? 0;
   const extra = Math.max(current + seconds, Math.round(used - limit + seconds));
-  db.prepare(
+  await database.prepare(
     `INSERT INTO child_time_extras (user_id, day, extra_seconds) VALUES (?, ?, ?)
      ON CONFLICT(user_id, day) DO UPDATE SET extra_seconds = excluded.extra_seconds`
   ).run(userId, day, extra);

@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { database } from "./database";
 import { getCachedImage } from "./imgcache";
 import type { ChannelAbout, PlaylistInfo } from "./youtube";
 
@@ -13,8 +13,8 @@ async function keepVerifiedReplacement(candidate: string, fallback: string): Pro
 }
 
 export async function preserveChannelMedia(channelId: string, incoming: ChannelAbout): Promise<ChannelAbout> {
-  const row = db.prepare("SELECT thumbnail, about_json FROM channels WHERE channel_id = ?")
-    .get(channelId) as { thumbnail: string | null; about_json: string | null } | null;
+  const row = await database.prepare("SELECT thumbnail, about_json FROM channels WHERE channel_id = ?")
+    .get<{ thumbnail: string | null; about_json: string | null }>(channelId);
   let previous: Partial<ChannelAbout> = {};
   if (row?.about_json) {
     try { previous = JSON.parse(row.about_json) as Partial<ChannelAbout>; } catch {}
@@ -30,7 +30,7 @@ export async function preserveChannelMedia(channelId: string, incoming: ChannelA
 
 export async function preservePlaylistMedia(channelId: string, incoming: PlaylistInfo[]): Promise<PlaylistInfo[]> {
   const previous = new Map(
-    (db.prepare("SELECT playlist_id, thumbnail FROM channel_playlists WHERE channel_id = ?").all(channelId) as { playlist_id: string; thumbnail: string }[])
+    (await database.prepare("SELECT playlist_id, thumbnail FROM channel_playlists WHERE channel_id = ?").all<{ playlist_id: string; thumbnail: string }>(channelId))
       .map((playlist) => [playlist.playlist_id, playlist.thumbnail]),
   );
   const safe: PlaylistInfo[] = [];

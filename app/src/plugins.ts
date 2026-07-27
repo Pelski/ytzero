@@ -1,4 +1,5 @@
-import { db, getSetting, setSetting } from "./db";
+import { database } from "./database";
+import { getSetting, reloadSettingCache } from "./db";
 import { fetchChannelAbout, fetchVideoInfo, searchYouTube, type SearchResult, type VideoInfo } from "./youtube";
 import { buildKeywordPlan, tokenizeDiscoveryText, type KeywordSeed } from "./discoveryKeywords";
 import { DL_DEFAULTS, resetDownloadsState } from "./downloader";
@@ -314,9 +315,9 @@ const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: LocalizedT
 };
 
 for (const plugin of PLUGINS) {
-  db.prepare("INSERT OR IGNORE INTO plugins (id, enabled, version) VALUES (?, ?, ?)")
+  await database.prepare("INSERT OR IGNORE INTO plugins (id, enabled, version) VALUES (?, ?, ?)")
     .run(plugin.id, 0, plugin.version);
-  db.prepare("UPDATE plugins SET version = ? WHERE id = ?").run(plugin.version, plugin.id);
+  await database.prepare("UPDATE plugins SET version = ? WHERE id = ?").run(plugin.version, plugin.id);
 }
 
 function normalizePluginLanguage(language: string | null | undefined): PluginLanguage {
@@ -348,8 +349,8 @@ function localizePlugin(manifest: PluginManifest, language: string | null | unde
   };
 }
 
-export function listPlugins(language?: string | null) {
-  const states = db.prepare("SELECT id, enabled, version FROM plugins").all() as { id: string; enabled: number; version: string }[];
+export async function listPlugins(language?: string | null) {
+  const states = await database.prepare("SELECT id, enabled, version FROM plugins").all() as { id: string; enabled: number; version: string }[];
   const byId = new Map(states.map((s) => [s.id, s]));
   return PLUGINS.map((manifest) => {
     const state = byId.get(manifest.id);
@@ -357,17 +358,22 @@ export function listPlugins(language?: string | null) {
   });
 }
 
+const pluginEnabledCache = new Map(
+  (await database.prepare("SELECT id, enabled FROM plugins").all() as { id: string; enabled: number }[])
+    .map((row) => [row.id, row.enabled !== 0]),
+);
+
 export function pluginEnabled(id: string) {
-  const row = db.prepare("SELECT enabled FROM plugins WHERE id = ?").get(id) as { enabled: number } | null;
-  return row?.enabled !== 0;
+  return pluginEnabledCache.get(id) ?? true;
 }
 
-export function setPluginEnabled(id: string, enabled: boolean) {
+export async function setPluginEnabled(id: string, enabled: boolean) {
   const manifest = PLUGINS.find((p) => p.id === id);
   if (!manifest) throw new Error("plugin not found");
-  db.prepare(
+  await database.prepare(
     "INSERT INTO plugins (id, enabled, version, updated_at) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled, version = excluded.version, updated_at = excluded.updated_at"
   ).run(id, enabled ? 1 : 0, manifest.version);
+  pluginEnabledCache.set(id, enabled);
 }
 
 function settingDefs(pluginId: string): PluginSettingSource[] {
@@ -401,7 +407,7 @@ function normalizeSettingValue(raw: string | null | undefined, def: PluginSettin
   return clampSetting(value, def);
 }
 
-export function getPluginSettings(uid: number, pluginId: string, language?: string | null) {
+export async function getPluginSettings(uid: number, pluginId: string, language?: string | null) {
   const manifest = PLUGINS.find((p) => p.id === pluginId);
   if (!manifest) throw new Error("plugin not found");
   const defs = settingDefs(pluginId);
@@ -412,7 +418,7 @@ export function getPluginSettings(uid: number, pluginId: string, language?: stri
       if (raw != null) values.set(def.key, raw);
     }
   } else {
-    const rows = db.prepare("SELECT key, value FROM plugin_settings WHERE plugin_id = ? AND user_id = ?")
+    const rows = await database.prepare("SELECT key, value FROM plugin_settings WHERE plugin_id = ? AND user_id = ?")
       .all(pluginId, uid) as { key: string; value: string }[];
     for (const row of rows) values.set(row.key, row.value);
   }
@@ -423,35 +429,41 @@ export function getPluginSettings(uid: number, pluginId: string, language?: stri
   return {
     definitions: defs.map((def) => localizeSetting(def, language)),
     settings,
-    terms: pluginId === "discovery" ? discoveryTermState(uid) : undefined,
+    terms: pluginId === "discovery" ? await discoveryTermState(uid) : undefined,
   };
 }
 
-export function setPluginSettings(uid: number, pluginId: string, patch: Record<string, unknown>, language?: string | null) {
+export async function setPluginSettings(uid: number, pluginId: string, patch: Record<string, unknown>, language?: string | null) {
   const manifest = PLUGINS.find((p) => p.id === pluginId);
   if (!manifest) throw new Error("plugin not found");
   const defs = settingDefs(pluginId);
   const byKey = new Map(defs.map((d) => [d.key, d]));
-  const tx = db.transaction(() => {
+  const tx = database.transaction(async () => {
     for (const [key, value] of Object.entries(patch)) {
       const def = byKey.get(key);
       if (!def) continue;
       const normalized = normalizeSettingValue(value == null ? null : String(value), def);
       if (manifest.settingsScope === "global") {
-        setSetting(`plugin_${pluginId}_${key}`, String(normalized));
+        await database.prepare(
+          "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        ).run(`plugin_${pluginId}_${key}`, String(normalized));
       } else {
-        db.prepare(
+        await database.prepare(
           "INSERT INTO plugin_settings (plugin_id, user_id, key, value) VALUES (?, ?, ?, ?) ON CONFLICT(plugin_id, user_id, key) DO UPDATE SET value = excluded.value"
         ).run(pluginId, uid, key, String(normalized));
       }
     }
   });
-  tx();
+  await tx();
+  // Global plugin values are read through db.ts' synchronous settings cache.
+  // Keep it aligned with the transaction before building the response; without
+  // this, the UI receives the previous values and appears to undo the change.
+  if (manifest.settingsScope === "global") await reloadSettingCache();
   if (pluginId === "discovery" && "blockedTerms" in patch) {
-    setDiscoveryBlockedTerms(uid, patch.blockedTerms);
+    await setDiscoveryBlockedTerms(uid, patch.blockedTerms);
   }
   if (pluginId === "discovery") {
-    invalidateDiscoveryRecommendations(uid);
+    await invalidateDiscoveryRecommendations(uid);
     refreshDiscoveryInBackground(uid);
   }
   return getPluginSettings(uid, pluginId, language);
@@ -464,8 +476,8 @@ export interface PortablePluginBackupAdapter {
   id: string;
   scope: "instance" | "profile";
   schemaVersion: number;
-  export(userId: number): unknown;
-  restore(userId: number, value: unknown): void;
+  export(userId: number): Promise<unknown>;
+  restore(userId: number, value: unknown): Promise<void>;
 }
 
 export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
@@ -473,25 +485,25 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
     id: "discovery",
     scope: "profile",
     schemaVersion: 1,
-    export(userId) {
-      const blocked = db.prepare("SELECT value FROM plugin_state WHERE plugin_id='discovery' AND user_id=? AND key='blocked_terms'").get(userId) as { value: string } | null;
+    async export(userId) {
+      const blocked = await database.prepare("SELECT value FROM plugin_state WHERE plugin_id='discovery' AND user_id=? AND key='blocked_terms'").get(userId) as { value: string } | null;
       let blockedTerms: string[] = [];
       try { blockedTerms = blocked ? JSON.parse(blocked.value) : []; } catch {}
-      return { settings: getPluginSettings(userId, "discovery").settings, blockedTerms };
+      return { settings: (await getPluginSettings(userId, "discovery")).settings, blockedTerms };
     },
-    restore(userId, value) {
+    async restore(userId, value) {
       const input = value && typeof value === "object" ? value as any : {};
-      setPluginSettings(userId, "discovery", { ...(input.settings ?? {}), blockedTerms: Array.isArray(input.blockedTerms) ? input.blockedTerms : [] });
+      await setPluginSettings(userId, "discovery", { ...(input.settings ?? {}), blockedTerms: Array.isArray(input.blockedTerms) ? input.blockedTerms : [] });
     },
   },
   {
     id: "downloads",
     scope: "instance",
     schemaVersion: 1,
-    export(userId) { return { settings: getPluginSettings(userId, "downloads").settings }; },
-    restore(userId, value) {
+    async export(userId) { return { settings: (await getPluginSettings(userId, "downloads")).settings }; },
+    async restore(userId, value) {
       const input = value && typeof value === "object" ? value as any : {};
-      setPluginSettings(userId, "downloads", input.settings ?? {});
+      await setPluginSettings(userId, "downloads", input.settings ?? {});
     },
   },
 ] as const;
@@ -499,7 +511,8 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
 export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
   if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
   if (pluginId === "downloads") {
-    resetDownloadsState();
+    await resetDownloadsState();
+    await reloadSettingCache();
     return getPluginSettings(uid, pluginId, language);
   }
   if (pluginId === "discovery") {
@@ -511,11 +524,11 @@ export async function resetPluginState(uid: number, pluginId: string, language?:
     await discoveryRefreshInFlight.get(uid)?.catch(() => {});
   }
 
-  const tx = db.transaction(() => {
+  const tx = database.transaction(async () => {
     if (pluginId === "discovery") {
       // Remove only temporary videos introduced by this profile's recommendations.
       // Anything watched, queued, liked or saved by any profile remains intact.
-      db.prepare(`
+      await database.prepare(`
         DELETE FROM videos
         WHERE external = 1
           AND video_id IN (SELECT video_id FROM discovery_recommendations WHERE user_id = ?)
@@ -527,31 +540,31 @@ export async function resetPluginState(uid: number, pluginId: string, language?:
           AND NOT EXISTS (SELECT 1 FROM user_playlist_videos upv WHERE upv.video_id = videos.video_id)
           AND NOT EXISTS (SELECT 1 FROM history h WHERE h.video_id = videos.video_id)
       `).run(uid);
-      db.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
-      db.prepare("DELETE FROM recommendation_feedback WHERE user_id = ?").run(uid);
-      db.prepare("DELETE FROM channels WHERE external = 1 AND channel_id NOT IN (SELECT DISTINCT channel_id FROM videos)").run();
+      await database.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
+      await database.prepare("DELETE FROM recommendation_feedback WHERE user_id = ?").run(uid);
+      await database.prepare("DELETE FROM channels WHERE external = 1 AND channel_id NOT IN (SELECT DISTINCT channel_id FROM videos)").run();
     }
-    db.prepare("DELETE FROM plugin_settings WHERE plugin_id = ? AND user_id = ?").run(pluginId, uid);
-    db.prepare("DELETE FROM plugin_state WHERE plugin_id = ? AND user_id = ?").run(pluginId, uid);
+    await database.prepare("DELETE FROM plugin_settings WHERE plugin_id = ? AND user_id = ?").run(pluginId, uid);
+    await database.prepare("DELETE FROM plugin_state WHERE plugin_id = ? AND user_id = ?").run(pluginId, uid);
   });
-  tx();
+  await tx();
   return getPluginSettings(uid, pluginId, language);
 }
 
-function discoverySettings(uid: number) {
+async function discoverySettings(uid: number): Promise<Record<string, number>> {
   // Discovery definitions are all sliders, so the values are numbers.
-  return getPluginSettings(uid, "discovery").settings as Record<string, number>;
+  return (await getPluginSettings(uid, "discovery")).settings as Record<string, number>;
 }
 
-function discoveryTermState(uid: number): PluginTermState {
+async function discoveryTermState(uid: number): Promise<PluginTermState> {
   return {
-    lastTerms: readDiscoveryTerms(uid, "last_terms"),
-    blockedTerms: readDiscoveryTerms(uid, "blocked_terms"),
+    lastTerms: await readDiscoveryTerms(uid, "last_terms"),
+    blockedTerms: await readDiscoveryTerms(uid, "blocked_terms"),
   };
 }
 
-function readDiscoveryTerms(uid: number, key: "last_terms" | "blocked_terms") {
-  const row = db.prepare("SELECT value FROM plugin_state WHERE plugin_id = 'discovery' AND user_id = ? AND key = ?")
+async function readDiscoveryTerms(uid: number, key: "last_terms" | "blocked_terms") {
+  const row = await database.prepare("SELECT value FROM plugin_state WHERE plugin_id = 'discovery' AND user_id = ? AND key = ?")
     .get(uid, key) as { value: string } | null;
   if (!row) return [];
   try {
@@ -562,18 +575,18 @@ function readDiscoveryTerms(uid: number, key: "last_terms" | "blocked_terms") {
   }
 }
 
-function writeDiscoveryTerms(uid: number, key: "last_terms" | "blocked_terms", terms: string[]) {
-  db.prepare(`
+async function writeDiscoveryTerms(uid: number, key: "last_terms" | "blocked_terms", terms: string[]) {
+  await database.prepare(`
     INSERT INTO plugin_state (plugin_id, user_id, key, value, updated_at)
     VALUES ('discovery', ?, ?, ?, datetime('now'))
     ON CONFLICT(plugin_id, user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `).run(uid, key, JSON.stringify(terms));
 }
 
-function setDiscoveryBlockedTerms(uid: number, value: unknown) {
+async function setDiscoveryBlockedTerms(uid: number, value: unknown) {
   const raw = Array.isArray(value) ? value : [];
   const normalized = Array.from(new Set(raw.flatMap((term) => typeof term === "string" ? tokenizeDiscoveryText(term) : []))).sort();
-  writeDiscoveryTerms(uid, "blocked_terms", normalized);
+  await writeDiscoveryTerms(uid, "blocked_terms", normalized);
 }
 
 function clampSetting(value: number, def: Pick<PluginSettingDef, "min" | "max" | "step">) {
@@ -595,8 +608,8 @@ const DISCOVERY_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const discoveryRefreshInFlight = new Map<number, Promise<void>>();
 const discoveryRefreshTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-function localRecommendations(uid: number, limit: number, settings: Record<string, number>): DiscoveryRecommendation[] {
-  const rows = db.prepare(`
+async function localRecommendations(uid: number, limit: number, settings: Record<string, number>): Promise<DiscoveryRecommendation[]> {
+  const rows = await database.prepare(`
     SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail, v.published_at,
            v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
            v.is_short, v.views, v.likes, uv.liked, v.duration, uv.watch_position,
@@ -715,7 +728,7 @@ function localRecommendations(uid: number, limit: number, settings: Record<strin
 }
 
 async function externalRecommendations(uid: number, limit: number, settings: Record<string, number>): Promise<DiscoveryRecommendation[]> {
-  const seedRows = db.prepare(`
+  const seedRows = await database.prepare(`
     SELECT v.title AS text,
            CASE WHEN uv.liked = 1 THEN 6
                 WHEN EXISTS (SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?) THEN 3
@@ -733,7 +746,7 @@ async function externalRecommendations(uid: number, limit: number, settings: Rec
     ) DESC
     LIMIT 80
   `).all(uid, uid, uid, uid) as KeywordSeed[];
-  const tagRows = db.prepare(`
+  const tagRows = await database.prepare(`
     SELECT t.name AS text, 5 AS weight, 'tag' AS kind
     FROM tags t
     WHERE t.user_id = ? AND (
@@ -741,10 +754,10 @@ async function externalRecommendations(uid: number, limit: number, settings: Rec
       OR EXISTS (SELECT 1 FROM channel_tags ct JOIN videos v ON v.channel_id = ct.channel_id JOIN history h ON h.video_id = v.video_id AND h.user_id = ? WHERE ct.tag_id = t.id)
     )
   `).all(uid, uid, uid) as KeywordSeed[];
-  const blockedTerms = new Set(readDiscoveryTerms(uid, "blocked_terms"));
+  const blockedTerms = new Set(await readDiscoveryTerms(uid, "blocked_terms"));
   const keywordPlan = buildKeywordPlan([...tagRows, ...seedRows], blockedTerms, 24, 3);
   const foundTerms = keywordPlan.terms;
-  writeDiscoveryTerms(uid, "last_terms", foundTerms);
+  await writeDiscoveryTerms(uid, "last_terms", foundTerms);
   const queries = keywordPlan.queries;
 
   const candidates: (SearchResult & { query: string; matchScore: number })[] = [];
@@ -754,7 +767,7 @@ async function externalRecommendations(uid: number, limit: number, settings: Rec
     const search = await searchYouTube(query).catch(() => ({ results: [], channels: [] }));
     for (const result of search.results) {
       if (seen.has(result.videoId)) continue;
-      if (db.prepare("SELECT 1 FROM recommendation_feedback WHERE user_id = ? AND video_id = ? AND action = 'dismiss'").get(uid, result.videoId)) continue;
+      if (await database.prepare("SELECT 1 FROM recommendation_feedback WHERE user_id = ? AND video_id = ? AND action = 'dismiss'").get(uid, result.videoId)) continue;
       seen.add(result.videoId);
       const matchScore = scoreSearchResult(result, queryTerms, settings);
       if (matchScore <= 0) continue;
@@ -767,8 +780,8 @@ async function externalRecommendations(uid: number, limit: number, settings: Rec
     const info = await fetchVideoInfo(candidate.videoId).catch(() => null);
     if (!info) continue;
     const about = await fetchChannelAbout(info.channelId).catch(() => null);
-    upsertExternalVideo(info, about?.avatar ?? "");
-    const video = selectVideo(uid, info.videoId);
+    await upsertExternalVideo(info, about?.avatar ?? "");
+    const video = await selectVideo(uid, info.videoId);
     if (!video) continue;
     imported.push({
       kind: "local",
@@ -800,8 +813,8 @@ function scoreSearchResult(result: SearchResult, terms: Set<string>, settings: R
   return score;
 }
 
-function upsertExternalVideo(info: VideoInfo, channelThumbnail: string) {
-  db.prepare(`
+async function upsertExternalVideo(info: VideoInfo, channelThumbnail: string) {
+  await database.prepare(`
     INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
     VALUES (?, ?, ?, ?, 0, 1)
     ON CONFLICT(channel_id) DO UPDATE SET
@@ -809,7 +822,7 @@ function upsertExternalVideo(info: VideoInfo, channelThumbnail: string) {
       thumbnail = CASE WHEN channels.thumbnail = '' OR channels.thumbnail IS NULL THEN excluded.thumbnail ELSE channels.thumbnail END
   `).run(info.channelId, info.channelTitle, `https://www.youtube.com/channel/${info.channelId}`, channelThumbnail);
 
-  db.prepare(`
+  await database.prepare(`
     INSERT INTO videos
       (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, external)
     VALUES (?, ?, ?, ?, ?, ?, 'none', 'inbox', ?, ?, 1)
@@ -831,8 +844,8 @@ function upsertExternalVideo(info: VideoInfo, channelThumbnail: string) {
   );
 }
 
-function selectVideo(uid: number, videoId: string) {
-  return db.prepare(`
+async function selectVideo(uid: number, videoId: string) {
+  return await database.prepare(`
     SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
            v.published_at, v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
            v.is_short, v.views, v.likes, uv.liked,
@@ -847,12 +860,12 @@ function selectVideo(uid: number, videoId: string) {
 
 export async function discoveryRecommendations(uid: number) {
   if (!pluginEnabled("discovery")) return { recommendations: [], enabled: false };
-  const settings = discoverySettings(uid);
-  let recommendations = readStoredDiscoveryRecommendations(uid, settings.total_limit);
+  const settings = await discoverySettings(uid);
+  let recommendations = await readStoredDiscoveryRecommendations(uid, settings.total_limit);
   if (recommendations.length === 0) {
     await runDiscoveryRefresh(uid);
-    recommendations = readStoredDiscoveryRecommendations(uid, settings.total_limit);
-  } else if (storedDiscoveryAgeMs(uid) > DISCOVERY_REFRESH_INTERVAL_MS) {
+    recommendations = await readStoredDiscoveryRecommendations(uid, settings.total_limit);
+  } else if (await storedDiscoveryAgeMs(uid) > DISCOVERY_REFRESH_INTERVAL_MS) {
     refreshDiscoveryInBackground(uid);
   }
   return { recommendations, enabled: true };
@@ -866,20 +879,25 @@ export async function refreshDiscoveryNow(uid: number) {
     discoveryRefreshTimers.delete(uid);
   }
   await runDiscoveryRefresh(uid);
-  const settings = discoverySettings(uid);
-  return { recommendations: readStoredDiscoveryRecommendations(uid, settings.total_limit), enabled: true };
+  const settings = await discoverySettings(uid);
+  return { recommendations: await readStoredDiscoveryRecommendations(uid, settings.total_limit), enabled: true };
 }
 
 export function refreshDiscoveryInBackground(uid: number) {
   if (!pluginEnabled("discovery") || discoveryRefreshInFlight.has(uid) || discoveryRefreshTimers.has(uid)) return;
-  const delay = Math.max(0, DISCOVERY_REFRESH_INTERVAL_MS - storedDiscoveryAgeMs(uid));
-  const timer = setTimeout(() => {
-    discoveryRefreshTimers.delete(uid);
-    runDiscoveryRefresh(uid).catch((error) => {
-      log.warn("discovery.background_refresh_failed", { userId: uid, error: error instanceof Error ? error.message : String(error) });
-    });
-  }, delay);
-  discoveryRefreshTimers.set(uid, timer);
+  void storedDiscoveryAgeMs(uid).then((ageMs) => {
+    if (discoveryRefreshInFlight.has(uid) || discoveryRefreshTimers.has(uid)) return;
+    const delay = Math.max(0, DISCOVERY_REFRESH_INTERVAL_MS - ageMs);
+    const timer = setTimeout(() => {
+      discoveryRefreshTimers.delete(uid);
+      runDiscoveryRefresh(uid).catch((error) => {
+        log.warn("discovery.background_refresh_failed", { userId: uid, error: error instanceof Error ? error.message : String(error) });
+      });
+    }, delay);
+    discoveryRefreshTimers.set(uid, timer);
+  }).catch((error) => {
+    log.warn("discovery.background_schedule_failed", { userId: uid, error: error instanceof Error ? error.message : String(error) });
+  });
 }
 
 async function runDiscoveryRefresh(uid: number) {
@@ -894,12 +912,12 @@ async function runDiscoveryRefresh(uid: number) {
 async function rebuildDiscoveryRecommendations(uid: number) {
   if (!pluginEnabled("discovery")) return;
   const startedAt = Date.now();
-  const settings = discoverySettings(uid);
+  const settings = await discoverySettings(uid);
   const totalLimit = settings.total_limit;
-  const local = localRecommendations(uid, Math.max(24, totalLimit), settings);
+  const local = await localRecommendations(uid, Math.max(24, totalLimit), settings);
   const importedExternal = await externalRecommendations(uid, Math.max(settings.early_external_count, 8), settings);
   const recommendations = mixRecommendations([...local, ...importedExternal], totalLimit, settings);
-  persistDiscoveryRecommendations(uid, recommendations);
+  await persistDiscoveryRecommendations(uid, recommendations);
   log.info("discovery.refresh_complete", {
     userId: uid,
     localCandidates: local.length,
@@ -909,17 +927,17 @@ async function rebuildDiscoveryRecommendations(uid: number) {
   });
 }
 
-function persistDiscoveryRecommendations(uid: number, recommendations: DiscoveryRecommendation[]) {
-  const tx = db.transaction(() => {
-    db.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
-    const insert = db.prepare(`
+async function persistDiscoveryRecommendations(uid: number, recommendations: DiscoveryRecommendation[]) {
+  const tx = database.transaction(async () => {
+    await database.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
+    const insert = database.prepare(`
       INSERT INTO discovery_recommendations (user_id, video_id, score, reasons_json, query, rank, generated_at)
       VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
     `);
-    recommendations.forEach((recommendation, index) => {
+    for (const [index, recommendation] of recommendations.entries()) {
       const videoId = recommendation.video?.video_id;
-      if (!videoId) return;
-      insert.run(
+      if (!videoId) continue;
+      await insert.run(
         uid,
         videoId,
         recommendation.score,
@@ -927,32 +945,32 @@ function persistDiscoveryRecommendations(uid: number, recommendations: Discovery
         recommendation.query ?? null,
         index,
       );
-    });
-    setDiscoveryGeneratedAt(uid);
+    }
+    await setDiscoveryGeneratedAt(uid);
   });
-  tx();
+  await tx();
 }
 
-function invalidateDiscoveryRecommendations(uid: number) {
+async function invalidateDiscoveryRecommendations(uid: number) {
   const timer = discoveryRefreshTimers.get(uid);
   if (timer) {
     clearTimeout(timer);
     discoveryRefreshTimers.delete(uid);
   }
-  db.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
-  db.prepare("DELETE FROM plugin_state WHERE plugin_id = 'discovery' AND user_id = ? AND key = 'last_generated_at'").run(uid);
+  await database.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
+  await database.prepare("DELETE FROM plugin_state WHERE plugin_id = 'discovery' AND user_id = ? AND key = 'last_generated_at'").run(uid);
 }
 
-function setDiscoveryGeneratedAt(uid: number) {
-  db.prepare(`
+async function setDiscoveryGeneratedAt(uid: number) {
+  await database.prepare(`
     INSERT INTO plugin_state (plugin_id, user_id, key, value, updated_at)
     VALUES ('discovery', ?, 'last_generated_at', datetime('now'), datetime('now'))
     ON CONFLICT(plugin_id, user_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
   `).run(uid);
 }
 
-function readStoredDiscoveryRecommendations(uid: number, limit: number): DiscoveryRecommendation[] {
-  const rows = db.prepare(`
+async function readStoredDiscoveryRecommendations(uid: number, limit: number): Promise<DiscoveryRecommendation[]> {
+  const rows = await database.prepare(`
     SELECT video_id, score, reasons_json, query
     FROM discovery_recommendations
     WHERE user_id = ?
@@ -967,7 +985,7 @@ function readStoredDiscoveryRecommendations(uid: number, limit: number): Discove
   `).all(uid, limit) as { video_id: string; score: number; reasons_json: string; query: string | null }[];
   const out: DiscoveryRecommendation[] = [];
   for (const row of rows) {
-    const video = selectVideo(uid, row.video_id);
+    const video = await selectVideo(uid, row.video_id);
     if (!video) continue;
     out.push({
       kind: "local",
@@ -989,12 +1007,12 @@ function parseReasons(value: string) {
   }
 }
 
-function storedDiscoveryAgeMs(uid: number) {
-  const state = db.prepare("SELECT value AS generated_at FROM plugin_state WHERE plugin_id = 'discovery' AND user_id = ? AND key = 'last_generated_at'")
+async function storedDiscoveryAgeMs(uid: number) {
+  const state = await database.prepare("SELECT value AS generated_at FROM plugin_state WHERE plugin_id = 'discovery' AND user_id = ? AND key = 'last_generated_at'")
     .get(uid) as { generated_at: string | null } | null;
   const row = state?.generated_at
     ? state
-    : db.prepare("SELECT MAX(generated_at) AS generated_at FROM discovery_recommendations WHERE user_id = ?")
+    : await database.prepare("SELECT MAX(generated_at) AS generated_at FROM discovery_recommendations WHERE user_id = ?")
       .get(uid) as { generated_at: string | null } | null;
   if (!row?.generated_at) return DISCOVERY_REFRESH_INTERVAL_MS;
   const ts = storedUtcTimestampMs(row.generated_at);
@@ -1095,10 +1113,10 @@ function weightedShuffle(items: DiscoveryRecommendation[]) {
   return out;
 }
 
-export function dismissDiscoveryRecommendation(uid: number, videoId: string) {
-  db.prepare(
+export async function dismissDiscoveryRecommendation(uid: number, videoId: string) {
+  await database.prepare(
     "INSERT INTO recommendation_feedback (user_id, video_id, action, created_at) VALUES (?, ?, 'dismiss', datetime('now')) ON CONFLICT(user_id, video_id) DO UPDATE SET action = 'dismiss', created_at = excluded.created_at"
   ).run(uid, videoId);
-  db.prepare("DELETE FROM discovery_recommendations WHERE user_id = ? AND video_id = ?").run(uid, videoId);
+  await database.prepare("DELETE FROM discovery_recommendations WHERE user_id = ? AND video_id = ?").run(uid, videoId);
   refreshDiscoveryInBackground(uid);
 }

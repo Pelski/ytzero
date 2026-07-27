@@ -694,6 +694,7 @@ export const de: Locale = {
     // ---------- Anmeldung ----------
     authTab: "Anmeldung",
     advanced: "Erweitert",
+    dangerous: "Gefährlich",
     authMethod: "Anmeldemethode",
     authMethodNone: "Keine (lokales Netzwerk)",
     authMethodShared: "Gemeinsames Login + Profile",

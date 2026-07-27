@@ -1,0 +1,23 @@
+services:
+  ytzero:
+    environment:
+      DATABASE_URL: postgresql://ytzero:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/ytzero
+      DATABASE_STATE_PATH: /data/database-state.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ytzero
+      POSTGRES_USER: ytzero
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ytzero -d ytzero"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

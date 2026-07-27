@@ -222,7 +222,11 @@ export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onF
           className="profile-card-size-popover"
           trigger={<IconButton variant="ghost" size="sm" className="profile-card-size-trigger" label={t("videoCardSize")} icon={<SlidersHorizontal />} />}
         >
-          {canManageArea("appearance") && <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => { setCardSize(next); persistVideoCardSize(next).then(() => emit("video-card-size-changed")).catch(() => {}); }} />}
+          {canManageArea("appearance") && <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => {
+            setCardSize(next);
+            persistVideoCardSize(next);
+            emit("video-card-size-changed");
+          }} />}
           {location.pathname === "/" && (
             <>
               {canManageArea("appearance") && <MenuSeparator />}

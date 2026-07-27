@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { api } from "./routes";
 import { db, getSetting } from "./db";
+import { database, databaseConfig } from "./database";
+import { startSQLiteMaintenance } from "./sqliteMaintenance";
 import { startScheduler } from "./refresher";
 import { startDownloader } from "./downloader";
 import { log } from "./logger";
@@ -18,9 +20,9 @@ const uiDir = process.env.UI_DIST ?? "./public";
 // Health probe for container runtimes, reverse proxies and installers. Declared
 // before the API router so the session middleware never sees it — probes have no
 // cookies and must not depend on the configured auth method.
-app.get("/api/health", (c) => {
+app.get("/api/health", async (c) => {
   try {
-    db.query("SELECT 1").get();
+    await database.query("SELECT 1").get();
   } catch (err) {
     log.error("health.db", { error: String(err) });
     return c.json({ status: "error", version: VERSION, commit: COMMIT }, 503);
@@ -79,14 +81,13 @@ app.use("/*", serveStatic({ root: uiDir }));
 app.get("*", serveStatic({ path: `${uiDir}/index.html` }));
 
 startScheduler();
-startDownloader();
+await startDownloader();
+if (databaseConfig.engine === "sqlite") startSQLiteMaintenance(db);
 
 const port = Number(process.env.PORT ?? 3001);
 const idleTimeout = Number(process.env.IDLE_TIMEOUT_SECONDS ?? 120);
 const server = Bun.serve({ port, idleTimeout, fetch: app.fetch });
 log.info("app.listen", { url: String(server.url), port, uiDir, idleTimeout, version: VERSION, commit: COMMIT });
-try {
-  log.info("app.state_snapshot", collectDiagnosticSnapshot());
-} catch (error) {
-  log.warn("app.state_snapshot_failed", { error: error instanceof Error ? error.message : String(error) });
-}
+collectDiagnosticSnapshot()
+  .then((snapshot) => log.info("app.state_snapshot", snapshot))
+  .catch((error) => log.warn("app.state_snapshot_failed", { error: error instanceof Error ? error.message : String(error) }));

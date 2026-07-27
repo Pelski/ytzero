@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { database } from "./database";
 import { effectiveVideoTagsCte } from "./insightTags";
 import { summarizeCompletion } from "./insightMetrics";
 import { addCalendarDays, configuredTimeZone, zonedDayHour } from "./timeZone";
@@ -73,9 +73,9 @@ function storedTimestampDate(value: string): Date {
   return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value.replace(" ", "T")}Z`);
 }
 
-export function buildHouseholdInsights(days: number, profileId: number | null) {
+export async function buildHouseholdInsights(days: number, profileId: number | null) {
   if (!INSIGHT_RANGES.includes(days as (typeof INSIGHT_RANGES)[number])) days = 30;
-  const users = db.prepare(
+  const users = await database.prepare(
     "SELECT id, name, avatar, avatar_color, is_child FROM users ORDER BY sort_order ASC, id ASC"
   ).all() as UserRow[];
   if (profileId != null && !users.some((user) => user.id === profileId)) throw new Error("profile not found");
@@ -83,7 +83,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
   const rangeStart = localDay(-days + 1);
   const scopeSql = profileId == null ? "" : " AND w.user_id = ?";
   const params = profileId == null ? [rangeStart] : [rangeStart, profileId];
-  const rows = db.prepare(`
+  const rows = await database.prepare(`
     SELECT w.user_id, w.video_id, w.day, w.hour, w.seconds,
            v.channel_id, v.is_short, v.live_status,
            uv.watch_position, uv.watch_duration, uv.watched,
@@ -100,14 +100,14 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
   const previousParams = profileId == null
     ? [previousStart, previousEnd]
     : [previousStart, previousEnd, profileId];
-  const previous = db.prepare(`
+  const previous = await database.prepare(`
     SELECT COALESCE(SUM(w.seconds), 0) AS seconds
     FROM watch_time_log w
     WHERE w.day >= ?
       AND w.day < ?${scopeSql}
   `).get(...previousParams) as { seconds: number };
 
-  const tagRows = db.prepare(`${effectiveVideoTagsCte}
+  const tagRows = await database.prepare(`${effectiveVideoTagsCte}
     SELECT w.user_id, lower(evt.name) AS key, evt.name, evt.color,
            SUM(w.seconds) AS seconds, COUNT(DISTINCT w.video_id) AS video_count
     FROM watch_time_log w
@@ -116,7 +116,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     GROUP BY w.user_id, lower(evt.name)
   `).all(...params) as TagRow[];
 
-  const tagHourRows = db.prepare(`${effectiveVideoTagsCte}
+  const tagHourRows = await database.prepare(`${effectiveVideoTagsCte}
     SELECT w.user_id, lower(evt.name) AS key, evt.name, w.hour,
            SUM(w.seconds) AS seconds
     FROM watch_time_log w
@@ -125,7 +125,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     GROUP BY w.user_id, lower(evt.name), w.hour
   `).all(...params) as TagHourRow[];
 
-  const tagDayRows = db.prepare(`${effectiveVideoTagsCte}
+  const tagDayRows = await database.prepare(`${effectiveVideoTagsCte}
     SELECT lower(evt.name) AS key, evt.name, evt.color, w.day,
            SUM(w.seconds) AS seconds
     FROM watch_time_log w
@@ -283,7 +283,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     .map((tag) => ({ name: tag.name, color: tag.color, active_days: tag.days.size, seconds: round(tag.seconds) }));
 
   const timeZone = configuredTimeZone();
-  const channelHistoryRows = db.prepare(`
+  const channelHistoryRows = await database.prepare(`
     SELECT v.channel_id, h.watched_at
     FROM history h JOIN videos v ON v.video_id = h.video_id
     ${profileId == null ? "" : "WHERE h.user_id = ?"}
@@ -302,7 +302,7 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
     })
     .sort((a, b) => b.seconds - a.seconds)
     .slice(0, 5);
-  const tagHistoryRows = db.prepare(`${effectiveVideoTagsCte}
+  const tagHistoryRows = await database.prepare(`${effectiveVideoTagsCte}
     SELECT lower(evt.name) AS key, evt.name, evt.color, h.watched_at
     FROM history h
     JOIN effective_video_tags evt ON evt.video_id = h.video_id AND evt.user_id = h.user_id
@@ -381,12 +381,12 @@ export function buildHouseholdInsights(days: number, profileId: number | null) {
   const favoriteWeekday = weekdayTotals.reduce((best, item) => item.seconds > best.seconds ? item : best, weekdayTotals[0]);
   const previousSeconds = previous.seconds ?? 0;
   const sponsorParams = profileId == null ? [rangeStart] : [rangeStart, profileId];
-  const sponsorSaved = db.prepare(`
+  const sponsorSaved = await database.prepare(`
     SELECT COALESCE(SUM(skipped_seconds), 0) AS seconds
     FROM sponsorblock_skip_log
     WHERE day >= ?${profileId == null ? "" : " AND user_id = ?"}
   `).get(...sponsorParams) as { seconds: number };
-  const sponsorblockCategories = db.prepare(`
+  const sponsorblockCategories = await database.prepare(`
     SELECT category, SUM(skipped_seconds) AS seconds, COUNT(*) AS skip_count
     FROM sponsorblock_skip_log
     WHERE day >= ?${profileId == null ? "" : " AND user_id = ?"}

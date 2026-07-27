@@ -1,9 +1,10 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { db, getSetting } from "./db";
+import { database } from "./database";
+import { getSetting } from "./db";
 import { downloadCookieAttempts, downloadFormat, renderDownloadOutputTemplate } from "./downloadStrategy";
 import { log } from "./logger";
-import { maintenanceActive } from "./maintenance";
+import { beginMutation, maintenanceActive } from "./maintenance";
 import { publishAppEvent } from "./appEvents";
 
 // Files land in one global directory: a video downloaded once serves every
@@ -94,8 +95,8 @@ export function removeDownloadCookies() {
   if (existsSync(DOWNLOAD_COOKIES_FILE)) unlinkSync(DOWNLOAD_COOKIES_FILE);
 }
 
-function dlEnabled(): boolean {
-  const row = db.prepare("SELECT enabled FROM plugins WHERE id = 'downloads'").get() as { enabled: number } | null;
+async function dlEnabled(): Promise<boolean> {
+  const row = await database.prepare("SELECT enabled FROM plugins WHERE id = 'downloads'").get() as { enabled: number } | null;
   return row?.enabled === 1;
 }
 
@@ -153,8 +154,8 @@ export function activeDownloadProgress(): { video_id: string; percent: number; t
 // user's custom channel name and so every produced file shares a known base —
 // that's what lets cleanup find sidecars (.nfo, thumbnails, subtitles).
 
-export function renderOutputTemplate(videoId: string, template: string): string {
-  const row = db.prepare(`
+export async function renderOutputTemplate(videoId: string, template: string): Promise<string> {
+  const row = await database.prepare(`
     SELECT v.title, v.published_at, v.channel_id,
            COALESCE(c.custom_title, c.title) AS channel_title,
            d.playlist_title
@@ -177,8 +178,8 @@ export function renderOutputTemplate(videoId: string, template: string): string 
   return renderDownloadOutputTemplate(template, values, videoId);
 }
 
-function outputBaseFor(videoId: string): string | null {
-  const row = db.prepare("SELECT output_base FROM downloads WHERE video_id = ?").get(videoId) as { output_base: string | null } | null;
+async function outputBaseFor(videoId: string): Promise<string | null> {
+  const row = await database.prepare("SELECT output_base FROM downloads WHERE video_id = ?").get(videoId) as { output_base: string | null } | null;
   return row?.output_base ?? null;
 }
 
@@ -192,18 +193,18 @@ function filesForBase(base: string): string[] {
     .map((f) => join(dir, f));
 }
 
-function filesFor(videoId: string): string[] {
+async function filesFor(videoId: string): Promise<string[]> {
   const files = new Set<string>(filesForBase(videoId)); // legacy flat {id}.* layout
-  const base = outputBaseFor(videoId);
+  const base = await outputBaseFor(videoId);
   if (base && base !== videoId) for (const f of filesForBase(base)) files.add(f);
   return [...files];
 }
 
-function unlinkFiles(videoId: string) {
-  for (const f of filesFor(videoId)) {
+async function unlinkFiles(videoId: string) {
+  for (const f of await filesFor(videoId)) {
     try { unlinkSync(f); } catch {}
   }
-  pruneEmptyDirs(outputBaseFor(videoId));
+  pruneEmptyDirs(await outputBaseFor(videoId));
 }
 
 /** Remove now-empty template subdirectories, walking up to the downloads root. */
@@ -236,9 +237,9 @@ interface SubtitleFetchOptions {
 }
 
 /** Subtitle sidecars already on disk for this video (one entry per language). */
-export function listSubtitleFiles(videoId: string): SubtitleFile[] {
+export async function listSubtitleFiles(videoId: string): Promise<SubtitleFile[]> {
   const bases = new Set<string>([videoId]);
-  const stored = outputBaseFor(videoId);
+  const stored = await outputBaseFor(videoId);
   if (stored) bases.add(stored);
   const byLang = new Map<string, SubtitleFile>();
   for (const base of bases) {
@@ -261,7 +262,7 @@ export function listSubtitleFiles(videoId: string): SubtitleFile[] {
  * metadata-only yt-dlp run writing next to the existing file.
  */
 async function fetchSubtitleSidecars(videoId: string, langs: string, options: SubtitleFetchOptions): Promise<boolean> {
-  const base = outputBaseFor(videoId) ?? videoId;
+  const base = await outputBaseFor(videoId) ?? videoId;
   mkdirSync(dirname(join(DOWNLOADS_DIR, base)), { recursive: true });
   const args = [
     `https://www.youtube.com/watch?v=${videoId}`,
@@ -313,8 +314,8 @@ export function srtToVtt(srt: string): string {
 
 // ---------- public queue operations ----------
 
-export function enqueueDownload(videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean } = {}): boolean {
-  const row = db.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
+export async function enqueueDownload(videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean } = {}): Promise<boolean> {
+  const row = await database.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
   if (row) {
     if (row.status === "downloading") return false;
     if (row.status === "done" && row.path && existsSync(row.path)) return false;
@@ -323,25 +324,25 @@ export function enqueueDownload(videoId: string, source: "manual" | "scheduled" 
     // scheduled policy may revive a tombstone when the user re-queued the video
     // after the file was removed (reviveDeleted).
     if (source !== "manual" && !(reviveDeleted && row.status === "deleted")) return false;
-    db.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
+    await database.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
       .run(source, priority ? 1 : 0, context.playlistTitle ?? null, videoId);
     if (context.notify !== false) notifyDownloadChanged(videoId);
     return true;
   }
-  const exists = db.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId);
+  const exists = await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId);
   if (!exists) return false;
-  db.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title) VALUES (?, 'queued', ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null);
+  await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title) VALUES (?, 'queued', ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null);
   if (context.notify !== false) notifyDownloadChanged(videoId);
   return true;
 }
 
-export function enqueuePlaylistDownloads(videoIds: string[], playlistTitle: string) {
+export async function enqueuePlaylistDownloads(videoIds: string[], playlistTitle: string) {
   let queued = 0;
-  const existingDownload = db.prepare("SELECT status FROM downloads WHERE video_id = ?");
+  const existingDownload = database.prepare("SELECT status FROM downloads WHERE video_id = ?");
   for (const videoId of videoIds) {
-    const existing = existingDownload.get(videoId) as { status: string } | null;
+    const existing = await existingDownload.get(videoId) as { status: string } | null;
     if (existing?.status === "queued" || existing?.status === "downloading") continue;
-    if (enqueueDownload(videoId, "manual", false, false, { playlistTitle, notify: false })) queued++;
+    if (await enqueueDownload(videoId, "manual", false, false, { playlistTitle, notify: false })) queued++;
   }
   publishAppEvent("downloads", { playlistTitle, queued });
   if (queued > 0) setTimeout(() => tick().catch((error) => log.error("downloads.tick_failed", { error: error instanceof Error ? error.message : String(error) })), 300);
@@ -353,11 +354,11 @@ export function enqueuePlaylistDownloads(videoIds: string[], playlistTitle: stri
  * currently running job back into the queue (its .part files survive, so it
  * resumes later) and start immediately instead of on the next tick.
  */
-export function prioritizeDownload(videoId: string): boolean {
-  const queued = enqueueDownload(videoId, "manual", true);
-  const row = db.prepare("SELECT status FROM downloads WHERE video_id = ?").get(videoId) as { status: string } | null;
+export async function prioritizeDownload(videoId: string): Promise<boolean> {
+  const queued = await enqueueDownload(videoId, "manual", true);
+  const row = await database.prepare("SELECT status FROM downloads WHERE video_id = ?").get(videoId) as { status: string } | null;
   if (!row || (row.status !== "queued" && row.status !== "downloading")) return queued;
-  db.prepare("UPDATE downloads SET priority = 1 WHERE video_id = ?").run(videoId);
+  await database.prepare("UPDATE downloads SET priority = 1 WHERE video_id = ?").run(videoId);
   notifyDownloadChanged(videoId);
   if (active && active.videoId !== videoId) {
     active.preempted = true;
@@ -370,13 +371,13 @@ export function prioritizeDownload(videoId: string): boolean {
 
 // Removal keeps a 'deleted' tombstone row so the auto policies never bring the
 // video back — from the user's perspective it was rejected, not merely purged.
-export function removeDownload(videoId: string) {
+export async function removeDownload(videoId: string) {
   if (active?.videoId === videoId) {
     active.cancelled = true;
     try { active.proc.kill(); } catch {}
   }
-  unlinkFiles(videoId);
-  db.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL, error = NULL, priority = 0 WHERE video_id = ?").run(videoId);
+  await unlinkFiles(videoId);
+  await database.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL, error = NULL, priority = 0 WHERE video_id = ?").run(videoId);
   notifyDownloadChanged(videoId);
 }
 
@@ -385,26 +386,26 @@ export function removeDownload(videoId: string) {
  * scheduled) is pointless unless some other profile still waits for it. Manual
  * requests and finished files are left alone — retention handles those.
  */
-export function cancelAutoDownloadIfUnwanted(videoId: string) {
-  const row = db.prepare("SELECT status, source FROM downloads WHERE video_id = ?").get(videoId) as { status: string; source: string } | null;
+export async function cancelAutoDownloadIfUnwanted(videoId: string) {
+  const row = await database.prepare("SELECT status, source FROM downloads WHERE video_id = ?").get(videoId) as { status: string; source: string } | null;
   if (!row || row.source === "manual") return;
   if (row.status !== "queued" && row.status !== "downloading") return;
-  const stillWanted = db.prepare(
+  const stillWanted = await database.prepare(
     "SELECT 1 FROM user_videos uv WHERE uv.video_id = ? AND uv.status = 'queued' AND COALESCE(uv.watched, 0) = 0"
   ).get(videoId);
   if (stillWanted) return;
-  removeDownload(videoId);
+  await removeDownload(videoId);
   log.info("downloads.cancelled_after_reject", { videoId, source: row.source });
 }
 
-export function setDownloadPinned(videoId: string, pinned: boolean): boolean {
-  const r = db.prepare("UPDATE downloads SET pinned = ? WHERE video_id = ?").run(pinned ? 1 : 0, videoId);
+export async function setDownloadPinned(videoId: string, pinned: boolean): Promise<boolean> {
+  const r = await database.prepare("UPDATE downloads SET pinned = ? WHERE video_id = ?").run(pinned ? 1 : 0, videoId);
   if (r.changes > 0) notifyDownloadChanged(videoId);
   return r.changes > 0;
 }
 
-export function listDownloads() {
-  const rows = db.prepare(`
+export async function listDownloads() {
+  const rows = await database.prepare(`
     SELECT d.video_id, d.status, d.source, d.quality, d.size_bytes, d.error, d.attempts, d.pinned,
            d.created_at, d.finished_at,
            v.title, v.thumbnail, v.duration, v.is_short, v.published_at,
@@ -419,30 +420,30 @@ export function listDownloads() {
   return rows;
 }
 
-export function downloadStats() {
-  const row = db.prepare("SELECT COUNT(*) AS files, COALESCE(SUM(size_bytes), 0) AS bytes FROM downloads WHERE status = 'done'").get() as { files: number; bytes: number };
-  const queued = (db.prepare("SELECT COUNT(*) AS n FROM downloads WHERE status IN ('queued','downloading')").get() as { n: number }).n;
+export async function downloadStats() {
+  const row = await database.prepare("SELECT COUNT(*) AS files, COALESCE(SUM(size_bytes), 0) AS bytes FROM downloads WHERE status = 'done'").get() as { files: number; bytes: number };
+  const queued = (await database.prepare("SELECT COUNT(*) AS n FROM downloads WHERE status IN ('queued','downloading')").get() as { n: number }).n;
   const s = dlSettings();
   return { files: row.files, bytes: row.bytes, queued, cap_bytes: s.max_storage_gb * 1024 ** 3 };
 }
 
-export function getDownload(videoId: string) {
-  return db.prepare("SELECT video_id, status, quality, path, size_bytes, error, pinned FROM downloads WHERE video_id = ? AND status != 'deleted'")
+export async function getDownload(videoId: string) {
+  return await database.prepare("SELECT video_id, status, quality, path, size_bytes, error, pinned FROM downloads WHERE video_id = ? AND status != 'deleted'")
     .get(videoId) as { video_id: string; status: string; quality: string | null; path: string | null; size_bytes: number | null; error: string | null; pinned: number } | null;
 }
 
 /** Full reset for the plugin: kill the active job, drop every file and row. */
-export function resetDownloadsState() {
+export async function resetDownloadsState() {
   if (active) {
     active.cancelled = true;
     try { active.proc.kill(); } catch {}
     active = null;
   }
-  const rows = db.prepare("SELECT video_id FROM downloads").all() as { video_id: string }[];
-  for (const { video_id } of rows) unlinkFiles(video_id);
-  db.prepare("DELETE FROM downloads").run();
+  const rows = await database.prepare("SELECT video_id FROM downloads").all() as { video_id: string }[];
+  for (const { video_id } of rows) await unlinkFiles(video_id);
+  await database.prepare("DELETE FROM downloads").run();
   for (const key of Object.keys(DL_DEFAULTS)) {
-    db.prepare("DELETE FROM settings WHERE key = ?").run(`plugin_downloads_${key}`);
+    await database.prepare("DELETE FROM settings WHERE key = ?").run(`plugin_downloads_${key}`);
   }
 }
 
@@ -461,13 +462,13 @@ function parseDurationSeconds(duration: string | null): number | null {
   return values.reduce((total, value) => total * 60 + value, 0);
 }
 
-function autoEnqueue(s: DlSettings) {
+async function autoEnqueue(s: DlSettings) {
   if (s.download_scheduled === 1) {
     // Anything any profile put on a watch-later bucket and hasn't watched yet.
     // An explicit schedule is intent enough to download even a Short. The
     // 30-day window keeps a fresh plugin enable from crawling years of
     // long-forgotten watch-later backlog.
-    const rows = db.prepare(`
+    const rows = await database.prepare(`
       SELECT DISTINCT v.video_id FROM user_videos uv
       JOIN videos v ON v.video_id = uv.video_id
       WHERE uv.status = 'queued'
@@ -483,12 +484,12 @@ function autoEnqueue(s: DlSettings) {
         )
       LIMIT 50
     `).all() as { video_id: string }[];
-    for (const { video_id } of rows) enqueueDownload(video_id, "scheduled", false, true);
+    for (const { video_id } of rows) await enqueueDownload(video_id, "scheduled", false, true);
   }
 
   if (s.download_feed === 1) {
     const shortsFilter = s.download_shorts === 1 ? "" : "AND COALESCE(v.is_short, 0) = 0";
-    const rows = db.prepare(`
+    const rows = await database.prepare(`
       SELECT v.video_id, v.duration,
              COALESCE(c.auto_download_min_duration_override, ?) AS min_duration
       FROM videos v
@@ -507,14 +508,14 @@ function autoEnqueue(s: DlSettings) {
       // With a threshold, an unknown duration cannot safely be included. It
       // will be considered by a later pass once the metadata refresher fills it.
       if (min_duration > 0 && (parseDurationSeconds(duration) ?? -1) < min_duration) continue;
-      enqueueDownload(video_id, "feed");
+      await enqueueDownload(video_id, "feed");
       if (++enqueued >= 50) break;
     }
   }
 }
 
-function retryErrors() {
-  db.prepare(`
+async function retryErrors() {
+  await database.prepare(`
     UPDATE downloads SET status = 'queued'
     WHERE status = 'error' AND attempts < ?
       AND COALESCE(started_at, created_at) <= datetime('now', ?)
@@ -536,25 +537,25 @@ function protectedSql(s: DlSettings) {
 
 // Retention keeps a 'deleted' tombstone so auto policies don't re-download;
 // a manual request clears it (see enqueueDownload).
-function tombstone(videoId: string) {
-  unlinkFiles(videoId);
-  db.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL WHERE video_id = ?").run(videoId);
+async function tombstone(videoId: string) {
+  await unlinkFiles(videoId);
+  await database.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL WHERE video_id = ?").run(videoId);
   notifyDownloadChanged(videoId);
 }
 
-function cleanup(s: DlSettings) {
+async function cleanup(s: DlSettings) {
   const prot = protectedSql(s);
 
   // 1. Age-based retention: N days after the download finished.
-  const aged = db.prepare(`
+  const aged = await database.prepare(`
     SELECT d.video_id FROM downloads d
     WHERE d.status = 'done' AND d.finished_at <= datetime('now', ?) AND NOT ${prot}
   `).all(`-${s.retention_days} days`) as { video_id: string }[];
-  for (const { video_id } of aged) tombstone(video_id);
+  for (const { video_id } of aged) await tombstone(video_id);
 
   // 2. Watched: a grace period after the last watch, then gone.
   if (s.delete_watched === 1) {
-    const watched = db.prepare(`
+    const watched = await database.prepare(`
       SELECT d.video_id FROM downloads d
       WHERE d.status = 'done' AND NOT ${prot}
         AND EXISTS (SELECT 1 FROM user_videos uv WHERE uv.video_id = d.video_id AND uv.watched = 1)
@@ -563,38 +564,38 @@ function cleanup(s: DlSettings) {
           d.finished_at
         ) <= datetime('now', ?)
     `).all(`-${s.delete_watched_hours} hours`) as { video_id: string }[];
-    for (const { video_id } of watched) tombstone(video_id);
+    for (const { video_id } of watched) await tombstone(video_id);
   }
 
   // 3. Storage cap: drop oldest unprotected files until under the limit.
   const cap = s.max_storage_gb * 1024 ** 3;
-  let total = (db.prepare("SELECT COALESCE(SUM(size_bytes), 0) AS b FROM downloads WHERE status = 'done'").get() as { b: number }).b;
+  let total = (await database.prepare("SELECT COALESCE(SUM(size_bytes), 0) AS b FROM downloads WHERE status = 'done'").get() as { b: number }).b;
   if (total > cap) {
-    const candidates = db.prepare(`
+    const candidates = await database.prepare(`
       SELECT d.video_id, d.size_bytes FROM downloads d
       WHERE d.status = 'done' AND NOT ${prot}
       ORDER BY d.finished_at ASC
     `).all() as { video_id: string; size_bytes: number | null }[];
     for (const row of candidates) {
       if (total <= cap) break;
-      tombstone(row.video_id);
+      await tombstone(row.video_id);
       total -= row.size_bytes ?? 0;
       log.info("downloads.evicted_for_space", { videoId: row.video_id });
     }
   }
 
   // 4. Rows whose file vanished behind our back.
-  const done = db.prepare("SELECT video_id, path FROM downloads WHERE status = 'done'").all() as { video_id: string; path: string | null }[];
+  const done = await database.prepare("SELECT video_id, path FROM downloads WHERE status = 'done'").all() as { video_id: string; path: string | null }[];
   for (const row of done) {
     if (row.path && existsSync(row.path)) continue;
-    db.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL WHERE video_id = ?").run(row.video_id);
+    await database.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL WHERE video_id = ?").run(row.video_id);
     notifyDownloadChanged(row.video_id);
   }
 
   // 5. Orphan files no live row accounts for. A file belongs to a row when its
   // path minus extensions equals the row's output base (covers the video and
   // every sidecar: .nfo, thumbnails, .info.json, subtitles, .part resumes).
-  const live = db.prepare("SELECT video_id, output_base FROM downloads WHERE status != 'deleted'").all() as { video_id: string; output_base: string | null }[];
+  const live = await database.prepare("SELECT video_id, output_base FROM downloads WHERE status != 'deleted'").all() as { video_id: string; output_base: string | null }[];
   const liveBases = new Set<string>();
   for (const row of live) {
     liveBases.add(row.video_id); // legacy flat {id}.* layout
@@ -640,8 +641,8 @@ function pruneAllEmptyDirs(dir: string, isRoot = true) {
 
 // ---------- the download itself ----------
 
-function pickNext(): string | null {
-  const row = db.prepare(`
+async function pickNext(): Promise<string | null> {
+  const row = await database.prepare(`
     SELECT d.video_id FROM downloads d
     JOIN videos v ON v.video_id = d.video_id
     WHERE d.status = 'queued' AND v.is_private = 0
@@ -674,8 +675,8 @@ async function readLines(stream: ReadableStream<Uint8Array>, onLine: (line: stri
 const SIDECAR_EXT = [".part", ".ytdl", ".json", ".nfo", ".vtt", ".srt", ".ass", ".lrc", ".jpg", ".jpeg", ".png", ".webp"];
 
 /** Kodi/Jellyfin-style companion metadata next to the video file. */
-function writeNfoFile(videoId: string, base: string) {
-  const row = db.prepare(`
+async function writeNfoFile(videoId: string, base: string) {
+  const row = await database.prepare(`
     SELECT v.title, v.description, v.published_at, v.channel_id,
            COALESCE(c.custom_title, c.title) AS channel_title
     FROM videos v JOIN channels c ON c.channel_id = v.channel_id
@@ -700,7 +701,7 @@ function writeNfoFile(videoId: string, base: string) {
 
 async function runDownload(videoId: string, s: DlSettings) {
   const format = downloadFormat(String(s.quality));
-  const base = renderOutputTemplate(videoId, String(s.output_template));
+  const base = await renderOutputTemplate(videoId, String(s.output_template));
   mkdirSync(dirname(join(DOWNLOADS_DIR, base)), { recursive: true });
   const baseArgs = [
     `https://www.youtube.com/watch?v=${videoId}`,
@@ -721,7 +722,7 @@ async function runDownload(videoId: string, s: DlSettings) {
   if (s.embed_metadata === 1) baseArgs.push("--embed-metadata");
   if (s.write_info_json === 1) baseArgs.push("--write-info-json");
 
-  db.prepare("UPDATE downloads SET status = 'downloading', quality = ?, output_base = ?, error = NULL, attempts = attempts + 1, started_at = datetime('now') WHERE video_id = ?")
+  await database.prepare("UPDATE downloads SET status = 'downloading', quality = ?, output_base = ?, error = NULL, attempts = attempts + 1, started_at = datetime('now') WHERE video_id = ?")
     .run(s.quality, base, videoId);
   notifyDownloadChanged(videoId);
   log.info("downloads.start", { videoId, quality: s.quality, base });
@@ -741,7 +742,7 @@ async function runDownload(videoId: string, s: DlSettings) {
       proc = Bun.spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
-      db.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
+      await database.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
       notifyDownloadChanged(videoId);
       ytdlpVersion = undefined; // binary may have moved — re-check on next tick
       log.error("downloads.spawn_failed", { videoId, error });
@@ -790,29 +791,29 @@ async function runDownload(videoId: string, s: DlSettings) {
   if (!job) return;
 
   if (job.cancelled) {
-    unlinkFiles(videoId);
+    await unlinkFiles(videoId);
     return;
   }
 
   if (job.preempted) {
     // Killed to make room for a priority download — back in line, partial
     // files intact so the resume picks up where it stopped.
-    db.prepare("UPDATE downloads SET status = 'queued', attempts = attempts - 1 WHERE video_id = ? AND status = 'downloading'").run(videoId);
+    await database.prepare("UPDATE downloads SET status = 'queued', attempts = attempts - 1 WHERE video_id = ? AND status = 'downloading'").run(videoId);
     notifyDownloadChanged(videoId);
     return;
   }
 
   if (code === 0) {
-    const files = filesFor(videoId).filter((f) => !SIDECAR_EXT.some((ext) => f.toLowerCase().endsWith(ext)));
+    const files = (await filesFor(videoId)).filter((f) => !SIDECAR_EXT.some((ext) => f.toLowerCase().endsWith(ext)));
     const path = files.sort((a, b) => statSync(b).size - statSync(a).size)[0];
     if (path) {
       const size = statSync(path).size;
       if (s.write_nfo === 1) {
-        try { writeNfoFile(videoId, base); } catch (e) {
+        try { await writeNfoFile(videoId, base); } catch (e) {
           log.warn("downloads.nfo_failed", { videoId, error: e instanceof Error ? e.message : String(e) });
         }
       }
-      db.prepare("UPDATE downloads SET status = 'done', path = ?, size_bytes = ?, error = NULL, finished_at = datetime('now') WHERE video_id = ?")
+      await database.prepare("UPDATE downloads SET status = 'done', path = ?, size_bytes = ?, error = NULL, finished_at = datetime('now') WHERE video_id = ?")
         .run(path, size, videoId);
       notifyDownloadChanged(videoId);
       log.info("downloads.done", { videoId, size, path });
@@ -828,7 +829,7 @@ async function runDownload(videoId: string, s: DlSettings) {
     }
   }
   const error = stderrTail.slice(-3).join(" | ") || `yt-dlp exited with code ${code}`;
-  db.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
+  await database.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
   notifyDownloadChanged(videoId);
   log.error("downloads.failed", { videoId, code, error });
 }
@@ -874,8 +875,8 @@ interface HlsSession {
 const hlsSessions = new Map<string, HlsSession>();
 let hlsSweeper: ReturnType<typeof setInterval> | null = null;
 
-export function liveStreamEnabled(): boolean {
-  return dlEnabled() && dlSettings().experimental_streaming === 1;
+export async function liveStreamEnabled(): Promise<boolean> {
+  return await dlEnabled() && dlSettings().experimental_streaming === 1;
 }
 
 export function isSegmentName(name: string): boolean {
@@ -1015,7 +1016,7 @@ export async function getHlsPlaylist(videoId: string): Promise<string | null> {
   const existing = hlsSessions.get(videoId);
   if (existing) { existing.lastAccess = Date.now(); return existing.playlist; }
   if (!(await ytdlpStatus())) return null;
-  if (!db.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId)) return null;
+  if (!await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId)) return null;
 
   const probe = await probeSource(videoId);
   if (!probe) return null;
@@ -1048,7 +1049,7 @@ export async function getHlsPlaylist(videoId: string): Promise<string | null> {
   // YouTube's per-connection throttling, so the whole file lands in seconds —
   // the moment it's done the player switches to the local, natively seekable
   // file. Until then the on-demand transcode covers playback.
-  try { prioritizeDownload(videoId); } catch {}
+  void prioritizeDownload(videoId).catch(() => {});
 
   log.info("downloads.stream_start", { videoId, durationSec: probe.durationSec, segCount, fps: probe.fps });
   return session.playlist;
@@ -1099,48 +1100,56 @@ let lastCleanupAt = 0;
 async function tick() {
   if (maintenanceActive()) return;
   if (ticking) return;
+  const releaseMutation = beginMutation();
+  if (!releaseMutation) return;
   ticking = true;
   try {
-    if (!dlEnabled()) return;
+    if (!await dlEnabled()) return;
     if (!(await ytdlpStatus())) return;
     const s = dlSettings();
-    autoEnqueue(s);
-    retryErrors();
+    await autoEnqueue(s);
+    await retryErrors();
     if (Date.now() - lastCleanupAt > CLEANUP_INTERVAL_MS) {
       lastCleanupAt = Date.now();
-      cleanup(s);
+      await cleanup(s);
     }
     if (!active) {
-      const next = pickNext();
+      const next = await pickNext();
       // Fire and forget: `active` guards concurrency, ticks keep flowing.
-      if (next) runDownload(next, s).catch((e) => log.error("downloads.run_failed", { videoId: next, error: e instanceof Error ? e.message : String(e) }));
+      if (next) {
+        const runRelease = beginMutation();
+        if (runRelease) runDownload(next, s)
+          .catch((e) => log.error("downloads.run_failed", { videoId: next, error: e instanceof Error ? e.message : String(e) }))
+          .finally(runRelease);
+      }
     }
   } finally {
     ticking = false;
+    releaseMutation();
   }
 }
 
-export function startDownloader() {
+export async function startDownloader() {
   // Drop any HLS streaming scratch left behind by a previous run.
   resetHlsScratch();
   // Crash recovery: an interrupted download restarts from the queue.
-  const crashRecovered = db.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run().changes;
+  const crashRecovered = (await database.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run()).changes;
   if (crashRecovered > 0) log.warn("downloads.crash_recovered", { count: crashRecovered });
   // Older versions treated optional subtitle failures as a failed video. Give
   // those jobs one clean run through the new video-first pipeline.
-  const recoveredSubtitleFailures = db.prepare(`
+  const recoveredSubtitleFailures = (await database.prepare(`
     UPDATE downloads SET status = 'queued', error = NULL, attempts = 0
     WHERE status = 'error' AND (
       error LIKE '%Unable to download video subtitles%'
       OR error LIKE '%Unable to download subtitles%'
       OR error LIKE '%Unable to download automatic captions%'
     )
-  `).run().changes;
+  `).run()).changes;
   if (recoveredSubtitleFailures > 0) log.info("downloads.subtitle_failures_requeued", { count: recoveredSubtitleFailures });
   const reportTickError = (error: unknown) => log.error("downloads.tick_failed", { error: error instanceof Error ? error.message : String(error) });
   setTimeout(() => tick().catch(reportTickError), 8_000);
   setInterval(() => tick().catch(reportTickError), TICK_INTERVAL_MS);
   setInterval(() => ytdlpSelfUpdate().catch((error) => log.warn("downloads.ytdlp_update_failed", { error: error instanceof Error ? error.message : String(error) })), 24 * 60 * 60_000);
-  const queue = Object.fromEntries((db.prepare("SELECT status AS name, COUNT(*) AS count FROM downloads GROUP BY status").all() as { name: string; count: number }[]).map((row) => [row.name, Number(row.count)]));
-  log.info("scheduler.downloads", { dir: DOWNLOADS_DIR, intervalMs: TICK_INTERVAL_MS, enabled: dlEnabled(), queue });
+  const queue = Object.fromEntries((await database.prepare("SELECT status AS name, COUNT(*) AS count FROM downloads GROUP BY status").all() as { name: string; count: number }[]).map((row) => [row.name, Number(row.count)]));
+  log.info("scheduler.downloads", { dir: DOWNLOADS_DIR, intervalMs: TICK_INTERVAL_MS, enabled: await dlEnabled(), queue });
 }

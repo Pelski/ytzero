@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { database } from "./database";
 
 export interface UserPlaylistRule {
   id: number;
@@ -30,49 +30,49 @@ function ruleMatches(rule: UserPlaylistRule, title: string, description: string)
   return haystacks.some((h) => h.toLowerCase().includes(needle));
 }
 
-const insertPlaylistVideo = db.prepare(
+const insertPlaylistVideo = database.prepare(
   "INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)"
 );
 
-export function applyPlaylistRulesToVideo(videoId: string): number {
-  const video = db.prepare("SELECT video_id, title, description FROM videos WHERE video_id = ?").get(videoId) as VideoForRules | null;
+export async function applyPlaylistRulesToVideo(videoId: string): Promise<number> {
+  const video = await database.prepare("SELECT video_id, title, description FROM videos WHERE video_id = ?").get(videoId) as VideoForRules | null;
   if (!video) return 0;
-  const rules = db.prepare("SELECT * FROM user_playlist_rules").all() as UserPlaylistRule[];
+  const rules = await database.prepare("SELECT * FROM user_playlist_rules").all() as UserPlaylistRule[];
   let count = 0;
   for (const rule of rules) {
     if (ruleMatches(rule, video.title, video.description)) {
-      insertPlaylistVideo.run(rule.playlist_id, video.video_id);
+      await insertPlaylistVideo.run(rule.playlist_id, video.video_id);
       count++;
     }
   }
   return count;
 }
 
-export function applyPlaylistRulesToVideos(videoIds: string[]) {
-  for (const videoId of videoIds) applyPlaylistRulesToVideo(videoId);
+export async function applyPlaylistRulesToVideos(videoIds: string[]): Promise<void> {
+  for (const videoId of videoIds) await applyPlaylistRulesToVideo(videoId);
 }
 
-export function applyPlaylistRuleToAllVideos(ruleId: number): number {
-  const rule = db.prepare("SELECT * FROM user_playlist_rules WHERE id = ?").get(ruleId) as UserPlaylistRule | null;
+export async function applyPlaylistRuleToAllVideos(ruleId: number): Promise<number> {
+  const rule = await database.prepare("SELECT * FROM user_playlist_rules WHERE id = ?").get(ruleId) as UserPlaylistRule | null;
   if (!rule) return 0;
-  const videos = db.prepare("SELECT video_id, title, description FROM videos").all() as VideoForRules[];
+  const videos = await database.prepare("SELECT video_id, title, description FROM videos").all() as VideoForRules[];
   let count = 0;
   for (const video of videos) {
     if (ruleMatches(rule, video.title, video.description)) {
-      insertPlaylistVideo.run(rule.playlist_id, video.video_id);
+      await insertPlaylistVideo.run(rule.playlist_id, video.video_id);
       count++;
     }
   }
   return count;
 }
 
-export function applyPlaylistRulesForPlaylist(playlistId: number): number {
-  const rules = db.prepare("SELECT * FROM user_playlist_rules WHERE playlist_id = ?").all(playlistId) as UserPlaylistRule[];
-  const videos = db.prepare("SELECT video_id, title, description FROM videos").all() as VideoForRules[];
+export async function applyPlaylistRulesForPlaylist(playlistId: number): Promise<number> {
+  const rules = await database.prepare("SELECT * FROM user_playlist_rules WHERE playlist_id = ?").all(playlistId) as UserPlaylistRule[];
+  const videos = await database.prepare("SELECT video_id, title, description FROM videos").all() as VideoForRules[];
   let count = 0;
   for (const video of videos) {
     if (rules.some((rule) => ruleMatches(rule, video.title, video.description))) {
-      insertPlaylistVideo.run(playlistId, video.video_id);
+      await insertPlaylistVideo.run(playlistId, video.video_id);
       count++;
     }
   }

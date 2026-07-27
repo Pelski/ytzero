@@ -225,6 +225,9 @@ below.
 - image cache and other network-derived cache
 - `portable_object_mappings` restore bookkeeping and automatic pre-restore
   SQLite safety snapshots (local recovery data, not portable archive content)
+- `schema_migrations` database-engine migration bookkeeping and SQLite planner
+  statistics (`sqlite_stat*`); both are local implementation metadata and are
+  rebuilt or maintained by the active engine rather than exported
 
 ### Secrets and machine-bound data — excluded in v1
 
@@ -410,6 +413,19 @@ Adding a column to a portable domain without updating its adapter is a bug.
 Adding cache/transient/secret data does not require exporting it, but does
 require an explicit classification here so it cannot be included accidentally
 by a future generic exporter.
+
+`database-state.json` is machine-bound database-selection metadata. It stores
+only the active engine/location fingerprint and a pending migration receipt;
+it never stores a database URL or credentials and is excluded from portable
+backup. `database_migration_receipts` and `schema_migrations` are engine-local
+implementation metadata and are likewise excluded. PostgreSQL physical backup
+and point-in-time recovery remain an operator responsibility; the portable
+archive is the supported cross-engine domain backup.
+
+SQLite restore creates a local pre-restore database snapshot after checkpointing
+the WAL. PostgreSQL restore is protected by its database transaction instead;
+operators should retain an independent `pg_dump`/managed snapshot before a
+large replace restore.
 
 The operator-selected channel status (`channels.manual_status`) is portable
 instance organization/configuration owned by `instance.channels` schema v2.

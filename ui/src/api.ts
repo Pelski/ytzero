@@ -798,7 +798,18 @@ export interface RestoreAnalysis {
   };
 }
 
+export interface DatabaseStatus {
+  engine: "sqlite" | "postgres";
+  location: string;
+  state: "current" | "migration_ready" | "unexpected_change";
+  previousEngine: "sqlite" | "postgres";
+  pendingReceiptId: string | null;
+}
+
 export const api = {
+  databaseStatus: () => http<DatabaseStatus>("/database/status"),
+  migrateDatabaseToPostgres: (target_url: string) => http<{ receiptId: string; tables: number; rows: number; next: string }>("/database/migration/sqlite-to-postgres", { method: "POST", body: JSON.stringify({ target_url }) }),
+  confirmDatabaseMigration: () => http<{ ok: true; status: DatabaseStatus }>("/database/migration/confirm", { method: "POST", body: "{}" }),
   backupOptions: () => http<BackupOptions>("/backup/options"),
   exportBackup: async (payload: { preset: string; profiles: string[]; sections: string[] }) => {
     const response = await fetch("/api/backup/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });

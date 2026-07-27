@@ -1,4 +1,4 @@
-import { db } from "./db";
+import { database } from "./database";
 import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchPlaylistSnapshot, fetchVideoInfo, fetchVideoPublishedAt, isPrivateVideoError } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
@@ -9,13 +9,13 @@ import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { runAutomaticUpdateChecks } from "./updates";
 import { notifyFollowedPlaylistVideos } from "./notifications";
 import { IMPORTED_CHANNEL_ID } from "./takeout";
-import { maintenanceActive } from "./maintenance";
+import { beginMutation, maintenanceActive } from "./maintenance";
 import { estimateUploadCadenceMs, selectRefreshBatch, targetRefreshIntervalMs, type AdaptiveRefreshOptions, type RefreshCandidate } from "./adaptiveRefresh";
 import { publishAppEventSoon } from "./appEvents";
 import { configuredTimeZone } from "./timeZone";
 import { manualScheduleIsDue, nextScheduleOccurrenceMs, parseManualRefreshSchedule } from "./channelRefreshSchedule";
 
-const upsertVideo = db.prepare(`
+const upsertVideo = database.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(video_id) DO UPDATE SET
@@ -29,7 +29,7 @@ const upsertVideo = db.prepare(`
     is_private = 0
 `);
 
-const videoExists = db.prepare("SELECT 1 FROM videos WHERE video_id = ?");
+const videoExists = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 
 // Politeness limits for the playlist scan during a manual sync, to avoid
 // tripping YouTube's rate limiting (HTTP 429).
@@ -65,8 +65,8 @@ function adaptiveRefreshOptions(force = false): AdaptiveRefreshOptions {
   };
 }
 
-function feedRefreshCandidates(): RefreshCandidate[] {
-  const channelRows = db.prepare(`
+async function feedRefreshCandidates(): Promise<RefreshCandidate[]> {
+  const channelRows = await database.prepare(`
     SELECT c.channel_id, c.added_at, c.last_refreshed_at,
            c.feed_refresh_attempted_at, c.feed_refresh_failures,
            c.refresh_schedule_days, c.refresh_schedule_time
@@ -84,7 +84,7 @@ function feedRefreshCandidates(): RefreshCandidate[] {
   }[];
   if (channelRows.length === 0) return [];
 
-  const recentUploads = db.prepare(`
+  const recentUploads = database.prepare(`
     SELECT published_at FROM videos
     WHERE channel_id = ?
       AND published_at IS NOT NULL AND published_at != ''
@@ -93,7 +93,7 @@ function feedRefreshCandidates(): RefreshCandidate[] {
     LIMIT 6
   `);
 
-  return channelRows.map((row) => {
+  return Promise.all(channelRows.map(async (row) => {
     const manualSchedule = parseManualRefreshSchedule(row.refresh_schedule_days, row.refresh_schedule_time);
     return {
       channelId: row.channel_id,
@@ -101,15 +101,15 @@ function feedRefreshCandidates(): RefreshCandidate[] {
       lastRefreshedAt: row.last_refreshed_at,
       lastAttemptedAt: row.feed_refresh_attempted_at,
       consecutiveFailures: Number(row.feed_refresh_failures) || 0,
-      publishedAt: (recentUploads.all(row.channel_id) as { published_at: string }[]).map((video) => video.published_at),
+      publishedAt: (await recentUploads.all(row.channel_id) as { published_at: string }[]).map((video) => video.published_at),
       manualSchedule,
       manualDue: manualSchedule ? manualScheduleIsDue(manualSchedule, row.feed_refresh_attempted_at, Date.now(), configuredTimeZone()) : false,
     };
-  });
+  }));
 }
 
-export function channelRefreshDiagnostics(channelId: string) {
-  const row = db.prepare(`
+export async function channelRefreshDiagnostics(channelId: string) {
+  const row = await database.prepare(`
     SELECT added_at, last_refreshed_at, feed_refresh_attempted_at,
            feed_refresh_failures, refresh_schedule_days, refresh_schedule_time
     FROM channels WHERE channel_id = ?
@@ -118,7 +118,7 @@ export function channelRefreshDiagnostics(channelId: string) {
     feed_refresh_failures: number; refresh_schedule_days: string | null; refresh_schedule_time: string | null;
   } | null;
   if (!row) return null;
-  const publishedAt = (db.prepare(`
+  const publishedAt = (await database.prepare(`
     SELECT published_at FROM videos
     WHERE channel_id = ? AND published_at IS NOT NULL AND published_at != ''
       AND live_status NOT IN ('live', 'upcoming')
@@ -154,8 +154,8 @@ export function channelRefreshDiagnostics(channelId: string) {
   };
 }
 
-function followedChannelStatusCounts(): Record<string, number> {
-  const rows = db.prepare(`
+async function followedChannelStatusCounts(): Promise<Record<string, number>> {
+  const rows = await database.prepare(`
     SELECT c.manual_status AS status, COUNT(DISTINCT c.channel_id) AS count
     FROM channels c
     JOIN user_channels uc ON uc.channel_id = c.channel_id AND uc.followed = 1
@@ -165,7 +165,7 @@ function followedChannelStatusCounts(): Record<string, number> {
 }
 
 async function backfillExactPublishedDates(channelId: string) {
-  const ids = (db.prepare(`
+  const ids = (await database.prepare(`
     SELECT video_id FROM videos
     WHERE channel_id = ?
       AND is_private = 0
@@ -176,7 +176,7 @@ async function backfillExactPublishedDates(channelId: string) {
       published_at DESC
     LIMIT ?
   `).all(channelId, EXACT_DATE_BACKFILL_LIMIT) as { video_id: string }[]).map((row) => row.video_id);
-  const update = db.prepare(`
+  const update = database.prepare(`
     UPDATE videos
     SET published_at = ?, published_at_approximate = 0
     WHERE video_id = ? AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
@@ -186,7 +186,7 @@ async function backfillExactPublishedDates(channelId: string) {
     await Promise.all(ids.slice(i, i + EXACT_DATE_BACKFILL_CONCURRENCY).map(async (videoId) => {
       try {
         const publishedAt = await fetchVideoPublishedAt(videoId);
-        if (publishedAt) recovered += update.run(publishedAt, videoId).changes;
+        if (publishedAt) recovered += (await update.run(publishedAt, videoId)).changes;
       } catch {
         // Members-only and otherwise restricted videos may not expose a watch
         // payload. Their channel-card relative date remains the honest fallback.
@@ -205,7 +205,7 @@ async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh 
     ? { ...about, subscriberCount }
     : about;
   const aboutForStorage = await preserveChannelMedia(channelId, aboutWithSubscriber);
-  db.prepare(
+  await database.prepare(
     `UPDATE channels SET
        about_json = ?,
        about_fetched_at = datetime('now'),
@@ -236,7 +236,7 @@ async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh 
 
 // Playlist snapshots are sparse, while RSS is rich but short. Preserve every
 // existing rich value and fill only fields that are still missing.
-const insertPlaylistVideo = db.prepare(`
+const insertPlaylistVideo = database.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes, duration)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   ON CONFLICT(video_id) DO UPDATE SET
@@ -255,7 +255,7 @@ const insertPlaylistVideo = db.prepare(`
     is_private = 0
 `);
 
-const ensureChannel = db.prepare(`
+const ensureChannel = database.prepare(`
   INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
   VALUES (?, ?, ?, '', 0, 1)
   ON CONFLICT(channel_id) DO NOTHING
@@ -283,9 +283,9 @@ export async function importPlaylistVideos(playlistId: string, force = false): P
   }));
   const richById = new Map(feed.videos.map((video) => [video.videoId, video]));
 
-  ensureChannel.run(feed.channelId, feed.channelTitle, `https://www.youtube.com/channel/${feed.channelId}`);
-  ensureChannelPlaylist(playlistId, feed.channelId);
-  db.prepare(`UPDATE channel_playlists SET
+  await ensureChannel.run(feed.channelId, feed.channelTitle, `https://www.youtube.com/channel/${feed.channelId}`);
+  await ensureChannelPlaylist(playlistId, feed.channelId);
+  await database.prepare(`UPDATE channel_playlists SET
       title = CASE WHEN TRIM(?) != '' THEN ? ELSE title END,
       thumbnail = CASE WHEN TRIM(?) != '' THEN ? ELSE thumbnail END,
       video_count = ?, updated_at = datetime('now')
@@ -294,19 +294,19 @@ export async function importPlaylistVideos(playlistId: string, force = false): P
       snapshot.videos[0]?.thumbnail || "", snapshot.videos[0]?.thumbnail || "",
       String(snapshot.videos.length), playlistId,
     );
-  const inheritChannelTags = db.prepare(
+  const inheritChannelTags = database.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );
 
   let added = 0;
-  const importAll = db.transaction((videos: typeof snapshot.videos) => {
+  const importAll = database.transaction(async (videos: typeof snapshot.videos) => {
     for (const v of videos) {
       const rich = richById.get(v.videoId);
       const ownerChannelId = v.channelId || rich?.channelId || feed.channelId;
       const ownerChannelTitle = v.channelTitle || rich?.channelTitle || feed.channelTitle;
-      ensureChannel.run(ownerChannelId, ownerChannelTitle, `https://www.youtube.com/channel/${ownerChannelId}`);
-      const isNew = !videoExists.get(v.videoId);
-      insertPlaylistVideo.run(
+      await ensureChannel.run(ownerChannelId, ownerChannelTitle, `https://www.youtube.com/channel/${ownerChannelId}`);
+      const isNew = !await videoExists.get(v.videoId);
+      await insertPlaylistVideo.run(
         v.videoId,
         ownerChannelId,
         rich?.title || v.title,
@@ -318,18 +318,18 @@ export async function importPlaylistVideos(playlistId: string, force = false): P
         v.duration || null,
       );
       if (isNew) {
-        applyAutoTags(v.videoId, rich?.title || v.title, rich?.description || "");
-        applyFilterRules(v.videoId, ownerChannelId, rich?.title || v.title, rich?.description || "");
-        applyPlaylistRulesToVideo(v.videoId);
-        inheritChannelTags.run(v.videoId, ownerChannelId);
+        await applyAutoTags(v.videoId, rich?.title || v.title, rich?.description || "");
+        await applyFilterRules(v.videoId, ownerChannelId, rich?.title || v.title, rich?.description || "");
+        await applyPlaylistRulesToVideo(v.videoId);
+        await inheritChannelTags.run(v.videoId, ownerChannelId);
         added++;
       }
     }
   });
-  importAll(snapshot.videos);
-  const discoveredVideoIds = savePlaylistMemberships(playlistId, snapshot.videos.map((video) => video.videoId), snapshot.complete);
-  const notificationsCreated = notifyFollowedPlaylistVideos(playlistId, discoveredVideoIds);
-  db.prepare("UPDATE channel_playlists SET last_synced_at = datetime('now'), sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
+  await importAll(snapshot.videos);
+  const discoveredVideoIds = await savePlaylistMemberships(playlistId, snapshot.videos.map((video) => video.videoId), snapshot.complete);
+  const notificationsCreated = await notifyFollowedPlaylistVideos(playlistId, discoveredVideoIds);
+  await database.prepare("UPDATE channel_playlists SET last_synced_at = datetime('now'), sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
 
   if (added > 0) {
     backfillShorts(snapshot.videos.map((v) => v.videoId)).catch((error) => {
@@ -343,10 +343,10 @@ export async function importPlaylistVideos(playlistId: string, force = false): P
 
 const playlistSyncsInFlight = new Map<string, Promise<{ added: number; channelId: string }>>();
 
-export function syncPlaylist(playlistId: string): Promise<{ added: number; channelId: string }> {
+export async function syncPlaylist(playlistId: string): Promise<{ added: number; channelId: string }> {
   const current = playlistSyncsInFlight.get(playlistId);
   if (current) return current;
-  db.prepare("UPDATE channel_playlists SET sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
+  await database.prepare("UPDATE channel_playlists SET sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
   const task = importPlaylistVideos(playlistId, true).finally(() => playlistSyncsInFlight.delete(playlistId));
   playlistSyncsInFlight.set(playlistId, task);
   return task;
@@ -361,8 +361,8 @@ export async function syncChannelPlaylists(channelId: string): Promise<{
   errors: number;
 }> {
   const playlists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, true));
-  saveChannelPlaylists(channelId, playlists);
-  db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
+  await saveChannelPlaylists(channelId, playlists);
+  await database.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
     .run(JSON.stringify(playlists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
 
   let added = 0;
@@ -389,26 +389,26 @@ export async function syncChannelPlaylists(channelId: string): Promise<{
 export async function refreshChannel(channelId: string): Promise<{ added: number }> {
   const startedAt = Date.now();
   const feed = await fetchChannelFeed(channelId);
-  const inheritChannelTags = db.prepare(
+  const inheritChannelTags = database.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );
 
   let added = 0;
   for (const v of feed.videos) {
-    const isNew = !videoExists.get(v.videoId);
-    upsertVideo.run(v.videoId, channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes);
+    const isNew = !await videoExists.get(v.videoId);
+    await upsertVideo.run(v.videoId, channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes);
     if (isNew) {
-      applyAutoTags(v.videoId, v.title, v.description);
-      applyFilterRules(v.videoId, channelId, v.title, v.description);
-      applyPlaylistRulesToVideo(v.videoId);
-      inheritChannelTags.run(v.videoId, channelId);
+      await applyAutoTags(v.videoId, v.title, v.description);
+      await applyFilterRules(v.videoId, channelId, v.title, v.description);
+      await applyPlaylistRulesToVideo(v.videoId);
+      await inheritChannelTags.run(v.videoId, channelId);
       added++;
       log.info("video.added", { source: "rss", channelId, videoId: v.videoId, title: v.title, publishedAt: v.publishedAt });
     }
   }
   await backfillShorts(feed.videos.map((v) => v.videoId));
 
-  const missingDuration = db.prepare(
+  const missingDuration = await database.prepare(
     `SELECT 1 FROM videos
      WHERE channel_id = ?
        AND is_private = 0
@@ -420,22 +420,22 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
   if (missingDuration) {
     try {
       const durations = await fetchChannelVideosDurations(channelId);
-      const upd = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND (duration IS NULL OR TRIM(duration) = '')");
-      for (const d of durations) upd.run(d.duration, d.videoId);
+      const upd = database.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND (duration IS NULL OR TRIM(duration) = '')");
+      for (const d of durations) await upd.run(d.duration, d.videoId);
     } catch (error) {
       log.warn("channel.duration_refresh_failed", { channelId, error: error instanceof Error ? error.message : String(error) });
     }
   }
 
   if (feed.channelTitle) {
-    db.prepare(
+    await database.prepare(
       "UPDATE channels SET title = ?, last_refreshed_at = datetime('now') WHERE channel_id = ? AND title = ''"
     ).run(feed.channelTitle, channelId);
   }
   await refreshChannelMetadata(channelId).catch((e) => {
     log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   });
-  db.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  await database.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
   if (added > 0) log.info("channel.refresh.added", { channelId, title: feed.channelTitle, added, ms: Date.now() - startedAt });
   return { added };
 }
@@ -449,11 +449,11 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
   let rows: { video_id: string; title: string }[];
   if (videoIds && videoIds.length > 0) {
     const ph = videoIds.map(() => "?").join(",");
-    rows = db
+    rows = await database
       .prepare(`SELECT video_id, title FROM videos WHERE is_short IS NULL AND is_private = 0 AND video_id IN (${ph})`)
       .all(...videoIds) as any[];
   } else {
-    rows = db
+    rows = await database
       .prepare(`SELECT video_id, title FROM videos
                 WHERE is_short IS NULL
                   AND is_private = 0
@@ -462,10 +462,10 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
                 LIMIT ?`)
       .all(VIDEO_MAINTENANCE_CUTOFF, limit) as any[];
   }
-  const setShort = db.prepare("UPDATE videos SET is_short = ? WHERE video_id = ?");
+  const setShort = database.prepare("UPDATE videos SET is_short = ? WHERE video_id = ?");
   for (const r of rows) {
     const short = await checkIsShort(r.video_id, r.title);
-    setShort.run(short ? 1 : 0, r.video_id);
+    await setShort.run(short ? 1 : 0, r.video_id);
     log.info("video.short_checked", { videoId: r.video_id, isShort: short });
     await Bun.sleep(120);
   }
@@ -483,7 +483,7 @@ export interface ChannelMetadataSyncResult {
 
 /** Force-repair only incomplete metadata for videos already stored locally. */
 export async function syncChannelMissingMetadata(channelId: string): Promise<ChannelMetadataSyncResult> {
-  const rows = db.prepare(`
+  const rows = await database.prepare(`
     SELECT video_id, title, live_status, duration, published_at,
            published_at_approximate, is_short
     FROM videos
@@ -502,7 +502,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
     is_short: number | null;
   }[];
 
-  const saveInfo = db.prepare(`
+  const saveInfo = database.prepare(`
     UPDATE videos SET
       duration = CASE
         WHEN ? IS NOT NULL AND ? != '' THEN ?
@@ -518,11 +518,11 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
       END
     WHERE video_id = ?
   `);
-  const savePublishedAt = db.prepare(`
+  const savePublishedAt = database.prepare(`
     UPDATE videos SET published_at = ?, published_at_approximate = 0
     WHERE video_id = ? AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
   `);
-  const saveShort = db.prepare("UPDATE videos SET is_short = ? WHERE video_id = ? AND is_short IS NULL");
+  const saveShort = database.prepare("UPDATE videos SET is_short = ? WHERE video_id = ? AND is_short IS NULL");
   const updatedVideos = new Set<string>();
   let dates = 0;
   let durations = 0;
@@ -538,7 +538,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
       if (needsDate || needsDuration) {
         try {
           const info = await fetchVideoInfo(row.video_id);
-          const result = saveInfo.run(
+          const result = await saveInfo.run(
             needsDuration ? info.duration : null, needsDuration ? info.duration : null, needsDuration ? info.duration : null,
             needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null,
             needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null,
@@ -552,7 +552,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
         } catch {
           try {
             const publishedAt = needsDate ? await fetchVideoPublishedAt(row.video_id) : null;
-            if (publishedAt && savePublishedAt.run(publishedAt, row.video_id).changes > 0) {
+            if (publishedAt && (await savePublishedAt.run(publishedAt, row.video_id)).changes > 0) {
               dates++;
               updatedVideos.add(row.video_id);
             } else if (needsDuration) {
@@ -567,7 +567,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
       if (row.is_short == null) {
         try {
           const isShort = await checkIsShort(row.video_id, row.title);
-          if (saveShort.run(isShort ? 1 : 0, row.video_id).changes > 0) {
+          if ((await saveShort.run(isShort ? 1 : 0, row.video_id)).changes > 0) {
             shorts++;
             updatedVideos.add(row.video_id);
           }
@@ -580,7 +580,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
     if (offset + concurrency < rows.length) await Bun.sleep(180);
   }
 
-  const remaining = (db.prepare(`
+  const remaining = (await database.prepare(`
     SELECT COUNT(*) AS count FROM videos
     WHERE channel_id = ? AND is_private = 0 AND (
       published_at IS NULL OR published_at = '' OR published_at_approximate = 1
@@ -611,22 +611,22 @@ export async function refreshLiveStatus(channelId: string) {
   const inactiveSql = activeIds.length > 0
     ? ` AND video_id NOT IN (${activeIds.map(() => "?").join(",")})`
     : "";
-  db.prepare(
+  await database.prepare(
     `UPDATE videos SET live_status = CASE live_status WHEN 'live' THEN 'was_live' ELSE 'none' END
      WHERE channel_id = ? AND live_status IN ('live', 'upcoming')${inactiveSql}`
   ).run(channelId, ...activeIds);
 
   for (const live of active) {
-    const existing = videoExists.get(live.videoId);
+    const existing = await videoExists.get(live.videoId);
     if (existing) {
-      db.prepare("UPDATE videos SET live_status = ? WHERE video_id = ?").run(live.status, live.videoId);
+      await database.prepare("UPDATE videos SET live_status = ? WHERE video_id = ?").run(live.status, live.videoId);
     } else {
-      db.prepare(
+      await database.prepare(
         `INSERT INTO videos (video_id, channel_id, title, thumbnail, published_at, live_status)
          VALUES (?, ?, ?, ?, datetime('now'), ?)`
       ).run(live.videoId, channelId, live.title, live.thumbnail, live.status);
-      applyAutoTags(live.videoId, live.title, "");
-      applyPlaylistRulesToVideo(live.videoId);
+      await applyAutoTags(live.videoId, live.title, "");
+      await applyPlaylistRulesToVideo(live.videoId);
       log.info("live.video_added", { channelId, videoId: live.videoId, status: live.status, title: live.title });
     }
   }
@@ -644,8 +644,8 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   // A channel page can be opened directly from a YouTube link, before it has
   // been followed or otherwise saved locally. Create an external row first so
   // the video inserts below always have their required parent channel.
-  ensureChannel.run(channelId, "", `https://www.youtube.com/channel/${channelId}`);
-  db.prepare("UPDATE channels SET full_sync_attempted_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  await ensureChannel.run(channelId, "", `https://www.youtube.com/channel/${channelId}`);
+  await database.prepare("UPDATE channels SET full_sync_attempted_at = datetime('now') WHERE channel_id = ?").run(channelId);
   await refreshChannelMetadata(channelId, true).catch((e) => {
     log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   });
@@ -660,7 +660,7 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   const scrapedVideos = [...new Map([...scraped, ...streams].map((v) => [v.videoId, v])).values()];
 
   const feedMap = new Map(feed.videos.map((v) => [v.videoId, v]));
-  const insertOrUpdate = db.prepare(`
+  const insertOrUpdate = database.prepare(`
     INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, published_at_approximate, members_only, views, likes, duration)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(video_id) DO UPDATE SET
@@ -682,11 +682,11 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
       duration = COALESCE(excluded.duration, duration),
       is_private = 0
   `);
-  const markArchivedStream = db.prepare(
+  const markArchivedStream = database.prepare(
     "UPDATE videos SET live_status = 'was_live' WHERE video_id = ? AND live_status = 'none'"
   );
 
-  const inheritChannelTags = db.prepare(
+  const inheritChannelTags = database.prepare(
     "INSERT OR IGNORE INTO video_tags (video_id, tag_id, source) SELECT ?, tag_id, 'channel' FROM channel_tags WHERE channel_id = ?"
   );
 
@@ -695,11 +695,11 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
 
   for (const v of scrapedVideos) {
     seen.add(v.videoId);
-    const isNew = !videoExists.get(v.videoId);
+    const isNew = !await videoExists.get(v.videoId);
     const rss = feedMap.get(v.videoId);
     const exactPublishedAt = rss?.publishedAt || null;
     const publishedAt = exactPublishedAt ?? v.publishedAt;
-    insertOrUpdate.run(
+    await insertOrUpdate.run(
       v.videoId, channelId,
       rss?.title ?? v.title,
       rss?.description ?? "",
@@ -712,14 +712,14 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
       v.duration || null,
     );
     if (v.isStream) {
-      if (v.isLive) db.prepare("UPDATE videos SET live_status = 'live' WHERE video_id = ?").run(v.videoId);
-      else markArchivedStream.run(v.videoId);
+      if (v.isLive) await database.prepare("UPDATE videos SET live_status = 'live' WHERE video_id = ?").run(v.videoId);
+      else await markArchivedStream.run(v.videoId);
     }
     if (isNew) {
-      applyAutoTags(v.videoId, rss?.title ?? v.title, rss?.description ?? "");
-      applyFilterRules(v.videoId, channelId, rss?.title ?? v.title, rss?.description ?? "");
-      applyPlaylistRulesToVideo(v.videoId);
-      inheritChannelTags.run(v.videoId, channelId);
+      await applyAutoTags(v.videoId, rss?.title ?? v.title, rss?.description ?? "");
+      await applyFilterRules(v.videoId, channelId, rss?.title ?? v.title, rss?.description ?? "");
+      await applyPlaylistRulesToVideo(v.videoId);
+      await inheritChannelTags.run(v.videoId, channelId);
       added++;
       log.info("video.added", { source: "sync", channelId, videoId: v.videoId, title: rss?.title ?? v.title, publishedAt: rss?.publishedAt ?? null });
     }
@@ -728,13 +728,13 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   // Also add RSS-only videos (not in scraped list) to get description + published_at
   for (const v of feed.videos) {
     if (seen.has(v.videoId)) continue;
-    const isNew = !videoExists.get(v.videoId);
-    upsertVideo.run(v.videoId, channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes);
+    const isNew = !await videoExists.get(v.videoId);
+    await upsertVideo.run(v.videoId, channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes);
     if (isNew) {
-      applyAutoTags(v.videoId, v.title, v.description);
-      applyFilterRules(v.videoId, channelId, v.title, v.description);
-      applyPlaylistRulesToVideo(v.videoId);
-      inheritChannelTags.run(v.videoId, channelId);
+      await applyAutoTags(v.videoId, v.title, v.description);
+      await applyFilterRules(v.videoId, channelId, v.title, v.description);
+      await applyPlaylistRulesToVideo(v.videoId);
+      await inheritChannelTags.run(v.videoId, channelId);
       added++;
       log.info("video.added", { source: "rss-only", channelId, videoId: v.videoId, title: v.title, publishedAt: v.publishedAt });
     }
@@ -747,8 +747,8 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   let playlistsScanned = 0;
   try {
     const allPlaylists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, true));
-    saveChannelPlaylists(channelId, allPlaylists);
-    db.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
+    await saveChannelPlaylists(channelId, allPlaylists);
+    await database.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
       .run(JSON.stringify(allPlaylists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
     const playlists = allPlaylists.slice(0, MAX_SYNC_PLAYLISTS);
     for (let i = 0; i < playlists.length; i++) {
@@ -775,15 +775,15 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   // Mark a just-synced current stream immediately, rather than waiting for
   // the periodic live-status refresh before it can appear on the channel page.
   await refreshLiveStatus(channelId);
-  db.prepare("UPDATE channels SET last_refreshed_at = datetime('now'), last_full_synced_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  await database.prepare("UPDATE channels SET last_refreshed_at = datetime('now'), last_full_synced_at = datetime('now') WHERE channel_id = ?").run(channelId);
   log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, streams: streams.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
   return { added };
 }
 
 /** Full sync shared by the manual button and the background scheduler. Calls
  * for the same channel coalesce instead of scraping YouTube twice in parallel. */
-export function syncChannel(channelId: string): Promise<{ added: number }> {
-  const status = db.prepare("SELECT manual_status FROM channels WHERE channel_id=?").get(channelId) as { manual_status: string } | null;
+export async function syncChannel(channelId: string): Promise<{ added: number }> {
+  const status = await database.prepare("SELECT manual_status FROM channels WHERE channel_id=?").get(channelId) as { manual_status: string } | null;
   if (status && status.manual_status !== "active") return Promise.reject(new Error(`channel sync disabled (${status.manual_status})`));
   const current = channelSyncsInFlight.get(channelId);
   if (current) return current;
@@ -802,7 +802,7 @@ export async function refreshAvatarsBatch(limit = 4) {
     return 0;
   }
   const startedAt = Date.now();
-  const rows = db
+  const rows = await database
     .prepare(
       `SELECT channel_id FROM channels
        WHERE channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
@@ -813,10 +813,10 @@ export async function refreshAvatarsBatch(limit = 4) {
     )
     .all(limit) as { channel_id: string }[];
 
-  const markAttempted = db.prepare(
+  const markAttempted = database.prepare(
     "UPDATE channels SET avatar_refresh_attempted_at = datetime('now') WHERE channel_id = ?"
   );
-  const saveAvatar = db.prepare(
+  const saveAvatar = database.prepare(
     `UPDATE channels SET
        thumbnail = COALESCE(NULLIF(?, ''), thumbnail),
        title = COALESCE(NULLIF(?, ''), title),
@@ -830,10 +830,10 @@ export async function refreshAvatarsBatch(limit = 4) {
   let errors = 0;
   for (let i = 0; i < rows.length; i++) {
     const { channel_id } = rows[i];
-    markAttempted.run(channel_id);
+    await markAttempted.run(channel_id);
     try {
       const about = await preserveChannelMedia(channel_id, await fetchChannelAbout(channel_id));
-      saveAvatar.run(about.avatar, about.title, about.subscriberCount, channel_id);
+      await saveAvatar.run(about.avatar, about.title, about.subscriberCount, channel_id);
       succeeded++;
       log.info("channel.avatar_refreshed", { channelId: channel_id, title: about.title });
     } catch (e) {
@@ -875,7 +875,7 @@ const DURATION_RETRY_MAX_MS = 6 * 60 * 60_000;
  */
 async function refreshPlaylistDurations(): Promise<number> {
   const now = Date.now();
-  const candidates = db.prepare(`
+  const candidates = await database.prepare(`
     SELECT cpv.playlist_id, COUNT(*) AS missing_count,
            MAX(v.created_at) AS newest_import
     FROM channel_playlist_videos cpv
@@ -893,12 +893,12 @@ async function refreshPlaylistDurations(): Promise<number> {
 
   try {
     const snapshot = await fetchPlaylistSnapshot(candidate.playlist_id, true);
-    const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND (duration IS NULL OR TRIM(duration) = '')");
+    const save = database.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND (duration IS NULL OR TRIM(duration) = '')");
     let filled = 0;
-    db.transaction((videos: typeof snapshot.videos) => {
+    await database.transaction(async (videos: typeof snapshot.videos) => {
       for (const video of videos) {
         if (!video.duration) continue;
-        const result = save.run(video.duration, video.videoId);
+        const result = await save.run(video.duration, video.videoId);
         filled += result.changes;
       }
     })(snapshot.videos);
@@ -926,7 +926,7 @@ export async function refreshVideoMetadataBatch(limit = 10) {
   if (maintenanceActive()) return 0;
   await refreshPlaylistDurations();
   const now = Date.now();
-  const candidates = db
+  const candidates = await database
     .prepare(
       `SELECT video_id, live_status FROM videos
        WHERE (duration IS NULL OR published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
@@ -942,8 +942,8 @@ export async function refreshVideoMetadataBatch(limit = 10) {
     .slice(0, limit);
   if (rows.length === 0) return;
 
-  const save = db.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
-  const savePublishedAt = db.prepare(`
+  const save = database.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL");
+  const savePublishedAt = database.prepare(`
     UPDATE videos SET published_at = ?, published_at_approximate = 0
     WHERE video_id = ? AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
   `);
@@ -951,7 +951,7 @@ export async function refreshVideoMetadataBatch(limit = 10) {
   // live/premiere/members video): write an empty string so it reads as
   // "checked, none" and isn't retried every cron tick. Transient fetch errors
   // are left NULL on purpose so they get another chance later.
-  const markNone = db.prepare("UPDATE videos SET duration = '' WHERE video_id = ? AND duration IS NULL");
+  const markNone = database.prepare("UPDATE videos SET duration = '' WHERE video_id = ? AND duration IS NULL");
 
   let durationsFilled = 0;
   let datesFilled = 0;
@@ -961,22 +961,22 @@ export async function refreshVideoMetadataBatch(limit = 10) {
       const info = await fetchVideoInfo(video_id);
       durationRetry.delete(video_id);
       if (info.duration) {
-        save.run(info.duration, video_id);
+        await save.run(info.duration, video_id);
         durationsFilled++;
       } else if (live_status === "none") {
-        markNone.run(video_id);
+        await markNone.run(video_id);
       }
-      if (info.publishedAt) datesFilled += savePublishedAt.run(info.publishedAt, video_id).changes;
+      if (info.publishedAt) datesFilled += (await savePublishedAt.run(info.publishedAt, video_id)).changes;
     } catch (e) {
       if (isPrivateVideoError(e)) {
         durationRetry.delete(video_id);
-        db.prepare(`
+        await database.prepare(`
           UPDATE videos SET is_private = 1, duration = COALESCE(duration, ''),
             chapters_json = COALESCE(chapters_json, '[]'),
             chapters_fetched_at = datetime('now'), creators_fetched_at = datetime('now')
           WHERE video_id = ?
         `).run(video_id);
-        db.prepare(`
+        await database.prepare(`
           UPDATE downloads SET status = 'deleted', error = NULL, priority = 0,
             finished_at = datetime('now')
           WHERE video_id = ? AND status != 'done'
@@ -989,7 +989,7 @@ export async function refreshVideoMetadataBatch(limit = 10) {
       try {
         const publishedAt = await fetchVideoPublishedAt(video_id);
         if (publishedAt) {
-          datesFilled += savePublishedAt.run(publishedAt, video_id).changes;
+          datesFilled += (await savePublishedAt.run(publishedAt, video_id)).changes;
           durationRetry.delete(video_id);
           continue;
         }
@@ -1018,7 +1018,7 @@ const importRetry = new Map<string, { attempts: number; nextAt: number }>();
 const IMPORT_RETRY_BASE_MS = 5 * 60_000;
 const IMPORT_RETRY_MAX_MS = 6 * 60 * 60_000;
 
-const enrichImportedVideo = db.prepare(`
+const enrichImportedVideo = database.prepare(`
   UPDATE videos SET
     channel_id = ?, title = ?, description = ?, thumbnail = ?,
     published_at = COALESCE(?, published_at), duration = ?, views = COALESCE(?, views)
@@ -1031,7 +1031,7 @@ export async function backfillImportedVideos(limit = 15) {
   // Anything still parked on the placeholder channel needs enrichment, even
   // when the export supplied a title (history entries). Playlist members and
   // titleless videos first — a titled history row is already presentable.
-  const candidates = db.prepare(`
+  const candidates = await database.prepare(`
     SELECT video_id FROM videos
     WHERE channel_id = ? AND is_private = 0
     ORDER BY (video_id IN (SELECT video_id FROM user_playlist_videos)) DESC,
@@ -1051,8 +1051,8 @@ export async function backfillImportedVideos(limit = 15) {
       if (!info.channelId) throw new Error("video info has no channelId");
       importRetry.delete(videoId);
       const channelId = info.channelId;
-      ensureChannel.run(channelId, info.channelTitle, `https://www.youtube.com/channel/${channelId}`);
-      enrichImportedVideo.run(
+      await ensureChannel.run(channelId, info.channelTitle, `https://www.youtube.com/channel/${channelId}`);
+      await enrichImportedVideo.run(
         channelId,
         info.title,
         info.description,
@@ -1066,13 +1066,13 @@ export async function backfillImportedVideos(limit = 15) {
     } catch (e) {
       if (isPrivateVideoError(e)) {
         importRetry.delete(videoId);
-        db.prepare(`
+        await database.prepare(`
           UPDATE videos SET is_private = 1, duration = COALESCE(duration, ''),
             chapters_json = COALESCE(chapters_json, '[]'),
             chapters_fetched_at = datetime('now'), creators_fetched_at = datetime('now')
           WHERE video_id = ?
         `).run(videoId);
-        db.prepare(`
+        await database.prepare(`
           UPDATE downloads SET status = 'deleted', error = NULL, priority = 0,
             finished_at = datetime('now')
           WHERE video_id = ? AND status != 'done'
@@ -1101,12 +1101,14 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
     log.warn("refresh.skipped", { reason: "already_in_progress" });
     return { channels: 0, added: 0, errors: ["refresh already in progress"] };
   }
+  const releaseMutation = beginMutation();
+  if (!releaseMutation) return { channels: 0, added: 0, errors: [] };
   refreshing = true;
   const startedAt = Date.now();
   try {
     // Any channel at least one profile follows. A channel followed by several
     // profiles is fetched once here (dedup), then surfaces in each feed.
-    const selected = selectRefreshBatch(feedRefreshCandidates(), adaptiveRefreshOptions(options.force));
+    const selected = selectRefreshBatch(await feedRefreshCandidates(), adaptiveRefreshOptions(options.force));
     const channels = options.manualOnly ? selected.filter((channel) => channel.reason === "manual") : selected;
     log.info("refresh.start", {
       channels: channels.length,
@@ -1115,7 +1117,7 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
       fairness: channels.filter((channel) => channel.reason === "fairness").length,
       force: Boolean(options.force),
       manualOnly: Boolean(options.manualOnly),
-      followedByStatus: followedChannelStatusCounts(),
+      followedByStatus: await followedChannelStatusCounts(),
       selection: channels.map((channel) => ({
         channelId: channel.channelId,
         reason: channel.reason,
@@ -1128,24 +1130,24 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
         overdueRatio: Number.isFinite(channel.overdueRatio) ? Math.round(channel.overdueRatio * 100) / 100 : null,
       })),
     });
-    const markAttempted = db.prepare("UPDATE channels SET feed_refresh_attempted_at = datetime('now') WHERE channel_id = ?");
-    const markSucceeded = db.prepare("UPDATE channels SET feed_refresh_failures = 0 WHERE channel_id = ?");
-    const markFailed = db.prepare("UPDATE channels SET feed_refresh_failures = feed_refresh_failures + 1 WHERE channel_id = ?");
+    const markAttempted = database.prepare("UPDATE channels SET feed_refresh_attempted_at = datetime('now') WHERE channel_id = ?");
+    const markSucceeded = database.prepare("UPDATE channels SET feed_refresh_failures = 0 WHERE channel_id = ?");
+    const markFailed = database.prepare("UPDATE channels SET feed_refresh_failures = feed_refresh_failures + 1 WHERE channel_id = ?");
     let added = 0;
     const errors: string[] = [];
     for (let index = 0; index < channels.length; index++) {
       const channel = channels[index];
       const channelId = channel.channelId;
-      markAttempted.run(channelId);
+      await markAttempted.run(channelId);
       try {
         const r = await refreshChannel(channelId);
         added += r.added;
         await refreshLiveStatus(channelId);
-        markSucceeded.run(channelId);
+        await markSucceeded.run(channelId);
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
         errors.push(`${channelId}: ${error}`);
-        markFailed.run(channelId);
+        await markFailed.run(channelId);
         log.error("channel.refresh_failed", { channelId, error });
         if (error.includes("429")) {
           log.warn("refresh.halted", { reason: "youtube_rate_limit", remaining: channels.length - index - 1 });
@@ -1161,6 +1163,7 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
     return { channels: channels.length, added, errors };
   } finally {
     refreshing = false;
+    releaseMutation();
   }
 }
 
@@ -1185,9 +1188,11 @@ export async function syncNextSubscribedChannel(): Promise<void> {
     log.warn("channel.full_sync.skipped", { reason: "already_in_progress" });
     return;
   }
+  const releaseMutation = beginMutation();
+  if (!releaseMutation) return;
   scheduledFullSyncRunning = true;
   try {
-    const channel = db.prepare(`
+    const channel = await database.prepare(`
       SELECT c.channel_id
       FROM channels c
       WHERE c.external = 0
@@ -1202,7 +1207,7 @@ export async function syncNextSubscribedChannel(): Promise<void> {
       LIMIT 1
     `).get() as { channel_id: string } | null;
     if (!channel) {
-      log.info("channel.full_sync.skipped", { reason: "no_eligible_subscribed_channels", followedByStatus: followedChannelStatusCounts() });
+      log.info("channel.full_sync.skipped", { reason: "no_eligible_subscribed_channels", followedByStatus: await followedChannelStatusCounts() });
       return;
     }
     const startedAt = Date.now();
@@ -1219,6 +1224,7 @@ export async function syncNextSubscribedChannel(): Promise<void> {
     }
   } finally {
     scheduledFullSyncRunning = false;
+    releaseMutation();
   }
 }
 
@@ -1231,9 +1237,11 @@ export async function syncNextFollowedPlaylist(): Promise<void> {
     log.info("playlist.sync.skipped", { reason: "already_in_progress" });
     return;
   }
+  const releaseMutation = beginMutation();
+  if (!releaseMutation) return;
   scheduledPlaylistSyncRunning = true;
   try {
-    const playlist = db.prepare(`
+    const playlist = await database.prepare(`
       SELECT cp.playlist_id
       FROM channel_playlists cp
       JOIN channels c ON c.channel_id = cp.channel_id
@@ -1243,7 +1251,7 @@ export async function syncNextFollowedPlaylist(): Promise<void> {
       LIMIT 1
     `).get() as { playlist_id: string } | null;
     if (!playlist) {
-      log.info("playlist.sync.skipped", { reason: "no_eligible_followed_playlists", followedByStatus: followedChannelStatusCounts() });
+      log.info("playlist.sync.skipped", { reason: "no_eligible_followed_playlists", followedByStatus: await followedChannelStatusCounts() });
       return;
     }
     const startedAt = Date.now();
@@ -1255,6 +1263,7 @@ export async function syncNextFollowedPlaylist(): Promise<void> {
     }
   } finally {
     scheduledPlaylistSyncRunning = false;
+    releaseMutation();
   }
 }
 
@@ -1272,12 +1281,14 @@ export async function refreshAllLiveStatuses(): Promise<void> {
     log.info("live.refresh_skipped", { reason: "already_in_progress" });
     return;
   }
+  const releaseMutation = beginMutation();
+  if (!releaseMutation) return;
   liveRefreshing = true;
   const startedAt = Date.now();
   try {
     // Prioritise channels that are already live/upcoming so we keep them
     // up-to-date, then channels that have ever gone live (was_live), then rest.
-    const channels = db.prepare(`
+    const channels = await database.prepare(`
       SELECT DISTINCT c.channel_id,
         CASE
           WHEN EXISTS (SELECT 1 FROM videos v WHERE v.channel_id = c.channel_id AND v.live_status IN ('live','upcoming')) THEN 0
@@ -1305,6 +1316,7 @@ export async function refreshAllLiveStatuses(): Promise<void> {
     log.info("live.refresh_complete", { channels: channels.length, errors, ms: Date.now() - startedAt });
   } finally {
     liveRefreshing = false;
+    releaseMutation();
   }
 }
 
@@ -1327,15 +1339,15 @@ export function startScheduler() {
 
   // A cheap due-only pass gives fixed HH:mm schedules minute precision without
   // running adaptive maintenance work more often than configured above.
-  const manualSchedulesExist = db.prepare(`
+  const manualSchedulesExist = database.prepare(`
     SELECT 1 FROM channels c
     WHERE c.manual_status = 'active'
       AND c.refresh_schedule_days IS NOT NULL AND c.refresh_schedule_time IS NOT NULL
       AND EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id = c.channel_id AND uc.followed = 1)
     LIMIT 1
   `);
-  setInterval(() => {
-    if (!manualSchedulesExist.get()) return;
+  setInterval(async () => {
+    if (!await manualSchedulesExist.get()) return;
     refreshAll({ manualOnly: true }).catch((e) => log.error("refresh.manual_cron_failed", { error: e instanceof Error ? e.message : String(e) }));
   }, 60_000);
   log.info("scheduler.manual_feed_refresh", { intervalMin: 1 });
