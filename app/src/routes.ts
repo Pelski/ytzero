@@ -2345,7 +2345,7 @@ api.get("/channels/:id/refresh-schedule", (c) => {
 });
 
 api.put("/channels/:id/refresh-schedule", async (c) => {
-  const body = await c.req.json<{ mode?: unknown; days?: unknown; time?: unknown }>();
+  const body = await c.req.json<{ mode?: unknown; days?: unknown; times?: unknown; time?: unknown }>();
   if (body.mode !== "adaptive" && body.mode !== "manual") return c.json({ error: "mode must be adaptive or manual" }, 400);
   if (body.mode === "adaptive") {
     const result = db.prepare("UPDATE channels SET refresh_schedule_days = NULL, refresh_schedule_time = NULL WHERE channel_id = ?").run(c.req.param("id"));
@@ -2353,11 +2353,12 @@ api.put("/channels/:id/refresh-schedule", async (c) => {
   } else {
     const days = Array.isArray(body.days) ? [...new Set(body.days)] : [];
     const validDays = days.length > 0 && days.every((day) => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6);
-    const time = typeof body.time === "string" ? body.time : "";
-    const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
-    if (!validDays || !validTime) return c.json({ error: "manual schedule requires weekdays and HH:mm time" }, 400);
+    const requestedTimes = Array.isArray(body.times) ? body.times : typeof body.time === "string" ? [body.time] : [];
+    const times = [...new Set(requestedTimes)].filter((time): time is string => typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time)).sort();
+    const validTimes = requestedTimes.length > 0 && requestedTimes.every((time) => typeof time === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(time));
+    if (!validDays || !validTimes) return c.json({ error: "manual schedule requires weekdays and one or more HH:mm times" }, 400);
     const result = db.prepare("UPDATE channels SET refresh_schedule_days = ?, refresh_schedule_time = ? WHERE channel_id = ?")
-      .run(JSON.stringify(days.map(Number).sort()), time, c.req.param("id"));
+      .run(JSON.stringify(days.map(Number).sort()), JSON.stringify(times), c.req.param("id"));
     if (result.changes === 0) return c.json({ error: "not found" }, 404);
   }
   log.info("channel.refresh_schedule_updated", { channelId: c.req.param("id"), mode: body.mode });

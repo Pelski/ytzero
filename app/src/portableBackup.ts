@@ -44,7 +44,7 @@ const profilePath = (name: string) => (uuid = "") => `profiles/${uuid}/${name}`;
 export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "instance.settings", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/settings.json" },
   { id: "instance.plugins", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/plugins.jsonl" },
-  { id: "instance.channels", schemaVersion: 3, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
+  { id: "instance.channels", schemaVersion: 4, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
   { id: "profiles.index", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "profiles", path: () => "profiles/index.json" },
   { id: "profile.avatar", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "profiles", optional: true, path: (uuid = "") => `assets/avatars/${uuid}` },
   { id: "profile.settings", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
@@ -389,7 +389,7 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
         if (Object.hasOwn(row, "refresh_schedule_days") || Object.hasOwn(row, "refresh_schedule_time")) {
           const schedule = parseManualRefreshSchedule(row.refresh_schedule_days, row.refresh_schedule_time);
           db.prepare("UPDATE channels SET refresh_schedule_days=?, refresh_schedule_time=? WHERE channel_id=?")
-            .run(schedule ? JSON.stringify(schedule.days) : null, schedule?.time ?? null, row.channel_id);
+            .run(schedule ? JSON.stringify(schedule.days) : null, schedule ? JSON.stringify(schedule.times) : null, row.channel_id);
         }
         if (isChannelManualStatus(row.manual_status)) db.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(row.manual_status,row.channel_id);
       }

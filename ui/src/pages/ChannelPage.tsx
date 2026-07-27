@@ -17,6 +17,7 @@ import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages"
 import { Badge, Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
 import { formatAppDate, parseAppTimestamp } from "../dateTime";
 import ChannelRefreshScheduleDialog from "../components/ChannelRefreshScheduleDialog";
+import { markYouTubeUrl } from "../youtubeUrl";
 
 type Tab = "videos" | "shorts" | "playlists" | "processing";
 
@@ -427,7 +428,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                 <div className="channel-links">
                   {about.links.map((l) => (
                     <Tooltip key={l.url} text={l.url.replace(/^https?:\/\//, "").replace(/\/$/, "")} pos="bottom">
-                      <a href={l.url} target="_blank" rel="noreferrer" className="channel-link-item">
+                      <a href={markYouTubeUrl(l.url)} target="_blank" rel="noreferrer" className="channel-link-item">
                         <span className="channel-link-title">{l.title}</span>
                       </a>
                     </Tooltip>
@@ -583,7 +584,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
               </Menu>
           </Popover>
           {id && <ChannelRefreshScheduleDialog channelId={id} open={refreshScheduleOpen} onOpenChange={setRefreshScheduleOpen} />}
-          <ButtonAnchor href={`https://www.youtube.com/channel/${id}`} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink />}>YouTube</ButtonAnchor>
+          <ButtonAnchor href={markYouTubeUrl(`https://www.youtube.com/channel/${id}`)} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink />}>YouTube</ButtonAnchor>
         </div>
       </div>
 

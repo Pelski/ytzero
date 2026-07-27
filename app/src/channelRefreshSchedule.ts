@@ -2,14 +2,17 @@ import { addCalendarDays, storedUtcTimestampMs, zonedDateTimeParts, zonedDateTim
 
 export interface ManualRefreshSchedule {
   days: number[];
-  time: string;
+  times: string[];
 }
 
-export function parseManualRefreshSchedule(daysJson: string | null | undefined, time: string | null | undefined): ManualRefreshSchedule | null {
-  if (!time || !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return null;
+const validTime = (value: unknown): value is string => typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+export function parseManualRefreshSchedule(daysJson: string | null | undefined, storedTimes: string | null | undefined): ManualRefreshSchedule | null {
   try {
     const days = [...new Set((JSON.parse(daysJson ?? "[]") as unknown[]).filter((day): day is number => typeof day === "number" && Number.isInteger(day) && day >= 0 && day <= 6))].sort();
-    return days.length > 0 ? { days, time } : null;
+    const parsedTimes: unknown = validTime(storedTimes) ? [storedTimes] : JSON.parse(storedTimes ?? "[]");
+    const times = Array.isArray(parsedTimes) ? [...new Set(parsedTimes.filter(validTime))].sort() : [];
+    return days.length > 0 && times.length > 0 ? { days, times } : null;
   } catch {
     return null;
   }
@@ -24,8 +27,8 @@ function weekday(day: string) {
   return new Date(`${day}T12:00:00Z`).getUTCDay();
 }
 
-function occurrence(schedule: ManualRefreshSchedule, day: string, timeZone: string) {
-  const [hour, minute] = schedule.time.split(":").map(Number);
+function occurrence(time: string, day: string, timeZone: string) {
+  const [hour, minute] = time.split(":").map(Number);
   return zonedDateTimeToUtc(day, hour, minute, 0, timeZone).getTime();
 }
 
@@ -34,8 +37,8 @@ export function latestScheduleOccurrenceMs(schedule: ManualRefreshSchedule, nowM
   for (let offset = 0; offset <= 7; offset++) {
     const day = addCalendarDays(today, -offset);
     if (!schedule.days.includes(weekday(day))) continue;
-    const at = occurrence(schedule, day, timeZone);
-    if (at <= nowMs) return at;
+    const latest = schedule.times.map((time) => occurrence(time, day, timeZone)).filter((at) => at <= nowMs).sort((a, b) => b - a)[0];
+    if (latest != null) return latest;
   }
   return null;
 }
@@ -45,8 +48,8 @@ export function nextScheduleOccurrenceMs(schedule: ManualRefreshSchedule, nowMs:
   for (let offset = 0; offset <= 7; offset++) {
     const day = addCalendarDays(today, offset);
     if (!schedule.days.includes(weekday(day))) continue;
-    const at = occurrence(schedule, day, timeZone);
-    if (at > nowMs) return at;
+    const next = schedule.times.map((time) => occurrence(time, day, timeZone)).filter((at) => at > nowMs).sort((a, b) => a - b)[0];
+    if (next != null) return next;
   }
   throw new Error("manual refresh schedule has no next occurrence");
 }

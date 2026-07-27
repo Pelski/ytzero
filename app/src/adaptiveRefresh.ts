@@ -5,7 +5,7 @@ export interface RefreshCandidate {
   lastAttemptedAt: string | null;
   consecutiveFailures: number;
   publishedAt: string[];
-  manualSchedule?: { days: number[]; time: string } | null;
+  manualSchedule?: { days: number[]; times: string[] } | null;
   manualDue?: boolean;
 }
 
@@ -16,6 +16,7 @@ export interface AdaptiveRefreshOptions {
   minIntervalMs: number;
   maxIntervalMs: number;
   unknownIntervalMs: number;
+  inactiveMaxIntervalMs: number;
   force?: boolean;
 }
 
@@ -48,10 +49,23 @@ export function targetRefreshIntervalMs(candidate: RefreshCandidate, options: Ad
   const cadence = estimateUploadCadenceMs(candidate.publishedAt);
   const adaptive = cadence === null ? options.unknownIntervalMs : cadence / 24;
   const base = clamp(adaptive, options.minIntervalMs, options.maxIntervalMs);
+  const publishedTimes = candidate.publishedAt.map(parseTime).filter((value): value is number => value !== null);
+  const activityAt = publishedTimes.length > 0 ? Math.max(...publishedTimes) : parseTime(candidate.addedAt);
+  const age = activityAt === null ? 0 : Math.max(0, options.nowMs - activityAt);
+  const recencyFloor = age <= 2 * 86_400_000
+    ? 0
+    : age <= 7 * 86_400_000
+      ? 3 * 3_600_000
+      : age <= 30 * 86_400_000
+        ? 12 * 3_600_000
+        : age <= 90 * 86_400_000
+          ? 24 * 3_600_000
+          : options.inactiveMaxIntervalMs;
   const failures = Math.max(0, Math.floor(candidate.consecutiveFailures));
-  if (failures === 0) return base;
-  const failureBackoff = Math.min(options.maxIntervalMs * 2, options.minIntervalMs * 2 ** failures);
-  return Math.max(base, failureBackoff);
+  const failureBackoff = failures === 0
+    ? 0
+    : Math.min(options.inactiveMaxIntervalMs, options.minIntervalMs * 2 ** failures);
+  return Math.min(options.inactiveMaxIntervalMs, Math.max(base, recencyFloor, failureBackoff));
 }
 
 function lastAttemptMs(candidate: RefreshCandidate) {

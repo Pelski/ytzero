@@ -62,7 +62,7 @@ export type ChannelManualStatus = "active" | "paused" | "broken" | "banned" | "d
 export interface ChannelRefreshScheduleDetails {
   mode: "adaptive" | "manual";
   days: number[];
-  time: string;
+  times: string[];
   timeZone: string;
   nextManualAt: string | null;
   automatic: {
@@ -1036,7 +1036,7 @@ export const api = {
   setChannelDownloadMinDuration: (id: string, seconds: number | null) =>
     http(`/channels/${id}/download-min-duration`, { method: "PUT", body: JSON.stringify({ seconds }) }),
   channelRefreshSchedule: (id: string) => http<ChannelRefreshScheduleDetails>(`/channels/${id}/refresh-schedule`),
-  setChannelRefreshSchedule: (id: string, schedule: { mode: "adaptive" | "manual"; days: number[]; time: string }) =>
+  setChannelRefreshSchedule: (id: string, schedule: { mode: "adaptive" | "manual"; days: number[]; times: string[] }) =>
     http<ChannelRefreshScheduleDetails>(`/channels/${id}/refresh-schedule`, { method: "PUT", body: JSON.stringify(schedule) }),
   unfollowedChannels: () => http<{ channels: Channel[] }>("/channels/unfollowed"),
 

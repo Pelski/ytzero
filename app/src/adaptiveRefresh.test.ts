@@ -11,6 +11,7 @@ const options: AdaptiveRefreshOptions = {
   minIntervalMs: 10 * 60_000,
   maxIntervalMs: 12 * HOUR,
   unknownIntervalMs: 2 * HOUR,
+  inactiveMaxIntervalMs: 3 * DAY,
 };
 
 function candidate(channelId: string, overrides: Partial<RefreshCandidate> = {}): RefreshCandidate {
@@ -32,9 +33,9 @@ function dailyDates(days: number[]) {
 describe("adaptive feed refresh", () => {
   test("manual schedules add due refreshes without disabling adaptive timing", () => {
     const selected = selectRefreshBatch([
-      candidate("adaptive", { lastAttemptedAt: null }),
-      candidate("manual-waiting", { lastAttemptedAt: null, manualSchedule: { days: [1], time: "18:02" }, manualDue: false }),
-      candidate("manual-due", { lastAttemptedAt: "2026-01-01", manualSchedule: { days: [1], time: "18:02" }, manualDue: true }),
+      candidate("adaptive", { lastAttemptedAt: null, publishedAt: dailyDates([0, 1, 2]) }),
+      candidate("manual-waiting", { lastAttemptedAt: null, publishedAt: dailyDates([0, 1, 2]), manualSchedule: { days: [1], times: ["18:02"] }, manualDue: false }),
+      candidate("manual-due", { lastAttemptedAt: "2026-01-01", manualSchedule: { days: [1], times: ["18:02"] }, manualDue: true }),
     ], { ...options, batchSize: 3, fairnessSlots: 0 });
     expect(selected.map(({ channelId, reason }) => [channelId, reason])).toEqual([
       ["manual-due", "manual"],
@@ -50,7 +51,23 @@ describe("adaptive feed refresh", () => {
     expect(targetRefreshIntervalMs(candidate("hourly", { publishedAt: dailyDates([0, 1 / 24, 2 / 24]) }), options)).toBe(options.minIntervalMs);
     expect(targetRefreshIntervalMs(candidate("daily", { publishedAt: dailyDates([0, 1, 2]) }), options)).toBe(HOUR);
     expect(targetRefreshIntervalMs(candidate("monthly", { publishedAt: dailyDates([0, 30, 60]) }), options)).toBe(options.maxIntervalMs);
-    expect(targetRefreshIntervalMs(candidate("unknown"), options)).toBe(options.unknownIntervalMs);
+    expect(targetRefreshIntervalMs(candidate("unknown", { addedAt: dailyDates([1])[0] }), options)).toBe(options.unknownIntervalMs);
+  });
+
+  test("cools down channels as their latest upload gets older", () => {
+    const clustered = (latestDaysAgo: number) => candidate(`cluster-${latestDaysAgo}`, {
+      publishedAt: dailyDates([latestDaysAgo, latestDaysAgo + 1 / 24, latestDaysAgo + 2 / 24]),
+    });
+    expect(targetRefreshIntervalMs(clustered(1), options)).toBe(options.minIntervalMs);
+    expect(targetRefreshIntervalMs(clustered(3), options)).toBe(3 * HOUR);
+    expect(targetRefreshIntervalMs(clustered(10), options)).toBe(12 * HOUR);
+    expect(targetRefreshIntervalMs(clustered(45), options)).toBe(DAY);
+    expect(targetRefreshIntervalMs(clustered(365), options)).toBe(3 * DAY);
+  });
+
+  test("cools an unknown empty channel from its subscription age", () => {
+    expect(targetRefreshIntervalMs(candidate("new-empty", { addedAt: dailyDates([1])[0] }), options)).toBe(options.unknownIntervalMs);
+    expect(targetRefreshIntervalMs(candidate("old-empty", { addedAt: dailyDates([120])[0] }), options)).toBe(3 * DAY);
   });
 
   test("prioritises a frequent uploader at the same time since refresh", () => {

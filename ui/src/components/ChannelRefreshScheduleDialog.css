@@ -3,7 +3,10 @@
 .channel-refresh-dialog .ui-alert { margin-top: 14px; }
 .channel-refresh-manual { display: grid; gap: 14px; margin-top: 16px; }
 .channel-refresh-days { display: flex; flex-wrap: wrap; gap: 7px; }
-.channel-refresh-manual .ui-input[type="time"] { max-width: 180px; }
+.channel-refresh-times { display: grid; gap: 8px; }
+.channel-refresh-time-row { align-items: center; display: flex; gap: 8px; }
+.channel-refresh-time-row .ui-input[type="time"] { max-width: 180px; }
+.channel-refresh-add-time { justify-self: start; }
 .channel-refresh-footnote { align-items: center; color: var(--text-3); display: flex; font-size: 12px; gap: 7px; }
 .channel-refresh-footnote svg { height: 14px; width: 14px; }
 @media (max-width: 560px) { .channel-refresh-days .ui-chip { flex: 1 0 21%; } }

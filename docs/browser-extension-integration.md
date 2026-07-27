@@ -203,6 +203,14 @@ commands without a result after five seconds.
 The legacy `ytzero:enhance:captions-toggle-request` event remains compatible;
 new implementations may use only the general player event.
 
+## Intentional source-site navigation
+
+Links that deliberately open a source-site video or channel from YT Zero append
+the exact `#ytNoRedirect` fragment. The extension treats this marker as a
+one-navigation escape hatch and must not apply its automatic video redirect to
+that URL. An explicit redirect chosen later from the extension popup may ignore
+the marker because it is a new user action.
+
 ## Implementation brief for the extension agent
 
 1. Add a user-editable YT Zero instance URL and request host permission for that

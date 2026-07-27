@@ -419,9 +419,11 @@ timestamp is rebuildable audit metadata and is not exported.
 
 The fixed channel publication schedule (`refresh_schedule_days` and
 `refresh_schedule_time`) is portable shared configuration owned by
-`instance.channels` schema v3. Weekdays use stable `0..6` values and the time
-is interpreted in the app's portable IANA timezone. A v1/v2 archive leaves an
-existing schedule unchanged; a v3 archive restores or explicitly clears it.
+`instance.channels` schema v4. Weekdays use stable `0..6` values and refresh
+times are an ordered JSON array interpreted in the app's portable IANA
+timezone. A v1/v2 archive leaves an existing schedule unchanged; schema v3's
+single `HH:mm` value remains accepted and is normalized to an array on restore.
+A v4 archive restores or explicitly clears the complete multi-time schedule.
 
 ## Required tests
 

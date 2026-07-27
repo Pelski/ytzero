@@ -53,6 +53,7 @@ import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, Me
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
 import { normalizeSponsorSegments } from "../sponsorblock";
+import { markYouTubeUrl } from "../youtubeUrl";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
@@ -173,7 +174,7 @@ function Linkify({ text, baseUrl, channelHandles = new Map() }: { text: string; 
                 {url}
               </a>
             ) : (
-              <a href={url} target="_blank" rel="noreferrer" className="desc-link" onClick={(e) => e.stopPropagation()}>
+              <a href={markYouTubeUrl(url)} target="_blank" rel="noreferrer" className="desc-link" onClick={(e) => e.stopPropagation()}>
                 {url}
               </a>
             )}
@@ -1361,7 +1362,7 @@ export default function WatchPage() {
     }
     return destination === "webpage"
       ? `${window.location.origin}/watch/${video.video_id}${seconds ? `?t=${seconds}` : ""}`
-      : `https://www.youtube.com/watch?v=${video.video_id}${seconds ? `&t=${seconds}s` : ""}`;
+      : markYouTubeUrl(`https://www.youtube.com/watch?v=${video.video_id}${seconds ? `&t=${seconds}s` : ""}`);
   };
 
   const copyShareLink = (destination: "webpage" | "youtube") => {
@@ -1504,7 +1505,7 @@ export default function WatchPage() {
                     <p className="wp-panel-sub">{t("membersOnlyWatchDescription")}</p>
                     <ButtonAnchor
                       variant="primary"
-                      href={`https://www.youtube.com/watch?v=${video.video_id}`}
+                      href={markYouTubeUrl(`https://www.youtube.com/watch?v=${video.video_id}`)}
                       target="_blank"
                       rel="noreferrer"
                       leadingIcon={<ExternalLink />}
@@ -1714,7 +1715,7 @@ export default function WatchPage() {
             </div>
             {!isChildProfile && (
               <ButtonAnchor
-                href={`https://www.youtube.com/watch?v=${videoInfo.videoId}`}
+                href={markYouTubeUrl(`https://www.youtube.com/watch?v=${videoInfo.videoId}`)}
                 target="_blank"
                 rel="noreferrer"
                 leadingIcon={<ExternalLink size={15} />}
@@ -2007,7 +2008,7 @@ export default function WatchPage() {
               {!isChildProfile && (
                 <a
                   className="watch-youtube-link"
-                  href={`https://www.youtube.com/watch?v=${video.video_id}`}
+                  href={markYouTubeUrl(`https://www.youtube.com/watch?v=${video.video_id}`)}
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}

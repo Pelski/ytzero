@@ -52,6 +52,7 @@ function adaptiveRefreshOptions(force = false): AdaptiveRefreshOptions {
   const minIntervalMin = positiveNumber(process.env.ADAPTIVE_REFRESH_MIN_MINUTES, 10);
   const maxIntervalMin = Math.max(minIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_MAX_MINUTES, 12 * 60));
   const unknownIntervalMin = Math.min(maxIntervalMin, Math.max(minIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_UNKNOWN_MINUTES, 2 * 60)));
+  const inactiveMaxIntervalMin = Math.min(3 * 24 * 60, Math.max(maxIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_INACTIVE_MAX_MINUTES, 3 * 24 * 60)));
   return {
     nowMs: Date.now(),
     batchSize: FEED_REFRESH_BATCH_SIZE,
@@ -59,6 +60,7 @@ function adaptiveRefreshOptions(force = false): AdaptiveRefreshOptions {
     minIntervalMs: minIntervalMin * 60_000,
     maxIntervalMs: maxIntervalMin * 60_000,
     unknownIntervalMs: unknownIntervalMin * 60_000,
+    inactiveMaxIntervalMs: inactiveMaxIntervalMin * 60_000,
     force,
   };
 }
@@ -138,7 +140,7 @@ export function channelRefreshDiagnostics(channelId: string) {
   return {
     mode: manualSchedule ? "manual" as const : "adaptive" as const,
     days: manualSchedule?.days ?? [],
-    time: manualSchedule?.time ?? "18:02",
+    times: manualSchedule?.times ?? ["18:02"],
     timeZone,
     nextManualAt: manualSchedule ? new Date(nextScheduleOccurrenceMs(manualSchedule, Date.now(), timeZone)).toISOString() : null,
     automatic: {
@@ -1114,6 +1116,17 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
       force: Boolean(options.force),
       manualOnly: Boolean(options.manualOnly),
       followedByStatus: followedChannelStatusCounts(),
+      selection: channels.map((channel) => ({
+        channelId: channel.channelId,
+        reason: channel.reason,
+        latestUploadAt: channel.publishedAt[0] ?? null,
+        cadenceHours: (() => {
+          const cadence = estimateUploadCadenceMs(channel.publishedAt);
+          return cadence === null ? null : Math.round(cadence / 360_000) / 10;
+        })(),
+        targetIntervalMin: Math.round(channel.targetIntervalMs / 60_000),
+        overdueRatio: Number.isFinite(channel.overdueRatio) ? Math.round(channel.overdueRatio * 100) / 100 : null,
+      })),
     });
     const markAttempted = db.prepare("UPDATE channels SET feed_refresh_attempted_at = datetime('now') WHERE channel_id = ?");
     const markSucceeded = db.prepare("UPDATE channels SET feed_refresh_failures = 0 WHERE channel_id = ?");
@@ -1309,6 +1322,7 @@ export function startScheduler() {
     fairnessSlots: FEED_REFRESH_FAIRNESS_SLOTS,
     adaptiveMinIntervalMin: positiveNumber(process.env.ADAPTIVE_REFRESH_MIN_MINUTES, 10),
     adaptiveMaxIntervalMin: positiveNumber(process.env.ADAPTIVE_REFRESH_MAX_MINUTES, 12 * 60),
+    adaptiveInactiveMaxIntervalMin: Math.min(3 * 24 * 60, positiveNumber(process.env.ADAPTIVE_REFRESH_INACTIVE_MAX_MINUTES, 3 * 24 * 60)),
   });
 
   // A cheap due-only pass gives fixed HH:mm schedules minute precision without

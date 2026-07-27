@@ -566,7 +566,8 @@ try { db.exec("ALTER TABLE channels ADD COLUMN feed_refresh_attempted_at TEXT");
 try { db.exec("ALTER TABLE channels ADD COLUMN feed_refresh_failures INTEGER NOT NULL DEFAULT 0"); } catch {}
 // Optional operator-owned publication pattern. When both values are valid it
 // adds fixed refreshes alongside adaptive RSS timing. Days are JSON weekday
-// numbers (0=Sunday), while time is an HH:mm value in the app timezone.
+// numbers (0=Sunday); the legacy-named time column stores a JSON array of
+// HH:mm values and still accepts the original single value on read.
 try { db.exec("ALTER TABLE channels ADD COLUMN refresh_schedule_days TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN refresh_schedule_time TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_json TEXT"); } catch {}
