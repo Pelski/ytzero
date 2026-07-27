@@ -109,6 +109,7 @@ function VideoCard({
   readOnly = false,
   entering = false,
   showFoundTime = false,
+  processing = video.published_at == null || video.published_at === "",
 }: {
   video: Video;
   onPlay: (v: Video) => void;
@@ -130,6 +131,8 @@ function VideoCard({
   entering?: boolean;
   /** Main-feed arrival view: show both YouTube publication and first-seen times. */
   showFoundTime?: boolean;
+  /** Metadata is still being enriched; blur the thumbnail and show progress. */
+  processing?: boolean;
 }) {
   const { t, language, locale } = useI18n();
   const navigate = useNavigate();
@@ -423,7 +426,7 @@ function VideoCard({
           </Tooltip>
         )}
         <div
-          className={`thumb-wrap${actionsOpen ? " controls-near" : ""}`}
+          className={`thumb-wrap${actionsOpen ? " controls-near" : ""}${processing ? " thumb-wrap--processing" : ""}`}
           style={{ "--actions-proximity": actionProximity } as CSSProperties}
           onPointerMove={selectable || readOnly ? undefined : updateActionProximity}
           onPointerLeave={selectable || readOnly ? undefined : resetActionProximity}
@@ -459,6 +462,7 @@ function VideoCard({
               />
             </Link>
           </Tooltip>
+          {processing && <span className="video-card-processing" role="status" aria-label={t("processing")}><span className="video-card-processing__spinner" /></span>}
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}

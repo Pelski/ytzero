@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { publishAppEvent, subscribeToAppEvents } from "./appEvents";
 import { db, getSetting, setSetting, getUserSetting, setUserSetting, SETTING_DEFAULTS, GLOBAL_SETTING_KEYS, USER_SETTING_KEYS } from "./db";
 import {
   type ChannelAbout,
@@ -22,7 +23,7 @@ import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { backfillImportedVideos, importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelMissingMetadata, syncChannelPlaylists, syncPlaylist } from "./refresher";
+import { backfillImportedVideos, channelRefreshDiagnostics, importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelMissingMetadata, syncChannelPlaylists, syncPlaylist } from "./refresher";
 import { IMPORTED_CHANNEL_ID, isRelevantEntryName, isZip, parseTakeoutFiles, unzipEntries, type TakeoutBundle, type TakeoutHistoryEntry, type TakeoutPlaylist } from "./takeout";
 import { createImportSession, deleteImportSession, getImportSession } from "./importSession";
 import { applyRuleToAllVideos } from "./autotags";
@@ -34,7 +35,7 @@ import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
-import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
@@ -780,6 +781,8 @@ api.post("/child/now-watching/:id/stop", (c) => {
   const childId = Number(c.req.param("id"));
   if (!Number.isInteger(childId) || !isChildUser(childId)) return c.json({ error: "not found" }, 404);
   lockChildByParent(childId);
+  publishAppEvent("child-status");
+  publishAppEvent("child-watching");
   log.info("child.playback_stopped", { user_id: childId, by_user_id: currentUserId(c) });
   return c.json({ ok: true });
 });
@@ -797,6 +800,7 @@ api.post("/child/time-request", async (c) => {
   const row = db.prepare(
     "INSERT INTO child_time_requests (user_id, video_id) VALUES (?, ?) RETURNING id"
   ).get(uid, videoId) as { id: number };
+  publishAppEvent("child-requests");
   log.info("child.time_requested", { user_id: uid, video_id: videoId });
   return c.json({ ok: true, id: row.id });
 });
@@ -836,6 +840,7 @@ api.post("/child/time-requests/:id/resolve", async (c) => {
 
   if (action === "dismiss") {
     db.prepare("UPDATE child_time_requests SET status = 'dismissed', resolved_at = datetime('now') WHERE id = ?").run(reqId);
+    publishAppEvent("child-requests");
     return c.json({ ok: true });
   }
   if (action !== "approve" || !CHILD_GRANTS.includes(grant)) return c.json({ error: "invalid action" }, 400);
@@ -846,6 +851,8 @@ api.post("/child/time-requests/:id/resolve", async (c) => {
   if (isChildLockEnabled()) {
     if (!isSixDigitPin(pin) || !(await verifyChildLockPin(pin))) {
       registerChildLockFailure(request.user_id);
+      publishAppEvent("child-status");
+      publishAppEvent("child-watching");
       return c.json({ error: "invalid PIN", pin_locked: isPinLocked(request.user_id) }, 401);
     }
     clearChildLockFailures(request.user_id);
@@ -854,6 +861,9 @@ api.post("/child/time-requests/:id/resolve", async (c) => {
   db.prepare(
     "UPDATE child_time_requests SET status = 'approved', grant_type = ?, resolved_at = datetime('now') WHERE id = ?"
   ).run(grant, reqId);
+  publishAppEvent("child-status");
+  publishAppEvent("child-watching");
+  publishAppEvent("child-requests");
   log.info("child.time_granted", { user_id: request.user_id, grant });
   return c.json({ ok: true });
 });
@@ -864,6 +874,8 @@ api.post("/profiles/:id/unlock-child", (c) => {
   const id = Number(c.req.param("id"));
   if (!isChildUser(id)) return c.json({ error: "not a child profile" }, 400);
   unlockChildProfile(id);
+  publishAppEvent("child-status");
+  publishAppEvent("child-watching");
   log.info("child.pin_unlocked", { id });
   return c.json({ ok: true });
 });
@@ -2327,6 +2339,31 @@ api.get("/channels/:id", (c) => {
   return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, hide_members_only_from_feed: sub?.hide_members_only_from_feed ?? null, hide_members_only_on_channel: sub?.hide_members_only_on_channel ?? null, members_only_visibility: sub?.members_only_visibility === "feed" ? "everywhere" : sub?.members_only_visibility ?? "default", tags } });
 });
 
+api.get("/channels/:id/refresh-schedule", (c) => {
+  const details = channelRefreshDiagnostics(c.req.param("id"));
+  return details ? c.json(details) : c.json({ error: "not found" }, 404);
+});
+
+api.put("/channels/:id/refresh-schedule", async (c) => {
+  const body = await c.req.json<{ mode?: unknown; days?: unknown; time?: unknown }>();
+  if (body.mode !== "adaptive" && body.mode !== "manual") return c.json({ error: "mode must be adaptive or manual" }, 400);
+  if (body.mode === "adaptive") {
+    const result = db.prepare("UPDATE channels SET refresh_schedule_days = NULL, refresh_schedule_time = NULL WHERE channel_id = ?").run(c.req.param("id"));
+    if (result.changes === 0) return c.json({ error: "not found" }, 404);
+  } else {
+    const days = Array.isArray(body.days) ? [...new Set(body.days)] : [];
+    const validDays = days.length > 0 && days.every((day) => Number.isInteger(day) && Number(day) >= 0 && Number(day) <= 6);
+    const time = typeof body.time === "string" ? body.time : "";
+    const validTime = /^([01]\d|2[0-3]):[0-5]\d$/.test(time);
+    if (!validDays || !validTime) return c.json({ error: "manual schedule requires weekdays and HH:mm time" }, 400);
+    const result = db.prepare("UPDATE channels SET refresh_schedule_days = ?, refresh_schedule_time = ? WHERE channel_id = ?")
+      .run(JSON.stringify(days.map(Number).sort()), time, c.req.param("id"));
+    if (result.changes === 0) return c.json({ error: "not found" }, 404);
+  }
+  log.info("channel.refresh_schedule_updated", { channelId: c.req.param("id"), mode: body.mode });
+  return c.json(channelRefreshDiagnostics(c.req.param("id"))!);
+});
+
 api.post("/channels/:id/sync", async (c) => {
   const channelId = c.req.param("id");
   if (channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
@@ -2382,9 +2419,30 @@ api.get("/channel-playlists/:id/videos", async (c) => {
   }
   const rows = db.prepare(`${videoSelect(uid)}
     JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
-    WHERE cpv.playlist_id = ? AND v.published_at IS NOT NULL AND v.published_at != ''
+    WHERE cpv.playlist_id = ?
     ORDER BY cpv.position ASC`).all(id) as VideoRow[];
-  return c.json({ videos: attachTags(uid, rows) });
+  const attached = attachTags(uid, rows);
+  return c.json({
+    videos: attached.filter((video) => video.published_at != null && video.published_at !== ""),
+    processing: attached.filter((video) => video.published_at == null || video.published_at === ""),
+  });
+});
+
+api.post("/channel-playlists/:id/download", (c) => {
+  if (isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  const playlist = db.prepare("SELECT title FROM channel_playlists WHERE playlist_id = ?").get(c.req.param("id")) as { title: string } | null;
+  if (!playlist) return c.json({ error: "not found" }, 404);
+  const videoIds = (db.prepare(`
+    SELECT v.video_id FROM channel_playlist_videos cpv
+    JOIN videos v ON v.video_id = cpv.video_id
+    WHERE cpv.playlist_id = ? AND v.is_private = 0
+      AND v.live_status NOT IN ('live', 'upcoming')
+    ORDER BY cpv.position ASC
+  `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
+  const result = enqueuePlaylistDownloads(videoIds, playlist.title);
+  log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.title, ...result });
+  return c.json(result);
 });
 
 api.put("/channel-playlists/:id/follow", async (c) => {
@@ -2546,6 +2604,24 @@ api.get("/playlists/:id", (c) => {
     )
     .all(id) as VideoRow[];
   return c.json({ playlist, videos: attachTags(uid, rows) });
+});
+
+api.post("/playlists/:id/download", (c) => {
+  const uid = currentUserId(c);
+  if (isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  const playlist = db.prepare("SELECT name FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { name: string } | null;
+  if (!playlist) return c.json({ error: "not found" }, 404);
+  const videoIds = (db.prepare(`
+    SELECT v.video_id FROM user_playlist_videos upv
+    JOIN videos v ON v.video_id = upv.video_id
+    WHERE upv.playlist_id = ? AND v.is_private = 0
+      AND v.live_status NOT IN ('live', 'upcoming')
+    ORDER BY upv.added_at ASC
+  `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
+  const result = enqueuePlaylistDownloads(videoIds, playlist.name);
+  log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.name, ...result });
+  return c.json(result);
 });
 
 api.post("/playlists/:id/videos", async (c) => {
@@ -3037,6 +3113,7 @@ api.post("/child-lock/enable", async (c) => {
   if (!isSixDigitPin(body.pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
   setSetting("child_lock_pin_hash", await hashChildLockPin(body.pin));
   setSetting("child_lock_enabled", "1");
+  publishAppEvent("child-requests");
   // Admin access no longer depends on the shared unlock cookie. Clear any stale
   // cookie so other profiles in this browser are protected immediately.
   clearChildLockSession(c);
@@ -3064,6 +3141,7 @@ api.post("/child-lock/change-pin", async (c) => {
   const body = await c.req.json().catch(() => ({}));
   if (!isSixDigitPin(body.new_pin)) return c.json({ error: "PIN must have 6 digits" }, 400);
   setSetting("child_lock_pin_hash", await hashChildLockPin(body.new_pin));
+  publishAppEvent("child-requests");
   clearChildLockSession(c);
   return c.json({ child_lock: childLockStatus(c) });
 });
@@ -3073,6 +3151,7 @@ api.post("/child-lock/disable", async (c) => {
   if (!isChildLockEnabled()) return c.json({ child_lock: childLockStatus(c) });
   setSetting("child_lock_enabled", "0");
   setSetting("child_lock_pin_hash", "");
+  publishAppEvent("child-requests");
   clearChildLockSession(c);
   return c.json({ child_lock: childLockStatus(c) });
 });
@@ -3220,6 +3299,10 @@ api.post("/profiles", async (c) => {
     .prepare("INSERT INTO users (name, avatar_color, pin_hash, oidc_subject, is_child, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *")
     .get(name.trim(), avatar_color || "#7c5cff", pinHash, identity || null, is_child ? 1 : 0, nextOrder, crypto.randomUUID()) as UserRow;
   if (is_child) setUserSetting(row.id, "child_local_only", "1");
+  if (is_child) {
+    publishAppEvent("child-status");
+    publishAppEvent("child-watching");
+  }
   log.info("profile.created", { id: row.id, name: row.name });
   return c.json({ profile: serializeProfile(row, currentUserId(c), isAdmin(c) && mapping.mapped) });
 });
@@ -3287,6 +3370,10 @@ api.patch("/profiles/:id", async (c) => {
     }
   }
   const row = db.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
+  if (body.is_child !== undefined || body.child_config !== undefined || body.pin !== undefined) {
+    publishAppEvent("child-status");
+    publishAppEvent("child-watching");
+  }
   return c.json({ profile: serializeProfile(row, currentUserId(c), isAdmin(c) && oidcProfileMapping().mapped) });
 });
 
@@ -3310,6 +3397,10 @@ api.delete("/profiles/:id", async (c) => {
     }
   }
   db.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all per-user state
+  if (user.is_child) {
+    publishAppEvent("child-status");
+    publishAppEvent("child-watching");
+  }
   log.info("profile.deleted", { id });
   if (deletingOwnProfile) {
     // The active profile just deleted itself → fall back to the first remaining one.
@@ -3385,6 +3476,8 @@ api.post("/profiles/switch", async (c) => {
   if (current && current.id !== user.id && current.is_child === 1 && isChildLockEnabled()) {
     if (!isSixDigitPin(child_lock_pin) || !(await verifyChildLockPin(child_lock_pin))) {
       registerChildLockFailure(current.id);
+      publishAppEvent("child-status");
+      publishAppEvent("child-watching");
       return c.json({ error: "invalid PIN", pin_locked: isPinLocked(current.id) }, 401);
     }
     clearChildLockFailures(current.id);
@@ -3729,6 +3822,33 @@ api.get("/config", (c) => {
   return c.json({ app_url: process.env.APP_URL ?? "" });
 });
 
+// One authenticated stream replaces the small periodic API polls in the UI.
+// Events are invalidation signals; each view reloads only its own compact data.
+api.get("/events", (c) => {
+  c.header("X-Accel-Buffering", "no");
+  c.header("Cache-Control", "no-cache, no-transform");
+  return streamSSE(c, async (stream) => {
+    let stopped = false;
+    let id = 1;
+    let writes = Promise.resolve();
+    const enqueue = (event: string, data: unknown) => {
+      if (stopped) return;
+      writes = writes.then(() => stream.writeSSE({ event, data: JSON.stringify(data), id: String(id++) }));
+    };
+    const unsubscribe = subscribeToAppEvents((event) => enqueue("app", event));
+    enqueue("ready", {});
+    await new Promise<void>((resolveStream) => {
+      const heartbeat = setInterval(() => enqueue("ping", { at: Date.now() }), 15_000);
+      stream.onAbort(() => {
+        stopped = true;
+        clearInterval(heartbeat);
+        unsubscribe();
+        resolveStream();
+      });
+    });
+  });
+});
+
 // ---------- refresh ----------
 
 api.post("/refresh", async (c) => {
@@ -3808,10 +3928,12 @@ api.get("/notifications", (c) => {
 api.post("/notifications/:id/read", (c) => {
   const uid = currentUserId(c);
   db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE id = ? AND user_id = ?").run(Number(c.req.param("id")), uid);
+  publishAppEvent("notifications");
   return c.json({ ok: true });
 });
 
 api.post("/notifications/read-all", (c) => {
   db.prepare("UPDATE notifications SET read_at = COALESCE(read_at, datetime('now')) WHERE user_id = ?").run(currentUserId(c));
+  publishAppEvent("notifications");
   return c.json({ ok: true });
 });

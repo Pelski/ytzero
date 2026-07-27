@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { downloadCookieAttempts, downloadFormat } from "./downloadStrategy";
+import { downloadCookieAttempts, downloadFormat, renderDownloadOutputTemplate } from "./downloadStrategy";
 
 describe("download strategy", () => {
   test("caps every format fallback at the selected quality", () => {
@@ -15,5 +15,12 @@ describe("download strategy", () => {
   test("tries public extraction before configured cookies", () => {
     expect(downloadCookieAttempts(true)).toEqual([false, true]);
     expect(downloadCookieAttempts(false)).toEqual([false]);
+  });
+
+  test("renders playlist context only when the download supplies it", () => {
+    const template = "{playlist}/{date} - {title} [{id}]";
+    const base = { id: "abc123", date: "2026-07-27", title: "Episode", playlist: "Season 1" };
+    expect(renderDownloadOutputTemplate(template, base, "abc123")).toBe("Season 1/2026-07-27 - Episode [abc123]");
+    expect(renderDownloadOutputTemplate(template, { ...base, playlist: "" }, "abc123")).toBe("2026-07-27 - Episode [abc123]");
   });
 });

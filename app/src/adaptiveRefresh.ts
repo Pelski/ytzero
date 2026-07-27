@@ -5,6 +5,8 @@ export interface RefreshCandidate {
   lastAttemptedAt: string | null;
   consecutiveFailures: number;
   publishedAt: string[];
+  manualSchedule?: { days: number[]; time: string } | null;
+  manualDue?: boolean;
 }
 
 export interface AdaptiveRefreshOptions {
@@ -20,7 +22,7 @@ export interface AdaptiveRefreshOptions {
 export interface ScheduledRefresh extends RefreshCandidate {
   targetIntervalMs: number;
   overdueRatio: number;
-  reason: "adaptive" | "fairness";
+  reason: "manual" | "adaptive" | "fairness";
 }
 
 const parseTime = (value: string | null | undefined) => {
@@ -72,7 +74,10 @@ function oldestFirst(a: RefreshCandidate, b: RefreshCandidate) {
 export function selectRefreshBatch(candidates: RefreshCandidate[], options: AdaptiveRefreshOptions): ScheduledRefresh[] {
   const batchSize = Math.max(0, Math.floor(options.batchSize));
   const fairnessSlots = clamp(Math.floor(options.fairnessSlots), 0, batchSize);
-  const scored = candidates.map((candidate) => {
+  const manual = candidates.filter((candidate) => candidate.manualSchedule && candidate.manualDue);
+  const manualIds = new Set(manual.map((candidate) => candidate.channelId));
+  const remainingSize = Math.max(0, batchSize - manual.length);
+  const scored = candidates.filter((candidate) => !manualIds.has(candidate.channelId)).map((candidate) => {
     const targetIntervalMs = targetRefreshIntervalMs(candidate, options);
     const attemptedAt = lastAttemptMs(candidate);
     const elapsed = attemptedAt === null ? Number.POSITIVE_INFINITY : Math.max(0, options.nowMs - attemptedAt);
@@ -81,15 +86,16 @@ export function selectRefreshBatch(candidates: RefreshCandidate[], options: Adap
 
   const adaptive = [...scored]
     .sort((a, b) => b.overdueRatio - a.overdueRatio || oldestFirst(a, b))
-    .slice(0, Math.max(0, batchSize - fairnessSlots));
+    .slice(0, Math.max(0, remainingSize - Math.min(fairnessSlots, remainingSize)));
   const adaptiveIds = new Set(adaptive.map((candidate) => candidate.channelId));
   const fairness = scored
     .filter((candidate) => !adaptiveIds.has(candidate.channelId))
     .sort(oldestFirst)
-    .slice(0, fairnessSlots);
+    .slice(0, Math.min(fairnessSlots, remainingSize));
 
-  // Adaptive work runs first so a slow stale feed cannot delay likely uploads.
+  // Due fixed schedules run first; adaptive work follows before fairness work.
   return [
+    ...manual.slice(0, batchSize).map((candidate) => ({ ...candidate, targetIntervalMs: 0, overdueRatio: Number.POSITIVE_INFINITY, reason: "manual" as const })),
     ...adaptive.map((candidate) => ({ ...candidate, reason: "adaptive" as const })),
     ...fairness.map((candidate) => ({ ...candidate, reason: "fairness" as const })),
   ];

@@ -9,6 +9,7 @@ import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
+import { subscribeServerEvent } from "../serverEvents";
 
 export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -26,8 +27,7 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
 
   useEffect(() => {
     load();
-    const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
+    return subscribeServerEvent("live", load);
   }, [load]);
 
   const live = videos.filter((v) => v.live_status === "live");

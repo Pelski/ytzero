@@ -42,6 +42,7 @@ import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
 import { Badge, Button, Toast } from "./components/ui";
 import { ENHANCE_CONFIGURATION_ELEMENT_ID, serializeEnhanceConfiguration } from "./enhanceBridge";
+import { subscribeServerEvent } from "./serverEvents";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
@@ -419,31 +420,25 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
         .then((r) => setLiveCount(r.videos.filter((v) => v.live_status === "live").length))
         .catch(() => {});
     load();
-    const t = setInterval(load, 120_000);
-    return () => clearInterval(t);
+    return subscribeServerEvent("live", load);
   }, []);
 
-  // Child watch-time limit: poll the status while a child profile is active.
-  // Profile switches reload the whole page, so a non-child answer is final.
+  // Child watch-time and parent stop/grant changes arrive through the shared
+  // application event stream; profile switches still reload the whole page.
   useEffect(() => {
-    let timer: number | undefined;
-    let stopped = false;
-    const tick = () => {
+    const load = () => {
       api.childStatus().then((s) => {
-        if (stopped) return;
         setChildStatus(s);
-        if (!s.is_child) return;
-        // Keep this short so a parent pressing "stop" in the watching panel
-        // interrupts playback on the child screen within a few seconds.
-        const next = s.is_child ? 3 : 60;
-        timer = window.setTimeout(tick, next * 1000);
-      }).catch(() => {
-        if (!stopped) timer = window.setTimeout(tick, 60_000);
-      });
+      }).catch(() => {});
     };
-    tick();
-    return () => { stopped = true; if (timer) window.clearTimeout(timer); };
+    load();
   }, []);
+
+  useEffect(() => {
+    if (!childStatus?.is_child) return;
+    const load = () => { api.childStatus().then(setChildStatus).catch(() => {}); };
+    return subscribeServerEvent("child-status", load);
+  }, [childStatus?.is_child]);
 
   // When the limit kicks in mid-video, leave the player page so playback stops
   // (the lock overlay alone would keep the audio running underneath).

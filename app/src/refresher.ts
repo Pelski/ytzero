@@ -10,7 +10,10 @@ import { runAutomaticUpdateChecks } from "./updates";
 import { notifyFollowedPlaylistVideos } from "./notifications";
 import { IMPORTED_CHANNEL_ID } from "./takeout";
 import { maintenanceActive } from "./maintenance";
-import { selectRefreshBatch, type AdaptiveRefreshOptions, type RefreshCandidate } from "./adaptiveRefresh";
+import { estimateUploadCadenceMs, selectRefreshBatch, targetRefreshIntervalMs, type AdaptiveRefreshOptions, type RefreshCandidate } from "./adaptiveRefresh";
+import { publishAppEventSoon } from "./appEvents";
+import { configuredTimeZone } from "./timeZone";
+import { manualScheduleIsDue, nextScheduleOccurrenceMs, parseManualRefreshSchedule } from "./channelRefreshSchedule";
 
 const upsertVideo = db.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -63,7 +66,8 @@ function adaptiveRefreshOptions(force = false): AdaptiveRefreshOptions {
 function feedRefreshCandidates(): RefreshCandidate[] {
   const channelRows = db.prepare(`
     SELECT c.channel_id, c.added_at, c.last_refreshed_at,
-           c.feed_refresh_attempted_at, c.feed_refresh_failures
+           c.feed_refresh_attempted_at, c.feed_refresh_failures,
+           c.refresh_schedule_days, c.refresh_schedule_time
     FROM channels c
     WHERE c.channel_id IN (SELECT channel_id FROM user_channels WHERE followed = 1)
       AND c.manual_status = 'active'
@@ -73,6 +77,8 @@ function feedRefreshCandidates(): RefreshCandidate[] {
     last_refreshed_at: string | null;
     feed_refresh_attempted_at: string | null;
     feed_refresh_failures: number;
+    refresh_schedule_days: string | null;
+    refresh_schedule_time: string | null;
   }[];
   if (channelRows.length === 0) return [];
 
@@ -85,14 +91,65 @@ function feedRefreshCandidates(): RefreshCandidate[] {
     LIMIT 6
   `);
 
-  return channelRows.map((row) => ({
-    channelId: row.channel_id,
-    addedAt: row.added_at,
-    lastRefreshedAt: row.last_refreshed_at,
+  return channelRows.map((row) => {
+    const manualSchedule = parseManualRefreshSchedule(row.refresh_schedule_days, row.refresh_schedule_time);
+    return {
+      channelId: row.channel_id,
+      addedAt: row.added_at,
+      lastRefreshedAt: row.last_refreshed_at,
+      lastAttemptedAt: row.feed_refresh_attempted_at,
+      consecutiveFailures: Number(row.feed_refresh_failures) || 0,
+      publishedAt: (recentUploads.all(row.channel_id) as { published_at: string }[]).map((video) => video.published_at),
+      manualSchedule,
+      manualDue: manualSchedule ? manualScheduleIsDue(manualSchedule, row.feed_refresh_attempted_at, Date.now(), configuredTimeZone()) : false,
+    };
+  });
+}
+
+export function channelRefreshDiagnostics(channelId: string) {
+  const row = db.prepare(`
+    SELECT added_at, last_refreshed_at, feed_refresh_attempted_at,
+           feed_refresh_failures, refresh_schedule_days, refresh_schedule_time
+    FROM channels WHERE channel_id = ?
+  `).get(channelId) as {
+    added_at: string | null; last_refreshed_at: string | null; feed_refresh_attempted_at: string | null;
+    feed_refresh_failures: number; refresh_schedule_days: string | null; refresh_schedule_time: string | null;
+  } | null;
+  if (!row) return null;
+  const publishedAt = (db.prepare(`
+    SELECT published_at FROM videos
+    WHERE channel_id = ? AND published_at IS NOT NULL AND published_at != ''
+      AND live_status NOT IN ('live', 'upcoming')
+    ORDER BY published_at DESC LIMIT 6
+  `).all(channelId) as { published_at: string }[]).map((video) => video.published_at);
+  const candidate: RefreshCandidate = {
+    channelId, addedAt: row.added_at, lastRefreshedAt: row.last_refreshed_at,
     lastAttemptedAt: row.feed_refresh_attempted_at,
-    consecutiveFailures: Number(row.feed_refresh_failures) || 0,
-    publishedAt: (recentUploads.all(row.channel_id) as { published_at: string }[]).map((video) => video.published_at),
-  }));
+    consecutiveFailures: Number(row.feed_refresh_failures) || 0, publishedAt,
+  };
+  const options = adaptiveRefreshOptions();
+  const cadenceMs = estimateUploadCadenceMs(publishedAt);
+  const targetIntervalMs = targetRefreshIntervalMs(candidate, options);
+  const lastAttemptMs = row.feed_refresh_attempted_at
+    ? Date.parse(`${row.feed_refresh_attempted_at.replace(" ", "T")}Z`)
+    : null;
+  const manualSchedule = parseManualRefreshSchedule(row.refresh_schedule_days, row.refresh_schedule_time);
+  const timeZone = configuredTimeZone();
+  return {
+    mode: manualSchedule ? "manual" as const : "adaptive" as const,
+    days: manualSchedule?.days ?? [],
+    time: manualSchedule?.time ?? "18:02",
+    timeZone,
+    nextManualAt: manualSchedule ? new Date(nextScheduleOccurrenceMs(manualSchedule, Date.now(), timeZone)).toISOString() : null,
+    automatic: {
+      sampleCount: publishedAt.length,
+      cadenceMs,
+      targetIntervalMs,
+      consecutiveFailures: candidate.consecutiveFailures,
+      lastAttemptedAt: lastAttemptMs !== null && Number.isFinite(lastAttemptMs) ? new Date(lastAttemptMs).toISOString() : null,
+      nextRefreshAt: lastAttemptMs !== null && Number.isFinite(lastAttemptMs) ? new Date(lastAttemptMs + targetIntervalMs).toISOString() : null,
+    },
+  };
 }
 
 function followedChannelStatusCounts(): Record<string, number> {
@@ -571,6 +628,7 @@ export async function refreshLiveStatus(channelId: string) {
       log.info("live.video_added", { channelId, videoId: live.videoId, status: live.status, title: live.title });
     }
   }
+  publishAppEventSoon("live", 1_200);
 }
 
 /**
@@ -1032,7 +1090,7 @@ export async function backfillImportedVideos(limit = 15) {
 
 let refreshing = false;
 
-export async function refreshAll(options: { force?: boolean } = {}): Promise<{ channels: number; added: number; errors: string[] }> {
+export async function refreshAll(options: { force?: boolean; manualOnly?: boolean } = {}): Promise<{ channels: number; added: number; errors: string[] }> {
   if (maintenanceActive()) {
     log.info("refresh.skipped", { reason: "maintenance" });
     return { channels: 0, added: 0, errors: [] };
@@ -1046,12 +1104,15 @@ export async function refreshAll(options: { force?: boolean } = {}): Promise<{ c
   try {
     // Any channel at least one profile follows. A channel followed by several
     // profiles is fetched once here (dedup), then surfaces in each feed.
-    const channels = selectRefreshBatch(feedRefreshCandidates(), adaptiveRefreshOptions(options.force));
+    const selected = selectRefreshBatch(feedRefreshCandidates(), adaptiveRefreshOptions(options.force));
+    const channels = options.manualOnly ? selected.filter((channel) => channel.reason === "manual") : selected;
     log.info("refresh.start", {
       channels: channels.length,
+      manual: channels.filter((channel) => channel.reason === "manual").length,
       adaptive: channels.filter((channel) => channel.reason === "adaptive").length,
       fairness: channels.filter((channel) => channel.reason === "fairness").length,
       force: Boolean(options.force),
+      manualOnly: Boolean(options.manualOnly),
       followedByStatus: followedChannelStatusCounts(),
     });
     const markAttempted = db.prepare("UPDATE channels SET feed_refresh_attempted_at = datetime('now') WHERE channel_id = ?");
@@ -1082,7 +1143,7 @@ export async function refreshAll(options: { force?: boolean } = {}): Promise<{ c
     }
     // Resolve any remaining unchecked videos (e.g. rows from before the
     // shorts column existed).
-    await backfillShorts();
+    if (!options.manualOnly) await backfillShorts();
     log.info("refresh.complete", { channels: channels.length, added, errors: errors.length, ms: Date.now() - startedAt });
     return { channels: channels.length, added, errors };
   } finally {
@@ -1249,6 +1310,21 @@ export function startScheduler() {
     adaptiveMinIntervalMin: positiveNumber(process.env.ADAPTIVE_REFRESH_MIN_MINUTES, 10),
     adaptiveMaxIntervalMin: positiveNumber(process.env.ADAPTIVE_REFRESH_MAX_MINUTES, 12 * 60),
   });
+
+  // A cheap due-only pass gives fixed HH:mm schedules minute precision without
+  // running adaptive maintenance work more often than configured above.
+  const manualSchedulesExist = db.prepare(`
+    SELECT 1 FROM channels c
+    WHERE c.manual_status = 'active'
+      AND c.refresh_schedule_days IS NOT NULL AND c.refresh_schedule_time IS NOT NULL
+      AND EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id = c.channel_id AND uc.followed = 1)
+    LIMIT 1
+  `);
+  setInterval(() => {
+    if (!manualSchedulesExist.get()) return;
+    refreshAll({ manualOnly: true }).catch((e) => log.error("refresh.manual_cron_failed", { error: e instanceof Error ? e.message : String(e) }));
+  }, 60_000);
+  log.info("scheduler.manual_feed_refresh", { intervalMin: 1 });
 
   const fullSyncIntervalMin = positiveNumber(process.env.FULL_SYNC_INTERVAL_MINUTES, 15);
   const runFullSync = () => {

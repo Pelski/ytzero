@@ -564,6 +564,11 @@ try { db.exec("ALTER TABLE channels ADD COLUMN last_full_synced_at TEXT"); } cat
 // intentionally excluded from portable backups.
 try { db.exec("ALTER TABLE channels ADD COLUMN feed_refresh_attempted_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE channels ADD COLUMN feed_refresh_failures INTEGER NOT NULL DEFAULT 0"); } catch {}
+// Optional operator-owned publication pattern. When both values are valid it
+// adds fixed refreshes alongside adaptive RSS timing. Days are JSON weekday
+// numbers (0=Sunday), while time is an HH:mm value in the app timezone.
+try { db.exec("ALTER TABLE channels ADD COLUMN refresh_schedule_days TEXT"); } catch {}
+try { db.exec("ALTER TABLE channels ADD COLUMN refresh_schedule_time TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_json TEXT"); } catch {}
 // Priority downloads (viewer is actively waiting) jump the queue and may
 // preempt the running job.
@@ -584,6 +589,9 @@ try {
 // Relative output path (no extension) rendered from the downloads plugin's
 // filename template; sidecar files (nfo/thumbnail/subs) share this base.
 try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}
+// Snapshot of the playlist name only for downloads explicitly queued from a
+// playlist view. It feeds the optional {playlist} output-template token.
+try { db.exec("ALTER TABLE downloads ADD COLUMN playlist_title TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN creators_fetched_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE video_creators ADD COLUMN handle TEXT NOT NULL DEFAULT ''"); } catch {}

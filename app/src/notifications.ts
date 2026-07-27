@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { publishAppEvent } from "./appEvents";
 
 const insertNotification = db.prepare(`
   INSERT OR IGNORE INTO notifications (user_id, kind, dedupe_key, payload, target)
@@ -6,7 +7,9 @@ const insertNotification = db.prepare(`
 `);
 
 export function createNotification(userId: number, kind: string, dedupeKey: string, payload: Record<string, unknown>, target: string): boolean {
-  return insertNotification.run(userId, kind, dedupeKey, JSON.stringify(payload), target).changes > 0;
+  const created = insertNotification.run(userId, kind, dedupeKey, JSON.stringify(payload), target).changes > 0;
+  if (created) publishAppEvent("notifications");
+  return created;
 }
 
 export function notifyFollowedPlaylistVideos(playlistId: string, videoIds: string[]): number {

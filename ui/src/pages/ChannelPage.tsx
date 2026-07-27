@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./ChannelPage.css";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
+import { CalendarClock, Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
 import { api, type ChannelAbout, type ChannelManualStatus, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
@@ -16,6 +16,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages";
 import { Badge, Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
 import { formatAppDate, parseAppTimestamp } from "../dateTime";
+import ChannelRefreshScheduleDialog from "../components/ChannelRefreshScheduleDialog";
 
 type Tab = "videos" | "shorts" | "playlists" | "processing";
 
@@ -48,6 +49,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [captionLanguage, setCaptionLanguage] = useState<string | null>(null);
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("default");
   const [technicalOpen, setTechnicalOpen] = useState(false);
+  const [refreshScheduleOpen, setRefreshScheduleOpen] = useState(false);
   const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "downloads" | "members">("root");
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -488,6 +490,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     </button>
                     <MenuSeparator />
                     <div className="more-menu-section-label">{t("channelFeed")}</div>
+                    <button className="channel-technical-item" onClick={() => { setTechnicalOpen(false); setRefreshScheduleOpen(true); }}>
+                      <CalendarClock /> <span>{t("channelRefreshSchedule")}</span><ChevronRight />
+                    </button>
                     <button className="channel-technical-item" onClick={() => setTechnicalView("members")}>
                       <Star /> <span>{t("channelMembersOnlyFeed")}</span><MenuStatus>{membersOnlyFeedLabel}</MenuStatus><ChevronRight />
                     </button>
@@ -577,6 +582,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                 )}
               </Menu>
           </Popover>
+          {id && <ChannelRefreshScheduleDialog channelId={id} open={refreshScheduleOpen} onOpenChange={setRefreshScheduleOpen} />}
           <ButtonAnchor href={`https://www.youtube.com/channel/${id}`} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink />}>YouTube</ButtonAnchor>
         </div>
       </div>

@@ -8,6 +8,7 @@ import { img } from "../img";
 import { Button, EmptyState, IconButton, List, ListButton, Popover, ScrollArea } from "./ui";
 import "./NotificationCenter.css";
 import { formatAppDate, parseAppTimestamp } from "../dateTime";
+import { subscribeServerEvent } from "../serverEvents";
 
 function notificationTime(value: string, locale: string, timeZone: string, justNow: string): string {
   const date = parseAppTimestamp(value);
@@ -36,8 +37,7 @@ export default function NotificationCenter() {
 
   useEffect(() => {
     load();
-    const timer = window.setInterval(load, 60_000);
-    return () => window.clearInterval(timer);
+    return subscribeServerEvent("notifications", load);
   }, [load]);
   useEffect(() => subscribe("notifications-changed", load), [load]);
 

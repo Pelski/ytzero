@@ -5,6 +5,7 @@
   gap: 24px;
   max-width: 1750px;
 }
+.channel-playlist-processing { border-top: 1px solid var(--surface-2); margin-top: 32px; padding-top: 24px; }
 @media (max-width: 1100px) {
   .playlist-layout { grid-template-columns: 1fr; }
 }
@@ -66,4 +67,3 @@ a.playlist-item { text-decoration: none; }
   color: var(--text-2); cursor: pointer; flex-shrink: 0;
 }
 .autoplay-toggle input { cursor: pointer; accent-color: var(--accent); }
-

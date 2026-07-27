@@ -9,6 +9,7 @@ import { isChannelManualStatus } from "./channelStatus";
 import { parseAdminOnlyAreas, serializeAdminOnlyAreas } from "./profilePermissions";
 import { DEFAULT_TIME_ZONE, isValidTimeZone } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
+import { parseManualRefreshSchedule } from "./channelRefreshSchedule";
 
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -43,7 +44,7 @@ const profilePath = (name: string) => (uuid = "") => `profiles/${uuid}/${name}`;
 export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "instance.settings", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/settings.json" },
   { id: "instance.plugins", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/plugins.jsonl" },
-  { id: "instance.channels", schemaVersion: 2, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
+  { id: "instance.channels", schemaVersion: 3, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
   { id: "profiles.index", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "profiles", path: () => "profiles/index.json" },
   { id: "profile.avatar", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "profiles", optional: true, path: (uuid = "") => `assets/avatars/${uuid}` },
   { id: "profile.settings", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
@@ -161,7 +162,7 @@ function sectionData(id: string, profile: any | null, referenced: Set<string>): 
         const ph = [...referenced].map(() => "?").join(",");
         for (const row of db.prepare(`SELECT DISTINCT channel_id FROM videos WHERE video_id IN (${ph})`).all(...referenced) as any[]) channelIds.add(row.channel_id);
       }
-      return [...channelIds].map((channelId) => db.prepare("SELECT channel_id, title, url, thumbnail, custom_title, auto_download_min_duration_override, manual_status FROM channels WHERE channel_id=?").get(channelId)).filter(Boolean);
+      return [...channelIds].map((channelId) => db.prepare("SELECT channel_id, title, url, thumbnail, custom_title, auto_download_min_duration_override, manual_status, refresh_schedule_days, refresh_schedule_time FROM channels WHERE channel_id=?").get(channelId)).filter(Boolean);
     }
     case "library.referenced-videos": return [...referenced].map((videoId) => db.prepare("SELECT video_id, channel_id, title, description, thumbnail, published_at, live_status, duration, external FROM videos WHERE video_id=?").get(videoId)).filter(Boolean);
     case "profile.settings": {
@@ -381,7 +382,17 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
         saveMapping(state.manifest.sourceInstallationId, "profile", source.id, uid); profileIds.set(source.id, uid);
       }
       if (selected.has("instance.settings")) { const doc = data.get("instance.settings:"); for (const [key, value] of Object.entries(doc?.settings ?? {})) if (SAFE_GLOBAL_SETTINGS.has(key) && !SECRET_SETTING_KEYS.has(key)) db.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, portableGlobalSettingValue(key, value)); }
-      if (selected.has("instance.channels")) for (const row of data.get("instance.channels:") ?? []) { ensureChannel(row); db.prepare("UPDATE channels SET custom_title=?, auto_download_min_duration_override=? WHERE channel_id=?").run(row.custom_title ?? null, Number.isInteger(row.auto_download_min_duration_override) ? row.auto_download_min_duration_override : null, row.channel_id); if (isChannelManualStatus(row.manual_status)) db.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(row.manual_status,row.channel_id); }
+      if (selected.has("instance.channels")) for (const row of data.get("instance.channels:") ?? []) {
+        ensureChannel(row);
+        db.prepare("UPDATE channels SET custom_title=?, auto_download_min_duration_override=? WHERE channel_id=?")
+          .run(row.custom_title ?? null, Number.isInteger(row.auto_download_min_duration_override) ? row.auto_download_min_duration_override : null, row.channel_id);
+        if (Object.hasOwn(row, "refresh_schedule_days") || Object.hasOwn(row, "refresh_schedule_time")) {
+          const schedule = parseManualRefreshSchedule(row.refresh_schedule_days, row.refresh_schedule_time);
+          db.prepare("UPDATE channels SET refresh_schedule_days=?, refresh_schedule_time=? WHERE channel_id=?")
+            .run(schedule ? JSON.stringify(schedule.days) : null, schedule?.time ?? null, row.channel_id);
+        }
+        if (isChannelManualStatus(row.manual_status)) db.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(row.manual_status,row.channel_id);
+      }
       if (selected.has("library.referenced-videos")) for (const row of data.get("library.referenced-videos:") ?? []) ensureVideo(row);
       if (selected.has("instance.plugins")) for (const row of data.get("instance.plugins:") ?? []) { if (!PLUGINS.some((p) => p.id === row.id)) { counts.warnings.push(`Plugin ${row.id} is unavailable`); continue; } setPluginEnabled(row.id, Boolean(row.enabled)); const adapter=PLUGIN_BACKUP_ADAPTERS.find((item)=>item.id===row.id&&item.scope==="instance"); if(adapter&&row.payload) adapter.restore(adminId,row.payload); }
       for (const profile of state.manifest.profiles) {

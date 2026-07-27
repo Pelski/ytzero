@@ -6,6 +6,7 @@
 import { db, getUserSetting, setUserSetting } from "./db";
 import { recordWatchTagSignals } from "./contentSignals";
 import { zonedDayHour } from "./timeZone";
+import { publishAppEvent } from "./appEvents";
 
 export type ChildGrant = "15m" | "1h" | "video_end" | "today_off";
 export const CHILD_GRANTS: ChildGrant[] = ["15m", "1h", "video_end", "today_off"];
@@ -30,6 +31,8 @@ export function childLimitSeconds(userId: number): number | null {
 // means pause/navigation and is not counted. Memory-only state — a restart
 // just skips one delta.
 const lastTick = new Map<number, { at: number; videoId: string }>();
+const lastChildEvent = new Map<number, number>();
+const childIdleTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 /** Active playback heartbeats, used by the small parent "now watching" panel. */
 export function activeChildPlayback(maxAgeMs = 12_000) {
@@ -44,6 +47,19 @@ export function recordWatchTick(userId: number, videoId: string) {
   const now = Date.now();
   const last = lastTick.get(userId);
   lastTick.set(userId, { at: now, videoId });
+  if (isChildUser(userId) && now - (lastChildEvent.get(userId) ?? 0) >= 2_000) {
+    lastChildEvent.set(userId, now);
+    publishAppEvent("child-status");
+    publishAppEvent("child-watching");
+  }
+  if (isChildUser(userId)) {
+    const idleTimer = childIdleTimers.get(userId);
+    if (idleTimer) clearTimeout(idleTimer);
+    childIdleTimers.set(userId, setTimeout(() => {
+      childIdleTimers.delete(userId);
+      publishAppEvent("child-watching");
+    }, 12_500));
+  }
   if (!last) return;
   const delta = (now - last.at) / 1000;
   if (delta <= 0 || delta > 15) return;

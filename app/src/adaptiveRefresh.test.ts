@@ -30,6 +30,18 @@ function dailyDates(days: number[]) {
 }
 
 describe("adaptive feed refresh", () => {
+  test("manual schedules add due refreshes without disabling adaptive timing", () => {
+    const selected = selectRefreshBatch([
+      candidate("adaptive", { lastAttemptedAt: null }),
+      candidate("manual-waiting", { lastAttemptedAt: null, manualSchedule: { days: [1], time: "18:02" }, manualDue: false }),
+      candidate("manual-due", { lastAttemptedAt: "2026-01-01", manualSchedule: { days: [1], time: "18:02" }, manualDue: true }),
+    ], { ...options, batchSize: 3, fairnessSlots: 0 });
+    expect(selected.map(({ channelId, reason }) => [channelId, reason])).toEqual([
+      ["manual-due", "manual"],
+      ["adaptive", "adaptive"],
+      ["manual-waiting", "adaptive"],
+    ]);
+  });
   test("uses the median upload gap instead of a burst or hiatus", () => {
     expect(estimateUploadCadenceMs(dailyDates([0, 1, 2, 3, 30, 31]))).toBe(DAY);
   });

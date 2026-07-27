@@ -1,9 +1,10 @@
 import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { db, getSetting } from "./db";
-import { downloadCookieAttempts, downloadFormat } from "./downloadStrategy";
+import { downloadCookieAttempts, downloadFormat, renderDownloadOutputTemplate } from "./downloadStrategy";
 import { log } from "./logger";
 import { maintenanceActive } from "./maintenance";
+import { publishAppEvent } from "./appEvents";
 
 // Files land in one global directory: a video downloaded once serves every
 // profile. Retention below is the only thing that removes them.
@@ -33,7 +34,9 @@ export const DL_DEFAULTS = {
   // the custom channel name). "/" creates subdirectories; the extension is
   // appended automatically; a missing {id} is added as " [id]" to keep files
   // unique and trackable.
-  output_template: "{id}",
+  // Playlist bulk downloads land in an optional playlist folder. For every
+  // other source {playlist} is empty and the renderer removes that segment.
+  output_template: "{playlist}/{id}",
   write_thumbnail: 0,
   embed_metadata: 0,
   write_info_json: 0,
@@ -137,6 +140,8 @@ interface ActiveDownload {
 }
 
 let active: ActiveDownload | null = null;
+let lastProgressEventAt = 0;
+const notifyDownloadChanged = (videoId: string) => publishAppEvent("downloads", { videoId });
 
 export function activeDownloadProgress(): { video_id: string; percent: number; total_bytes: number | null; speed: string | null } | null {
   if (!active) return null;
@@ -148,42 +153,28 @@ export function activeDownloadProgress(): { video_id: string; percent: number; t
 // user's custom channel name and so every produced file shares a known base —
 // that's what lets cleanup find sidecars (.nfo, thumbnails, subtitles).
 
-function sanitizePathComponent(segment: string): string {
-  const cleaned = segment
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\.+$/, "");
-  return cleaned;
-}
-
 export function renderOutputTemplate(videoId: string, template: string): string {
   const row = db.prepare(`
     SELECT v.title, v.published_at, v.channel_id,
-           COALESCE(c.custom_title, c.title) AS channel_title
+           COALESCE(c.custom_title, c.title) AS channel_title,
+           d.playlist_title
     FROM videos v JOIN channels c ON c.channel_id = v.channel_id
+    LEFT JOIN downloads d ON d.video_id = v.video_id
     WHERE v.video_id = ?
-  `).get(videoId) as { title: string; published_at: string | null; channel_id: string; channel_title: string } | null;
+  `).get(videoId) as { title: string; published_at: string | null; channel_id: string; channel_title: string; playlist_title: string | null } | null;
   const date = row?.published_at?.slice(0, 10) ?? "";
   const values: Record<string, string> = {
     id: videoId,
     title: row?.title ?? videoId,
     channel: row?.channel_title || row?.channel_id || "",
     channel_id: row?.channel_id ?? "",
+    playlist: row?.playlist_title ?? "",
     date,
     year: date.slice(0, 4),
     month: date.slice(5, 7),
     day: date.slice(8, 10),
   };
-  const rendered = (template.trim() || "{id}").replace(/\{(\w+)\}/g, (_, key: string) => values[key] ?? "");
-  // Sanitizing each segment also neutralises ".." (trailing dots stripped), so
-  // the template can never escape the downloads directory.
-  const segments = rendered.split("/").map(sanitizePathComponent).filter(Boolean);
-  let base = segments.join("/") || videoId;
-  // Without the id in the name two videos could collide on one file; the id is
-  // also what maps legacy files back to their row.
-  if (!base.includes(videoId)) base += ` [${videoId}]`;
-  return base;
+  return renderDownloadOutputTemplate(template, values, videoId);
 }
 
 function outputBaseFor(videoId: string): string | null {
@@ -322,7 +313,7 @@ export function srtToVtt(srt: string): string {
 
 // ---------- public queue operations ----------
 
-export function enqueueDownload(videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false): boolean {
+export function enqueueDownload(videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean } = {}): boolean {
   const row = db.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
   if (row) {
     if (row.status === "downloading") return false;
@@ -332,14 +323,29 @@ export function enqueueDownload(videoId: string, source: "manual" | "scheduled" 
     // scheduled policy may revive a tombstone when the user re-queued the video
     // after the file was removed (reviveDeleted).
     if (source !== "manual" && !(reviveDeleted && row.status === "deleted")) return false;
-    db.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
-      .run(source, priority ? 1 : 0, videoId);
+    db.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
+      .run(source, priority ? 1 : 0, context.playlistTitle ?? null, videoId);
+    if (context.notify !== false) notifyDownloadChanged(videoId);
     return true;
   }
   const exists = db.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId);
   if (!exists) return false;
-  db.prepare("INSERT INTO downloads (video_id, status, source, priority) VALUES (?, 'queued', ?, ?)").run(videoId, source, priority ? 1 : 0);
+  db.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title) VALUES (?, 'queued', ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null);
+  if (context.notify !== false) notifyDownloadChanged(videoId);
   return true;
+}
+
+export function enqueuePlaylistDownloads(videoIds: string[], playlistTitle: string) {
+  let queued = 0;
+  const existingDownload = db.prepare("SELECT status FROM downloads WHERE video_id = ?");
+  for (const videoId of videoIds) {
+    const existing = existingDownload.get(videoId) as { status: string } | null;
+    if (existing?.status === "queued" || existing?.status === "downloading") continue;
+    if (enqueueDownload(videoId, "manual", false, false, { playlistTitle, notify: false })) queued++;
+  }
+  publishAppEvent("downloads", { playlistTitle, queued });
+  if (queued > 0) setTimeout(() => tick().catch((error) => log.error("downloads.tick_failed", { error: error instanceof Error ? error.message : String(error) })), 300);
+  return { queued, skipped: videoIds.length - queued, total: videoIds.length };
 }
 
 /**
@@ -352,6 +358,7 @@ export function prioritizeDownload(videoId: string): boolean {
   const row = db.prepare("SELECT status FROM downloads WHERE video_id = ?").get(videoId) as { status: string } | null;
   if (!row || (row.status !== "queued" && row.status !== "downloading")) return queued;
   db.prepare("UPDATE downloads SET priority = 1 WHERE video_id = ?").run(videoId);
+  notifyDownloadChanged(videoId);
   if (active && active.videoId !== videoId) {
     active.preempted = true;
     try { active.proc.kill(); } catch {}
@@ -370,6 +377,7 @@ export function removeDownload(videoId: string) {
   }
   unlinkFiles(videoId);
   db.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL, error = NULL, priority = 0 WHERE video_id = ?").run(videoId);
+  notifyDownloadChanged(videoId);
 }
 
 /**
@@ -391,6 +399,7 @@ export function cancelAutoDownloadIfUnwanted(videoId: string) {
 
 export function setDownloadPinned(videoId: string, pinned: boolean): boolean {
   const r = db.prepare("UPDATE downloads SET pinned = ? WHERE video_id = ?").run(pinned ? 1 : 0, videoId);
+  if (r.changes > 0) notifyDownloadChanged(videoId);
   return r.changes > 0;
 }
 
@@ -530,6 +539,7 @@ function protectedSql(s: DlSettings) {
 function tombstone(videoId: string) {
   unlinkFiles(videoId);
   db.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL WHERE video_id = ?").run(videoId);
+  notifyDownloadChanged(videoId);
 }
 
 function cleanup(s: DlSettings) {
@@ -578,6 +588,7 @@ function cleanup(s: DlSettings) {
   for (const row of done) {
     if (row.path && existsSync(row.path)) continue;
     db.prepare("UPDATE downloads SET status = 'deleted', path = NULL, size_bytes = NULL WHERE video_id = ?").run(row.video_id);
+    notifyDownloadChanged(row.video_id);
   }
 
   // 5. Orphan files no live row accounts for. A file belongs to a row when its
@@ -712,6 +723,7 @@ async function runDownload(videoId: string, s: DlSettings) {
 
   db.prepare("UPDATE downloads SET status = 'downloading', quality = ?, output_base = ?, error = NULL, attempts = attempts + 1, started_at = datetime('now') WHERE video_id = ?")
     .run(s.quality, base, videoId);
+  notifyDownloadChanged(videoId);
   log.info("downloads.start", { videoId, quality: s.quality, base });
 
   const cookieAttempts = downloadCookieAttempts(downloadCookiesConfigured());
@@ -730,6 +742,7 @@ async function runDownload(videoId: string, s: DlSettings) {
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);
       db.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
+      notifyDownloadChanged(videoId);
       ytdlpVersion = undefined; // binary may have moved — re-check on next tick
       log.error("downloads.spawn_failed", { videoId, error });
       active = null;
@@ -749,6 +762,10 @@ async function runDownload(videoId: string, s: DlSettings) {
           job.percent = Number(m[1]);
           if (m[2] && m[3]) job.totalBytes = parseBytes(m[2], m[3]);
           if (m[4]) job.speed = m[4];
+          if (Date.now() - lastProgressEventAt >= 1_000) {
+            lastProgressEventAt = Date.now();
+            notifyDownloadChanged(videoId);
+          }
         }),
         readLines(proc.stderr as ReadableStream<Uint8Array>, (line) => {
           if (!line.trim()) return;
@@ -781,6 +798,7 @@ async function runDownload(videoId: string, s: DlSettings) {
     // Killed to make room for a priority download — back in line, partial
     // files intact so the resume picks up where it stopped.
     db.prepare("UPDATE downloads SET status = 'queued', attempts = attempts - 1 WHERE video_id = ? AND status = 'downloading'").run(videoId);
+    notifyDownloadChanged(videoId);
     return;
   }
 
@@ -796,6 +814,7 @@ async function runDownload(videoId: string, s: DlSettings) {
       }
       db.prepare("UPDATE downloads SET status = 'done', path = ?, size_bytes = ?, error = NULL, finished_at = datetime('now') WHERE video_id = ?")
         .run(path, size, videoId);
+      notifyDownloadChanged(videoId);
       log.info("downloads.done", { videoId, size, path });
       if (s.write_subs === 1 || s.write_auto_subs === 1) {
         // Subtitles are optional sidecars. A missing language or a YouTube 429
@@ -810,6 +829,7 @@ async function runDownload(videoId: string, s: DlSettings) {
   }
   const error = stderrTail.slice(-3).join(" | ") || `yt-dlp exited with code ${code}`;
   db.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
+  notifyDownloadChanged(videoId);
   log.error("downloads.failed", { videoId, code, error });
 }
 

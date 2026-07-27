@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import "./ChannelPlaylistPage.css";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChevronRight, ListMinus, ListPlus, ListVideo, RefreshCw } from "lucide-react";
+import { ChevronRight, Download, FileClock, ListMinus, ListPlus, ListVideo, RefreshCw } from "lucide-react";
 import { api, type FollowedPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { img } from "../img";
 import { formatPlaylistVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import { Button, EmptyState } from "../components/ui";
+import { Button, EmptyState, LocalToast, SectionHeader } from "../components/ui";
+import Popconfirm from "../components/Popconfirm";
 
 export default function ChannelPlaylistPage() {
   const { id } = useParams<{ id: string }>();
@@ -17,14 +18,18 @@ export default function ChannelPlaylistPage() {
   const [playlist, setPlaylist] = useState<FollowedPlaylist | null>(null);
   useDocumentTitle(playlist?.title);
   const [videos, setVideos] = useState<Video[]>([]);
+  const [processingVideos, setProcessingVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
+  const [downloadPending, setDownloadPending] = useState(false);
+  const [downloadFeedback, setDownloadFeedback] = useState("");
 
   const load = useCallback(async () => {
     if (!id) return;
     const [details, contents] = await Promise.all([api.channelPlaylist(id), api.channelPlaylistVideos(id)]);
     setPlaylist(details.playlist);
     setVideos(contents.videos);
+    setProcessingVideos(contents.processing);
   }, [id]);
 
   useEffect(() => {
@@ -48,6 +53,20 @@ export default function ChannelPlaylistPage() {
     try { await api.syncPlaylist(id); await load(); } finally { setPending(false); }
   };
 
+  const downloadAll = async () => {
+    if (!id) return;
+    if (![...videos, ...processingVideos].some((video) => video.downloads_enabled)) { navigate("/settings?tab=plugins"); return; }
+    setDownloadPending(true); setDownloadFeedback("");
+    try {
+      const result = await api.downloadChannelPlaylist(id);
+      setDownloadFeedback(result.queued > 0 ? t("playlistDownloadQueued", { count: result.queued }) : t("playlistDownloadNone"));
+      await load();
+    } catch { setDownloadFeedback(t("playlistDownloadFailed")); }
+    finally { setDownloadPending(false); }
+  };
+
+  const allPlaylistVideos = [...videos, ...processingVideos];
+
   if (loading && !playlist) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return <EmptyState title={t("playlistUnavailable")} />;
 
@@ -70,10 +89,18 @@ export default function ChannelPlaylistPage() {
           <Button variant={playlist.followed ? "danger" : "primary"} onClick={toggleFollow} disabled={pending} leadingIcon={playlist.followed ? <ListMinus /> : <ListPlus />}>
             {playlist.followed ? t("unfollowPlaylist") : t("followPlaylist")}
           </Button>
+          {allPlaylistVideos.length > 0 && allPlaylistVideos.some((video) => video.downloads_allowed) && (allPlaylistVideos.some((video) => video.downloads_enabled)
+            ? <Popconfirm message={t("playlistDownloadConfirm", { count: allPlaylistVideos.length })} onConfirm={downloadAll}><Button disabled={downloadPending} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button></Popconfirm>
+            : <Button onClick={downloadAll} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button>)}
+          {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
         </div>
       </div>
     </header>
-    {loading ? <VideoGridSkeleton gridSize="sm" /> : videos.length === 0 ? <EmptyState title={t("playlistIsEmpty")} /> :
-      <div className="video-grid video-grid--sm">{videos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}`)} onChanged={load} />)}</div>}
+    {loading ? <VideoGridSkeleton gridSize="sm" /> : videos.length === 0 && processingVideos.length === 0 ? <EmptyState title={t("playlistIsEmpty")} /> : videos.length > 0 ?
+      <div className="video-grid video-grid--sm">{videos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}`)} onChanged={load} />)}</div> : null}
+    {!loading && processingVideos.length > 0 && <section className="channel-playlist-processing">
+      <SectionHeader title={t("processing")} icon={<FileClock />} />
+      <div className="video-grid video-grid--sm">{processingVideos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}`)} onChanged={load} />)}</div>
+    </section>}
   </>;
 }

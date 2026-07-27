@@ -7,6 +7,7 @@ import { img } from "../img";
 import { useI18n } from "../i18n";
 import { ProfileAvatar } from "./ProfileMenu";
 import { VideoThumbnail } from "./VideoThumbnail";
+import { subscribeServerEvent } from "../serverEvents";
 
 export default function ChildNowWatching() {
   const { t } = useI18n();
@@ -28,8 +29,7 @@ export default function ChildNowWatching() {
 
   useEffect(() => {
     load();
-    const timer = window.setInterval(load, 3_000);
-    return () => window.clearInterval(timer);
+    return subscribeServerEvent("child-watching", load);
   }, [load]);
 
   const visible = watching.filter((item) => !stopped.has(item.user_id));

@@ -7,6 +7,36 @@
   z-index: 3;
 }
 
+.thumb-wrap--processing .video-thumbnail-image {
+  filter: blur(8px) brightness(.52);
+  transform: scale(1.06);
+}
+
+.video-card-processing {
+  align-items: center;
+  background: rgba(10, 10, 10, .18);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  pointer-events: none;
+  position: absolute;
+  z-index: 3;
+}
+
+.video-card-processing__spinner {
+  animation: ui-spin .75s linear infinite;
+  border: 3px solid rgba(255, 255, 255, .32);
+  border-radius: 50%;
+  border-top-color: #fff;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  height: 28px;
+  width: 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .video-card-processing__spinner { animation-duration: 1.8s; }
+}
+
 .private-video-badge svg {
   flex: 0 0 auto;
 }

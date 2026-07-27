@@ -59,7 +59,8 @@ Everything in Configuration only, plus:
 - followed YouTube playlists
 - tags, manual tag assignments, auto-tag rules, and filter rules
 - personal playlists, membership, and playlist rules
-- shared channel custom names and portable automatic-download overrides
+- shared channel custom names, portable automatic-download overrides, and
+  operator-defined publication/refresh schedules
 
 ### Full personal data
 
@@ -214,10 +215,13 @@ below.
 - `discovery_recommendations`
 - derived Discovery `last_terms`
 - `update_check_state`, `notifications`, `bulk_undo`
-- adaptive feed scheduler attempt timestamps and failure counters on `channels`
+- adaptive feed scheduler attempt timestamps, detected cadence, and failure
+  counters on `channels` (operator-defined publication weekdays and refresh
+  time are portable configuration instead)
 - pending child time requests and one-day child time extras
 - active/expired authentication sessions
-- in-progress download jobs and errors
+- in-progress download jobs, errors, output paths, and temporary playlist-name
+  context used to render local filenames
 - image cache and other network-derived cache
 - `portable_object_mappings` restore bookkeeping and automatic pre-restore
   SQLite safety snapshots (local recovery data, not portable archive content)
@@ -412,6 +416,12 @@ instance organization/configuration owned by `instance.channels` schema v2.
 It uses the stable channel ID, restores idempotently, and a v1 archive leaves
 the target's current status unchanged because the field is absent. The update
 timestamp is rebuildable audit metadata and is not exported.
+
+The fixed channel publication schedule (`refresh_schedule_days` and
+`refresh_schedule_time`) is portable shared configuration owned by
+`instance.channels` schema v3. Weekdays use stable `0..6` values and the time
+is interpreted in the app's portable IANA timezone. A v1/v2 archive leaves an
+existing schedule unchanged; a v3 archive restores or explicitly clears it.
 
 ## Required tests
 

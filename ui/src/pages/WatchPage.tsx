@@ -55,6 +55,7 @@ import VideoCreators from "../components/VideoCreators";
 import { normalizeSponsorSegments } from "../sponsorblock";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
+import { subscribeServerEvent } from "../serverEvents";
 
 type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
@@ -1074,7 +1075,7 @@ export default function WatchPage() {
     let cancelled = false;
     setWaitError(null);
     api.requestDownload(id, true).catch(() => {});
-    const timer = setInterval(() => {
+    const load = () => {
       api.videoDownload(id).then((r) => {
         if (cancelled) return;
         setWaitProgress(r.progress ? { percent: r.progress.percent, speed: r.progress.speed } : null);
@@ -1082,8 +1083,12 @@ export default function WatchPage() {
         if (status === "error") setWaitError(r.download?.error ?? "error");
         setVideo((prev) => prev && prev.download_status !== status ? { ...prev, download_status: status } : prev);
       }).catch(() => {});
-    }, 1_500);
-    return () => { cancelled = true; clearInterval(timer); };
+    };
+    load();
+    const unsubscribe = subscribeServerEvent("downloads", (data) => {
+      if (!data?.videoId || data.videoId === id) load();
+    });
+    return () => { cancelled = true; unsubscribe(); };
   }, [playerKind, id, membersOnlyNotice]);
 
   useEffect(() => {
@@ -1293,29 +1298,19 @@ export default function WatchPage() {
     };
   }, [id, playerKind, showShortcutFeedback, keyboardSeekSeconds, takeEmbeddedScreenshot]);
 
-  // Refresh views + likes in the background every 30 s while watching
-  useEffect(() => {
-    if (!id) return;
-    const t = setInterval(() => {
-      api.video(id).then((r) => {
-        setVideo((prev) => prev ? { ...prev, views: r.video.views, likes: r.video.likes, download_status: r.video.download_status } : prev);
-      }).catch(() => {});
-    }, 30_000);
-    return () => clearInterval(t);
-  }, [id]);
-
   // While this video is being fetched — or is playing via the experimental
-  // stream (which waits for the background download to hand off to the local
-  // file) — poll faster so the switch happens the moment the file is ready.
+  // stream — react to downloader events so the local-file handoff is immediate.
   useEffect(() => {
     const active = downloadStatus === "queued" || downloadStatus === "downloading" || playerKind === "stream";
-    if (!id || !active) return;
-    const t = setInterval(() => {
+    if (!id || !active || playerKind === "waiting") return;
+    const load = () => {
       api.video(id).then((r) => {
         setVideo((prev) => prev ? { ...prev, download_status: r.video.download_status } : prev);
       }).catch(() => {});
-    }, playerKind === "stream" ? 2_500 : 5_000);
-    return () => clearInterval(t);
+    };
+    return subscribeServerEvent("downloads", (data) => {
+      if (!data?.videoId || data.videoId === id) load();
+    });
   }, [id, downloadStatus, playerKind]);
 
   const requestDownload = () => {

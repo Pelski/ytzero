@@ -5,6 +5,8 @@ import { api, type ChildGrant, type ChildTimeRequest } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 import { ProfileAvatar } from "./ProfileMenu";
 import { Button, IconButton, Input } from "./ui";
+import { subscribeServerEvent } from "../serverEvents";
+import { parseAppTimestamp } from "../dateTime";
 
 const GRANTS: { grant: ChildGrant; labelKey: I18nKey }[] = [
   { grant: "15m", labelKey: "childGrant15m" },
@@ -29,9 +31,15 @@ export default function ChildTimeRequestBanner() {
 
   useEffect(() => {
     load();
-    const timer = setInterval(load, 60_000);
-    return () => clearInterval(timer);
+    return subscribeServerEvent("child-requests", load);
   }, [load]);
+
+  useEffect(() => {
+    if (requests.length === 0) return;
+    const nextExpiry = Math.min(...requests.map((request) => parseAppTimestamp(request.created_at).getTime() + 60 * 60_000));
+    const timer = window.setTimeout(load, Math.max(0, nextExpiry - Date.now()) + 250);
+    return () => window.clearTimeout(timer);
+  }, [requests, load]);
 
   const resolve = async (request: ChildTimeRequest, grant?: ChildGrant, enteredPin?: string) => {
     try {

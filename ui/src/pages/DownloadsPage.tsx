@@ -11,6 +11,7 @@ import Popconfirm from "../components/Popconfirm";
 import Tooltip from "../components/Tooltip";
 import { Alert, Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
+import { subscribeServerEvent } from "../serverEvents";
 
 const QUEUE_COLLAPSED_COUNT = 3;
 
@@ -54,14 +55,8 @@ export default function DownloadsPage() {
 
   useEffect(() => {
     load();
+    return subscribeServerEvent("downloads", load);
   }, [load]);
-
-  // Poll fast while something is moving, lazily otherwise.
-  useEffect(() => {
-    const activeQueue = data != null && (data.active != null || data.stats.queued > 0);
-    const timer = setInterval(load, activeQueue ? 3_000 : 20_000);
-    return () => clearInterval(timer);
-  }, [load, data?.active != null, data?.stats.queued]);
 
   const retry = (item: DownloadItem) => {
     api.requestDownload(item.video_id).then(load).catch(() => {});

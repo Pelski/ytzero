@@ -59,6 +59,22 @@ export interface Video {
 export type MembersOnlyVisibility = "default" | "everywhere" | "channel" | "hidden";
 export type ChannelManualStatus = "active" | "paused" | "broken" | "banned" | "deleted";
 
+export interface ChannelRefreshScheduleDetails {
+  mode: "adaptive" | "manual";
+  days: number[];
+  time: string;
+  timeZone: string;
+  nextManualAt: string | null;
+  automatic: {
+    sampleCount: number;
+    cadenceMs: number | null;
+    targetIntervalMs: number;
+    consecutiveFailures: number;
+    lastAttemptedAt: string | null;
+    nextRefreshAt: string | null;
+  };
+}
+
 export interface Channel {
   channel_id: string;
   title: string;
@@ -151,6 +167,12 @@ export interface FollowedPlaylist {
 export interface FollowedPlaylistUpdates extends FollowedPlaylist {
   new_video_count: number;
   new_videos: Video[];
+}
+
+export interface PlaylistDownloadResult {
+  queued: number;
+  skipped: number;
+  total: number;
 }
 
 export interface VideoChannelPlaylist extends PlaylistInfo {
@@ -1013,6 +1035,9 @@ export const api = {
     http(`/channels/${id}/members-only-feed`, { method: "PUT", body: JSON.stringify({ visibility }) }),
   setChannelDownloadMinDuration: (id: string, seconds: number | null) =>
     http(`/channels/${id}/download-min-duration`, { method: "PUT", body: JSON.stringify({ seconds }) }),
+  channelRefreshSchedule: (id: string) => http<ChannelRefreshScheduleDetails>(`/channels/${id}/refresh-schedule`),
+  setChannelRefreshSchedule: (id: string, schedule: { mode: "adaptive" | "manual"; days: number[]; time: string }) =>
+    http<ChannelRefreshScheduleDetails>(`/channels/${id}/refresh-schedule`, { method: "PUT", body: JSON.stringify(schedule) }),
   unfollowedChannels: () => http<{ channels: Channel[] }>("/channels/unfollowed"),
 
   channelAbout: (id: string) => http<ChannelAbout>(`/channels/${id}/about`),
@@ -1020,7 +1045,8 @@ export const api = {
   syncChannelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[]; count: number; synced: number; added: number; errors: number }>(`/channels/${id}/playlists/sync`, { method: "POST" }),
   syncChannelMetadata: (id: string) => http<{ checked: number; updated: number; dates: number; durations: number; shorts: number; failed: number; remaining: number }>(`/channels/${id}/metadata/sync`, { method: "POST" }),
   channelPlaylist: (id: string) => http<{ playlist: FollowedPlaylist }>(`/channel-playlists/${id}`),
-  channelPlaylistVideos: (id: string) => http<{ videos: Video[] }>(`/channel-playlists/${id}/videos`),
+  channelPlaylistVideos: (id: string) => http<{ videos: Video[]; processing: Video[] }>(`/channel-playlists/${id}/videos`),
+  downloadChannelPlaylist: (id: string) => http<PlaylistDownloadResult>(`/channel-playlists/${id}/download`, { method: "POST", body: "{}" }),
   followPlaylist: (id: string, followed: boolean) => http<{ followed: boolean }>(`/channel-playlists/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
   syncPlaylist: (id: string) => http<{ added: number }>(`/channel-playlists/${id}/sync`, { method: "POST" }),
   followedPlaylists: () => http<{ playlists: FollowedPlaylist[] }>("/followed-playlists"),
@@ -1037,6 +1063,7 @@ export const api = {
     http<{ playlist: UserPlaylist }>(`/playlists/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   deleteUserPlaylist: (id: number) => http(`/playlists/${id}`, { method: "DELETE" }),
   userPlaylist: (id: number) => http<{ playlist: UserPlaylist; videos: Video[] }>(`/playlists/${id}`),
+  downloadUserPlaylist: (id: number) => http<PlaylistDownloadResult>(`/playlists/${id}/download`, { method: "POST", body: "{}" }),
   addVideoToUserPlaylist: (id: number, video_id: string) =>
     http(`/playlists/${id}/videos`, { method: "POST", body: JSON.stringify({ video_id }) }),
   removeVideoFromUserPlaylist: (id: number, videoId: string) =>
