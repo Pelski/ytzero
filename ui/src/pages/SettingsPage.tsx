@@ -22,7 +22,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, Field, IconButton, Inline, Input, InputGroup, PageHeader, Popover, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, Field, IconButton, Inline, Input, InputGroup, PageHeader, Popover, RevealList, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
 import { formatAppDate } from "../dateTime";
 import { mergeRemoteChangelog } from "../changelog";
@@ -1176,7 +1176,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const section = searchParams.get("section");
   const channelSubTab: "list" | "playlists" | "filters" = section === "filters" || section === "playlists" ? section : "list";
   const tagSubTab: "list" | "rules" = section === "rules" ? "rules" : "list";
-  const advancedSubTab: "external" | "logs" | "changelog" | "dangerous" = section === "logs" || section === "changelog" || section === "dangerous" ? section : "external";
+  const advancedSubTab: "external" | "logs" | "changelog" | "dangerous" = section === "external" || section === "logs" || section === "dangerous" ? section : "changelog";
   const setSettingsRoute = (nextTab: Tab, nextSection?: string) => {
     const next = new URLSearchParams();
     next.set("tab", nextTab);
@@ -1186,7 +1186,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const setTab = (nextTab: Tab) => setSettingsRoute(nextTab);
   const setChannelSubTab = (nextSection: "list" | "playlists" | "filters") => setSettingsRoute("channels", nextSection === "list" ? undefined : nextSection);
   const setTagSubTab = (nextSection: "list" | "rules") => setSettingsRoute("tags", nextSection === "list" ? undefined : nextSection);
-  const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog" | "dangerous") => setSettingsRoute("advanced", nextSection === "external" ? undefined : nextSection);
+  const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog" | "dangerous") => setSettingsRoute("advanced", nextSection === "changelog" ? undefined : nextSection);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [rules, setRules] = useState<Rule[]>([]);
@@ -3211,7 +3211,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isCurrentTabLocked && tab === "advanced" && (
         <SettingsSection>
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "logs", label: t("logs") }, { value: "changelog", label: t("changelog") }, { value: "dangerous", label: t("dangerous") }]} />
+          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "changelog", label: t("changelog") }, { value: "logs", label: t("logs") }, { value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "dangerous", label: t("dangerous") }]} />
 
           {advancedSubTab === "dangerous" && isPrimary && (
             <>
@@ -3278,8 +3278,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         {t("externalClearChannel")}
                       </Button>
                     </div>
-                    <div className="external-video-list">
-                      {ch.videos.map((v) => (
+                    <RevealList
+                      items={ch.videos}
+                      previewCount={5}
+                      listClassName="external-video-list"
+                      showMore={t("showMore")}
+                      showLess={t("showLess")}
+                      renderRow={(v) => (
                         <div key={v.video_id} className="external-video-row">
                           <Link to={`/watch/${v.video_id}`} className="external-thumb-link" aria-label={v.title} title={v.title}>
                             <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="external" loading="lazy" />
@@ -3295,8 +3300,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             <Trash2 size={15} />
                           </IconButton>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    />
                   </div>
                 ))}
               </div>

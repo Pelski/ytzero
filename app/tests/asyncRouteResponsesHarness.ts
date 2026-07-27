@@ -30,7 +30,7 @@ const reloadedResetDownloadSettings = await json("/plugins/downloads/settings");
 const updateSettingsResponse = await api.request("http://localhost/settings", {
   method: "PUT",
   headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
-  body: JSON.stringify({ show_shorts: "0", app_icon_color: "#123456" }),
+  body: JSON.stringify({ show_shorts: "0", feed_sort: "arrival", app_icon_color: "#123456" }),
 });
 const reloadedSettings = await json("/settings");
 
@@ -55,6 +55,7 @@ console.log("RESULT " + JSON.stringify({
   reloadedResetDownloadSetting: reloadedResetDownloadSettings.body.settings?.max_storage_gb,
   updateSettingsStatus: updateSettingsResponse.status,
   reloadedUserSetting: reloadedSettings.body.settings?.show_shorts,
+  reloadedFeedSort: reloadedSettings.body.settings?.feed_sort,
   reloadedGlobalSetting: reloadedSettings.body.settings?.app_icon_color,
 }));
 

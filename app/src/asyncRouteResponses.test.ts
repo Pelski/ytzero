@@ -67,6 +67,7 @@ describe("async database route response shapes", () => {
   test("reloads committed profile and global settings after a write", () => {
     expect(result.updateSettingsStatus).toBe(200);
     expect(result.reloadedUserSetting).toBe("0");
+    expect(result.reloadedFeedSort).toBe("arrival");
     expect(result.reloadedGlobalSetting).toBe("#123456");
   });
 });

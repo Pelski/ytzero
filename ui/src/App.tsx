@@ -43,6 +43,7 @@ import ChildNowWatching from "./components/ChildNowWatching";
 import { Badge, Button, Toast } from "./components/ui";
 import { ENHANCE_CONFIGURATION_ELEMENT_ID, serializeEnhanceConfiguration } from "./enhanceBridge";
 import { subscribeServerEvent } from "./serverEvents";
+import { queueSettingWrite } from "./settingsWriteQueue";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
@@ -297,6 +298,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const [childStatus, setChildStatus] = useState<ChildStatus | null>(null);
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: ["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"] });
   const toastTimeoutRef = useRef<number | null>(null);
+  const removingLegacyFeedSortRef = useRef(false);
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
 
@@ -351,8 +353,11 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const feedSort = appSettings?.feed_sort === "arrival" ? "arrival" : "published";
   const changeFeedSort = useCallback((next: "published" | "arrival") => {
     setAppSettings((current) => current ? { ...current, feed_sort: next } : current);
-    api.updateSettings({ feed_sort: next }).catch(loadSettings);
+    queueSettingWrite("feed_sort", { feed_sort: next }, { onError: loadSettings });
     if (location.pathname === "/" && new URLSearchParams(location.search).has("sort")) {
+      // Prevent the legacy URL migration effect from restoring `arrival`
+      // between this state update and React Router removing the old parameter.
+      removingLegacyFeedSortRef.current = true;
       const params = new URLSearchParams(location.search);
       params.delete("sort");
       navigate({ pathname: "/", search: params.toString() }, { replace: true });
@@ -363,7 +368,16 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   // their explicit arrival order into the profile preference.
   useEffect(() => {
     if (location.pathname !== "/" || !appSettings) return;
-    if (new URLSearchParams(location.search).get("sort") === "arrival" && feedSort !== "arrival") {
+    const legacyArrival = new URLSearchParams(location.search).get("sort") === "arrival";
+    if (!legacyArrival) {
+      removingLegacyFeedSortRef.current = false;
+      return;
+    }
+    if (removingLegacyFeedSortRef.current) {
+      removingLegacyFeedSortRef.current = false;
+      return;
+    }
+    if (feedSort !== "arrival") {
       changeFeedSort("arrival");
     }
   }, [location.pathname, location.search, appSettings, feedSort, changeFeedSort]);

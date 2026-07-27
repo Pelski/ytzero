@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import "./SearchPage.css";
 import { Link, useSearchParams } from "react-router-dom";
 import { Search } from "lucide-react";
@@ -9,10 +9,7 @@ import { img } from "../img";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
-import { Button, EmptyState } from "../components/ui";
-
-// Result lists collapse to this many rows, with a "show more" toggle beyond it.
-const PREVIEW_COUNT = 3;
+import { EmptyState, RevealList } from "../components/ui";
 
 function normalizeSearchText(value: string) {
   return value
@@ -20,41 +17,6 @@ function normalizeSearchText(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLocaleLowerCase()
     .replace(/[^\p{L}\p{N}]/gu, "");
-}
-
-// Renders the first PREVIEW_COUNT rows, then reveals the rest with a smooth
-// height animation behind a show more/less toggle. `expanded`/`onToggle` are
-// optional: pass them when the parent also needs to react (e.g. to load more
-// data on expand); omit them to let the component manage its own state.
-function RevealList<T>({ items, renderRow, listClassName, showMore, showLess, expanded: controlledExpanded, onToggle, busy }: {
-  items: T[];
-  renderRow: (item: T) => ReactNode;
-  listClassName: string;
-  showMore: string;
-  showLess: string;
-  expanded?: boolean;
-  onToggle?: () => void;
-  busy?: boolean;
-}) {
-  const [internalExpanded, setInternalExpanded] = useState(false);
-  const expanded = controlledExpanded ?? internalExpanded;
-  const toggle = onToggle ?? (() => setInternalExpanded((value) => !value));
-  const rest = items.slice(PREVIEW_COUNT);
-  return (
-    <div className="reveal-list">
-      <div className={listClassName}>{items.slice(0, PREVIEW_COUNT).map(renderRow)}</div>
-      {(rest.length > 0 || (expanded && busy)) && (
-        <>
-          <div className={`reveal-more${expanded ? " reveal-more--open" : ""}`}>
-            <div className={`reveal-more__inner ${listClassName}`}>{rest.map(renderRow)}</div>
-          </div>
-          <div className="reveal-toggle">
-            <Button size="sm" onClick={toggle} disabled={busy}>{expanded ? showLess : showMore}</Button>
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 export default function SearchPage({ onPlay, hideExternalSearch = false }: { onPlay: (video: Video) => void; hideExternalSearch?: boolean }) {
