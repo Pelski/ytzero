@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { AlertTriangle, ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
@@ -25,6 +25,7 @@ import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CAR
 import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, Field, IconButton, Inline, Input, InputGroup, PageHeader, Popover, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text, Textarea } from "../components/ui";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
 import { formatAppDate } from "../dateTime";
+import { mergeRemoteChangelog } from "../changelog";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -51,7 +52,9 @@ const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: b
 
 const DISPLAY_PERMISSION_AREAS: ProfilePermissionArea[] = ["appearance", "feed", "navigation", "playback"];
 const DEFAULT_ADMIN_ONLY_AREAS: ProfilePermissionArea[] = ["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"];
+const GITHUB_RELEASES_URL = "https://github.com/Pelski/ytzero/releases";
 const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"]);
+
 const PROFILE_PERMISSION_OPTIONS: { id: ProfilePermissionArea; labelKey: I18nKey; hintKey: I18nKey }[] = [
   { id: "channels", labelKey: "profilePermissionChannels", hintKey: "profilePermissionChannelsHint" },
   { id: "followed_playlists", labelKey: "profilePermissionFollowedPlaylists", hintKey: "profilePermissionFollowedPlaylistsHint" },
@@ -1209,6 +1212,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
   const [checkingUpdates, setCheckingUpdates] = useState(false);
   const [updateCheckError, setUpdateCheckError] = useState(false);
+  const [changelogRemoteError, setChangelogRemoteError] = useState(false);
   const [updateCheckInterval, setUpdateCheckInterval] = useState("off");
 
   const [channelUrl, setChannelUrl] = useState("");
@@ -1341,21 +1345,32 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       .finally(() => setLoadingLogs(false));
   }, []);
 
-  const loadChangelog = useCallback(() => {
-    api.version()
-      .then(async (version) => [version, await api.changelog(version.version)] as const)
-      .then(([version, bundledChangelog]) => {
-        setAppVersion(version);
-        setChangelog(bundledChangelog);
-      })
-      .catch(console.error);
+  const loadChangelog = useCallback(async () => {
+    setChangelogRemoteError(false);
+    try {
+      const [version, bundledChangelog] = await Promise.all([api.version(), api.changelog()]);
+      setAppVersion(version);
+      setChangelog(bundledChangelog);
+      try {
+        const remote = await api.checkUpdates();
+        setUpdateCheck(remote);
+        setChangelog(mergeRemoteChangelog(bundledChangelog, remote));
+      } catch {
+        setChangelogRemoteError(true);
+      }
+    } catch (error) {
+      console.error(error);
+    }
   }, []);
 
   const checkForUpdates = async () => {
     setCheckingUpdates(true);
     setUpdateCheckError(false);
     try {
-      setUpdateCheck(await api.checkUpdates());
+      const remote = await api.checkUpdates();
+      setUpdateCheck(remote);
+      setChangelog((current) => current ? mergeRemoteChangelog(current, remote) : current);
+      setChangelogRemoteError(false);
     } catch {
       setUpdateCheckError(true);
     } finally {
@@ -3300,6 +3315,15 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 <Alert variant="danger" title={t("updateCheckFailed")}>{t("updateCheckFailedHint")}</Alert>
               )}
 
+              {changelogRemoteError && (
+                <Alert className="settings-changelog-remote-error" variant="warning" icon={<AlertTriangle />} title={t("changelogRemoteFailed")}>
+                  <span>{t("changelogRemoteFailedHint")}</span>
+                  <ButtonAnchor size="sm" href={GITHUB_RELEASES_URL} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink size={14} />}>
+                    {t("viewReleasesOnGitHub")}
+                  </ButtonAnchor>
+                </Alert>
+              )}
+
               {updateCheck && (
                 <Alert
                   className="settings-update-status"
@@ -3333,28 +3357,40 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               ) : changelog.releases.length === 0 ? (
                 <EmptyState icon={<FileText />} title={t("changelogEmpty")} />
               ) : (
-                <div className="settings-release-list">
-                  {changelog.releases.map((release, releaseIndex) => (
-                    <article className="settings-release" key={release.version}>
-                      <header className="settings-release-head">
-                        <div>
-                          <div className="settings-release-title">
-                            <strong>{release.name}</strong>
-                            {releaseIndex === 0 && <Badge variant="accent" size="sm">{t("changelogLatest")}</Badge>}
-                          </div>
-                          {release.publishedAt && <span>{formatAppDate(release.publishedAt, locale, timeZone)}</span>}
-                        </div>
-                        <div className="settings-release-actions">
-                          <ButtonAnchor size="sm" variant="ghost" href={release.url} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink size={13} />}>
-                            GitHub
-                          </ButtonAnchor>
-                        </div>
-                      </header>
-                      {release.notes.length > 0 && (
-                        <ul>{release.notes.map((note, noteIndex) => <li key={`${release.version}-${noteIndex}`}><ChangelogNote>{note}</ChangelogNote></li>)}</ul>
-                      )}
-                    </article>
-                  ))}
+                <div className="settings-release-groups">
+                  {(() => {
+                    const highlighted = changelog.releases.filter((release) => release.upcoming || release.available);
+                    const history = changelog.releases.filter((release) => !release.upcoming && !release.available);
+                    const groups = [
+                      highlighted.length > 0 ? {
+                        key: "highlighted",
+                        title: t(highlighted.some((release) => release.upcoming) ? "changelogUpcomingSection" : "changelogAvailableSection"),
+                        releases: highlighted,
+                      } : null,
+                      history.length > 0 ? { key: "history", title: t("changelogHistory"), releases: history } : null,
+                    ].filter((group): group is { key: string; title: string; releases: typeof changelog.releases } => group !== null);
+                    return groups.map((group) => <section className="settings-release-group" key={group.key}>
+                      <SectionHeader title={group.title} variant="subtle" />
+                      <div className="settings-release-list">
+                        {group.releases.map((release) => <article className="settings-release" key={release.version}>
+                          <header className="settings-release-head">
+                            <div>
+                              <div className="settings-release-title"><strong>{release.name}</strong></div>
+                              {release.publishedAt && <span>{formatAppDate(release.publishedAt, locale, timeZone)}</span>}
+                            </div>
+                            <div className="settings-release-actions">
+                              <ButtonAnchor size="sm" variant="ghost" href={release.url} target="_blank" rel="noreferrer" leadingIcon={<ExternalLink size={13} />}>
+                                GitHub
+                              </ButtonAnchor>
+                            </div>
+                          </header>
+                          {release.notes.length > 0 && (
+                            <ul>{release.notes.map((note, noteIndex) => <li key={`${release.version}-${noteIndex}`}><ChangelogNote>{note}</ChangelogNote></li>)}</ul>
+                          )}
+                        </article>)}
+                      </div>
+                    </section>);
+                  })()}
                 </div>
               )}
             </div>

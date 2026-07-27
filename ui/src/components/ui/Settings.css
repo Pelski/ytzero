@@ -38,10 +38,15 @@
 .settings-update-status .ui-alert__copy { flex: 1; }
 .settings-update-status .ui-alert__copy > div { align-items: center; display: flex; flex-wrap: wrap; gap: 10px 14px; justify-content: space-between; }
 .settings-update-link { flex: 0 0 auto; width: fit-content; }
+.settings-changelog-remote-error .ui-alert__copy > div { align-items: center; display: flex; flex-wrap: wrap; gap: 10px 14px; justify-content: space-between; }
+.settings-changelog-remote-error .ui-button { flex: 0 0 auto; width: fit-content; }
 .settings-version-comparison { align-items: center; display: inline-flex; flex-wrap: wrap; gap: 8px; }
 .settings-version-comparison code { background: color-mix(in srgb, var(--ui-alert-color) 13%, var(--surface-2)); border-radius: 6px; color: var(--text); padding: 4px 7px; }
 .settings-version-comparison svg { height: 14px; opacity: .75; width: 14px; }
 .settings-changelog-list-head { margin: 2px 0 0; }
+.settings-release-groups { display: grid; gap: 18px; }
+.settings-release-group { display: grid; gap: 8px; }
+.settings-release-group > .ui-section-header { margin: 0; }
 .settings-release-list { display: grid; gap: 10px; }
 .settings-release {
   min-width: 0;
@@ -64,6 +69,7 @@
   .settings-changelog-head { align-items: stretch; flex-direction: column; }
   .settings-changelog-head .ui-button { width: 100%; }
   .settings-update-status .ui-alert__copy > div { align-items: flex-start; flex-direction: column; }
+  .settings-changelog-remote-error .ui-alert__copy > div { align-items: flex-start; flex-direction: column; }
   .settings-release-head { align-items: flex-start; }
   .settings-release-actions { flex-wrap: wrap; justify-content: flex-end; }
 }

@@ -2,6 +2,7 @@ import { db, getUserSetting } from "./db";
 import { log } from "./logger";
 import { COMMIT, isReleaseNewer, VERSION } from "./version";
 import { createNotification } from "./notifications";
+import { parseGitHubReleases, releasesNewerThan, type GitHubReleaseSummary } from "./githubReleases";
 
 export interface UpdateCheckResult {
   currentVersion: string;
@@ -11,16 +12,18 @@ export interface UpdateCheckResult {
   checkedAt: string;
   latestUrl: string;
   publishedAt: string;
+  releases: GitHubReleaseSummary[];
+  availableReleases: GitHubReleaseSummary[];
 }
 
-interface GitHubRelease {
-  tag_name?: unknown;
-  published_at?: unknown;
-  html_url?: unknown;
-}
+const RELEASES_URL = "https://api.github.com/repos/Pelski/ytzero/releases?per_page=10";
+const RELEASES_FALLBACK_URL = "https://github.com/Pelski/ytzero/releases";
+const CACHE_MS = 15 * 60_000;
+let cachedResult: { expiresAt: number; value: UpdateCheckResult } | null = null;
+let pendingCheck: Promise<UpdateCheckResult> | null = null;
 
-export async function checkLatestRelease(): Promise<UpdateCheckResult> {
-  const response = await fetch("https://api.github.com/repos/Pelski/ytzero/releases/latest", {
+async function fetchLatestReleases(): Promise<UpdateCheckResult> {
+  const response = await fetch(RELEASES_URL, {
     headers: {
       Accept: "application/vnd.github+json",
       "User-Agent": "YT-Zero-update-check",
@@ -29,17 +32,30 @@ export async function checkLatestRelease(): Promise<UpdateCheckResult> {
     signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
-  const release = await response.json() as GitHubRelease;
-  const latestVersion = typeof release.tag_name === "string" ? release.tag_name : null;
+  const releases = parseGitHubReleases(await response.json());
+  const latest = releases[0] ?? null;
+  const latestVersion = latest?.version ?? null;
   return {
     currentVersion: VERSION,
     commit: COMMIT,
     latestVersion,
     updateAvailable: latestVersion ? isReleaseNewer(VERSION, latestVersion) : null,
     checkedAt: new Date().toISOString(),
-    latestUrl: typeof release.html_url === "string" ? release.html_url : "https://github.com/Pelski/ytzero/releases/latest",
-    publishedAt: typeof release.published_at === "string" ? release.published_at : "",
+    latestUrl: latest?.url ?? RELEASES_FALLBACK_URL,
+    publishedAt: latest?.publishedAt ?? "",
+    releases,
+    availableReleases: releasesNewerThan(VERSION, releases),
   };
+}
+
+export async function checkLatestRelease(): Promise<UpdateCheckResult> {
+  if (cachedResult && cachedResult.expiresAt > Date.now()) return cachedResult.value;
+  if (pendingCheck) return pendingCheck;
+  pendingCheck = fetchLatestReleases().then((value) => {
+    cachedResult = { expiresAt: Date.now() + CACHE_MS, value };
+    return value;
+  }).finally(() => { pendingCheck = null; });
+  return pendingCheck;
 }
 
 const INTERVAL_HOURS = new Set([1, 3, 6, 12, 24, 72, 168]);

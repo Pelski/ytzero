@@ -579,6 +579,8 @@ export interface AppRelease {
   url: string;
   notes: string[];
   current?: boolean;
+  available?: boolean;
+  upcoming?: boolean;
 }
 
 export interface AppChangelog {
@@ -593,6 +595,8 @@ export interface UpdateCheck {
   checkedAt: string;
   latestUrl: string;
   publishedAt: string;
+  releases: AppRelease[];
+  availableReleases: AppRelease[];
 }
 
 export type Bucket = "today" | "tonight" | "tomorrow" | "tomorrow_evening" | "weekend";
