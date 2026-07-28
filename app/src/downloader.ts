@@ -7,6 +7,7 @@ import { log } from "./logger";
 import { beginMutation, maintenanceActive } from "./maintenance";
 import { publishAppEvent } from "./appEvents";
 import { notifyDownloadFailed } from "./notifications";
+import { autoDownloadFollowerExistsSql } from "./downloadEligibility";
 
 // Files land in one global directory: a video downloaded once serves every
 // profile. Retention below is the only thing that removes them.
@@ -498,6 +499,26 @@ function parseDurationSeconds(duration: string | null): number | null {
 }
 
 async function autoEnqueue(s: DlSettings) {
+  // A members-only badge can arrive after a feed job was queued. Remove stale
+  // automatic jobs (including visible errors) when no following profile would
+  // see that upload in its feed. Manual and scheduled intent is untouched.
+  const prunedMembersOnly = await database.prepare(`
+    UPDATE downloads
+    SET status = 'deleted', error = NULL, finished_at = datetime('now')
+    WHERE source = 'feed'
+      AND status IN ('queued', 'error')
+      AND video_id IN (
+        SELECT v.video_id
+        FROM videos v
+        WHERE v.members_only = 1
+          AND NOT (${autoDownloadFollowerExistsSql("v")})
+      )
+  `).run();
+  if (prunedMembersOnly.changes > 0) {
+    log.info("downloads.members_only_pruned", { count: prunedMembersOnly.changes });
+    publishAppEvent("downloads", { pruned: prunedMembersOnly.changes });
+  }
+
   if (s.download_scheduled === 1) {
     // Anything any profile put on a watch-later bucket and hasn't watched yet.
     // An explicit schedule is intent enough to download even a Short. The
@@ -532,7 +553,7 @@ async function autoEnqueue(s: DlSettings) {
       WHERE v.live_status = 'none' AND v.external = 0 AND v.is_private = 0
         ${shortsFilter}
         AND v.published_at >= datetime('now', ?)
-        AND EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id = v.channel_id AND uc.followed = 1)
+        AND ${autoDownloadFollowerExistsSql("v")}
         AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.video_id = v.video_id)
         AND NOT EXISTS (SELECT 1 FROM user_videos uv WHERE uv.video_id = v.video_id AND (uv.watched = 1 OR uv.status = 'archived'))
       ORDER BY v.published_at DESC
