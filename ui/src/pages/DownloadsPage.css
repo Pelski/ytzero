@@ -1,4 +1,5 @@
 .live-upcoming-header { margin-top: 32px; }
+.dl-page-tabs { margin-top: 4px; }
 
 .dl-storage {
   align-items: center;
@@ -12,6 +13,7 @@
 .dl-storage-bar { background: var(--surface-2); border-radius: 2px; height: 4px; overflow: hidden; }
 .dl-storage-fill { background: var(--accent); border-radius: 2px; height: 100%; }
 .dl-section { margin-top: 22px; }
+.dl-queue-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .dl-expand {
   align-items: center;
   background: transparent;

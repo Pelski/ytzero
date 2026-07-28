@@ -4,6 +4,7 @@ import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
 import { log } from "./logger";
+import { listDownloadRules } from "./downloadRules";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { runAutomaticUpdateChecks } from "./updates";
@@ -1241,15 +1242,21 @@ export async function syncNextFollowedPlaylist(): Promise<void> {
   if (!releaseMutation) return;
   scheduledPlaylistSyncRunning = true;
   try {
+    const automatedPlaylistIds = [...new Set((await listDownloadRules())
+      .filter((rule) => rule.enabled)
+      .flatMap((rule) => rule.playlist_ids))];
+    const automatedSql = automatedPlaylistIds.length
+      ? ` OR cp.playlist_id IN (${automatedPlaylistIds.map(() => "?").join(",")})`
+      : "";
     const playlist = await database.prepare(`
       SELECT cp.playlist_id
       FROM channel_playlists cp
       JOIN channels c ON c.channel_id = cp.channel_id
       WHERE c.manual_status = 'active'
-        AND EXISTS (SELECT 1 FROM user_followed_playlists ufp WHERE ufp.playlist_id = cp.playlist_id)
+        AND (EXISTS (SELECT 1 FROM user_followed_playlists ufp WHERE ufp.playlist_id = cp.playlist_id)${automatedSql})
       ORDER BY COALESCE(cp.sync_attempted_at, cp.last_synced_at, '1970-01-01') ASC, cp.playlist_id ASC
       LIMIT 1
-    `).get() as { playlist_id: string } | null;
+    `).get(...automatedPlaylistIds) as { playlist_id: string } | null;
     if (!playlist) {
       log.info("playlist.sync.skipped", { reason: "no_eligible_followed_playlists", followedByStatus: await followedChannelStatusCounts() });
       return;

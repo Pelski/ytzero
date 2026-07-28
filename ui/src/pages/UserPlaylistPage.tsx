@@ -62,7 +62,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
 
   const downloadAll = async () => {
     if (!playlist) return;
-    if (!videos.some((video) => video.downloads_enabled)) { navigate("/settings?tab=plugins"); return; }
+    if (!videos.some((video) => video.downloads_enabled)) { navigate("/downloads?view=configuration"); return; }
     setDownloadPending(true); setDownloadFeedback("");
     try {
       const result = await api.downloadUserPlaylist(playlist.id);

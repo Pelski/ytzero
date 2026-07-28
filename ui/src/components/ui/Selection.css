@@ -25,10 +25,10 @@
 .ui-tabs--subtle .ui-tabs__tab:hover { background: var(--surface-2); color: var(--text); }
 .ui-tabs--settings .ui-tabs__tab--active, .ui-tabs--subtle .ui-tabs__tab--active { background: transparent; border-bottom-color: var(--accent); color: var(--text); }
 .ui-tabs--settings .ui-tabs__tab--active .ui-tabs__count, .ui-tabs--subtle .ui-tabs__tab--active .ui-tabs__count { background: var(--accent); color: #fff; }
-.ui-option-picker { display: grid; gap: 4px; grid-template-columns: repeat(var(--ui-picker-columns), minmax(0,1fr)); }
-.ui-option-picker__option { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--text); cursor: pointer; display: flex; gap: 10px; padding: 9px 10px; text-align: left; }
-.ui-option-picker__option:hover { background: var(--surface-3); }
-.ui-option-picker__option--selected { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ui-option-picker { background: var(--bg); border: 1px solid var(--surface-3); border-radius: 11px; display: grid; gap: 5px; grid-template-columns: repeat(var(--ui-picker-columns), minmax(0,1fr)); padding: 5px; }
+.ui-option-picker__option { align-items: center; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--text); cursor: pointer; display: flex; gap: 10px; min-height: 58px; padding: 10px 11px; text-align: left; transition: background-color .14s ease, border-color .14s ease, box-shadow .14s ease; }
+.ui-option-picker__option:hover { background: var(--surface-2); }
+.ui-option-picker__option--selected { background: var(--surface-3); border-color: var(--surface-3); }
 .ui-option-picker__icon, .ui-option-picker__check { color: var(--text-2); flex-shrink: 0; }
 .ui-option-picker__copy { display: grid; flex: 1; min-width: 0; }
 .ui-option-picker__copy small { color: var(--text-2); }
@@ -49,3 +49,6 @@
 .ui-icon-picker__option:hover { background: var(--surface-3); color: var(--text); }
 .ui-icon-picker__option--selected { background: color-mix(in srgb,var(--accent) 14%,transparent); border-color: color-mix(in srgb,var(--accent) 50%,transparent); color: var(--accent); }
 .ui-icon-picker__option svg { height: 18px; width: 18px; }
+@container settings-section (max-width: 560px) {
+  .ui-option-picker { grid-template-columns: 1fr; }
+}

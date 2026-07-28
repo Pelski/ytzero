@@ -1,14 +1,18 @@
 import { useState, type ReactElement } from "react";
 import { useI18n } from "../i18n";
-import { Button, FloatingPopover } from "./ui";
+import { Button, FloatingPopover, type ButtonVariant } from "./ui";
 
 export default function Popconfirm({
   message,
   onConfirm,
+  confirmLabel,
+  confirmVariant = "danger",
   children,
 }: {
   message: string;
   onConfirm: () => void;
+  confirmLabel?: string;
+  confirmVariant?: ButtonVariant;
   children: ReactElement;
 }) {
   const { t } = useI18n();
@@ -26,14 +30,14 @@ export default function Popconfirm({
       <div className="popconfirm-actions">
         <Button
           size="sm"
-          variant="danger"
+          variant={confirmVariant}
           onClick={(event) => {
             event.stopPropagation();
             onConfirm();
             setOpen(false);
           }}
         >
-          {t("yes")}
+          {confirmLabel ?? t("yes")}
         </Button>
         <Button size="sm" onClick={(event) => { event.stopPropagation(); setOpen(false); }}>
           {t("cancel")}

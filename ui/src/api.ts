@@ -389,6 +389,8 @@ export interface DownloadItem {
   pinned: number;
   created_at: string;
   finished_at: string | null;
+  automation_rule_id: number | null;
+  automation_rule_name: string | null;
   title: string;
   thumbnail: string;
   duration: string | null;
@@ -412,6 +414,57 @@ export interface DownloadSummary {
   downloading: number;
   completed: number;
   errors: number;
+}
+
+export interface DownloadRuleInput {
+  name: string;
+  enabled: boolean;
+  source_mode: "subscriptions" | "selected";
+  channel_ids: string[];
+  playlist_ids: string[];
+  include_keywords: string[];
+  exclude_keywords: string[];
+  keyword_mode: "any" | "all";
+  match_field: "title" | "description" | "both";
+  include_shorts: boolean;
+  include_members_only: boolean;
+  min_duration_seconds: number;
+  backfill_mode: "future" | "recent" | "all";
+  lookback_hours: number;
+}
+
+export interface DownloadRule extends DownloadRuleInput {
+  id: number;
+  portable_uuid: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DownloadRulePreview {
+  matches: number;
+  ready: number;
+  existing: number;
+  limited: boolean;
+  sample: Array<{
+    video_id: string;
+    title: string;
+    thumbnail: string;
+    channel_id: string;
+    channel_title: string;
+    published_at: string | null;
+    download_status: string | null;
+  }>;
+}
+
+export interface DownloadAutomationOptions {
+  channels: Array<{ channel_id: string; title: string; thumbnail: string }>;
+  playlists: Array<{ playlist_id: string; title: string; thumbnail: string; channel_title: string }>;
+}
+
+export interface DownloadConfigResponse extends PluginSettingsResponse {
+  can_manage: boolean;
+  enabled: boolean;
+  cookies_configured: boolean;
 }
 
 export interface VideoDownload {
@@ -925,15 +978,25 @@ export const api = {
     http<PluginSettingsResponse>(`/plugins/${id}/settings`, { method: "PUT", body: JSON.stringify(patch) }),
   resetPlugin: (id: string) =>
     http<PluginSettingsResponse>(`/plugins/${id}/reset`, { method: "POST", body: "{}" }),
-  downloadCookies: () => http<{ configured: boolean }>("/plugins/downloads/cookies"),
+  downloadCookies: () => http<{ configured: boolean }>("/downloads/cookies"),
   uploadDownloadCookies: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    return http<{ configured: boolean }>("/plugins/downloads/cookies", { method: "POST", body: fd });
+    return http<{ configured: boolean }>("/downloads/cookies", { method: "POST", body: fd });
   },
-  removeDownloadCookies: () => http<{ configured: boolean }>("/plugins/downloads/cookies", { method: "DELETE" }),
+  removeDownloadCookies: () => http<{ configured: boolean }>("/downloads/cookies", { method: "DELETE" }),
   downloads: () => http<DownloadsResponse>("/downloads"),
+  cancelDownloadQueue: () => http<{ ok: true; cancelled: number }>("/downloads/queue", { method: "DELETE" }),
   downloadSummary: () => http<DownloadSummary>("/downloads/summary"),
+  downloadConfig: () => http<DownloadConfigResponse>("/downloads/config"),
+  updateDownloadConfig: (patch: { enabled?: boolean; settings?: Record<string, PluginSettingValue> }) =>
+    http<DownloadConfigResponse>("/downloads/config", { method: "PUT", body: JSON.stringify(patch) }),
+  downloadRules: () => http<{ rules: DownloadRule[]; can_manage: boolean }>("/downloads/automation"),
+  downloadAutomationOptions: () => http<DownloadAutomationOptions>("/downloads/automation/options"),
+  previewDownloadRule: (rule: DownloadRuleInput) => http<DownloadRulePreview>("/downloads/automation/preview", { method: "POST", body: JSON.stringify(rule) }),
+  createDownloadRule: (rule: DownloadRuleInput) => http<{ rule: DownloadRule }>("/downloads/automation", { method: "POST", body: JSON.stringify(rule) }),
+  updateDownloadRule: (id: number, patch: Partial<DownloadRuleInput>) => http<{ rule: DownloadRule }>(`/downloads/automation/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
+  removeDownloadRule: (id: number) => http<{ ok: true }>(`/downloads/automation/${id}`, { method: "DELETE" }),
   requestDownload: (id: string, priority = false) =>
     http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download`, { method: "POST", body: JSON.stringify({ priority }) }),
   videoDownload: (id: string) =>

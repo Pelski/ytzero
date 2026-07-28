@@ -192,6 +192,10 @@ below.
 - `user_playlists`, `user_playlist_videos`, `user_playlist_rules`.
 - shared channel choices such as `custom_title` and the explicit automatic
   download threshold override.
+- `download_rules`: portable instance-wide automation configuration. Rules use
+  stable UUIDs and stable YouTube channel/playlist identifiers. Required and
+  excluded keywords are configuration; rule previews and queue decisions are
+  transient. Merge restore updates matching UUIDs idempotently.
 - profile avatars after MIME, size, and image validation.
 - stable `portable_uuid` values on profiles, tags, and personal playlists are
   object identity metadata and travel only through their owning domain section.
@@ -265,8 +269,11 @@ interface BackupSectionDefinition {
 
 The Discovery adapter exports validated settings, `blocked_terms`, and optional
 feedback; it does not export generated recommendations or `last_terms`. The
-Downloads adapter exports validated configuration and explicit channel
-overrides; it does not export cookies, paths, media, queue state, or errors.
+Downloads feature adapter exports validated engine configuration, automation
+rules, and explicit channel overrides; it does not export cookies, paths,
+media, queue state, previews, or errors. Downloads is presented as a
+first-class application area while the compatibility adapter continues to read
+older `plugin_downloads_*` keys.
 
 If a backup contains configuration for a plugin unavailable in the target
 version, analysis reports it as skipped. The user can install/enable a

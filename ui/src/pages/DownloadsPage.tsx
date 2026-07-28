@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./DownloadsPage.css";
-import { Link } from "react-router-dom";
-import { AlertTriangle, Check, ChevronDown, HardDrive, LoaderCircle, Pin, PinOff, RotateCw, Trash2 } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { AlertTriangle, Check, ChevronDown, Download, HardDrive, LoaderCircle, Pin, PinOff, RotateCw, Settings2, Sparkles, Square, Trash2 } from "lucide-react";
 import { api, type DownloadsResponse, type DownloadItem } from "../api";
 import { formatTimeAgo, useI18n, type I18nKey } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
@@ -9,9 +9,11 @@ import { img } from "../img";
 import { formatVideoDuration } from "../components/VideoCard";
 import Popconfirm from "../components/Popconfirm";
 import Tooltip from "../components/Tooltip";
-import { Alert, Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
+import { Alert, Badge, Button, EmptyState, PageHeader, SectionHeader, Tabs } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { subscribeServerEvent } from "../serverEvents";
+import DownloadAutomation from "../components/DownloadAutomation";
+import DownloadConfiguration from "../components/DownloadConfiguration";
 
 const QUEUE_COLLAPSED_COUNT = 3;
 
@@ -45,9 +47,17 @@ const SOURCE_KEYS: Record<string, I18nKey> = {
 
 export default function DownloadsPage() {
   const { t, language } = useI18n();
+  const [searchParams, setSearchParams] = useSearchParams();
   useDocumentTitle(t("downloadsTitle"));
   const [data, setData] = useState<DownloadsResponse | null>(null);
   const [queueExpanded, setQueueExpanded] = useState(false);
+  const [cancellingQueue, setCancellingQueue] = useState(false);
+  const requestedView = searchParams.get("view");
+  const [view, setViewState] = useState<"library" | "automation" | "configuration">(requestedView === "automation" || requestedView === "configuration" ? requestedView : "library");
+  const setView = (next: "library" | "automation" | "configuration") => {
+    setViewState(next);
+    setSearchParams(next === "library" ? {} : { view: next }, { replace: true });
+  };
 
   const load = useCallback(() => {
     api.downloads().then(setData).catch(() => {});
@@ -74,6 +84,16 @@ export default function DownloadsPage() {
       downloads: prev.downloads.map((d) => d.video_id === item.video_id ? { ...d, pinned: pinned ? 1 : 0 } : d),
     } : prev);
     api.pinDownload(item.video_id, pinned).catch(load);
+  };
+
+  const cancelQueue = () => {
+    setCancellingQueue(true);
+    setData((previous) => previous ? {
+      ...previous,
+      active: null,
+      downloads: previous.downloads.filter((item) => item.status === "done"),
+    } : previous);
+    api.cancelDownloadQueue().then(load).catch(load).finally(() => setCancellingQueue(false));
   };
 
   if (!data) return null;
@@ -103,7 +123,10 @@ export default function DownloadsPage() {
             </span>
             {item.size_bytes != null && <span>{formatBytes(item.size_bytes)}</span>}
             {item.quality && item.status === "done" && <span>{item.quality === "best" ? "max" : `${item.quality}p`}</span>}
-            <span className="dl-source">{t(SOURCE_KEYS[item.source] ?? "dlSourceManual")}</span>
+            <span className="dl-source" title={item.automation_rule_name ?? undefined}>
+              {t(SOURCE_KEYS[item.source] ?? "dlSourceManual")}
+              {item.automation_rule_name && ` · ${item.automation_rule_name}`}
+            </span>
             {item.finished_at && <span>{utcAgo(item.finished_at, language)}</span>}
           </div>
           {item.status === "downloading" && (
@@ -154,6 +177,19 @@ export default function DownloadsPage() {
           </div>
         </div>} />
 
+      <Tabs
+        variant="subtle"
+        className="dl-page-tabs"
+        label={t("downloadsTitle")}
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "library", label: language === "pl" ? "Biblioteka" : language === "de" ? "Bibliothek" : "Library", icon: <Download /> },
+          { value: "automation", label: language === "pl" ? "Automatyzacja" : language === "de" ? "Automatisierung" : "Automation", icon: <Sparkles /> },
+          { value: "configuration", label: language === "pl" ? "Konfiguracja" : language === "de" ? "Konfiguration" : "Configuration", icon: <Settings2 /> },
+        ]}
+      />
+
       {!data.enabled && (
         <Alert className="dl-alert-layout" variant="warning" icon={<AlertTriangle />}>{t("downloadsDisabled")}</Alert>
       )}
@@ -161,13 +197,15 @@ export default function DownloadsPage() {
         <Alert className="dl-alert-layout" variant="warning" icon={<AlertTriangle />}>{t("downloadsYtdlpMissing")}</Alert>
       )}
 
-      {queueItems.length === 0 && doneItems.length === 0 ? (
+      {view === "automation" && <DownloadAutomation />}
+      {view === "configuration" && <DownloadConfiguration />}
+      {view === "library" && (queueItems.length === 0 && doneItems.length === 0 ? (
         <EmptyState art={<EmptyArt scene="noDownloads" />} title={t("downloadsEmptyTitle")} description={t("downloadsEmpty")} />
       ) : (
         <>
           {queueItems.length > 0 && (
             <section className="dl-section">
-              <SectionHeader title={t("downloadsSectionQueue")} actions={<Badge>{queueItems.length}</Badge>} />
+              <SectionHeader title={t("downloadsSectionQueue")} actions={<div className="dl-queue-actions"><Badge>{queueItems.length}</Badge><Popconfirm message={t("downloadsCancelAllConfirm")} confirmLabel={t("downloadsCancelAll")} onConfirm={cancelQueue}><Button size="sm" variant="danger" disabled={cancellingQueue} leadingIcon={<Square />}>{cancellingQueue ? t("downloadsCancellingAll") : t("downloadsCancelAll")}</Button></Popconfirm></div>} />
               <div className="dl-list">
                 {visibleQueue.map(renderRow)}
               </div>
@@ -191,7 +229,7 @@ export default function DownloadsPage() {
             </section>
           )}
         </>
-      )}
+      ))}
     </>
   );
 }

@@ -703,7 +703,6 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           <span className="lp-live-dot" /> {liveLabel ?? "STREAMING"}
         </div>
       )}
-
       {!playing && !buffering && (
         <button className="lp-big-play" onClick={togglePlay} aria-label={t("playerPlay")}>
           <Play size={30} fill="currentColor" />

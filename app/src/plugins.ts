@@ -7,6 +7,7 @@ import { SUBTITLE_LANGUAGES } from "./subtitleLanguages";
 import { maintenanceActive } from "./maintenance";
 import { log } from "./logger";
 import { storedUtcTimestampMs } from "./timeZone";
+import { listDownloadRules, restoreDownloadRules } from "./downloadRules";
 
 export interface PluginManifest {
   id: string;
@@ -352,7 +353,7 @@ function localizePlugin(manifest: PluginManifest, language: string | null | unde
 export async function listPlugins(language?: string | null) {
   const states = await database.prepare("SELECT id, enabled, version FROM plugins").all() as { id: string; enabled: number; version: string }[];
   const byId = new Map(states.map((s) => [s.id, s]));
-  return PLUGINS.map((manifest) => {
+  return PLUGINS.filter((manifest) => manifest.id !== "downloads").map((manifest) => {
     const state = byId.get(manifest.id);
     return { ...localizePlugin(manifest, language), enabled: state?.enabled !== 0 };
   });
@@ -499,11 +500,25 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
   {
     id: "downloads",
     scope: "instance",
-    schemaVersion: 1,
-    async export(userId) { return { settings: (await getPluginSettings(userId, "downloads")).settings }; },
+    schemaVersion: 2,
+    async export(userId) {
+      const rules = await listDownloadRules();
+      const playlistIds = [...new Set(rules.flatMap((rule) => rule.playlist_ids))];
+      const playlists = playlistIds.length
+        ? await database.prepare(`SELECT playlist_id, channel_id, title, thumbnail, video_count FROM channel_playlists WHERE playlist_id IN (${playlistIds.map(() => "?").join(",")})`).all(...playlistIds)
+        : [];
+      return { settings: (await getPluginSettings(userId, "downloads")).settings, rules, playlists };
+    },
     async restore(userId, value) {
       const input = value && typeof value === "object" ? value as any : {};
       await setPluginSettings(userId, "downloads", input.settings ?? {});
+      for (const playlist of Array.isArray(input.playlists) ? input.playlists : []) {
+        if (!playlist?.playlist_id || !playlist?.channel_id) continue;
+        await database.prepare("INSERT INTO channels(channel_id,title,url,external) VALUES(?,?,?,1) ON CONFLICT(channel_id) DO NOTHING").run(playlist.channel_id, "", "");
+        await database.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail,video_count) VALUES(?,?,?,?,?) ON CONFLICT(playlist_id) DO UPDATE SET title=excluded.title,thumbnail=excluded.thumbnail,video_count=excluded.video_count")
+          .run(playlist.playlist_id, playlist.channel_id, String(playlist.title ?? ""), String(playlist.thumbnail ?? ""), String(playlist.video_count ?? ""));
+      }
+      await restoreDownloadRules(input.rules);
     },
   },
 ] as const;

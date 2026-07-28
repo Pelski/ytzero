@@ -36,7 +36,8 @@ import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
-import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, downloadStatusSummary, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { activeDownloadProgress, cancelAllPendingDownloads, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, downloadStatusSummary, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "./downloadRules";
 import { fetchVideoComments, validYouTubeVideoId, VideoCommentsError } from "./youtubeComments";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
@@ -1039,6 +1040,8 @@ api.post("/plugins/:id/reset", async (c) => {
   }
 });
 
+// Legacy plugin URLs remain available for older clients. The current UI uses
+// the dedicated downloads configuration endpoints below.
 // yt-dlp accepts a Netscape-format cookie jar. Keep the secret in a private
 // server-side file rather than the settings table, which is returned to UI.
 api.get("/plugins/downloads/cookies", (c) => c.json({ configured: downloadCookiesConfigured() }));
@@ -1062,6 +1065,110 @@ api.delete("/plugins/downloads/cookies", (c) => {
 
 // ---------- downloads plugin ----------
 
+api.get("/downloads/config", async (c) => {
+  const uid = currentUserId(c);
+  return c.json({
+    can_manage: isAdmin(c),
+    enabled: pluginEnabled("downloads"),
+    ...(await getPluginSettings(uid, "downloads", getUserSetting(uid, "language"))),
+    cookies_configured: downloadCookiesConfigured(),
+  });
+});
+
+api.put("/downloads/config", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const body = await c.req.json<{ enabled?: boolean; settings?: Record<string, unknown> }>();
+  if (typeof body.enabled === "boolean") await setPluginEnabled("downloads", body.enabled);
+  const uid = currentUserId(c);
+  const settings = body.settings && typeof body.settings === "object"
+    ? await setPluginSettings(uid, "downloads", body.settings, getUserSetting(uid, "language"))
+    : await getPluginSettings(uid, "downloads", getUserSetting(uid, "language"));
+  publishAppEvent("downloads", { enabled: pluginEnabled("downloads"), config: true });
+  return c.json({ can_manage: true, enabled: pluginEnabled("downloads"), ...settings, cookies_configured: downloadCookiesConfigured() });
+});
+
+api.get("/downloads/automation", async (c) => c.json({ rules: await listDownloadRules(), can_manage: isAdmin(c) }));
+
+api.get("/downloads/automation/options", async (c) => {
+  const channels = await database.prepare(`
+    SELECT DISTINCT c.channel_id, COALESCE(NULLIF(c.custom_title, ''), c.title) AS title, c.thumbnail
+    FROM user_channels uc JOIN channels c ON c.channel_id=uc.channel_id
+    WHERE uc.followed=1 ORDER BY title COLLATE NOCASE
+  `).all();
+  const playlists = await database.prepare(`
+    SELECT DISTINCT cp.playlist_id, cp.title, cp.thumbnail,
+           COALESCE(NULLIF(c.custom_title, ''), c.title) AS channel_title
+    FROM channel_playlists cp
+    JOIN channels c ON c.channel_id=cp.channel_id
+    WHERE EXISTS (SELECT 1 FROM user_followed_playlists ufp WHERE ufp.playlist_id=cp.playlist_id)
+       OR EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id=cp.channel_id AND uc.followed=1)
+    ORDER BY channel_title COLLATE NOCASE, cp.title COLLATE NOCASE
+  `).all();
+  return c.json({ channels, playlists });
+});
+
+api.post("/downloads/automation/preview", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  return c.json(await previewDownloadRule(await c.req.json<Partial<DownloadRuleInput>>()));
+});
+
+api.post("/downloads/automation", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  try {
+    const rule = await createDownloadRule(await c.req.json<Partial<DownloadRuleInput>>());
+    publishAppEvent("downloads", { automation: true, ruleId: rule.id });
+    return c.json({ rule }, 201);
+  } catch (error) {
+    if (error instanceof DownloadRuleValidationError) return c.json({ error: error.message }, 400);
+    throw error;
+  }
+});
+
+api.put("/downloads/automation/:id", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "invalid rule id" }, 400);
+  try {
+    const rule = await updateDownloadRule(id, await c.req.json<Partial<DownloadRuleInput>>());
+    if (!rule) return c.json({ error: "not found" }, 404);
+    publishAppEvent("downloads", { automation: true, ruleId: rule.id });
+    return c.json({ rule });
+  } catch (error) {
+    if (error instanceof DownloadRuleValidationError) return c.json({ error: error.message }, 400);
+    throw error;
+  }
+});
+
+api.delete("/downloads/automation/:id", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "invalid rule id" }, 400);
+  if (!await deleteDownloadRule(id)) return c.json({ error: "not found" }, 404);
+  publishAppEvent("downloads", { automation: true, ruleId: id });
+  return c.json({ ok: true });
+});
+
+api.get("/downloads/cookies", (c) => c.json({ configured: downloadCookiesConfigured() }));
+
+api.post("/downloads/cookies", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  try {
+    const form = await c.req.formData();
+    const file = form.get("file");
+    if (!(file instanceof File)) return c.json({ error: "cookies.txt file required" }, 400);
+    saveDownloadCookies(await file.text());
+    return c.json({ configured: true });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+  }
+});
+
+api.delete("/downloads/cookies", (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  removeDownloadCookies();
+  return c.json({ configured: false });
+});
+
 api.get("/downloads", async (c) => {
   return c.json({
     enabled: pluginEnabled("downloads"),
@@ -1074,6 +1181,11 @@ api.get("/downloads", async (c) => {
 
 api.get("/downloads/summary", async (c) => {
   return c.json({ enabled: pluginEnabled("downloads"), ...await downloadStatusSummary() });
+});
+
+api.delete("/downloads/queue", async (c) => {
+  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  return c.json({ ok: true, cancelled: await cancelAllPendingDownloads() });
 });
 
 api.post("/videos/:id/download", async (c) => {

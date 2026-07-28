@@ -130,9 +130,35 @@ CREATE TABLE IF NOT EXISTS downloads (
   pinned      INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   started_at  TEXT,
-  finished_at TEXT
+  finished_at TEXT,
+  automation_rule_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+
+-- Portable, instance-wide automation rules for the shared download library.
+-- JSON columns contain stable YouTube ids or simple keyword strings; runtime
+-- queue state remains in downloads and is deliberately not portable.
+CREATE TABLE IF NOT EXISTS download_rules (
+  id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+  portable_uuid        TEXT NOT NULL UNIQUE,
+  name                 TEXT NOT NULL,
+  enabled              INTEGER NOT NULL DEFAULT 1,
+  source_mode          TEXT NOT NULL DEFAULT 'selected' CHECK (source_mode IN ('subscriptions', 'selected')),
+  channel_ids_json     TEXT NOT NULL DEFAULT '[]',
+  playlist_ids_json    TEXT NOT NULL DEFAULT '[]',
+  include_keywords_json TEXT NOT NULL DEFAULT '[]',
+  exclude_keywords_json TEXT NOT NULL DEFAULT '[]',
+  keyword_mode         TEXT NOT NULL DEFAULT 'any' CHECK (keyword_mode IN ('any', 'all')),
+  match_field          TEXT NOT NULL DEFAULT 'title' CHECK (match_field IN ('title', 'description', 'both')),
+  include_shorts       INTEGER NOT NULL DEFAULT 0,
+  include_members_only INTEGER NOT NULL DEFAULT 0,
+  min_duration_seconds INTEGER NOT NULL DEFAULT 0,
+  backfill_mode        TEXT NOT NULL DEFAULT 'future' CHECK (backfill_mode IN ('future', 'recent', 'all')),
+  lookback_hours       INTEGER NOT NULL DEFAULT 48,
+  created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_download_rules_enabled ON download_rules(enabled);
 
 CREATE TABLE IF NOT EXISTS recommendation_feedback (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -593,6 +619,9 @@ try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}
 // Snapshot of the playlist name only for downloads explicitly queued from a
 // playlist view. It feeds the optional {playlist} output-template token.
 try { db.exec("ALTER TABLE downloads ADD COLUMN playlist_title TEXT"); } catch {}
+// Rule attribution makes automatic decisions explainable without coupling
+// queue rows to the lifecycle of a rule (deleted rules leave useful history).
+try { db.exec("ALTER TABLE downloads ADD COLUMN automation_rule_id INTEGER"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN creators_fetched_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE video_creators ADD COLUMN handle TEXT NOT NULL DEFAULT ''"); } catch {}

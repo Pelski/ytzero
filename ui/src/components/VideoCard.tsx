@@ -213,9 +213,9 @@ function VideoCard({
 
   const requestLocalDownload = (e: MouseEvent) => {
     e.stopPropagation();
-    // Plugin off: send the user to the plugin settings instead of failing.
+    // Downloads off: send the user to the dedicated configuration instead of failing.
     if (!video.downloads_enabled) {
-      navigate("/settings?tab=plugins");
+      navigate("/downloads?view=configuration");
       return;
     }
     setDownloadStatus("queued");

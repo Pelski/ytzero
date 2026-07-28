@@ -23,6 +23,7 @@ import {
   FastForward,
   Eye,
   Gauge,
+  HardDrive,
   LoaderCircle,
   Lock,
   MonitorPlay,
@@ -55,6 +56,7 @@ import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
 import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, MenuItem, MenuSeparator, MenuStatus, Popover, ScrollArea, Switch } from "../components/ui";
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
+import Tooltip from "../components/Tooltip";
 import { normalizeSponsorSegments } from "../sponsorblock";
 import { markYouTubeUrl } from "../youtubeUrl";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
@@ -276,6 +278,9 @@ export default function WatchPage() {
   const [skipStreaming, setSkipStreaming] = useState(false);
   const [waitProgress, setWaitProgress] = useState<{ percent: number; speed: string | null } | null>(null);
   const [waitError, setWaitError] = useState<string | null>(null);
+  const [backgroundDownload, setBackgroundDownload] = useState<{ percent: number | null; speed: string | null; error: string | null }>({ percent: null, speed: null, error: null });
+  const [downloadRequestError, setDownloadRequestError] = useState(false);
+  const [downloadReadyToReload, setDownloadReadyToReload] = useState(false);
   const [youtubeAutoplayBlocked, setYoutubeAutoplayBlocked] = useState(false);
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
   // Path to the next playlist video, read by the player's onStateChange when a
@@ -302,9 +307,6 @@ export default function WatchPage() {
   const ytWrapRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
   const enhancePlayerStateRef = useRef<{ state: EnhancePlayerState; updatedAt: number } | null>(null);
-  const youtubePlaybackDesiredRef = useRef(false);
-  const youtubeHiddenAtRef = useRef(0);
-  const youtubeBackgroundRetryRef = useRef(false);
   const archivedRef = useRef(false);
   const progressRef = useRef<{ position: number; duration: number } | null>(null);
   const sbSegmentsRef = useRef<SponsorSegment[]>([]);
@@ -337,22 +339,21 @@ export default function WatchPage() {
     api.config().then((r) => setAppUrl(r.app_url)).catch(() => {});
     let cancelled = false;
     void (async () => {
-      const [childStatus, plugins] = await Promise.all([
+      const [childStatus, downloadConfig] = await Promise.all([
         api.childStatus().catch(() => null),
-        api.plugins().catch(() => ({ plugins: [] })),
+        api.downloadConfig().catch(() => null),
       ]);
-      const downloadsEnabled = plugins.plugins.some((p) => p.id === "downloads" && p.enabled);
-      const pluginSettings = await api.pluginSettings("downloads").catch(() => null);
-      const subtitleLanguages = String(pluginSettings?.settings.sub_langs ?? "")
+      const downloadsEnabled = downloadConfig?.enabled ?? false;
+      const subtitleLanguages = String(downloadConfig?.settings.sub_langs ?? "")
         .split(",")
         .map((code) => code.trim())
         .filter(Boolean);
       let pluginWatchMode: WatchSourceMode = "youtube";
       if (downloadsEnabled) {
-        const configuredMode = pluginSettings?.settings.watch_source_mode;
+        const configuredMode = downloadConfig?.settings.watch_source_mode;
         if (configuredMode === "ask" || configuredMode === "download") pluginWatchMode = configuredMode;
       }
-      const experimentalStreaming = downloadsEnabled && Number(pluginSettings?.settings.experimental_streaming) === 1;
+      const experimentalStreaming = downloadsEnabled && Number(downloadConfig?.settings.experimental_streaming) === 1;
       if (cancelled) return;
       setDownloadSubtitleLanguages(subtitleLanguages);
       setPlaybackPolicy({
@@ -383,6 +384,8 @@ export default function WatchPage() {
     watchMode,
     streamingEnabled,
   });
+  const downloadFeedbackKind = downloadReadyToReload ? "ready" : downloadRequestError || downloadStatus === "error" ? "error" : downloadStatus === "downloading" ? "downloading" : "queued";
+  const downloadFeedbackVisible = downloadReadyToReload || downloadRequestError || downloadStatus === "queued" || downloadStatus === "downloading" || downloadStatus === "error";
   const privateVideoNotice = video?.is_private === 1;
   const membersOnlyNotice = video?.members_only === 1 && !isChildProfile && !privateVideoNotice;
   // Both "local" and "stream" render the LocalPlayer component (same layout).
@@ -495,7 +498,6 @@ export default function WatchPage() {
 
   const requestYouTubePlayback = useCallback(() => {
     setYoutubeAutoplayBlocked(false);
-    youtubePlaybackDesiredRef.current = true;
     const p = playerRef.current;
     try {
       const iframe = p?.getIframe?.() as HTMLIFrameElement | undefined;
@@ -938,35 +940,22 @@ export default function WatchPage() {
             requestYouTubePlayback();
           },
           onAutoplayBlocked: () => {
-            youtubePlaybackDesiredRef.current = false;
             if (!destroyed) setYoutubeAutoplayBlocked(true);
           },
           onStateChange: (e: any) => {
             // 1 === playing: apply the desired speed once (YT resets on load).
             if (e?.data === 1) {
-              youtubePlaybackDesiredRef.current = true;
               try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing"; } catch {}
               if (!speedApplied) {
                 speedApplied = true;
                 applySpeed(e.target);
               }
             }
-            // Android can pause an inline iframe immediately after the page is
-            // backgrounded. Retry once in that narrow transition window; later
-            // pauses (headphones, calls, lock-screen controls) stay respected.
             if (e?.data === 2) {
-              const justBackgrounded = document.hidden && Date.now() - youtubeHiddenAtRef.current < 2_000;
-              if (youtubePlaybackDesiredRef.current && justBackgrounded && !youtubeBackgroundRetryRef.current) {
-                youtubeBackgroundRetryRef.current = true;
-                e.target.playVideo?.();
-              } else {
-                try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused"; } catch {}
-                if (!document.hidden) youtubePlaybackDesiredRef.current = false;
-              }
+              try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused"; } catch {}
             }
             // 0 === ended
             if (e?.data === 0) {
-              youtubePlaybackDesiredRef.current = false;
               try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "none"; } catch {}
               handleEndedRef.current();
             }
@@ -1017,11 +1006,9 @@ export default function WatchPage() {
       });
     } catch {}
     setHandler("play", () => {
-      youtubePlaybackDesiredRef.current = true;
       void sendPlayerCommand(video.video_id, "play").catch(() => playerRef.current?.playVideo?.());
     });
     setHandler("pause", () => {
-      youtubePlaybackDesiredRef.current = false;
       void sendPlayerCommand(video.video_id, "pause").catch(() => playerRef.current?.pauseVideo?.());
     });
     setHandler("seekbackward", (details) => {
@@ -1049,30 +1036,6 @@ export default function WatchPage() {
       }
     };
   }, [playerKind, video?.video_id, video?.title, video?.channel_title, video?.thumbnail]);
-
-  // Preserve the user's playing intent while Android moves the tab into the
-  // background. Calling playVideo before suspension avoids the mobile-only
-  // pause seen with inline embeds; the state handler above provides one retry.
-  useEffect(() => {
-    if (playerKind !== "youtube") return;
-    const onVisibilityChange = () => {
-      if (!document.hidden) {
-        youtubeBackgroundRetryRef.current = false;
-        return;
-      }
-      const player = playerRef.current;
-      const state = player?.getPlayerState?.();
-      // Some Android builds pause the iframe just before dispatching the page
-      // visibility event. Preserve the last known playing intent in that case,
-      // while still respecting a pause the viewer made in the foreground.
-      youtubePlaybackDesiredRef.current = youtubePlaybackDesiredRef.current && (state === 1 || state === 2 || state === 3);
-      youtubeHiddenAtRef.current = Date.now();
-      youtubeBackgroundRetryRef.current = false;
-      if (youtubePlaybackDesiredRef.current) player?.playVideo?.();
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [playerKind, id]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
@@ -1306,33 +1269,62 @@ export default function WatchPage() {
   }, [id, playerKind, showShortcutFeedback, keyboardSeekSeconds, takeEmbeddedScreenshot]);
 
   // While this video is being fetched — or is playing via the experimental
-  // stream — react to downloader events so the local-file handoff is immediate.
+  // Track background downloads. A normal remote player remains mounted when
+  // the file becomes ready; the viewer explicitly chooses when to reload it.
   useEffect(() => {
-    const active = downloadStatus === "queued" || downloadStatus === "downloading" || playerKind === "stream";
-    if (!id || !active || playerKind === "waiting") return;
+    const active = downloadStatus === "queued" || downloadStatus === "downloading" || downloadStatus === "error" || playerKind === "stream";
+    if (!id || !active || playerKind === "waiting") {
+      setBackgroundDownload({ percent: null, speed: null, error: null });
+      return;
+    }
     const load = () => {
-      api.video(id).then((r) => {
-        setVideo((prev) => prev ? { ...prev, download_status: r.video.download_status } : prev);
+      api.videoDownload(id).then((result) => {
+        const status = result.download?.status ?? null;
+        if (status === "done" && playerKind === "youtube" && (downloadStatus === "queued" || downloadStatus === "downloading")) {
+          setPlayerSource("youtube");
+          setDownloadReadyToReload(true);
+        }
+        setBackgroundDownload({ percent: result.progress?.percent ?? null, speed: result.progress?.speed ?? null, error: result.download?.error ?? null });
+        setVideo((prev) => prev ? { ...prev, download_status: status } : prev);
       }).catch(() => {});
     };
+    load();
     return subscribeServerEvent("downloads", (data) => {
       if (!data?.videoId || data.videoId === id) load();
     });
   }, [id, downloadStatus, playerKind]);
 
+  useEffect(() => {
+    setDownloadRequestError(false);
+    setDownloadReadyToReload(false);
+    setBackgroundDownload({ percent: null, speed: null, error: null });
+  }, [id]);
+
   const requestDownload = () => {
     if (!video) return;
+    setDownloadRequestError(false);
+    setDownloadReadyToReload(false);
+    if (playerKind === "youtube") setPlayerSource("youtube");
     setVideo((prev) => prev ? { ...prev, download_status: "queued" } : prev);
     api.requestDownload(video.video_id).catch(() => {
       setVideo((prev) => prev ? { ...prev, download_status: null } : prev);
+      setDownloadRequestError(true);
     });
   };
 
   const cancelOrRemoveDownload = () => {
     if (!video) return;
     setPlayerSource("auto");
+    setDownloadRequestError(false);
+    setDownloadReadyToReload(false);
+    setBackgroundDownload({ percent: null, speed: null, error: null });
     setVideo((prev) => prev ? { ...prev, download_status: null } : prev);
     api.removeDownload(video.video_id).catch(() => {});
+  };
+
+  const reloadDownloadedPlayer = () => {
+    setDownloadReadyToReload(false);
+    setPlayerSource("auto");
   };
 
   useDocumentTitle((video?.title ?? videoInfo?.title ?? "").trim() || (id ? `Video ${id}` : "Video"));
@@ -1706,7 +1698,16 @@ export default function WatchPage() {
           <Alert className="youtube-referrer-alert-layout" variant="warning" icon={<AlertTriangle />} title={t("youtubeReferrerErrorTitle")}>{t("youtubeReferrerErrorHint")}</Alert>
         )}
         {(video ?? videoInfo) && (
-          <h1 className="watch-title">{video?.title ?? videoInfo?.title}</h1>
+          <div className="watch-title-row">
+            <h1 className="watch-title">{video?.title ?? videoInfo?.title}</h1>
+            {playerKind === "local" && (
+              <Tooltip text={t("watchLocalPlaybackTooltip")} pos="top" className="watch-local-source-tooltip">
+                <span className="watch-local-source-icon" aria-label={t("watchLocalPlaybackTooltip")} tabIndex={0}>
+                  <HardDrive size={15} aria-hidden="true" />
+                </span>
+              </Tooltip>
+            )}
+          </div>
         )}
         {videoMissing && videoInfo && (
           <div className="watch-row">
@@ -1985,6 +1986,28 @@ export default function WatchPage() {
             </div>
           </div>
         }
+        {video && <div className={`watch-download-feedback-region${downloadFeedbackVisible ? " is-open" : ""}`} aria-hidden={!downloadFeedbackVisible}>
+          <div className="watch-download-feedback-region-inner">
+            <div className={`watch-download-feedback watch-download-feedback--${downloadFeedbackKind}`} role={downloadFeedbackVisible ? "status" : undefined} aria-live={downloadFeedbackVisible ? "polite" : undefined}>
+              <div className="watch-download-feedback-icon">
+                {downloadFeedbackKind === "ready" ? <Check /> : downloadFeedbackKind === "downloading" ? <LoaderCircle className="spin" /> : downloadFeedbackKind === "queued" ? <ArrowDownToLine /> : <AlertTriangle />}
+              </div>
+              <div className="watch-download-feedback-copy">
+                <strong>{downloadFeedbackKind === "ready" ? t("watchDownloadReady") : downloadFeedbackKind === "error" ? t("downloadError") : downloadFeedbackKind === "downloading" ? t("downloading") : t("downloadQueued")}</strong>
+                {downloadFeedbackKind !== "downloading" && <span>{downloadFeedbackKind === "ready" ? t("watchDownloadReadyHint") : downloadRequestError ? t("watchDownloadRequestFailed") : downloadFeedbackKind === "error" ? (backgroundDownload.error || t("downloadFailedNotificationDescription")) : t("watchDownloadQueuedHint")}</span>}
+                {downloadFeedbackKind === "downloading" && <div className="watch-download-feedback-progress"><div style={{ width: `${backgroundDownload.percent ?? 0}%` }} /></div>}
+              </div>
+              <div className="watch-download-feedback-meta">
+                {downloadFeedbackKind === "downloading" && backgroundDownload.percent != null && <span>{Math.floor(backgroundDownload.percent)}%{backgroundDownload.speed ? ` · ${backgroundDownload.speed}` : ""}</span>}
+                {downloadFeedbackVisible && (downloadFeedbackKind === "ready"
+                  ? <Button size="sm" onClick={reloadDownloadedPlayer}>{t("watchReloadPlayer")}</Button>
+                  : downloadFeedbackKind === "error"
+                    ? <Button size="sm" onClick={requestDownload}>{t("downloadRetry")}</Button>
+                    : <Button size="sm" onClick={cancelOrRemoveDownload}>{t("cancelDownload")}</Button>)}
+              </div>
+            </div>
+          </div>
+        </div>}
         {video && (video.live_status === "live" || video.tags.length > 0) && (
           <div className="watch-tags">
             {video.live_status === "live" && (

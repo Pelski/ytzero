@@ -80,6 +80,9 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "feed_sort", "arrival");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
     setSetting("timezone", "Europe/London");
+    const ruleUuid = crypto.randomUUID();
+    db.prepare(`INSERT INTO download_rules(portable_uuid,name,source_mode,channel_ids_json,include_keywords_json,exclude_keywords_json,backfill_mode)
+      VALUES(?, 'Portable downloads', 'selected', '["UCportable"]', '["episode"]', '["trailer"]', 'all')`).run(ruleUuid);
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
@@ -91,6 +94,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "feed_sort", "published");
     setSetting("profile_admin_only_areas", "[]");
     setSetting("timezone", "UTC");
+    db.prepare("DELETE FROM download_rules WHERE portable_uuid=?").run(ruleUuid);
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
@@ -109,5 +113,7 @@ describe("portable backup classification and restore", () => {
     expect((db.prepare("SELECT value FROM settings WHERE key='profile_admin_only_areas'").get() as { value: string }).value)
       .toBe(permissions.serializeAdminOnlyAreas(["channels", "followed_playlists", "imports", "plugins"]));
     expect(getSetting("timezone")).toBe("Europe/London");
+    expect(db.prepare("SELECT name, include_keywords_json, exclude_keywords_json FROM download_rules WHERE portable_uuid=?").get(ruleUuid)).toEqual({ name: "Portable downloads", include_keywords_json: '["episode"]', exclude_keywords_json: '["trailer"]' });
+    expect((db.prepare("SELECT COUNT(*) AS n FROM download_rules WHERE portable_uuid=?").get(ruleUuid) as { n: number }).n).toBe(1);
   });
 });

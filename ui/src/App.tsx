@@ -36,7 +36,7 @@ import { AppNameContext } from "./useDocumentTitle";
 import "./AppShell.css";
 
 // Routes owned by plugins — visible in the sidebar only while enabled.
-const PLUGIN_ROUTES = ["/discovery", "/downloads"];
+const PLUGIN_ROUTES = ["/discovery"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
@@ -434,14 +434,9 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
         setEnabledPluginRoutes(new Set(r.plugins.filter((p) => p.enabled).map((p) => p.route)));
         // Thumbnail download-progress bars are toggled by a plugin setting;
         // a root attribute lets CSS hide them without prop-drilling.
-        const downloads = r.plugins.find((p) => p.id === "downloads");
-        if (downloads?.enabled) {
-          api.pluginSettings("downloads")
-            .then((s) => { document.documentElement.dataset.dlThumbProgress = String(s.settings.thumb_progress ?? 1); })
-            .catch(() => {});
-        } else {
-          document.documentElement.dataset.dlThumbProgress = "0";
-        }
+        api.downloadConfig()
+          .then((config) => { document.documentElement.dataset.dlThumbProgress = config.enabled ? String(config.settings.thumb_progress ?? 1) : "0"; })
+          .catch(() => { document.documentElement.dataset.dlThumbProgress = "0"; });
       })
       .catch(() => setEnabledPluginRoutes(new Set()));
   }, []);

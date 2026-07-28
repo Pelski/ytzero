@@ -55,7 +55,7 @@ export default function ChannelPlaylistPage() {
 
   const downloadAll = async () => {
     if (!id) return;
-    if (![...videos, ...processingVideos].some((video) => video.downloads_enabled)) { navigate("/settings?tab=plugins"); return; }
+    if (![...videos, ...processingVideos].some((video) => video.downloads_enabled)) { navigate("/downloads?view=configuration"); return; }
     setDownloadPending(true); setDownloadFeedback("");
     try {
       const result = await api.downloadChannelPlaylist(id);

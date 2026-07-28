@@ -11,6 +11,7 @@ import { parseAdminOnlyAreas, serializeAdminOnlyAreas } from "./profilePermissio
 import { DEFAULT_TIME_ZONE, isValidTimeZone } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { parseManualRefreshSchedule } from "./channelRefreshSchedule";
+import { listDownloadRules } from "./downloadRules";
 
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -159,6 +160,9 @@ async function sectionData(id: string, profile: any | null, referenced: Set<stri
       const channelIds = new Set<string>();
       for (const row of await database.prepare("SELECT channel_id FROM user_channels").all() as any[]) channelIds.add(row.channel_id);
       for (const row of await database.prepare("SELECT channel_id FROM channel_playlists").all() as any[]) channelIds.add(row.channel_id);
+      for (const rule of await listDownloadRules()) {
+        for (const channelId of rule.channel_ids) channelIds.add(channelId);
+      }
       if (referenced.size) {
         const ph = [...referenced].map(() => "?").join(",");
         for (const row of await database.prepare(`SELECT DISTINCT channel_id FROM videos WHERE video_id IN (${ph})`).all(...referenced) as any[]) channelIds.add(row.channel_id);

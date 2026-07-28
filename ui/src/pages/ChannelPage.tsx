@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./ChannelPage.css";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CalendarClock, Captions, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
+import { CalendarClock, Captions, Check, ChevronLeft, ChevronRight, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
 import { api, type ChannelAbout, type ChannelManualStatus, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
@@ -23,7 +23,6 @@ type Tab = "videos" | "shorts" | "playlists" | "processing";
 
 // Matches the server's default /feed page size.
 const CHANNEL_PAGE_SIZE = 40;
-const AUTO_DOWNLOAD_MIN_DURATIONS = [0, 60, 5 * 60, 10 * 60, 20 * 60, 30 * 60, 45 * 60, 60 * 60];
 
 export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t, language, locale, timeZone } = useI18n();
@@ -44,14 +43,12 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [followed, setFollowed] = useState(false);
   const [unfollowPending, setUnfollowPending] = useState(false);
   const [channelSpeed, setChannelSpeed] = useState("");
-  const [autoDownloadMinDuration, setAutoDownloadMinDuration] = useState<number | null>(null);
-  const [downloadsEnabled, setDownloadsEnabled] = useState(false);
   const [captionMode, setCaptionMode] = useState<"off" | "language" | null>(null);
   const [captionLanguage, setCaptionLanguage] = useState<string | null>(null);
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("default");
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [refreshScheduleOpen, setRefreshScheduleOpen] = useState(false);
-  const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "downloads" | "members">("root");
+  const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "members">("root");
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
@@ -98,7 +95,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     prevIdRef.current = id;
     setFollowed(false);
     setChannelSpeed("");
-    setAutoDownloadMinDuration(null);
     setCaptionMode(null);
     setCaptionLanguage(null);
     setMembersOnlyVisibility("default");
@@ -109,7 +105,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setManualStatus(r.channel.manual_status ?? "active");
       setFollowed(r.channel.followed !== 0);
       setChannelSpeed(r.channel.playback_speed ?? "");
-      setAutoDownloadMinDuration(r.channel.auto_download_min_duration_override ?? null);
       setCaptionMode(r.channel.caption_mode ?? null);
       setCaptionLanguage(r.channel.caption_language ?? null);
       setMembersOnlyVisibility(r.channel.members_only_visibility ?? "default");
@@ -128,7 +123,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     api.channelPlaylists(id).then((r) => setPlaylists(r.playlists)).catch(() => setPlaylists([]));
     setTagsLoading(true);
     api.tags().then((r) => setAllTags(r.tags)).catch(console.error).finally(() => setTagsLoading(false));
-    api.plugins().then((r) => setDownloadsEnabled(r.plugins.some((plugin) => plugin.id === "downloads" && plugin.enabled))).catch(console.error);
   }, [id]);
 
   useEffect(() => {
@@ -206,22 +200,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     setChannelSpeed(v ?? "");
     if (id) api.setChannelSpeed(id, v).catch(console.error);
   };
-
-  const changeAutoDownloadMinDuration = (seconds: number | null) => {
-    if (!id) return;
-    const previous = autoDownloadMinDuration;
-    setAutoDownloadMinDuration(seconds);
-    api.setChannelDownloadMinDuration(id, seconds).catch((error) => {
-      setAutoDownloadMinDuration(previous);
-      console.error(error);
-    });
-  };
-
-  const autoDownloadLabel = autoDownloadMinDuration == null
-    ? t("channelSettingDefault")
-    : autoDownloadMinDuration > 0
-    ? `≥ ${autoDownloadMinDuration / 60} min`
-    : t("autoDownloadOff");
 
   const captionsLabel = captionMode === "off"
     ? t("captionsOff")
@@ -497,13 +475,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     <button className="channel-technical-item" onClick={() => setTechnicalView("members")}>
                       <Star /> <span>{t("channelMembersOnlyFeed")}</span><MenuStatus>{membersOnlyFeedLabel}</MenuStatus><ChevronRight />
                     </button>
-                    {downloadsEnabled && <>
-                      <MenuSeparator />
-                      <div className="more-menu-section-label">{t("channelDownloads")}</div>
-                      <button className="channel-technical-item" onClick={() => setTechnicalView("downloads")}>
-                        <Download /> <span>{t("autoDownloadMinimum")}</span><MenuStatus>{autoDownloadLabel}</MenuStatus><ChevronRight />
-                      </button>
-                    </>}
                   </>
                 )}
                 {technicalView === "speed" && (
@@ -564,21 +535,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                       {t("channelMembersOnlyNowhere")}
                       {membersOnlyVisibility === "hidden" && <MenuStatus><Check size={14} /></MenuStatus>}
                     </button>
-                  </>
-                )}
-                {technicalView === "downloads" && (
-                  <>
-                    <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("autoDownloadMinimum")}</div>
-                    <button className={autoDownloadMinDuration == null ? "is-selected" : undefined} onClick={() => changeAutoDownloadMinDuration(null)}>
-                      {t("channelSettingDefault")}
-                      {autoDownloadMinDuration == null && <MenuStatus><Check size={14} /></MenuStatus>}
-                    </button>
-                    {AUTO_DOWNLOAD_MIN_DURATIONS.map((seconds) => (
-                      <button key={seconds} className={autoDownloadMinDuration === seconds ? "is-selected" : undefined} onClick={() => changeAutoDownloadMinDuration(seconds)}>
-                        {seconds === 0 ? t("autoDownloadOff") : `≥ ${seconds / 60} min`}
-                        {autoDownloadMinDuration === seconds && <MenuStatus><Check size={14} /></MenuStatus>}
-                      </button>
-                    ))}
                   </>
                 )}
               </Menu>

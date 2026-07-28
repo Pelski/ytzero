@@ -1148,7 +1148,6 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   .watched-style-option { min-width: 0; }
   .sidebar-order-item { min-width: 0; padding-inline: 7px; }
   .sidebar-order-actions .ui-button { height: 30px; width: 30px; }
-  .download-cookies-actions .ui-button { flex: 1 1 auto; }
 }
 
 @media (max-width: 480px) {

@@ -1,103 +1,102 @@
 {
   "releases": [
     {
-      "version": "v0.17.3",
-      "name": "v0.17.3",
-      "publishedAt": "2026-07-26T14:30:47+02:00",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.3",
+      "version": "v0.21.0",
+      "name": "v0.21.0",
+      "publishedAt": "2026-07-28T20:48:56Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.21.0",
       "notes": [
-        "Fixed missing changelog #78 (`10be120`)",
-        "Remember feed sorting option #71 (`ecb5f8f`)"
+        "Member-only video download fix #87 (`dc6abad`)",
+        "Download badge in sidebar #89 (`bd2f35a`)",
+        "Incognito mode, remove from history manually #90 (`2770413`)",
+        "Infinite scroll in history tab #91 (`739d324`)"
       ],
       "current": true
     },
     {
-      "version": "v0.14.0",
-      "name": "v0.14.0",
-      "publishedAt": "2026-07-24T12:03:15Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.14.0",
+      "version": "v0.20.1",
+      "name": "v0.20.1",
+      "publishedAt": "2026-07-28T08:40:02Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.20.1",
       "notes": [
-        "Autoplay feed #55 (`822097f`)"
+        "Fixed missing duration #86 (`6f895a6`)"
       ]
     },
     {
-      "version": "v0.13.1",
-      "name": "v0.13.1",
-      "publishedAt": "2026-07-24T11:26:18Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.13.1",
+      "version": "v0.20.0",
+      "name": "v0.20.0",
+      "publishedAt": "2026-07-28T00:36:01Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.20.0",
       "notes": [
-        "UX improvements for subscriptions view #57 (`2623bb8`)"
+        "Comment section with toggle in settings #82 (`f6f703b`)",
+        "Fixed feed sorting (`b543c81`)",
+        "Made it even faster... and added Postgres (`9de9e4c`)"
       ]
     },
     {
-      "version": "v0.13.0",
-      "name": "v0.13.0",
-      "publishedAt": "2026-07-23T22:50:25Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.13.0",
+      "version": "v0.19.1",
+      "name": "v0.19.1",
+      "publishedAt": "2026-07-27T21:35:41Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.19.1",
       "notes": [
-        "Fixed visible mouse on local player #51 #52 (`d2039f6`)",
-        "Fixed scheduled view #53 #54 (`a5ef473`)",
-        "Better documentation for Google Takeout #49 (`6c63b28`)",
-        "Huge data import refresh #50 (`54b743c`)",
-        "Fixed favicon (`8e3e166`)",
-        "Dynamic title on every page - fixed #15 (`8533534`)"
+        "Changelog for upcoming (`f88c614`)",
+        "Fixed download names (`ea8eef9`)"
       ]
     },
     {
-      "version": "v0.12.0",
-      "name": "v0.12.0",
-      "publishedAt": "2026-07-22T14:59:54Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.12.0",
+      "version": "v0.19.0",
+      "name": "v0.19.0",
+      "publishedAt": "2026-07-27T17:05:14Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.19.0",
       "notes": [
-        "Design refactor (`0fa233e`)",
-        "Design fixes and component styling improvements (`7b37015`)"
+        "Scheduler fix #72 (`0b9cc96`)",
+        "Allow download whole playlist (`c7363e9`)"
       ]
     },
     {
-      "version": "v0.11.0",
-      "name": "v0.11.0",
-      "publishedAt": "2026-07-22T12:49:50Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.11.0",
+      "version": "v0.18.1",
+      "name": "v0.18.1",
+      "publishedAt": "2026-07-26T23:34:47Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.18.1",
       "notes": [
-        "Notifications and optional auto check version (`13d4243`)"
+        "Better logs with streaming - fixed #79 (`d792211`)"
       ]
     },
     {
-      "version": "v0.10.4",
-      "name": "v0.10.4",
-      "publishedAt": "2026-07-22T11:46:05Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.4",
+      "version": "v0.18.0",
+      "name": "v0.18.0",
+      "publishedAt": "2026-07-26T19:32:06Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.18.0",
       "notes": [
-        "PWA icon fix (`c4ba40d`)"
+        "Timezone support - fixed #76 (`b446443`)",
+        "Log rotation - fixed #77 (`dc92e1d`)"
       ]
     },
     {
-      "version": "v0.10.3",
-      "name": "v0.10.3",
-      "publishedAt": "2026-07-22T11:11:32Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.3",
+      "version": "v0.17.6",
+      "name": "v0.17.6",
+      "publishedAt": "2026-07-26T16:57:49Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.6",
       "notes": [
-        "Fixed subscribed view glitches #47 (`91d10e0`)",
-        "Fixed video download fail when subtitles lang is missing (`664109a`)"
+        "Download not working - fixed #80 (`e82cf24`)"
       ]
     },
     {
-      "version": "v0.10.2",
-      "name": "v0.10.2",
-      "publishedAt": "2026-07-22T10:12:01Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.2",
+      "version": "v0.17.5",
+      "name": "v0.17.5",
+      "publishedAt": "2026-07-26T14:34:42Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.5",
       "notes": [
-        "Few UI fixes and preparation for adaptive feed view (`9ee45e0`)"
+        "Fixed missing changelog #78 (`b11ae4d`)"
       ]
     },
     {
-      "version": "v0.10.1",
-      "name": "v0.10.1",
-      "publishedAt": "2026-07-22T09:56:52Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.10.1",
+      "version": "v0.17.4",
+      "name": "v0.17.4",
+      "publishedAt": "2026-07-26T12:49:00Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.4",
       "notes": [
-        "Pulse - more details (`c407bfe`)",
-        "Sorry, fixed video import improvements and added processing tab on a channel (`6f59ccf`)"
+        "Fixed missing changelog #78 (`2e6d1dc`)"
       ]
     }
   ]

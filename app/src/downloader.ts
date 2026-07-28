@@ -8,6 +8,7 @@ import { beginMutation, maintenanceActive } from "./maintenance";
 import { publishAppEvent } from "./appEvents";
 import { notifyDownloadFailed } from "./notifications";
 import { autoDownloadFollowerExistsSql } from "./downloadEligibility";
+import { automaticDownloadCandidates, migrateLegacyDownloadAutomation } from "./downloadRules";
 
 // Files land in one global directory: a video downloaded once serves every
 // profile. Retention below is the only thing that removes them.
@@ -332,7 +333,7 @@ export function srtToVtt(srt: string): string {
 
 // ---------- public queue operations ----------
 
-export async function enqueueDownload(videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean } = {}): Promise<boolean> {
+export async function enqueueDownload(videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean; automationRuleId?: number | null } = {}): Promise<boolean> {
   const row = await database.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
   if (row) {
     if (row.status === "downloading") return false;
@@ -342,14 +343,14 @@ export async function enqueueDownload(videoId: string, source: "manual" | "sched
     // scheduled policy may revive a tombstone when the user re-queued the video
     // after the file was removed (reviveDeleted).
     if (source !== "manual" && !(reviveDeleted && row.status === "deleted")) return false;
-    await database.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
-      .run(source, priority ? 1 : 0, context.playlistTitle ?? null, videoId);
+    await database.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, automation_rule_id = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
+      .run(source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null, videoId);
     if (context.notify !== false) notifyDownloadChanged(videoId);
     return true;
   }
   const exists = await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId);
   if (!exists) return false;
-  await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title) VALUES (?, 'queued', ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null);
+  await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title, automation_rule_id) VALUES (?, 'queued', ?, ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null);
   if (context.notify !== false) notifyDownloadChanged(videoId);
   return true;
 }
@@ -399,6 +400,30 @@ export async function removeDownload(videoId: string) {
   notifyDownloadChanged(videoId);
 }
 
+/** Stop every unfinished job without touching completed downloads. Deleted
+ * tombstones keep automatic rules from immediately recreating the queue. */
+export async function cancelAllPendingDownloads(): Promise<number> {
+  const rows = await database.prepare(
+    "SELECT video_id FROM downloads WHERE status IN ('queued', 'downloading', 'error')"
+  ).all() as { video_id: string }[];
+  if (rows.length === 0) return 0;
+
+  await database.prepare(`
+    UPDATE downloads
+    SET status = 'deleted', path = NULL, size_bytes = NULL, error = NULL,
+        priority = 0, finished_at = datetime('now')
+    WHERE status IN ('queued', 'downloading', 'error')
+  `).run();
+  if (active && rows.some((row) => row.video_id === active?.videoId)) {
+    active.cancelled = true;
+    try { active.proc.kill(); } catch {}
+  }
+  for (const { video_id } of rows) await unlinkFiles(video_id);
+  publishAppEvent("downloads", { cancelled: rows.length });
+  log.info("downloads.queue_cancelled", { count: rows.length });
+  return rows.length;
+}
+
 /**
  * A profile rejected (archived) the video: an in-flight auto download (feed /
  * scheduled) is pointless unless some other profile still waits for it. Manual
@@ -425,12 +450,13 @@ export async function setDownloadPinned(videoId: string, pinned: boolean): Promi
 export async function listDownloads() {
   const rows = await database.prepare(`
     SELECT d.video_id, d.status, d.source, d.quality, d.size_bytes, d.error, d.attempts, d.pinned,
-           d.created_at, d.finished_at,
+           d.created_at, d.finished_at, d.automation_rule_id, dr.name AS automation_rule_name,
            v.title, v.thumbnail, v.duration, v.is_short, v.published_at,
            c.channel_id, COALESCE(c.custom_title, c.title) AS channel_title
     FROM downloads d
     JOIN videos v ON v.video_id = d.video_id
     JOIN channels c ON c.channel_id = v.channel_id
+    LEFT JOIN download_rules dr ON dr.id = d.automation_rule_id
     WHERE d.status != 'deleted'
     ORDER BY CASE d.status WHEN 'downloading' THEN 0 WHEN 'queued' THEN 1 WHEN 'error' THEN 2 ELSE 3 END,
              COALESCE(d.finished_at, d.created_at) DESC
@@ -505,7 +531,7 @@ async function autoEnqueue(s: DlSettings) {
   const prunedMembersOnly = await database.prepare(`
     UPDATE downloads
     SET status = 'deleted', error = NULL, finished_at = datetime('now')
-    WHERE source = 'feed'
+    WHERE source = 'feed' AND automation_rule_id IS NULL
       AND status IN ('queued', 'error')
       AND video_id IN (
         SELECT v.video_id
@@ -543,30 +569,8 @@ async function autoEnqueue(s: DlSettings) {
     for (const { video_id } of rows) await enqueueDownload(video_id, "scheduled", false, true);
   }
 
-  if (s.download_feed === 1) {
-    const shortsFilter = s.download_shorts === 1 ? "" : "AND COALESCE(v.is_short, 0) = 0";
-    const rows = await database.prepare(`
-      SELECT v.video_id, v.duration,
-             COALESCE(c.auto_download_min_duration_override, ?) AS min_duration
-      FROM videos v
-      JOIN channels c ON c.channel_id = v.channel_id
-      WHERE v.live_status = 'none' AND v.external = 0 AND v.is_private = 0
-        ${shortsFilter}
-        AND v.published_at >= datetime('now', ?)
-        AND ${autoDownloadFollowerExistsSql("v")}
-        AND NOT EXISTS (SELECT 1 FROM downloads d WHERE d.video_id = v.video_id)
-        AND NOT EXISTS (SELECT 1 FROM user_videos uv WHERE uv.video_id = v.video_id AND (uv.watched = 1 OR uv.status = 'archived'))
-      ORDER BY v.published_at DESC
-      LIMIT 250
-    `).all(s.feed_min_duration_minutes * 60, `-${s.feed_max_age_hours} hours`) as { video_id: string; duration: string | null; min_duration: number }[];
-    let enqueued = 0;
-    for (const { video_id, duration, min_duration } of rows) {
-      // With a threshold, an unknown duration cannot safely be included. It
-      // will be considered by a later pass once the metadata refresher fills it.
-      if (min_duration > 0 && (parseDurationSeconds(duration) ?? -1) < min_duration) continue;
-      await enqueueDownload(video_id, "feed");
-      if (++enqueued >= 50) break;
-    }
+  for (const candidate of await automaticDownloadCandidates(50)) {
+    await enqueueDownload(candidate.video_id, "feed", false, false, { automationRuleId: candidate.rule_id });
   }
 }
 
@@ -1190,6 +1194,7 @@ async function tick() {
 export async function startDownloader() {
   // Drop any HLS streaming scratch left behind by a previous run.
   resetHlsScratch();
+  await migrateLegacyDownloadAutomation();
   // Crash recovery: an interrupted download restarts from the queue.
   const crashRecovered = (await database.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run()).changes;
   if (crashRecovered > 0) log.warn("downloads.crash_recovered", { count: crashRecovered });
