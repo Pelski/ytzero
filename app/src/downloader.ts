@@ -6,6 +6,7 @@ import { downloadCookieAttempts, downloadFormat, renderDownloadOutputTemplate } 
 import { log } from "./logger";
 import { beginMutation, maintenanceActive } from "./maintenance";
 import { publishAppEvent } from "./appEvents";
+import { notifyDownloadFailed } from "./notifications";
 
 // Files land in one global directory: a video downloaded once serves every
 // profile. Retention below is the only thing that removes them.
@@ -149,6 +150,16 @@ interface ActiveDownload {
 let active: ActiveDownload | null = null;
 let lastProgressEventAt = 0;
 const notifyDownloadChanged = (videoId: string) => publishAppEvent("downloads", { videoId });
+const notifyDownloadFailure = async (videoId: string, error: string) => {
+  try {
+    await notifyDownloadFailed(videoId, error);
+  } catch (notificationError) {
+    log.warn("downloads.failure_notification_failed", {
+      videoId,
+      error: notificationError instanceof Error ? notificationError.message : String(notificationError),
+    });
+  }
+};
 
 export function activeDownloadProgress(): { video_id: string; percent: number; total_bytes: number | null; speed: string | null } | null {
   if (!active) return null;
@@ -433,6 +444,23 @@ export async function downloadStats() {
   return { files: row.files, bytes: row.bytes, queued, cap_bytes: s.max_storage_gb * 1024 ** 3 };
 }
 
+export async function downloadStatusSummary() {
+  const row = await database.prepare(`
+    SELECT
+      SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,
+      SUM(CASE WHEN status = 'downloading' THEN 1 ELSE 0 END) AS downloading,
+      SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS completed,
+      SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors
+    FROM downloads
+  `).get() as { queued: number | string | null; downloading: number | string | null; completed: number | string | null; errors: number | string | null };
+  return {
+    queued: Number(row.queued ?? 0),
+    downloading: Number(row.downloading ?? 0),
+    completed: Number(row.completed ?? 0),
+    errors: Number(row.errors ?? 0),
+  };
+}
+
 export async function getDownload(videoId: string) {
   return await database.prepare("SELECT video_id, status, quality, path, size_bytes, error, pinned FROM downloads WHERE video_id = ? AND status != 'deleted'")
     .get(videoId) as { video_id: string; status: string; quality: string | null; path: string | null; size_bytes: number | null; error: string | null; pinned: number } | null;
@@ -451,6 +479,7 @@ export async function resetDownloadsState() {
   for (const key of Object.keys(DL_DEFAULTS)) {
     await database.prepare("DELETE FROM settings WHERE key = ?").run(`plugin_downloads_${key}`);
   }
+  publishAppEvent("downloads", { reset: true });
 }
 
 // ---------- auto-enqueue policies ----------
@@ -750,6 +779,7 @@ async function runDownload(videoId: string, s: DlSettings) {
       const error = e instanceof Error ? e.message : String(e);
       await database.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
       notifyDownloadChanged(videoId);
+      await notifyDownloadFailure(videoId, error);
       ytdlpVersion = undefined; // binary may have moved — re-check on next tick
       log.error("downloads.spawn_failed", { videoId, error });
       active = null;
@@ -837,6 +867,7 @@ async function runDownload(videoId: string, s: DlSettings) {
   const error = stderrTail.slice(-3).join(" | ") || `yt-dlp exited with code ${code}`;
   await database.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
   notifyDownloadChanged(videoId);
+  await notifyDownloadFailure(videoId, error);
   log.error("downloads.failed", { videoId, code, error });
 }
 

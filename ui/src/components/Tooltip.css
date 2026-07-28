@@ -16,6 +16,10 @@
   z-index: 200;
 }
 .tooltip-wrap:hover .tooltip-tip { opacity: 1; }
+.tooltip-tip--portal {
+  opacity: 1;
+  position: fixed;
+}
 .tooltip-wrap--delayed .tooltip-tip { transition-delay: 0ms; }
 .tooltip-wrap--delayed:hover .tooltip-tip { transition-delay: var(--tooltip-delay); }
 .tooltip-wrap--title .tooltip-tip { box-sizing: border-box; max-width: 100%; white-space: normal; width: max-content; }

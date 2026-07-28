@@ -36,7 +36,7 @@ import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
-import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, downloadStatusSummary, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { fetchVideoComments, validYouTubeVideoId, VideoCommentsError } from "./youtubeComments";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
@@ -1002,7 +1002,9 @@ api.get("/plugins", async (c) => {
 api.put("/plugins/:id", async (c) => {
   const { enabled } = await c.req.json() as { enabled?: boolean };
   try {
-    await setPluginEnabled(c.req.param("id"), !!enabled);
+    const pluginId = c.req.param("id");
+    await setPluginEnabled(pluginId, !!enabled);
+    if (pluginId === "downloads") publishAppEvent("downloads", { enabled: !!enabled });
     return c.json({ plugins: await listPlugins(getUserSetting(currentUserId(c), "language")) });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
@@ -1068,6 +1070,10 @@ api.get("/downloads", async (c) => {
     active: activeDownloadProgress(),
     downloads: await listDownloads(),
   });
+});
+
+api.get("/downloads/summary", async (c) => {
+  return c.json({ enabled: pluginEnabled("downloads"), ...await downloadStatusSummary() });
 });
 
 api.post("/videos/:id/download", async (c) => {

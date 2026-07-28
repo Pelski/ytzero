@@ -1,8 +1,8 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { subscribe, subscribeToast, emit, type ToastVariant } from "./events";
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Menu, Play, Plus, Search, Users } from "lucide-react";
-import { api, type AppSettings, type AuthStatus, type ChildStatus, type ProfilePermissions, type UserPlaylist, type Video } from "./api";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Download, Menu, Play, Plus, Search, Users } from "lucide-react";
+import { api, type AppSettings, type AuthStatus, type ChildStatus, type DownloadSummary, type ProfilePermissions, type UserPlaylist, type Video } from "./api";
 import ChildLockScreen from "./components/ChildLockScreen";
 import LoginPage from "./pages/LoginPage";
 import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
@@ -40,11 +40,13 @@ const PLUGIN_ROUTES = ["/discovery", "/downloads"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
+import Tooltip from "./components/Tooltip";
 import { Badge, Button, Toast } from "./components/ui";
 import { ENHANCE_CONFIGURATION_ELEMENT_ID, serializeEnhanceConfiguration } from "./enhanceBridge";
 import { subscribeServerEvent } from "./serverEvents";
 import { queueSettingWrite } from "./settingsWriteQueue";
 import { isIncognitoMode, setIncognitoMode } from "./incognitoMode";
+import { getNewCompletedDownloads, observeDownloadSummary } from "./downloadActivity";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
@@ -306,6 +308,8 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [liveCount, setLiveCount] = useState(0);
+  const [downloadSummary, setDownloadSummary] = useState<DownloadSummary>({ enabled: false, queued: 0, downloading: 0, completed: 0, errors: 0 });
+  const [newCompletedDownloads, setNewCompletedDownloads] = useState(getNewCompletedDownloads);
   const [toast, setToast] = useState<{ message: string; variant: ToastVariant } | null>(null);
   const [showShorts, setShowShorts] = useState(false);
   const [appName, setAppName] = useState("YT Zero");
@@ -319,6 +323,8 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: ["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"] });
   const toastTimeoutRef = useRef<number | null>(null);
   const removingLegacyFeedSortRef = useRef(false);
+  const downloadSummaryRequestRef = useRef(0);
+  const downloadsPageActiveRef = useRef(location.pathname === "/downloads");
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
 
@@ -467,6 +473,27 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
     return subscribeServerEvent("live", load);
   }, []);
 
+  const loadDownloadSummary = useCallback(() => {
+    const request = ++downloadSummaryRequestRef.current;
+    api.downloadSummary().then((summary) => {
+      if (request !== downloadSummaryRequestRef.current) return;
+      setDownloadSummary(summary);
+      setNewCompletedDownloads(observeDownloadSummary(summary.completed, downloadsPageActiveRef.current));
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    loadDownloadSummary();
+    return subscribeServerEvent("downloads", loadDownloadSummary);
+  }, [loadDownloadSummary]);
+  useEffect(() => subscribe("plugins-changed", loadDownloadSummary), [loadDownloadSummary]);
+  useEffect(() => {
+    downloadsPageActiveRef.current = location.pathname === "/downloads";
+    if (!downloadsPageActiveRef.current) return;
+    setNewCompletedDownloads(observeDownloadSummary(downloadSummary.completed, true));
+    loadDownloadSummary();
+  }, [location.pathname, loadDownloadSummary]);
+
   // Child watch-time and parent stop/grant changes arrive through the shared
   // application event stream; profile switches still reload the whole page.
   useEffect(() => {
@@ -523,11 +550,38 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
 
   const renderNavLink = (item: (typeof navItems)[number]) => {
     const Icon = item.icon;
+    const activeDownloads = downloadSummary.queued + downloadSummary.downloading;
+    const downloadIndicator = downloadSummary.errors > 0
+      ? { kind: "error", count: downloadSummary.errors, icon: <AlertTriangle aria-hidden="true" /> }
+      : activeDownloads > 0
+        ? { kind: "active", count: activeDownloads, icon: <Download aria-hidden="true" /> }
+        : newCompletedDownloads > 0
+          ? { kind: "new", count: newCompletedDownloads, icon: <Check aria-hidden="true" /> }
+          : null;
+    const downloadTooltip = t("downloadsBadgeDetails", {
+      downloading: downloadSummary.downloading,
+      queued: downloadSummary.queued,
+      completed: downloadSummary.completed,
+      errors: downloadSummary.errors,
+    });
     return (
       <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>
         <Icon />
         <span className="nav-label">{t(item.labelKey)}</span>
-        {item.to === "/live" && liveCount > 0 && <Badge variant="danger" size="sm" className="badge">{liveCount}</Badge>}
+        {item.to === "/live" && liveCount > 0 && <Badge variant="danger" size="sm" className="badge nav-live-badge">{liveCount}</Badge>}
+        {item.to === "/downloads" && downloadSummary.enabled && downloadIndicator && (
+          <Tooltip text={downloadTooltip} pos="right" className="nav-download-tooltip" portal>
+            <Badge
+              variant={downloadIndicator.kind === "error" ? "danger" : "accent"}
+              size="sm"
+              className={`badge nav-download-badge nav-download-badge--${downloadIndicator.kind}`}
+              aria-label={downloadTooltip}
+            >
+              {downloadIndicator.icon}
+              <span>{downloadIndicator.count > 99 ? "99+" : downloadIndicator.count}</span>
+            </Badge>
+          </Tooltip>
+        )}
       </NavLink>
     );
   };

@@ -14,6 +14,8 @@
 .profile-notification-icon, .profile-notification-avatar { border-radius: 50%; display: block; flex: 0 0 38px; height: 38px; width: 38px; }
 .profile-notification-icon { align-items: center; background: var(--surface-2); color: var(--text-2); display: flex; justify-content: center; }
 .profile-notification-icon svg { height: 18px; width: 18px; }
+.profile-notification-icon--danger { background: color-mix(in srgb, var(--live) 14%, var(--surface-2)); color: #ff8992; }
+.profile-notification--download-failed.is-unread::before { background: var(--live); }
 .profile-notification-avatar { object-fit: cover; }
 .profile-notification-thumbnail { aspect-ratio: 16 / 9; border-radius: 7px; display: block; height: 43px; object-fit: cover; width: 76px; }
 .profile-notification .ui-list-row__media { grid-column: 2; }

@@ -12,6 +12,7 @@ import NotificationCenter from "./NotificationCenter";
 import Tooltip from "./Tooltip";
 import { ENHANCE_EXTENSION_STATUS } from "../enhanceBridge";
 import { setIncognitoMode } from "../incognitoMode";
+import { clearDownloadActivity } from "../downloadActivity";
 
 /** Round avatar: uploaded image, or a colored circle with the name initial. */
 export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
@@ -75,6 +76,7 @@ export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onF
     try {
       await api.switchProfile(p.id, enteredPin, enteredChildLockPin);
       setIncognitoMode(false);
+      clearDownloadActivity();
       // Full reload so feed, sidebar, settings and language all re-resolve.
       window.location.reload();
     } catch {

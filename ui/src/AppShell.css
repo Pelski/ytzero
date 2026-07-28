@@ -160,14 +160,44 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
 .nav-more-chevron.open { transform: rotate(180deg); }
 .nav-link .badge {
   margin-left: auto;
-  background: var(--live);
-  color: #fff;
   border-radius: 99px;
   font-size: 11px;
   font-weight: 700;
   padding: 2px 9px;
   min-width: 24px;
   text-align: center;
+}
+.nav-link .nav-live-badge,
+.nav-link .nav-download-badge--error { background: var(--live); color: #fff; }
+.nav-link .nav-download-badge--active {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+  color: #fff;
+}
+.nav-link .nav-download-badge--new {
+  background: #258a55;
+  color: #fff;
+}
+.nav-download-tooltip { margin-left: auto; }
+.nav-download-tooltip .nav-download-badge {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 0;
+  padding-inline: 7px;
+}
+.nav-download-tooltip .nav-download-badge svg {
+  color: currentColor;
+  height: 11px;
+  stroke-width: 2.4;
+  width: 11px;
+}
+.nav-download-tooltip .tooltip-tip,
+.nav-download-tooltip-tip {
+  line-height: 1.65;
+  min-width: 148px;
+  padding: 7px 10px;
+  white-space: pre-line;
 }
 
 /* ---------- sidebar subscriptions ---------- */

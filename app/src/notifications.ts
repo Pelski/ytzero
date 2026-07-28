@@ -43,3 +43,39 @@ export async function notifyFollowedPlaylistVideos(playlistId: string, videoIds:
   }
   return created;
 }
+
+export async function notifyDownloadFailed(videoId: string, error: string): Promise<number> {
+  const video = await database.prepare(`
+    SELECT v.video_id, v.title, v.thumbnail,
+           COALESCE(NULLIF(c.custom_title, ''), c.title) AS channel_title,
+           d.created_at, d.attempts
+    FROM downloads d
+    JOIN videos v ON v.video_id = d.video_id
+    JOIN channels c ON c.channel_id = v.channel_id
+    WHERE d.video_id = ?
+  `).get<{
+    video_id: string;
+    title: string;
+    thumbnail: string;
+    channel_title: string;
+    created_at: string;
+    attempts: number;
+  }>(videoId);
+  if (!video) return 0;
+
+  const users = await database.prepare("SELECT id FROM users WHERE COALESCE(is_child, 0) = 0").all<{ id: number }>();
+  const payload = {
+    videoId: video.video_id,
+    videoTitle: video.title,
+    thumbnail: video.thumbnail,
+    channelTitle: video.channel_title,
+    error,
+    attempts: video.attempts,
+  };
+  let created = 0;
+  for (const user of users) {
+    const dedupeKey = `download_failed:${video.video_id}:${video.created_at}`;
+    if (await createNotification(user.id, "download_failed", dedupeKey, payload, "/downloads")) created++;
+  }
+  return created;
+}

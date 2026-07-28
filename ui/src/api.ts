@@ -299,6 +299,8 @@ export interface AppNotification {
     playlistTitle?: string;
     channelTitle?: string;
     channelThumbnail?: string;
+    error?: string;
+    attempts?: number;
   };
   target: string;
   read_at: string | null;
@@ -402,6 +404,14 @@ export interface DownloadsResponse {
   stats: { files: number; bytes: number; queued: number; cap_bytes: number };
   active: { video_id: string; percent: number; total_bytes: number | null; speed: string | null } | null;
   downloads: DownloadItem[];
+}
+
+export interface DownloadSummary {
+  enabled: boolean;
+  queued: number;
+  downloading: number;
+  completed: number;
+  errors: number;
 }
 
 export interface VideoDownload {
@@ -923,6 +933,7 @@ export const api = {
   },
   removeDownloadCookies: () => http<{ configured: boolean }>("/plugins/downloads/cookies", { method: "DELETE" }),
   downloads: () => http<DownloadsResponse>("/downloads"),
+  downloadSummary: () => http<DownloadSummary>("/downloads/summary"),
   requestDownload: (id: string, priority = false) =>
     http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download`, { method: "POST", body: JSON.stringify({ priority }) }),
   videoDownload: (id: string) =>

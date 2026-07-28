@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, ListVideo, Sparkles } from "lucide-react";
+import { AlertTriangle, Bell, ListVideo, Sparkles } from "lucide-react";
 import { api, type AppNotification } from "../api";
 import { subscribe } from "../events";
 import { useI18n } from "../i18n";
@@ -75,19 +75,28 @@ export default function NotificationCenter() {
           <List divided={false}>
             {notifications.map((notification) => {
               const playlistVideo = notification.kind === "playlist_video";
-              const media = playlistVideo
-                ? notification.payload.channelThumbnail
-                  ? <img className="profile-notification-avatar" src={img(notification.payload.channelThumbnail)} alt="" />
-                  : <span className="profile-notification-icon"><ListVideo /></span>
-                : <span className="profile-notification-icon"><Sparkles /></span>;
+              const downloadFailed = notification.kind === "download_failed";
+              const media = downloadFailed
+                ? <span className="profile-notification-icon profile-notification-icon--danger"><AlertTriangle /></span>
+                : playlistVideo
+                  ? notification.payload.channelThumbnail
+                    ? <img className="profile-notification-avatar" src={img(notification.payload.channelThumbnail)} alt="" />
+                    : <span className="profile-notification-icon"><ListVideo /></span>
+                  : <span className="profile-notification-icon"><Sparkles /></span>;
+              const title = downloadFailed
+                ? notification.payload.videoTitle || t("downloadFailedNotificationTitle")
+                : playlistVideo ? notification.payload.videoTitle || t("playlistVideoNotificationTitle") : t("updateNotificationTitle");
+              const description = downloadFailed
+                ? t("downloadFailedNotificationDescription")
+                : playlistVideo ? t("playlistVideoNotificationDescription", { playlist: notification.payload.playlistTitle || "" }) : t("updateNotificationDescription", { version: notification.payload.version ?? "" });
               return <ListButton
-                  className={`profile-notification profile-notification--${playlistVideo ? "playlist" : "update"}${notification.read_at ? " is-read" : " is-unread"}`}
+                  className={`profile-notification profile-notification--${downloadFailed ? "download-failed" : playlistVideo ? "playlist" : "update"}${notification.read_at ? " is-read" : " is-unread"}`}
                   key={notification.id}
                   onClick={() => void select(notification)}
                   media={media}
-                  title={playlistVideo ? notification.payload.videoTitle || t("playlistVideoNotificationTitle") : t("updateNotificationTitle")}
-                  description={playlistVideo ? t("playlistVideoNotificationDescription", { playlist: notification.payload.playlistTitle || "" }) : t("updateNotificationDescription", { version: notification.payload.version ?? "" })}
-                  meta={playlistVideo && notification.payload.thumbnail ? <img className="profile-notification-thumbnail" src={img(notification.payload.thumbnail)} alt="" /> : undefined}
+                  title={title}
+                  description={description}
+                  meta={(playlistVideo || downloadFailed) && notification.payload.thumbnail ? <img className="profile-notification-thumbnail" src={img(notification.payload.thumbnail)} alt="" /> : undefined}
                 >
                   <time>{notificationTime(notification.created_at, locale, timeZone, t("notificationJustNow"))}</time>
                 </ListButton>;
