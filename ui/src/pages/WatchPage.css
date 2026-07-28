@@ -1814,6 +1814,7 @@ body.cinema .watch-layout.theater aside {
   padding-right: clamp(20px, 3vw, 60px);
 }
 body.cinema .watch-layout.theater .watch-desc,
+body.cinema .watch-layout.theater .watch-download-feedback-region,
 body.cinema .watch-layout.theater .watch-panels,
 body.cinema .watch-layout.theater .video-comments {
   margin-left: clamp(20px, 3vw, 60px);

@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "version": "v0.22.0",
+      "name": "v0.22.0",
+      "publishedAt": "2026-07-29T01:06:56+02:00",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.22.0",
+      "notes": [
+        "Design improvements for whole application (`69d9ebe`)",
+        "Downloading made better #88 (`44a1d01`)"
+      ],
+      "current": true
+    },
+    {
       "version": "v0.21.0",
       "name": "v0.21.0",
       "publishedAt": "2026-07-28T20:48:56Z",
@@ -87,15 +98,6 @@
       "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.5",
       "notes": [
         "Fixed missing changelog #78 (`b11ae4d`)"
-      ]
-    },
-    {
-      "version": "v0.17.4",
-      "name": "v0.17.4",
-      "publishedAt": "2026-07-26T12:49:00Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.4",
-      "notes": [
-        "Fixed missing changelog #78 (`2e6d1dc`)"
       ]
     }
   ]

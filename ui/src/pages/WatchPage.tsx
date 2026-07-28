@@ -1986,6 +1986,16 @@ export default function WatchPage() {
             </div>
           </div>
         }
+        {video && (video.live_status === "live" || video.tags.length > 0) && (
+          <div className="watch-tags">
+            {video.live_status === "live" && (
+              <span className="watch-queue-tag live">{t("liveStream")}</span>
+            )}
+            {video.tags.map((t) => (
+              <TagChip key={`${t.id}-${t.source}`} tag={t} />
+            ))}
+          </div>
+        )}
         {video && <div className={`watch-download-feedback-region${downloadFeedbackVisible ? " is-open" : ""}`} aria-hidden={!downloadFeedbackVisible}>
           <div className="watch-download-feedback-region-inner">
             <div className={`watch-download-feedback watch-download-feedback--${downloadFeedbackKind}`} role={downloadFeedbackVisible ? "status" : undefined} aria-live={downloadFeedbackVisible ? "polite" : undefined}>
@@ -2008,16 +2018,6 @@ export default function WatchPage() {
             </div>
           </div>
         </div>}
-        {video && (video.live_status === "live" || video.tags.length > 0) && (
-          <div className="watch-tags">
-            {video.live_status === "live" && (
-              <span className="watch-queue-tag live">{t("liveStream")}</span>
-            )}
-            {video.tags.map((t) => (
-              <TagChip key={`${t.id}-${t.source}`} tag={t} />
-            ))}
-          </div>
-        )}
         {video && (
           <div
             ref={descriptionRef}
