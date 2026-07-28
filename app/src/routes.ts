@@ -37,6 +37,7 @@ import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
+import { fetchVideoComments, validYouTubeVideoId, VideoCommentsError } from "./youtubeComments";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
 import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
@@ -1445,6 +1446,25 @@ api.get("/videos/:id/chapters", async (c) => {
   }
 });
 
+api.get("/videos/:id/comments", async (c) => {
+  const videoId = c.req.param("id");
+  if (!validYouTubeVideoId(videoId)) return c.json({ error: "invalid video id" }, 400);
+  if (childLocalOnly(currentUserId(c))) return c.json({ error: "restricted" }, 403);
+  try {
+    return c.json(await fetchVideoComments(videoId, c.req.query("refresh") === "1"));
+  } catch (error) {
+    const failure = error instanceof VideoCommentsError
+      ? error
+      : new VideoCommentsError("unavailable", error instanceof Error ? error.message : String(error));
+    const status = failure.code === "comments_disabled" ? 409
+      : failure.code === "rate_limited" ? 429
+      : failure.code === "ytdlp_missing" ? 503
+      : failure.code === "timeout" ? 504
+      : 502;
+    return c.json({ error: "comments unavailable", code: failure.code }, status);
+  }
+});
+
 interface StoredVideoCreator {
   channelId: string;
   title: string;
@@ -1565,7 +1585,7 @@ api.get("/videos/:id", async (c) => {
 
   const fill = (rows: VideoRow[]) => {
     for (const r of rows) {
-      if (seen.has(r.video_id) || r.is_short !== 0) continue;
+      if (seen.has(r.video_id) || r.is_short !== 0 || r.watched === 1) continue;
       seen.add(r.video_id);
       related.push(r);
       if (related.length >= RELATED_TARGET) break;
@@ -1579,7 +1599,7 @@ api.get("/videos/:id", async (c) => {
     const tagIds = tagRows.map((t) => t.tag_id);
     const ph = tagIds.map(() => "?").join(",");
     fill(await database.prepare(
-      `${videoSelect(uid)} WHERE v.video_id != ? AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.video_id != ? AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND COALESCE(uv.watched, 0) != 1 AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
@@ -1588,10 +1608,11 @@ api.get("/videos/:id", async (c) => {
 
   // Step 2 — same channel, fill what's missing
   if (need() > 0) {
+    const seenPh = [...seen].map(() => "?").join(",");
     fill(await database.prepare(
-      `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id != ? AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.channel_id = ? AND v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND COALESCE(uv.watched, 0) != 1 AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
-    ).all(row.channel_id, row.video_id, need() * 2) as VideoRow[]);
+    ).all(row.channel_id, ...seen, need()) as VideoRow[]);
   }
 
   // Step 3 — other channels with any shared tag, fill what's missing
@@ -1600,20 +1621,20 @@ api.get("/videos/:id", async (c) => {
     const ph = tagIds.map(() => "?").join(",");
     const seenPh = [...seen].map(() => "?").join(",");
     fill(await database.prepare(
-      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND COALESCE(uv.watched, 0) != 1 AND v.is_short = 0
        AND (EXISTS (SELECT 1 FROM video_tags vt WHERE vt.video_id = v.video_id AND vt.tag_id IN (${ph}))
          OR EXISTS (SELECT 1 FROM channel_tags ct WHERE ct.channel_id = v.channel_id AND ct.tag_id IN (${ph})))
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
-    ).all(...seen, ...tagIds, ...tagIds, need() * 2) as VideoRow[]);
+    ).all(...seen, ...tagIds, ...tagIds, need()) as VideoRow[]);
   }
 
   // Step 4 — any recent non-archived non-short inbox/queued videos
   if (need() > 0) {
     const seenPh = [...seen].map(() => "?").join(",");
     fill(await database.prepare(
-      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND v.is_short = 0
+      `${videoSelect(uid)} WHERE v.video_id NOT IN (${seenPh}) AND v.published_at IS NOT NULL AND v.published_at != '' AND COALESCE(uv.status, 'inbox') != 'archived' AND COALESCE(uv.watched, 0) != 1 AND v.is_short = 0
        ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT ?`
-    ).all(...seen, need() * 2) as VideoRow[]);
+    ).all(...seen, need()) as VideoRow[]);
   }
 
   // Active profile's channel-level player overrides (NULL = use global).

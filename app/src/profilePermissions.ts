@@ -66,6 +66,7 @@ const SETTING_PERMISSION_AREAS: Readonly<Record<string, ProfilePermissionArea>> 
   player_screenshot_filename: "playback",
   auto_fullscreen_landscape: "playback",
   watch_show_related: "playback",
+  watch_show_comments: "playback",
   sponsorblock_enabled: "playback",
   sponsorblock_categories: "playback",
   feed_autoplay_enabled: "playback",

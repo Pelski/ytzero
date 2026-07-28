@@ -655,6 +655,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // "More like this" on the watch page. Off keeps a session strictly to what the
   // viewer chose to open, with no suggested next thing.
   watch_show_related: "1",
+  // Comments are fetched on demand through yt-dlp. Keep the section opt-in so
+  // opening a video never triggers that extra network request by default.
+  watch_show_comments: "0",
   hide_members_only_from_feed: "0",
   hide_members_only_on_channel: "0",
   watched_style: "dimmed",

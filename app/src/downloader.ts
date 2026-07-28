@@ -76,6 +76,12 @@ export function downloadCookiesConfigured() {
   return existsSync(DOWNLOAD_COOKIES_FILE);
 }
 
+/** Build an argv list for metadata-only features that share yt-dlp and its
+ * optional cookie jar without exposing the cookie path outside this module. */
+export function ytdlpCommand(args: string[], useCookies = false): string[] {
+  return [YTDLP, ...args, ...(useCookies && downloadCookiesConfigured() ? ["--cookies", DOWNLOAD_COOKIES_FILE] : [])];
+}
+
 export function saveDownloadCookies(contents: string) {
   if (!contents.trim()) throw new Error("cookies file is empty");
   if (new TextEncoder().encode(contents).byteLength > MAX_COOKIES_BYTES) {

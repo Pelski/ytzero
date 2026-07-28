@@ -1250,6 +1250,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
   const [watchShowRelated, setWatchShowRelated] = useState(true);
+  const [watchShowComments, setWatchShowComments] = useState(false);
   const [feedMaxAgeValue, setFeedMaxAgeValue] = useState("6");
   const [feedMaxAgeUnit, setFeedMaxAgeUnit] = useState<FeedMaxAgeUnit>("months");
   const [feedAutoplayEnabled, setFeedAutoplayEnabled] = useState(false);
@@ -1519,6 +1520,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         setShowTopChannels(r.settings.show_top_channels !== "0");
         setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
         setWatchShowRelated(r.settings.watch_show_related !== "0");
+        setWatchShowComments(r.settings.watch_show_comments === "1");
         setFeedMaxAgeValue(r.settings.feed_max_age_value || "6");
         setFeedMaxAgeUnit(isFeedMaxAgeUnit(r.settings.feed_max_age_unit) ? r.settings.feed_max_age_unit : "off");
         setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
@@ -1718,6 +1720,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     const next = !watchShowRelated;
     setWatchShowRelated(next);
     await api.updateSettings({ watch_show_related: next ? "1" : "0" });
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const toggleWatchComments = async () => {
+    const next = !watchShowComments;
+    setWatchShowComments(next);
+    await api.updateSettings({ watch_show_comments: next ? "1" : "0" });
     showToast(t("displaySettingsSaved"));
   };
 
@@ -2717,6 +2726,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           {canManageArea("playback") && <SettingsSection title={t("displayPlayback")} className="settings-display-group">
           <SettingRow label={t("watchShowRelated")} description={t("watchShowRelatedHint")}>
             <Switch checked={watchShowRelated} onCheckedChange={() => toggleWatchRelated()} />
+          </SettingRow>
+
+          <SettingRow label={t("watchShowComments")} description={t("watchShowCommentsHint")}>
+            <Switch checked={watchShowComments} onCheckedChange={() => toggleWatchComments()} />
           </SettingRow>
 
           <SettingRow label={t("feedAutoplay")} description={t("feedAutoplayHint")}>

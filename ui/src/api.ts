@@ -189,6 +189,28 @@ export interface VideoCreator {
   isOwner: boolean;
 }
 
+export interface VideoComment {
+  id: string;
+  parent: string | null;
+  text: string;
+  author: string;
+  authorId: string | null;
+  authorUrl: string | null;
+  authorThumbnail: string | null;
+  timestamp: number | null;
+  timeText: string | null;
+  likeCount: number;
+  isPinned: boolean;
+  isFavorited: boolean;
+  authorIsUploader: boolean;
+}
+
+export interface VideoCommentsResponse {
+  comments: VideoComment[];
+  fetchedAt: string;
+  cached: boolean;
+}
+
 export interface PlaylistVideo {
   videoId: string;
   title: string;
@@ -250,6 +272,7 @@ export interface AppSettings {
   feed_max_age_unit: string;
   hide_live_from_feed: string;
   watch_show_related: string;
+  watch_show_comments: string;
   hide_members_only_from_feed: string;
   hide_members_only_on_channel: string;
   watched_style: string;
@@ -609,6 +632,13 @@ export const BUCKET_LABELS: Record<Bucket, string> = {
   weekend: "Weekend",
 };
 
+export class ApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string, public readonly detail?: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
     headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
@@ -616,7 +646,7 @@ async function http<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as any).error ?? `HTTP ${res.status}`);
+    throw new ApiError((body as any).error ?? `HTTP ${res.status}`, res.status, (body as any).code, (body as any).detail);
   }
   return decodeApiTitles(await res.json()) as T;
 }
@@ -930,6 +960,8 @@ export const api = {
   live: () => http<{ videos: Video[] }>("/live"),
   channelLive: (id: string) => http<{ videos: Video[] }>(`/channels/${id}/live`),
   video: (id: string) => http<{ video: Video; related: Video[] }>(`/videos/${id}`),
+  videoComments: (id: string, refresh = false) =>
+    http<VideoCommentsResponse>(`/videos/${id}/comments${refresh ? "?refresh=1" : ""}`),
   watchlist: () => http<{ videos: Video[] }>("/watchlist"),
   archive: (page = 0) => http<{ videos: Video[] }>(`/archive?page=${page}`),
   history: (page = 0) => http<{ videos: Video[] }>(`/history?page=${page}`),

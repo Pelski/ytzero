@@ -59,6 +59,7 @@ import { markYouTubeUrl } from "../youtubeUrl";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
+import VideoComments from "../components/VideoComments";
 
 type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
@@ -210,6 +211,7 @@ export default function WatchPage() {
   // Withheld until settings load: for a profile that turned suggestions off,
   // rendering them first and pulling them away is worse than a brief gap.
   const showRelated = settings ? settings.watch_show_related !== "0" : false;
+  const showComments = settings?.watch_show_comments === "1";
   const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
   const [playbackPolicy, setPlaybackPolicy] = useState<{
     ready: boolean;
@@ -2130,6 +2132,18 @@ export default function WatchPage() {
             )}
           </div>
         )}
+        {showComments && video && !(isChildProfile && childDownloadsOnly) && (
+          <VideoComments
+            key={video.video_id}
+            videoId={video.video_id}
+            creatorAvatar={video.channel_thumbnail}
+            cinemaMode={cinemaMode}
+            onSeek={(seconds) => {
+              playerRef.current?.seekTo(seconds, true);
+              playerRef.current?.playVideo?.();
+            }}
+          />
+        )}
       </div>
       <aside>
         {playlistId && playlistVideos.length > 0 && (
@@ -2169,7 +2183,7 @@ export default function WatchPage() {
         )}
         {showRelated && <>
         <h2 className="related-title">{t("moreLikeThis")}</h2>
-        {related.filter((v) => v.is_short === 0).map((v) => (
+        {related.filter((v) => v.is_short === 0 && v.watched !== 1).map((v) => (
           <div key={v.video_id} className="related-item">
             <div className="related-thumb-shell">
               <Link className="related-thumb-link" to={`/watch/${v.video_id}`} aria-label={v.title} title={v.title}>
