@@ -145,6 +145,8 @@ export const de: Locale = {
     remove: "Entfernen",
     removeFromPlaylist: "Aus Playlist entfernen",
     removeFromHistory: "Aus Wiedergabeverlauf entfernen",
+    incognitoMode: "Inkognitomodus",
+    incognitoModeHint: "Wiedergabeverlauf, Fortschritt und Wiedergabestatistiken in diesem Tab nicht speichern.",
     liveBadge: "LIVE",
     upcomingBadge: "DEMNÄCHST",
     shortBadge: "SHORT",

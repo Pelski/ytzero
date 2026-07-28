@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import "./ProfileMenu.css";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Check, ChevronRight, Eraser, Lock, LogOut, Puzzle, Settings, SlidersHorizontal, X } from "lucide-react";
+import { Check, ChevronRight, Eraser, EyeOff, Lock, LogOut, Puzzle, Settings, SlidersHorizontal, X } from "lucide-react";
 import { api, type AppSettings, type AuthStatus, type Profile, type ProfilePermissions } from "../api";
 import { emit, subscribe } from "../events";
 import { useI18n } from "../i18n";
@@ -11,6 +11,7 @@ import { Button, IconButton, Menu, MenuItem, MenuSeparator, Popover, ScrollArea,
 import NotificationCenter from "./NotificationCenter";
 import Tooltip from "./Tooltip";
 import { ENHANCE_EXTENSION_STATUS } from "../enhanceBridge";
+import { setIncognitoMode } from "../incognitoMode";
 
 /** Round avatar: uploaded image, or a colored circle with the name initial. */
 export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
@@ -25,11 +26,13 @@ export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "
   );
 }
 
-export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onFeedSortChange }: {
+export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onFeedSortChange, incognito, onIncognitoChange }: {
   isAdmin: boolean;
   profilePermissions: ProfilePermissions;
   feedSort: "published" | "arrival";
   onFeedSortChange: (next: "published" | "arrival") => void;
+  incognito: boolean;
+  onIncognitoChange: (next: boolean) => void;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -71,6 +74,7 @@ export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onF
   const doSwitch = async (p: Profile, enteredPin?: string, enteredChildLockPin?: string) => {
     try {
       await api.switchProfile(p.id, enteredPin, enteredChildLockPin);
+      setIncognitoMode(false);
       // Full reload so feed, sidebar, settings and language all re-resolve.
       window.location.reload();
     } catch {
@@ -241,6 +245,21 @@ export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onF
                     { value: "arrival", label: t("feedSortFound") },
                   ]}
                 />
+              </SettingRow>
+            </>
+          )}
+          {!active.is_child && (
+            <>
+              <MenuSeparator />
+              <SettingRow
+                label={t("incognitoMode")}
+                description={t("incognitoModeHint")}
+                className={`profile-incognito-row${incognito ? " profile-incognito-row--active" : ""}`}
+              >
+                <span className="profile-incognito-control">
+                  <EyeOff size={17} aria-hidden="true" />
+                  <Switch checked={incognito} ariaLabel={t("incognitoMode")} onCheckedChange={onIncognitoChange} />
+                </span>
               </SettingRow>
             </>
           )}

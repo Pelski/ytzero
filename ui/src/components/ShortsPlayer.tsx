@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { img } from "../img";
+import { isIncognitoMode } from "../incognitoMode";
 
 let ytApiReady: Promise<void> | null = null;
 function loadYouTubeApi(): Promise<void> {
@@ -139,8 +140,10 @@ export default function ShortsPlayer({
               const videoIdx = slotsRef.current[s]?.videoIdx;
               const completed = videoIdx == null ? undefined : videosRef.current[videoIdx];
               if (completed) {
-                api.complete(completed.video_id).catch(() => {});
-                onWatchedRef.current(completed.video_id);
+                if (!isIncognitoMode()) {
+                  api.complete(completed.video_id).catch(() => {});
+                  onWatchedRef.current(completed.video_id);
+                }
               }
             }
           },
@@ -169,7 +172,7 @@ export default function ShortsPlayer({
       // Opening a Short adds it to history; completion is recorded on ENDED.
       const initVid = videosRef.current[initialIndex];
       if (initVid) {
-        api.watch(initVid.video_id).catch(() => {});
+        if (!isIncognitoMode()) api.watch(initVid.video_id).catch(() => {});
       }
     });
     return () => {
@@ -233,7 +236,7 @@ export default function ShortsPlayer({
       const newVid = vids[newVidIdx];
       if (newVid) {
         onVideoChangeRef.current(newVid.video_id);
-        api.watch(newVid.video_id).catch(() => {});
+        if (!isIncognitoMode()) api.watch(newVid.video_id).catch(() => {});
       }
 
       // Trigger load-more if near end

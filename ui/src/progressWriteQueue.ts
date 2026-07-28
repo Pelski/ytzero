@@ -1,4 +1,5 @@
 import { api } from "./api";
+import { isIncognitoMode } from "./incognitoMode";
 
 interface ProgressWrite {
   position: number;
@@ -13,6 +14,10 @@ const running = new Set<string>();
  * Instead, keep at most one request in flight and coalesce any newer ticks.
  */
 export function queueProgressWrite(videoId: string, position: number, duration: number) {
+  if (isIncognitoMode()) {
+    latest.delete(videoId);
+    return;
+  }
   latest.set(videoId, { position, duration });
   if (running.has(videoId)) return;
   running.add(videoId);
@@ -21,6 +26,7 @@ export function queueProgressWrite(videoId: string, position: number, duration: 
       while (latest.has(videoId)) {
         const next = latest.get(videoId)!;
         latest.delete(videoId);
+        if (isIncognitoMode()) break;
         await api.saveProgress(videoId, next.position, next.duration);
       }
     } catch {

@@ -44,6 +44,7 @@ import { Badge, Button, Toast } from "./components/ui";
 import { ENHANCE_CONFIGURATION_ELEMENT_ID, serializeEnhanceConfiguration } from "./enhanceBridge";
 import { subscribeServerEvent } from "./serverEvents";
 import { queueSettingWrite } from "./settingsWriteQueue";
+import { isIncognitoMode, setIncognitoMode } from "./incognitoMode";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
@@ -200,13 +201,29 @@ function SidebarPlaylists() {
   );
 }
 
-function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, onFeedSortChange }: {
+function SpyLogo() {
+  return (
+    <svg className="spy-logo" viewBox="0 0 32 32" aria-hidden="true">
+      <path className="spy-logo__hat" d="M7 13.5 10.2 5h11.6l3.2 8.5" />
+      <path className="spy-logo__band" d="M9 10.5h14" />
+      <path className="spy-logo__brim" d="M3.5 14h25" />
+      <circle className="spy-logo__lens" cx="10.5" cy="20.5" r="4" />
+      <circle className="spy-logo__lens" cx="21.5" cy="20.5" r="4" />
+      <path className="spy-logo__bridge" d="M14.5 20.5h3" />
+      <path className="spy-logo__collar" d="m11.5 25.2 4.5 3.3 4.5-3.3" />
+    </svg>
+  );
+}
+
+function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, onFeedSortChange, incognito, onIncognitoChange }: {
   appName: string;
   appIconColor: string;
   isAdmin: boolean;
   profilePermissions: ProfilePermissions;
   feedSort: "published" | "arrival";
   onFeedSortChange: (next: "published" | "arrival") => void;
+  incognito: boolean;
+  onIncognitoChange: (next: boolean) => void;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -228,7 +245,7 @@ function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, 
   };
 
   return (
-    <div className={`topbar${solid ? " topbar--solid" : ""}`}>
+    <div className={`topbar${solid ? " topbar--solid" : ""}${incognito ? " topbar--incognito" : ""}`}>
       <button
         className="sidebar-toggle-btn"
         aria-label="Menu"
@@ -242,8 +259,8 @@ function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, 
         <Menu size={20} />
       </button>
       <Link to="/" className="topbar-logo">
-        <span className="logo-mark" style={{ background: appIconColor }}>
-          <Play fill="currentColor" />
+        <span className={`logo-mark${incognito ? " logo-mark--incognito" : ""}`} style={incognito ? undefined : { background: appIconColor }}>
+          {incognito ? <SpyLogo /> : <Play fill="currentColor" />}
         </span>
         <span className="logo-text">{appName}</span>
       </Link>
@@ -262,6 +279,8 @@ function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, 
         profilePermissions={profilePermissions}
         feedSort={feedSort}
         onFeedSortChange={onFeedSortChange}
+        incognito={incognito}
+        onIncognitoChange={onIncognitoChange}
       />
     </div>
   );
@@ -296,11 +315,22 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
   const [showHidden, setShowHidden] = useState(false);
   const [childStatus, setChildStatus] = useState<ChildStatus | null>(null);
+  const [incognito, setIncognito] = useState(isIncognitoMode);
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: ["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"] });
   const toastTimeoutRef = useRef<number | null>(null);
   const removingLegacyFeedSortRef = useRef(false);
 
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
+
+  const changeIncognito = useCallback((next: boolean) => {
+    setIncognitoMode(next);
+    setIncognito(next);
+  }, []);
+
+  useEffect(() => {
+    document.body.classList.toggle("incognito-mode", incognito);
+    return () => document.body.classList.remove("incognito-mode");
+  }, [incognito]);
 
   const showToast = useCallback((message: string, variant: ToastVariant = "default") => {
     if (toastTimeoutRef.current != null) window.clearTimeout(toastTimeoutRef.current);
@@ -450,9 +480,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => {
     if (!childStatus?.is_child) return;
+    if (incognito) changeIncognito(false);
     const load = () => { api.childStatus().then(setChildStatus).catch(() => {}); };
     return subscribeServerEvent("child-status", load);
-  }, [childStatus?.is_child]);
+  }, [childStatus?.is_child, incognito, changeIncognito]);
 
   // When the limit kicks in mid-video, leave the player page so playback stops
   // (the lock overlay alone would keep the audio running underneath).
@@ -516,6 +547,8 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
         profilePermissions={profilePermissions}
         feedSort={feedSort}
         onFeedSortChange={changeFeedSort}
+        incognito={incognito}
+        onIncognitoChange={changeIncognito}
       />
       <div className="layout-body">
         <aside className="sidebar">

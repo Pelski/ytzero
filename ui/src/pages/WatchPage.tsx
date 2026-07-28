@@ -4,6 +4,7 @@ import "./WatchPage.css";
 import { emit, emitToast } from "../events";
 import { scheduleSettingWrite } from "../settingsWriteQueue";
 import { queueProgressWrite } from "../progressWriteQueue";
+import { isIncognitoMode } from "../incognitoMode";
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Archive,
@@ -710,7 +711,7 @@ export default function WatchPage() {
           console.error(e);
         }
       });
-    api.watch(id).catch(() => {});
+    if (!isIncognitoMode()) api.watch(id).catch(() => {});
   }, [id]);
 
   // When a video finishes: record completion, advance the playlist if any.
@@ -718,7 +719,7 @@ export default function WatchPage() {
     if (!id) return;
     if (endedHandledRef.current === id) return;
     endedHandledRef.current = id;
-    api.complete(id).catch(() => {});
+    if (!isIncognitoMode()) api.complete(id).catch(() => {});
     if (nextInPlaylistRef.current) navigate(nextInPlaylistRef.current);
     else if (nextInFeedRef.current) setUpNextVideo(nextInFeedRef.current);
   }, [id, navigate]);
@@ -831,7 +832,7 @@ export default function WatchPage() {
         if (!isPlaying) return;
         if (!isStream) {
           queueProgressWrite(id, position, playerDuration);
-          if (canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
+          if (!isIncognitoMode() && canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
             queueProgressWrite(id, playerDuration, playerDuration);
             api.complete(id).catch(() => {});
@@ -845,7 +846,7 @@ export default function WatchPage() {
               const skippedSeconds = seg.segment[1] - position;
               p.seekTo(seg.segment[1], true);
               showShortcutFeedback("sponsorblock", skippedSeconds, seg.category);
-              if (!recordedSbSegsRef.current.has(seg.UUID)) {
+              if (!isIncognitoMode() && !recordedSbSegsRef.current.has(seg.UUID)) {
                 recordedSbSegsRef.current.add(seg.UUID);
                 api.recordSponsorBlockSkip(id, seg, skippedSeconds).catch((error) => {
                   console.warn("SponsorBlock skip could not be recorded", error);

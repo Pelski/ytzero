@@ -147,6 +147,8 @@ export const pl: Locale = {
     remove: "Usuń",
     removeFromPlaylist: "Usuń z playlisty",
     removeFromHistory: "Usuń z historii oglądania",
+    incognitoMode: "Tryb incognito",
+    incognitoModeHint: "Nie zapisuj historii, postępu ani statystyk oglądania w tej karcie.",
     liveBadge: "NA ŻYWO",
     upcomingBadge: "WKRÓTCE",
     shortBadge: "SHORT",

@@ -146,6 +146,8 @@ export const en = {
     remove: "Remove",
     removeFromPlaylist: "Remove from playlist",
     removeFromHistory: "Remove from watch history",
+    incognitoMode: "Incognito mode",
+    incognitoModeHint: "Do not save watch history, progress, or viewing insights in this tab.",
     liveBadge: "LIVE",
     upcomingBadge: "UPCOMING",
     shortBadge: "SHORT",
