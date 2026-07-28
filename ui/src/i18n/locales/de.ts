@@ -144,6 +144,7 @@ export const de: Locale = {
     scheduleRemovedFeedback: "Aus der Planung entfernt",
     remove: "Entfernen",
     removeFromPlaylist: "Aus Playlist entfernen",
+    removeFromHistory: "Aus Wiedergabeverlauf entfernen",
     liveBadge: "LIVE",
     upcomingBadge: "DEMNÄCHST",
     shortBadge: "SHORT",

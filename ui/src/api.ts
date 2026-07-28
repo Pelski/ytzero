@@ -964,7 +964,8 @@ export const api = {
     http<VideoCommentsResponse>(`/videos/${id}/comments${refresh ? "?refresh=1" : ""}`),
   watchlist: () => http<{ videos: Video[] }>("/watchlist"),
   archive: (page = 0) => http<{ videos: Video[] }>(`/archive?page=${page}`),
-  history: (page = 0) => http<{ videos: Video[] }>(`/history?page=${page}`),
+  history: (page = 0) => http<{ videos: Video[]; page: number; has_more: boolean }>(`/history?page=${page}`),
+  removeFromHistory: (historyId: number) => http<{ ok: true }>(`/history/${historyId}`, { method: "DELETE" }),
   insights: (days = 30, profileId: number | null = null) => {
     const qs = new URLSearchParams({ days: String(days), profile: profileId == null ? "all" : String(profileId) });
     return http<HouseholdInsights>(`/insights?${qs}`);

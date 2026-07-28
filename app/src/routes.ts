@@ -1833,7 +1833,9 @@ api.delete("/videos/:id/tags/:tagId", async (c) => {
 
 api.get("/history", async (c) => {
   const uid = currentUserId(c);
-  const page = Math.max(0, Number(c.req.query("page") ?? 0));
+  const requestedPage = Number(c.req.query("page") ?? 0);
+  const page = Number.isFinite(requestedPage) ? Math.max(0, Math.floor(requestedPage)) : 0;
+  const pageSize = 60;
   const rows = await database
     .prepare(
       `SELECT MAX(h.id) AS history_id, MAX(h.watched_at) AS watched_at,
@@ -1847,15 +1849,23 @@ api.get("/history", async (c) => {
        LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
        WHERE h.user_id = ?
        GROUP BY v.video_id
-       ORDER BY MAX(h.watched_at) DESC LIMIT 60 OFFSET ?`
+       ORDER BY MAX(h.watched_at) DESC, MAX(h.id) DESC LIMIT ? OFFSET ?`
     )
-    .all(uid, uid, page * 60) as (VideoRow & { history_id: number; watched_at: string })[];
-  return c.json({ videos: await attachTags(uid, rows as VideoRow[]), page });
+    .all(uid, uid, pageSize + 1, page * pageSize) as (VideoRow & { history_id: number; watched_at: string })[];
+  const hasMore = rows.length > pageSize;
+  return c.json({ videos: await attachTags(uid, rows.slice(0, pageSize) as VideoRow[]), page, has_more: hasMore });
 });
 
 api.delete("/history/:id", async (c) => {
   const uid = currentUserId(c);
-  await database.prepare("DELETE FROM history WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  // The history view groups repeat watches into one card. Remove every watch
+  // for that card so an older occurrence does not immediately take its place.
+  await database.prepare(
+    `DELETE FROM history
+     WHERE user_id = ? AND video_id = (
+       SELECT video_id FROM history WHERE id = ? AND user_id = ?
+     )`
+  ).run(uid, c.req.param("id"), uid);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });

@@ -145,6 +145,7 @@ export const en = {
     scheduleRemovedFeedback: "Removed from schedule",
     remove: "Remove",
     removeFromPlaylist: "Remove from playlist",
+    removeFromHistory: "Remove from watch history",
     liveBadge: "LIVE",
     upcomingBadge: "UPCOMING",
     shortBadge: "SHORT",

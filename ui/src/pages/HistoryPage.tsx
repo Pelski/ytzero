@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
@@ -16,24 +16,57 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const loadMoreRef = useRef<HTMLButtonElement>(null);
+  const loadingMoreRef = useRef(false);
+  const loadGenerationRef = useRef(0);
 
-  const load = useCallback((requestedPage = page) => {
+  const load = useCallback((requestedPage: number) => {
+    if (requestedPage > 0 && loadingMoreRef.current) return;
+    const generation = requestedPage === 0 ? ++loadGenerationRef.current : loadGenerationRef.current;
     if (requestedPage === 0) setLoading(true);
-    else setLoadingMore(true);
+    else {
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+    }
     api
       .history(requestedPage)
       .then((r) => {
+        if (generation !== loadGenerationRef.current) return;
         setVideos((prev) => (requestedPage === 0 ? r.videos : [...prev, ...r.videos]));
-        setHasMore(r.videos.length === 40);
+        setHasMore(r.has_more);
       })
       .catch(console.error)
       .finally(() => {
         setLoading(false);
         setLoadingMore(false);
+        loadingMoreRef.current = false;
       });
-  }, [page]);
+  }, []);
 
-  useEffect(load, [load]);
+  useEffect(() => { load(0); }, [load]);
+
+  useEffect(() => {
+    if (page === 0) return;
+    load(page);
+  }, [page, load]);
+
+  useEffect(() => {
+    const element = loadMoreRef.current;
+    if (!element || !hasMore) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && !loadingMoreRef.current) setPage((current) => current + 1);
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasMore, videos]);
+
+  const refresh = useCallback(() => {
+    setPage(0);
+    load(0);
+  }, [load]);
 
   const groups = videos.reduce<{ key: string; videos: Video[] }[]>((result, video) => {
     const key = video.watched_at ? appDayKey(video.watched_at, timeZone) : "";
@@ -67,7 +100,14 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
               <SectionHeader title={groupLabel(group.key)} />
               <div className="video-grid">
                 {group.videos.map((v) => (
-                  <VideoCard key={`${v.history_id ?? v.video_id}`} video={v} onPlay={onPlay} onChanged={() => { setPage(0); load(0); }} showWatchProgress />
+                  <VideoCard
+                    key={`${v.history_id ?? v.video_id}`}
+                    video={v}
+                    onPlay={onPlay}
+                    onChanged={refresh}
+                    onRemoveFromHistory={api.removeFromHistory}
+                    showWatchProgress
+                  />
                 ))}
               </div>
             </section>
@@ -75,7 +115,7 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
           {loadingMore && <VideoGridSkeleton count={4} />}
           {hasMore && !loadingMore && (
             <div className="load-more">
-              <Button onClick={() => setPage((p) => p + 1)}>{t("loadMore")}</Button>
+              <Button ref={loadMoreRef} onClick={() => setPage((p) => p + 1)}>{t("loadMore")}</Button>
             </div>
           )}
         </>

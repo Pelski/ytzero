@@ -34,7 +34,7 @@ const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
 const SWIPE_FEEDBACK_MS = 720;
 const FINAL_EXIT_MS = 280;
-export type CardFeedback = "watched" | "unwatched" | "rejected" | "restored" | "scheduled" | "unscheduled";
+export type CardFeedback = "watched" | "unwatched" | "rejected" | "restored" | "scheduled" | "unscheduled" | "removed";
 
 /** Duration in seconds for sorting/comparing; null when the string is unparseable. */
 export function parseVideoDurationSeconds(duration: string | null): number | null {
@@ -114,6 +114,7 @@ function VideoCard({
   showChannelAvatar = true,
   searchResultLayout = false,
   onRemoveFromPlaylist,
+  onRemoveFromHistory,
   isWatched,
   isLiked,
   showWatchProgress,
@@ -132,6 +133,7 @@ function VideoCard({
   showChannelAvatar?: boolean;
   searchResultLayout?: boolean;
   onRemoveFromPlaylist?: (videoId: string) => Promise<unknown>;
+  onRemoveFromHistory?: (historyId: number) => Promise<unknown>;
   isWatched?: boolean;
   isLiked?: boolean;
   showWatchProgress?: boolean;
@@ -366,22 +368,26 @@ function VideoCard({
       ? EyeOff
       : revealFeedback === "restored"
         ? Undo2
-        : revealFeedback === "scheduled"
-          ? CalendarCheck
-          : revealFeedback === "unscheduled"
-            ? CalendarX
-            : Archive;
+        : revealFeedback === "removed"
+          ? Trash2
+          : revealFeedback === "scheduled"
+            ? CalendarCheck
+            : revealFeedback === "unscheduled"
+              ? CalendarX
+              : Archive;
   const revealLabel = revealFeedback === "watched"
     ? t("watched")
     : revealFeedback === "unwatched"
       ? t("markUnwatched")
       : revealFeedback === "restored"
         ? t("restore")
-        : revealFeedback === "scheduled"
-          ? t("scheduledFeedback")
-          : revealFeedback === "unscheduled"
-            ? t("scheduleRemovedFeedback")
-            : t("reject");
+        : revealFeedback === "removed"
+          ? t("remove")
+          : revealFeedback === "scheduled"
+            ? t("scheduledFeedback")
+            : revealFeedback === "unscheduled"
+              ? t("scheduleRemovedFeedback")
+              : t("reject");
   const revealClass = revealFeedback === "watched"
     ? "swipe-reveal--left"
     : revealFeedback === "unwatched"
@@ -589,6 +595,13 @@ function VideoCard({
                 {onRemoveFromPlaylist && (
                   <Tooltip text={t("removeFromPlaylist")}>
                     <button className="action-btn" onClick={(e) => act(e, () => onRemoveFromPlaylist(video.video_id))}>
+                      <Trash2 />
+                    </button>
+                  </Tooltip>
+                )}
+                {onRemoveFromHistory && video.history_id != null && (
+                  <Tooltip text={t("removeFromHistory")}>
+                    <button className="action-btn" onClick={(e) => act(e, () => onRemoveFromHistory(video.history_id!), "removed")}>
                       <Trash2 />
                     </button>
                   </Tooltip>
