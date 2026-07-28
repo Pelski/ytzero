@@ -13,7 +13,7 @@ import TagFilterBar from "../components/TagFilterBar";
 import VideoCard, { type CardFeedback } from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
-import { Button, ButtonLink, Divider, EmptyState, IconButton } from "../components/ui";
+import { Button, ButtonLink, Divider, EmptyState, IconButton, RevealRegion } from "../components/ui";
 import { parseAppTimestamp } from "../dateTime";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
@@ -143,6 +143,7 @@ export default function FeedPage({
   const [inProgressExpanded, setInProgressExpanded] = useState(false);
   const [queuedExpanded, setQueuedExpanded] = useState(false);
   const [hasSubscriptions, setHasSubscriptions] = useState<boolean | null>(null);
+  const [subscriptionStateLoading, setSubscriptionStateLoading] = useState(true);
   // Gates the full "start from scratch" walkthrough — separate from
   // hasSubscriptions so a profile with nothing followed yet, on an instance
   // that already has channels/videos (another profile, an import), gets a
@@ -205,8 +206,8 @@ export default function FeedPage({
       const feed = await api.feed({ tags: selectedTags, page: requestedPage, show_all: showAll, sort: feedSort });
       setVideos((prev) => (requestedPage === 0 ? feed.videos : [...prev, ...feed.videos]));
       setHasMore(feed.videos.length === 40);
-    } finally {
       setLoading(false);
+    } finally {
       setLoadingMore(false);
     }
   }, [selectedTags, page, showAll, feedSort]);
@@ -234,10 +235,12 @@ export default function FeedPage({
   }, [loadTags, loadQueued, loadInProgress]);
 
   const loadSubscriptionState = useCallback(() => {
+    setSubscriptionStateLoading(true);
     api.channels().then((r) => {
       setHasSubscriptions(r.channels.some((channel) => channel.followed !== 0));
       setInstanceHasData(r.instance_has_data);
-    }).catch(() => {});
+      setSubscriptionStateLoading(false);
+    }).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -364,7 +367,7 @@ export default function FeedPage({
   const showQueuedSection = dueQueuedVideos.length > 0 && selectedTags.length === 0;
   const showFeedPreludeDivider = inProgress.length > 0 || showQueuedSection;
 
-  if (!loading && instanceHasData === false) {
+  if (!loading && !subscriptionStateLoading && instanceHasData === false) {
     return (
       <>
         <ChildTimeRequestBanner />
@@ -400,7 +403,7 @@ export default function FeedPage({
 
       {showTopChannels && <ChannelAvatarRow />}
 
-      {inProgress.length > 0 && (
+      <RevealRegion open={inProgress.length > 0}>
         <div className="continue-watching-section">
           <div className="time-section-header">
             <Clock size={16} />
@@ -432,9 +435,9 @@ export default function FeedPage({
             </div>
           )}
         </div>
-      )}
+      </RevealRegion>
 
-      {showQueuedSection && (
+      <RevealRegion open={showQueuedSection}>
         <div className="time-section">
           <div className="time-section-header">
             <Clock size={16} />
@@ -466,11 +469,11 @@ export default function FeedPage({
             </div>
           )}
         </div>
-      )}
+      </RevealRegion>
 
-      {showFeedPreludeDivider && <Divider />}
+      <RevealRegion open={showFeedPreludeDivider}><Divider /></RevealRegion>
 
-      {loading && videos.length === 0 ? (
+      {videos.length === 0 && (loading || (selectedTags.length === 0 && subscriptionStateLoading)) ? (
         <VideoGridSkeleton gridSize={gridSize} />
       ) : videos.length === 0 ? (
         hasSubscriptions === false ? (

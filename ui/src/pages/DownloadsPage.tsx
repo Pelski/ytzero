@@ -14,6 +14,7 @@ import EmptyArt from "../components/illustrations/EmptyArt";
 import { subscribeServerEvent } from "../serverEvents";
 import DownloadAutomation from "../components/DownloadAutomation";
 import DownloadConfiguration from "../components/DownloadConfiguration";
+import { PageSkeleton } from "../components/LoadingState";
 
 const QUEUE_COLLAPSED_COUNT = 3;
 
@@ -50,6 +51,7 @@ export default function DownloadsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   useDocumentTitle(t("downloadsTitle"));
   const [data, setData] = useState<DownloadsResponse | null>(null);
+  const [loadError, setLoadError] = useState("");
   const [queueExpanded, setQueueExpanded] = useState(false);
   const [cancellingQueue, setCancellingQueue] = useState(false);
   const requestedView = searchParams.get("view");
@@ -60,7 +62,10 @@ export default function DownloadsPage() {
   };
 
   const load = useCallback(() => {
-    api.downloads().then(setData).catch(() => {});
+    setLoadError("");
+    api.downloads()
+      .then(setData)
+      .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
   }, []);
 
   useEffect(() => {
@@ -96,7 +101,13 @@ export default function DownloadsPage() {
     api.cancelDownloadQueue().then(load).catch(load).finally(() => setCancellingQueue(false));
   };
 
-  if (!data) return null;
+  if (!data) return loadError ? (
+    <EmptyState
+      icon={<AlertTriangle />}
+      title={loadError}
+      action={<Button onClick={load} leadingIcon={<RotateCw />}>{t("refresh")}</Button>}
+    />
+  ) : <PageSkeleton />;
 
   const usedFrac = data.stats.cap_bytes > 0 ? Math.min(1, data.stats.bytes / data.stats.cap_bytes) : 0;
   const queueItems = data.downloads.filter((d) => d.status === "downloading" || d.status === "queued" || d.status === "error");

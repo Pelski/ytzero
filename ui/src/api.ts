@@ -1,5 +1,6 @@
 import type { I18nKey } from "./i18n";
 import { decodeApiTitles } from "./htmlEntities";
+import { apiFetch } from "./apiTransport";
 
 // YouTube-supported playback rates, shared by the settings, watch and channel UIs.
 export const PLAYBACK_SPEEDS = ["0.25", "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
@@ -703,7 +704,7 @@ export class ApiError extends Error {
 }
 
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await apiFetch(`/api${path}`, {
     headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
     ...init,
   });
@@ -905,7 +906,7 @@ export const api = {
   confirmDatabaseMigration: () => http<{ ok: true; status: DatabaseStatus }>("/database/migration/confirm", { method: "POST", body: "{}" }),
   backupOptions: () => http<BackupOptions>("/backup/options"),
   exportBackup: async (payload: { preset: string; profiles: string[]; sections: string[] }) => {
-    const response = await fetch("/api/backup/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const response = await apiFetch("/api/backup/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!response.ok) throw new Error((await response.json().catch(() => ({})) as any).error ?? `HTTP ${response.status}`);
     return response.blob();
   },

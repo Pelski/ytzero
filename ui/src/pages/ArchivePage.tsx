@@ -17,9 +17,11 @@ export default function ArchivePage({ onPlay }: { onPlay: (v: Video) => void }) 
   const load = useCallback(() => {
     api
       .archive()
-      .then((r) => setVideos(r.videos))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((r) => {
+        setVideos(r.videos);
+        setLoading(false);
+      })
+      .catch(console.error);
   }, []);
 
   useEffect(load, [load]);

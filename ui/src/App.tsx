@@ -291,6 +291,20 @@ function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, 
 const SIDEBAR_KEY = "sidebar_open";
 const MOBILE_SIDEBAR_QUERY = "(max-width: 760px)";
 
+function AppBootstrap() {
+  const { t } = useI18n();
+
+  useLayoutEffect(() => {
+    document.title = t("loading");
+  }, [t]);
+
+  return (
+    <div className="app-bootstrap" role="status" aria-label={t("loading")}>
+      <span className="app-bootstrap-mark" aria-hidden="true"><Play fill="currentColor" /></span>
+    </div>
+  );
+}
+
 export default function App() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
 
@@ -298,13 +312,13 @@ export default function App() {
     api.authStatus().then(setAuth).catch(() => setAuth({ method: "none", authenticated: true, can_switch: true }));
   }, []);
 
-  if (!auth) return null; // brief: deciding app vs. login
+  if (!auth) return <AppBootstrap />;
   if (!auth.authenticated) return <LoginPage status={auth} />;
   return <AppShell isAdmin={Boolean(auth.is_admin)} />;
 }
 
 function AppShell({ isAdmin }: { isAdmin: boolean }) {
-  const { t } = useI18n();
+  const { t, ready: i18nReady } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
   const [liveCount, setLiveCount] = useState(0);
@@ -321,6 +335,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const [childStatus, setChildStatus] = useState<ChildStatus | null>(null);
   const [incognito, setIncognito] = useState(isIncognitoMode);
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: ["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"] });
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [permissionsReady, setPermissionsReady] = useState(false);
+  const [pluginsReady, setPluginsReady] = useState(false);
+  const [childStatusReady, setChildStatusReady] = useState(false);
   const toastTimeoutRef = useRef<number | null>(null);
   const removingLegacyFeedSortRef = useRef(false);
   const downloadSummaryRequestRef = useRef(0);
@@ -383,7 +401,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
         if (entry) entry.hidden = false;
       }
       setNavConfig(navCfg);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setSettingsReady(true));
   }, []);
 
   const feedSort = appSettings?.feed_sort === "arrival" ? "arrival" : "published";
@@ -420,7 +438,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(loadSettings, [loadSettings]);
   useEffect(() => {
-    api.profilePermissions().then((result) => setProfilePermissions(result.permissions)).catch(() => {});
+    api.profilePermissions()
+      .then((result) => setProfilePermissions(result.permissions))
+      .catch(() => {})
+      .finally(() => setPermissionsReady(true));
   }, []);
   useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
@@ -438,7 +459,8 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
           .then((config) => { document.documentElement.dataset.dlThumbProgress = config.enabled ? String(config.settings.thumb_progress ?? 1) : "0"; })
           .catch(() => { document.documentElement.dataset.dlThumbProgress = "0"; });
       })
-      .catch(() => setEnabledPluginRoutes(new Set()));
+      .catch(() => setEnabledPluginRoutes(new Set()))
+      .finally(() => setPluginsReady(true));
   }, []);
 
   useEffect(loadPlugins, [loadPlugins]);
@@ -495,7 +517,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
     const load = () => {
       api.childStatus().then((s) => {
         setChildStatus(s);
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => setChildStatusReady(true));
     };
     load();
   }, []);
@@ -532,6 +554,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
       navigate("/", { replace: true });
     }
   }, [childStatus?.is_child, location.pathname, navigate]);
+
+  if (!i18nReady || !settingsReady || !permissionsReady || !pluginsReady || !childStatusReady) {
+    return <AppBootstrap />;
+  }
 
   const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(navConfig);
   const pluginRouteVisible = (to: string) => !PLUGIN_ROUTES.includes(to) || enabledPluginRoutes?.has(to);

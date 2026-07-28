@@ -127,9 +127,9 @@ export default function SubscriptionsPage() {
       .then(([channelResponse, tagResponse]) => {
         setChannels(channelResponse.channels.filter((ch) => ch.followed !== 0));
         setTags(tagResponse.tags);
+        setLoading(false);
       })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .catch(console.error);
   }, []);
 
   useEffect(() => {

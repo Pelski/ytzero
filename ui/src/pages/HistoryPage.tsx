@@ -34,10 +34,10 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
         if (generation !== loadGenerationRef.current) return;
         setVideos((prev) => (requestedPage === 0 ? r.videos : [...prev, ...r.videos]));
         setHasMore(r.has_more);
+        setLoading(false);
       })
       .catch(console.error)
       .finally(() => {
-        setLoading(false);
         setLoadingMore(false);
         loadingMoreRef.current = false;
       });

@@ -54,9 +54,11 @@ export default function WatchlistPage() {
   const load = useCallback(() => {
     api
       .watchlist()
-      .then((r) => setVideos(r.videos))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((r) => {
+        setVideos(r.videos);
+        setLoading(false);
+      })
+      .catch(console.error);
   }, []);
 
   useEffect(load, [load]);

@@ -1,3 +1,27 @@
+.app-bootstrap {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+}
+.app-bootstrap-mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  animation: app-bootstrap-pulse 1.4s ease-in-out infinite;
+}
+.app-bootstrap-mark svg { width: 17px; height: 17px; }
+@keyframes app-bootstrap-pulse {
+  0%, 100% { opacity: .46; transform: scale(.96); }
+  50% { opacity: .9; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-bootstrap-mark { animation: none; opacity: .72; }
+}
+
 .layout { display: flex; flex-direction: column; min-height: 100dvh; }
 .layout-body { display: flex; flex: 1; }
 

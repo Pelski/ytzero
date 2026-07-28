@@ -52,8 +52,8 @@ export default function ShortsPage() {
       const more = feed.videos.length === 40;
       setHasMore(more);
       hasMoreRef.current = more;
-    } finally {
       setLoading(false);
+    } finally {
       setLoadingMore(false);
       loadingMoreRef.current = false;
     }

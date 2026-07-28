@@ -10,8 +10,7 @@
         "Download badge in sidebar #89 (`bd2f35a`)",
         "Incognito mode, remove from history manually #90 (`2770413`)",
         "Infinite scroll in history tab #91 (`739d324`)"
-      ],
-      "current": true
+      ]
     },
     {
       "version": "v0.20.1",

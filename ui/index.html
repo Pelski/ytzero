@@ -23,6 +23,14 @@
       if (uiLanguage === "en" || uiLanguage === "pl" || uiLanguage === "de") {
         document.documentElement.lang = uiLanguage;
       }
+
+      // Apply the persisted sidebar state before the app shell and its CSS are
+      // mounted. This prevents the sidebar from animating from the wrong state
+      // during a full page load.
+      const sidebarStoredOpen = localStorage.getItem("sidebar_open");
+      if (window.matchMedia("(max-width: 760px)").matches || sidebarStoredOpen === "0") {
+        document.body.classList.add("sidebar-hidden");
+      }
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -19,9 +19,11 @@ export default function FollowedPlaylistsPage() {
   const load = useCallback(() => {
     setLoading(true);
     api.followedPlaylistUpdates()
-      .then((result) => setPlaylists(result.playlists))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((result) => {
+        setPlaylists(result.playlists);
+        setLoading(false);
+      })
+      .catch(console.error);
   }, []);
 
   useEffect(load, [load]);

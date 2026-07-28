@@ -9,6 +9,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { EmptyState, SelectMenu } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { formatCalendarDay } from "../dateTime";
+import { PageSkeleton } from "../components/LoadingState";
 
 const RANGES = [7, 30, 90, 365];
 
@@ -90,7 +91,7 @@ export default function InsightsPage() {
     return formatCalendarDay(`2024-01-0${index + 1}`, locale, { weekday: "short" });
   }), [locale]);
 
-  if (!data && loading) return <div className="insights-loading"><Activity className="spin" /> {t("loading")}</div>;
+  if (!data && loading) return <PageSkeleton />;
   // An error is a failure, not a milestone — only the genuine no-data case gets art.
   if (!data) return error
     ? <EmptyState title={error} />

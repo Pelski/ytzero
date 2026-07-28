@@ -1396,8 +1396,6 @@ body.cinema .content {
   color: rgba(255, 255, 255, 0.65);
 }
 
-.skeleton-short { border-radius: var(--radius); }
-
 /* ── Shorts player ─────────────────────────────────────────────────── */
 .sp-overlay {
   position: fixed;

@@ -1,4 +1,5 @@
 import { useI18n } from "../i18n";
+import "./LoadingState.css";
 
 export function VideoGridSkeleton({
   count = 8,

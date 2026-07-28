@@ -27,10 +27,10 @@ export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
       .then((r) => {
         setVideos((prev) => (requestedPage === 0 ? r.videos : [...prev, ...r.videos]));
         setHasMore(r.videos.length === 40);
+        setLoading(false);
       })
       .catch(console.error)
       .finally(() => {
-        setLoading(false);
         setLoadingMore(false);
       });
   }, [page, showShorts]);

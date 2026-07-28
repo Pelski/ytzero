@@ -20,9 +20,11 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const load = useCallback(() => {
     api
       .live()
-      .then((r) => setVideos(r.videos))
-      .catch(console.error)
-      .finally(() => setLoading(false));
+      .then((r) => {
+        setVideos(r.videos);
+        setLoading(false);
+      })
+      .catch(console.error);
   }, []);
 
   useEffect(() => {

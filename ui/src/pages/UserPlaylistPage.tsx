@@ -37,13 +37,14 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
       setVideos(r.videos);
       setName(r.playlist.name);
       setIcon(r.playlist.icon);
-    } finally {
       setLoading(false);
+    } catch (error) {
+      console.error(error);
     }
   }, [playlistId]);
 
   useEffect(() => {
-    load().catch(console.error);
+    load();
   }, [load]);
 
   const save = async () => {

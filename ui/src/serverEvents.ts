@@ -1,3 +1,5 @@
+import { probeApiAuthentication } from "./apiTransport";
+
 export type ServerEventTopic = "child-status" | "child-watching" | "child-requests" | "downloads" | "live" | "notifications";
 export type ServerEventData = Record<string, unknown> | undefined;
 
@@ -21,6 +23,9 @@ function connect() {
   });
   source.addEventListener("ready", () => {
     for (const topic of listeners.keys()) notify(topic);
+  });
+  source.addEventListener("error", () => {
+    void probeApiAuthentication();
   });
 }
 

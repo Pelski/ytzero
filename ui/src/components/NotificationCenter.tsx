@@ -5,7 +5,7 @@ import { api, type AppNotification } from "../api";
 import { subscribe } from "../events";
 import { useI18n } from "../i18n";
 import { img } from "../img";
-import { Button, EmptyState, IconButton, List, ListButton, Popover, ScrollArea } from "./ui";
+import { Button, EmptyState, FloatingPopover, IconButton, List, ListButton, ScrollArea } from "./ui";
 import "./NotificationCenter.css";
 import { formatAppDate, parseAppTimestamp } from "../dateTime";
 import { subscribeServerEvent } from "../serverEvents";
@@ -59,14 +59,15 @@ export default function NotificationCenter() {
   };
 
   return <div className="profile-notifications-wrap">
-    <Popover
+    <FloatingPopover
       open={open}
       onOpenChange={(next) => { setOpen(next); if (next) load(); }}
       align="end"
-      title={t("notifications")}
       className="profile-notifications-popover"
       trigger={<IconButton variant="ghost" size="sm" className="profile-notifications-trigger" label={t("notifications")} icon={<><Bell />{unread > 0 && <span className="profile-notifications-count">{unread > 9 ? "9+" : unread}</span>}</>} />}
     >
+      <div className="profile-notifications-panel" role="dialog" aria-label={t("notifications")}>
+      <div className="ui-popover__title">{t("notifications")}</div>
       {notifications.length === 0 ? (
         <EmptyState compact title={t("notificationsEmpty")} className="profile-notifications-empty" />
       ) : (
@@ -106,6 +107,7 @@ export default function NotificationCenter() {
           {unread > 0 && <Button type="button" size="sm" variant="ghost" className="profile-notifications-read-all" onClick={() => void readAll()}>{t("markAllNotificationsRead")}</Button>}
         </>
       )}
-    </Popover>
+      </div>
+    </FloatingPopover>
   </div>;
 }

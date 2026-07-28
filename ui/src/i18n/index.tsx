@@ -49,6 +49,7 @@ function resolveIconLabel(language: Language, id: string): string {
 }
 
 type I18nValue = {
+  ready: boolean;
   language: Language;
   setLanguage: (language: Language) => Promise<void>;
   timeZone: string;
@@ -62,6 +63,7 @@ type I18nValue = {
 const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
+  const [ready, setReady] = useState(false);
   const [language, setLanguageState] = useState<Language>(() => normalizeLanguage(localStorage.getItem(LANGUAGE_KEY)));
   const [timeZone, setTimeZoneState] = useState(DEFAULT_TIME_ZONE);
 
@@ -77,7 +79,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {
         document.documentElement.lang = language;
-      });
+      })
+      .finally(() => setReady(true));
   }, [language]);
 
   useEffect(() => {
@@ -102,6 +105,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<I18nValue>(() => ({
+    ready,
     language,
     setLanguage,
     timeZone,
@@ -110,7 +114,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     bucketLabel: (bucket) => locales[language].buckets[bucket],
     iconLabel: (id) => resolveIconLabel(language, id),
     locale: LOCALE_TAGS[language],
-  }), [language, setLanguage, setTimeZone, timeZone]);
+  }), [language, ready, setLanguage, setTimeZone, timeZone]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

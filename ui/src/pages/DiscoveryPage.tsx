@@ -25,7 +25,7 @@ export default function DiscoveryPage({ onPlay }: { onPlay: (v: Video) => void }
   }, []);
 
   useEffect(() => {
-    load().catch(console.error).finally(() => setLoading(false));
+    load().then(() => setLoading(false)).catch(console.error);
   }, [load]);
 
   const local = useMemo(() => recommendations.filter((r): r is Extract<DiscoveryRecommendation, { kind: "local" }> => r.kind === "local"), [recommendations]);
