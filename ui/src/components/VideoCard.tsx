@@ -481,7 +481,11 @@ function VideoCard({
                   variant="card"
                   loading="lazy"
                   draggable={false}
-                />
+                >
+                  {video.is_private !== 1 && video.duration && video.is_short !== 1 && (
+                    <span className="duration-badge">{formatVideoDuration(video.duration)}</span>
+                  )}
+                </VideoThumbnail>
               </span>
             </Link>
           </Tooltip>
@@ -504,9 +508,6 @@ function VideoCard({
             </Badge>
           )}
           {video.is_private !== 1 && video.is_short === 1 && video.live_status === "none" && <span className="short-badge">{t("shortBadge")}</span>}
-          {video.is_private !== 1 && video.duration && video.is_short !== 1 && (
-            <span className="duration-badge">{formatVideoDuration(video.duration)}</span>
-          )}
           {(downloadStatus === "downloading" || downloadStatus === "queued") && (
             <div className="dl-progress-top" title={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}>
               <div
