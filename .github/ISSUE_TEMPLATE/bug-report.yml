@@ -9,17 +9,13 @@ body:
       value: |
         Thank you for taking the time to report a bug!
 
-        Before opening an issue, please check:
-
-        - [The installation documentation](https://github.com/Pelski/ytzero/wiki/Installation)
-        - [Existing issues](https://github.com/Pelski/ytzero/issues?q=is%3Aissue)
+        Before opening an issue, please check the [existing issues](https://github.com/Pelski/ytzero/issues?q=is%3Aissue).
 
   - type: textarea
     id: description
     attributes:
       label: What happened?
-      description: Describe the problem clearly and concisely. You can also add screenshots here.
-      placeholder: YT Zero does not work as expected when...
+      description: Describe the problem, what you expected instead, and add screenshots if useful.
     validations:
       required: true
 
@@ -36,75 +32,26 @@ body:
       required: true
 
   - type: textarea
-    id: expected
-    attributes:
-      label: What did you expect to happen?
-      description: Describe the result or behaviour you expected.
-    validations:
-      required: true
-
-  - type: textarea
     id: logs
     attributes:
-      label: YT Zero logs
+      label: Relevant logs
       description: |
-        Paste relevant logs from Settings → Advanced → Logs.
+        Paste relevant output from Settings → Advanced → Logs or the browser console.
         Remove passwords, cookies, tokens, and other sensitive data first.
       render: shell
 
   - type: textarea
-    id: browser-logs
+    id: environment
     attributes:
-      label: Browser console output
-      description: Paste relevant browser-console output, if available. Remove sensitive data first.
-      render: shell
-
-  - type: input
-    id: version
-    attributes:
-      label: YT Zero version
-      description: Find the version and commit in Settings → Advanced → Logs.
-      placeholder: e.g. 1.2.3 (abcdef0)
+      label: Environment
+      description: Find the YT Zero version in Settings → Advanced → Logs.
+      placeholder: |
+        YT Zero version:
+        Installation method:
+        Browser:
+        Operating system:
     validations:
       required: true
-
-  - type: dropdown
-    id: installation
-    attributes:
-      label: Installation method
-      options:
-        - Docker
-        - Unraid
-        - Proxmox LXC
-        - Native Debian or Ubuntu
-        - Local development
-        - Other
-    validations:
-      required: true
-
-  - type: input
-    id: browser
-    attributes:
-      label: Browser
-      description: Include the browser name and version.
-      placeholder: e.g. Firefox 147
-    validations:
-      required: true
-
-  - type: input
-    id: operating-system
-    attributes:
-      label: Operating system
-      description: Include the operating system used by the browser and, if different, the YT Zero host.
-      placeholder: e.g. macOS 27 client, Debian 13 server
-    validations:
-      required: true
-
-  - type: textarea
-    id: additional-context
-    attributes:
-      label: Anything else?
-      description: Add any other context that could help reproduce or investigate the problem.
 
   - type: checkboxes
     id: confirmations
@@ -112,6 +59,4 @@ body:
       label: Please confirm
       options:
         - label: I searched for an existing issue that describes this problem.
-          required: true
-        - label: I added a concise description after the title prefix above.
           required: true

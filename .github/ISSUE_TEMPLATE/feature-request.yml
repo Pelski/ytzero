@@ -9,7 +9,7 @@ body:
       value: |
         Thank you for taking the time to suggest an improvement!
 
-        Please describe the underlying need as well as the feature itself. That context helps us find the smallest solution that fits YT Zero.
+        Please describe the need as well as the feature itself.
 
   - type: textarea
     id: problem
@@ -29,22 +29,10 @@ body:
       required: true
 
   - type: textarea
-    id: workflow
-    attributes:
-      label: How should it work?
-      description: Examples, sketches, screenshots, or a suggested flow are especially helpful.
-
-  - type: textarea
-    id: alternatives
-    attributes:
-      label: Alternatives considered
-      description: Is there a workaround or another approach you have tried?
-
-  - type: textarea
     id: additional-context
     attributes:
-      label: Anything else?
-      description: Add any other context that could help evaluate the request.
+      label: Additional context
+      description: Add examples, screenshots, a suggested flow, alternatives, or current workarounds if useful.
 
   - type: checkboxes
     id: confirmations
@@ -52,6 +40,4 @@ body:
       label: Please confirm
       options:
         - label: I searched for an existing issue that covers this request.
-          required: true
-        - label: I added a concise description after the title prefix above.
           required: true
