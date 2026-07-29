@@ -1,13 +1,24 @@
 import { database } from "./database";
 import { getSetting, reloadSettingCache } from "./db";
-import { fetchChannelAbout, fetchVideoInfo, searchYouTube, type SearchResult, type VideoInfo } from "./youtube";
+import { classifyIsShort, fetchChannelAbout, fetchVideoInfo, searchYouTube, type SearchResult, type VideoInfo } from "./youtube";
 import { buildKeywordPlan, tokenizeDiscoveryText, type KeywordSeed } from "./discoveryKeywords";
 import { DL_DEFAULTS, resetDownloadsState } from "./downloader";
 import { SUBTITLE_LANGUAGES } from "./subtitleLanguages";
 import { maintenanceActive } from "./maintenance";
 import { log } from "./logger";
-import { storedUtcTimestampMs } from "./timeZone";
+import { storedUtcTimestampMs, zonedDayHour } from "./timeZone";
 import { listDownloadRules, restoreDownloadRules } from "./downloadRules";
+import { effectiveVideoTagsCte } from "./insightTags";
+import { followedExists, followedPlaylistExists } from "./feedQueryFragments";
+import {
+  diversifyRecommendations,
+  isEligibleRecommendation,
+  recommendationHoursNear,
+  recommendationProgress,
+  recommendationTimeOfDay,
+  scoreRecommendationCandidate,
+  type RecommendationTimeOfDay,
+} from "./recommendationRanking";
 
 export interface PluginManifest {
   id: string;
@@ -60,16 +71,16 @@ type PluginSettingSource = Omit<PluginSettingDef, "label" | "description" | "typ
 };
 
 const DISCOVERY_SETTINGS: PluginSettingSource[] = [
-  { key: "total_limit", label: { en: "Number of suggestions", pl: "Liczba propozycji", de: "Anzahl der Vorschläge" }, description: { en: "How many videos Discovery should show at once.", pl: "Ile filmów Odkrywanie ma pokazać naraz.", de: "Wie viele Videos Odkrywanie auf einmal anzeigen soll." }, min: 8, max: 80, step: 1, defaultValue: 32 },
+  { key: "total_limit", label: { en: "Number of suggestions", pl: "Liczba propozycji", de: "Anzahl der Vorschläge" }, description: { en: "How many videos Recommendations should prepare at once.", pl: "Ile filmów Rekomendacje mają przygotować naraz.", de: "Wie viele Videos Empfehlungen auf einmal vorbereiten soll." }, min: 8, max: 80, step: 1, defaultValue: 32 },
   { key: "per_channel_limit", label: { en: "Videos from one channel", pl: "Filmy z jednego kanału", de: "Videos von einem Kanal" }, description: { en: "Prevents one channel from taking over the whole list.", pl: "Pilnuje, żeby jeden kanał nie zajął całej listy.", de: "Verhindert, dass ein Kanal die ganze Liste dominiert." }, min: 1, max: 20, step: 1, defaultValue: 5 },
-  { key: "shared_tag_points", label: { en: "Shared tags", pl: "Wspólne tagi", de: "Gemeinsame Tags" }, description: { en: "Raises videos that match tags you already watch or like.", pl: "Podbija filmy z tagami, które już oglądasz albo lubisz.", de: "Hebt Videos mit Tags an, die du bereits ansiehst oder magst." }, min: 0, max: 80, step: 1, defaultValue: 25 },
+  { key: "shared_tag_points", label: { en: "Shared tags", pl: "Wspólne tagi", de: "Gemeinsame Tags" }, description: { en: "Fallback tag affinity used after Pulse has matched tags and channels for the current hour.", pl: "Ogólne dopasowanie tagów używane po godzinowym dopasowaniu Pulse dla tagów i kanałów.", de: "Allgemeine Tag-Affinität nach dem stündlichen Pulse-Abgleich für Tags und Kanäle." }, min: 0, max: 80, step: 1, defaultValue: 25 },
   { key: "tag_history_points", label: { en: "Watched tags", pl: "Oglądane tagi", de: "Angesehene Tags" }, description: { en: "Adds weight for tags that appear often in your watch history.", pl: "Dodaje wagę tagom, które często pojawiają się w Twojej historii.", de: "Gewichtet Tags höher, die oft in deinem Verlauf vorkommen." }, min: 0, max: 20, step: 1, defaultValue: 3 },
   { key: "tag_history_cap", label: { en: "Watched tag limit", pl: "Limit oglądanych tagów", de: "Limit für angesehene Tags" }, description: { en: "Caps how much watched tags can influence one video.", pl: "Ogranicza, jak mocno oglądane tagi mogą podbić jeden film.", de: "Begrenzt, wie stark angesehene Tags ein Video anheben können." }, min: 0, max: 120, step: 1, defaultValue: 36 },
-  { key: "watched_channel_points", label: { en: "Known channels", pl: "Znane kanały", de: "Bekannte Kanäle" }, description: { en: "Raises videos from channels you watch frequently.", pl: "Podbija filmy z kanałów, które często oglądasz.", de: "Hebt Videos von Kanälen an, die du häufig ansiehst." }, min: 0, max: 30, step: 1, defaultValue: 8 },
+  { key: "watched_channel_points", label: { en: "Known channels", pl: "Znane kanały", de: "Bekannte Kanäle" }, description: { en: "General channel affinity used after current-hour Pulse matches.", pl: "Ogólne dopasowanie kanałów używane po godzinowych dopasowaniach Pulse.", de: "Allgemeine Kanal-Affinität nach den Pulse-Treffern der aktuellen Stunde." }, min: 0, max: 30, step: 1, defaultValue: 8 },
   { key: "watched_channel_cap", label: { en: "Known channel limit", pl: "Limit znanych kanałów", de: "Limit für bekannte Kanäle" }, description: { en: "Caps how much channel history can influence one video.", pl: "Ogranicza wpływ historii kanału na jeden film.", de: "Begrenzt den Einfluss der Kanalhistorie auf ein Video." }, min: 0, max: 120, step: 1, defaultValue: 40 },
   { key: "playlist_points", label: { en: "Your playlists", pl: "Twoje playlisty", de: "Deine Playlists" }, description: { en: "Raises videos that are already saved in your playlists.", pl: "Podbija filmy zapisane już na Twoich playlistach.", de: "Hebt Videos an, die bereits in deinen Playlists liegen." }, min: 0, max: 80, step: 1, defaultValue: 20 },
   { key: "liked_points", label: { en: "Liked videos", pl: "Polubione filmy", de: "Favorisierte Videos" }, description: { en: "Raises videos you marked as liked.", pl: "Podbija filmy oznaczone jako polubione.", de: "Hebt Videos an, die du favorisiert hast." }, min: 0, max: 100, step: 1, defaultValue: 35 },
-  { key: "already_watched_points", label: { en: "Watched videos", pl: "Obejrzane filmy", de: "Angesehene Videos" }, description: { en: "Lets watched videos stay useful as a positive signal.", pl: "Pozwala traktować obejrzane filmy jako pozytywny sygnał.", de: "Nutzt angesehene Videos weiterhin als positives Signal." }, min: 0, max: 50, step: 1, defaultValue: 10 },
+  { key: "already_watched_points", label: { en: "Opened before", pl: "Wcześniej otwarte", de: "Zuvor geöffnet" }, description: { en: "Gives a small boost to videos you opened but did not complete.", pl: "Lekko podbija filmy otwarte wcześniej, ale niedokończone.", de: "Gewichtet zuvor geöffnete, aber nicht beendete Videos leicht höher." }, min: 0, max: 50, step: 1, defaultValue: 10 },
   { key: "started_points", label: { en: "Started videos", pl: "Rozpoczęte filmy", de: "Begonnene Videos" }, description: { en: "Raises videos where you watched part of the material.", pl: "Podbija filmy, które były już częściowo oglądane.", de: "Hebt Videos an, von denen du bereits einen Teil gesehen hast." }, min: 0, max: 80, step: 1, defaultValue: 15 },
   { key: "external_adjustment", label: { en: "Temporary videos", pl: "Filmy tymczasowe", de: "Temporäre Videos" }, description: { en: "Adjusts how strongly videos from outside your subscriptions are promoted.", pl: "Reguluje, jak mocno promowane są filmy spoza subskrypcji.", de: "Steuert, wie stark Videos außerhalb deiner Abos gewichtet werden." }, min: -50, max: 50, step: 1, defaultValue: -5 },
   { key: "recency_points", label: { en: "Freshness", pl: "Świeżość", de: "Aktualität" }, description: { en: "Raises newer videos so the list does not feel stale.", pl: "Podbija nowsze filmy, żeby lista nie była zbyt stara.", de: "Hebt neuere Videos an, damit die Liste aktuell bleibt." }, min: 0, max: 60, step: 1, defaultValue: 18 },
@@ -267,10 +278,10 @@ const DOWNLOADS_SETTINGS: PluginSettingSource[] = [
 export const PLUGINS: PluginManifest[] = [
   {
     id: "discovery",
-    name: "Discovery",
+    name: "Extended recommendations",
     version: "0.1.0",
-    description: "Finds videos that fit your habits, tags, playlists and recent watch history.",
-    route: "/discovery",
+    description: "Adds suggestions from outside your library to the core recommendations view.",
+    route: "/recommendations",
     icon: "Sparkles",
     permissions: ["read:library", "read:history", "network:video-search"],
   },
@@ -288,11 +299,11 @@ export const PLUGINS: PluginManifest[] = [
 
 const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: LocalizedText; permissions: Record<string, LocalizedText> }> = {
   discovery: {
-    name: { en: "Discovery", pl: "Odkrywanie", de: "Entdecken" },
+    name: { en: "Extended recommendations", pl: "Rozszerzone rekomendacje", de: "Erweiterte Empfehlungen" },
     description: {
-      en: "Finds videos that fit your habits, tags, playlists and recent watch history.",
-      pl: "Dobiera filmy pasujące do Twoich nawyków, tagów, playlist i ostatniej historii oglądania.",
-      de: "Findet Videos, die zu deinen Gewohnheiten, Tags, Playlists und deinem aktuellen Verlauf passen.",
+      en: "Adds suggestions from outside your library to the core recommendations view.",
+      pl: "Dodaje do podstawowych rekomendacji propozycje spoza Twojej biblioteki.",
+      de: "Ergänzt die grundlegenden Empfehlungen um Vorschläge außerhalb deiner Bibliothek.",
     },
     permissions: {
       "read:library": { en: "reads your local library", pl: "czyta lokalną bibliotekę", de: "liest deine lokale Bibliothek" },
@@ -623,123 +634,134 @@ const DISCOVERY_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 const discoveryRefreshInFlight = new Map<number, Promise<void>>();
 const discoveryRefreshTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-async function localRecommendations(uid: number, limit: number, settings: Record<string, number>): Promise<DiscoveryRecommendation[]> {
-  const rows = await database.prepare(`
+async function localRecommendations(
+  uid: number,
+  limit: number,
+  settings: Record<string, number>,
+  options: { allowExternal?: boolean; downloadsOnly?: boolean } = {},
+): Promise<DiscoveryRecommendation[]> {
+  const local = zonedDayHour();
+  const nearbyHours = recommendationHoursNear(local.hour).join(",");
+  // Candidate ownership is intentionally profile-scoped. Videos are global in
+  // storage, so a plain scan would leak another profile's library and habits.
+  const profileOwnsCandidate = `(
+    ((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})
+    OR EXISTS (SELECT 1 FROM user_videos own_uv WHERE own_uv.user_id = ${uid} AND own_uv.video_id = v.video_id)
+    OR EXISTS (SELECT 1 FROM history own_h WHERE own_h.user_id = ${uid} AND own_h.video_id = v.video_id)
+    OR EXISTS (
+      SELECT 1 FROM user_playlist_videos own_upv
+      JOIN user_playlists own_up ON own_up.id = own_upv.playlist_id AND own_up.user_id = ${uid}
+      WHERE own_upv.video_id = v.video_id
+    )
+    OR EXISTS (SELECT 1 FROM discovery_recommendations own_dr WHERE own_dr.user_id = ${uid} AND own_dr.video_id = v.video_id)
+  )`;
+  const externalWhere = options.allowExternal === false ? "AND v.external = 0" : "";
+  const downloadsWhere = options.downloadsOnly
+    ? "AND EXISTS (SELECT 1 FROM downloads allowed_download WHERE allowed_download.video_id = v.video_id AND allowed_download.status = 'done')"
+    : "";
+
+  const rows = await database.prepare(`${effectiveVideoTagsCte}
     SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail, v.published_at,
            v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
-           v.is_short, v.views, v.likes, uv.liked, v.duration, uv.watch_position,
-           uv.watch_duration, v.external,
-           EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?) AS in_history,
+           v.is_short, v.is_private, v.views, v.likes, uv.liked, uv.watched,
+           v.duration, uv.watch_position, uv.watch_duration, v.external,
+           EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
            COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count,
            COALESCE(chw.watch_count, 0) AS channel_watch_count,
+           COALESCE(chtime.watch_seconds, 0) AS channel_watch_seconds,
+           COALESCE(chtime.time_seconds, 0) AS channel_time_seconds,
            COALESCE(taghit.tag_hits, 0) AS tag_hits,
            COALESCE(tagwatch.tag_watch_count, 0) AS tag_watch_count,
+           COALESCE(tagtime.time_seconds, 0) AS tag_time_seconds,
            COALESCE(plhit.playlist_hits, 0) AS playlist_hits
     FROM videos v
     JOIN channels c ON c.channel_id = v.channel_id
-    LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
+    LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}
     LEFT JOIN (
-      SELECT v2.channel_id, count(*) AS watch_count
+      SELECT v2.channel_id, count(DISTINCT h.video_id) AS watch_count
       FROM history h JOIN videos v2 ON v2.video_id = h.video_id
-      WHERE h.user_id = ?
+      WHERE h.user_id = ${uid}
       GROUP BY v2.channel_id
     ) chw ON chw.channel_id = v.channel_id
     LEFT JOIN (
+      SELECT v2.channel_id, SUM(w.seconds) AS watch_seconds,
+             SUM(CASE WHEN w.hour IN (${nearbyHours}) THEN w.seconds ELSE 0 END) AS time_seconds
+      FROM watch_time_log w JOIN videos v2 ON v2.video_id = w.video_id
+      WHERE w.user_id = ${uid}
+      GROUP BY v2.channel_id
+    ) chtime ON chtime.channel_id = v.channel_id
+    LEFT JOIN (
       SELECT candidate.video_id, count(DISTINCT candidate.tag_id) AS tag_hits
-      FROM (
-        SELECT vt.video_id, vt.tag_id FROM video_tags vt
-        UNION
-        SELECT v3.video_id, ct.tag_id FROM videos v3 JOIN channel_tags ct ON ct.channel_id = v3.channel_id
-      ) candidate
+      FROM effective_video_tags candidate
       JOIN (
         SELECT DISTINCT source.tag_id
-        FROM (
-          SELECT vt2.video_id, vt2.tag_id FROM video_tags vt2
-          UNION
-          SELECT v4.video_id, ct2.tag_id FROM videos v4 JOIN channel_tags ct2 ON ct2.channel_id = v4.channel_id
-        ) source
-        JOIN tags t ON t.id = source.tag_id AND t.user_id = ?
-        LEFT JOIN user_videos suv ON suv.video_id = source.video_id AND suv.user_id = ?
-        WHERE suv.liked = 1 OR EXISTS (SELECT 1 FROM history h2 WHERE h2.video_id = source.video_id AND h2.user_id = ?)
+        FROM effective_video_tags source
+        LEFT JOIN user_videos suv ON suv.video_id = source.video_id AND suv.user_id = ${uid}
+        WHERE source.user_id = ${uid}
+          AND (suv.liked = 1 OR EXISTS (
+            SELECT 1 FROM history h2 WHERE h2.video_id = source.video_id AND h2.user_id = ${uid}
+          ))
       ) liked_tags ON liked_tags.tag_id = candidate.tag_id
+      WHERE candidate.user_id = ${uid}
       GROUP BY candidate.video_id
     ) taghit ON taghit.video_id = v.video_id
     LEFT JOIN (
       SELECT upv.video_id, count(*) AS playlist_hits
       FROM user_playlist_videos upv JOIN user_playlists up ON up.id = upv.playlist_id
-      WHERE up.user_id = ?
+      WHERE up.user_id = ${uid}
       GROUP BY upv.video_id
     ) plhit ON plhit.video_id = v.video_id
     LEFT JOIN (
       SELECT candidate.video_id, sum(watched_tags.watch_count) AS tag_watch_count
-      FROM (
-        SELECT vt.video_id, vt.tag_id FROM video_tags vt
-        UNION
-        SELECT v5.video_id, ct.tag_id FROM videos v5 JOIN channel_tags ct ON ct.channel_id = v5.channel_id
-      ) candidate
+      FROM effective_video_tags candidate
       JOIN (
         SELECT source.tag_id, count(DISTINCT source.video_id) AS watch_count
-        FROM (
-          SELECT vt3.video_id, vt3.tag_id FROM video_tags vt3
-          UNION
-          SELECT v6.video_id, ct3.tag_id FROM videos v6 JOIN channel_tags ct3 ON ct3.channel_id = v6.channel_id
-        ) source
-        JOIN tags t4 ON t4.id = source.tag_id AND t4.user_id = ?
-        JOIN history h4 ON h4.video_id = source.video_id AND h4.user_id = ?
+        FROM effective_video_tags source
+        JOIN history h4 ON h4.video_id = source.video_id AND h4.user_id = ${uid}
+        WHERE source.user_id = ${uid}
         GROUP BY source.tag_id
       ) watched_tags ON watched_tags.tag_id = candidate.tag_id
+      WHERE candidate.user_id = ${uid}
       GROUP BY candidate.video_id
     ) tagwatch ON tagwatch.video_id = v.video_id
-    WHERE v.is_short IS NOT 1
+    LEFT JOIN (
+      SELECT candidate.video_id, SUM(tag_clock.seconds) AS time_seconds
+      FROM effective_video_tags candidate
+      JOIN (
+        SELECT tag_id, SUM(seconds) AS seconds
+        FROM watch_tag_time_log
+        WHERE user_id = ${uid} AND hour IN (${nearbyHours})
+        GROUP BY tag_id
+      ) tag_clock ON tag_clock.tag_id = candidate.tag_id
+      WHERE candidate.user_id = ${uid}
+      GROUP BY candidate.video_id
+    ) tagtime ON tagtime.video_id = v.video_id
+    WHERE v.is_short = 0
+      AND v.live_status = 'none'
+      AND COALESCE(v.is_private, 0) = 0
+      AND v.published_at IS NOT NULL AND v.published_at != ''
+      AND TRIM(v.title) != '' AND TRIM(v.thumbnail) != ''
+      AND TRIM(COALESCE(c.custom_title, c.title)) != ''
       AND COALESCE(uv.status, 'inbox') != 'archived'
-      AND NOT EXISTS (SELECT 1 FROM recommendation_feedback rf WHERE rf.user_id = ? AND rf.video_id = v.video_id AND rf.action = 'dismiss')
-    ORDER BY v.published_at DESC
+      AND COALESCE(uv.watched, 0) != 1
+      AND (uv.watch_position IS NULL OR uv.watch_duration IS NULL OR uv.watch_duration <= 30
+        OR uv.watch_position < 3 OR CAST(uv.watch_position AS REAL) / uv.watch_duration < 0.92)
+      AND ${profileOwnsCandidate}
+      ${externalWhere}
+      ${downloadsWhere}
+      AND NOT EXISTS (
+        SELECT 1 FROM recommendation_feedback rf
+        WHERE rf.user_id = ${uid} AND rf.video_id = v.video_id AND rf.action = 'dismiss'
+      )
+    ORDER BY v.published_at DESC, v.video_id DESC
     LIMIT 300
-  `).all(uid, uid, uid, uid, uid, uid, uid, uid, uid, uid) as any[];
+  `).all() as any[];
 
   return rows
-    .map((video) => {
-      let score = 0;
-      const reasons: string[] = [];
-      if (video.tag_hits > 0) {
-        score += Number(video.tag_hits) * settings.shared_tag_points;
-        reasons.push("shared tags");
-      }
-      if (video.tag_watch_count > 0) {
-        score += Math.min(settings.tag_history_cap, Number(video.tag_watch_count) * settings.tag_history_points);
-        reasons.push("watched tag history");
-      }
-      if (video.channel_watch_count > 0) {
-        score += Math.min(settings.watched_channel_cap, Number(video.channel_watch_count) * settings.watched_channel_points);
-        reasons.push("watched channel");
-      }
-      if (video.playlist_hits > 0) {
-        score += settings.playlist_points;
-        reasons.push("in your playlists");
-      }
-      if (video.liked === 1) {
-        score += settings.liked_points;
-        reasons.push("liked");
-      }
-      if (video.in_history) {
-        score += settings.already_watched_points;
-        reasons.push("already watched");
-      }
-      if (video.watch_position != null && video.watch_duration != null && Number(video.watch_duration) > 30) {
-        score += settings.started_points;
-        reasons.push("started watching");
-      }
-      if (video.external === 1) {
-        score += settings.external_adjustment;
-        reasons.push("temporary source");
-      }
-      const ageDays = video.published_at ? (Date.now() - storedUtcTimestampMs(video.published_at)) / 86_400_000 : 90;
-      score += Math.max(0, settings.recency_points - Math.floor(ageDays / 7));
-      return { kind: "local" as const, score, reasons, video };
-    })
-    .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
+    .map((video) => scoreRecommendationCandidate(video, settings))
+    .filter((recommendation): recommendation is DiscoveryRecommendation => recommendation != null)
+    .sort((a, b) => b.score - a.score || String(a.video?.video_id).localeCompare(String(b.video?.video_id)))
+    .slice(0, Math.max(0, Math.floor(limit)));
 }
 
 async function externalRecommendations(uid: number, limit: number, settings: Record<string, number>): Promise<DiscoveryRecommendation[]> {
@@ -794,6 +816,9 @@ async function externalRecommendations(uid: number, limit: number, settings: Rec
   for (const candidate of candidates.sort((a, b) => b.matchScore - a.matchScore).slice(0, limit * 2)) {
     const info = await fetchVideoInfo(candidate.videoId).catch(() => null);
     if (!info) continue;
+    if (info.liveStatus !== "none") continue;
+    // A network error is `null`, not proof that this is a regular video.
+    if (await classifyIsShort(info.videoId, info.title) !== false) continue;
     const about = await fetchChannelAbout(info.channelId).catch(() => null);
     await upsertExternalVideo(info, about?.avatar ?? "");
     const video = await selectVideo(uid, info.videoId);
@@ -839,14 +864,19 @@ async function upsertExternalVideo(info: VideoInfo, channelThumbnail: string) {
 
   await database.prepare(`
     INSERT INTO videos
-      (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, external)
-    VALUES (?, ?, ?, ?, ?, ?, 'none', 'inbox', ?, ?, 1)
+      (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, is_short, external)
+    VALUES (?, ?, ?, ?, ?, ?, 'none', 'inbox', ?, ?, 0, 1)
     ON CONFLICT(video_id) DO UPDATE SET
       title = CASE WHEN videos.title = '' OR videos.title IS NULL THEN excluded.title ELSE videos.title END,
       description = CASE WHEN videos.description = '' OR videos.description IS NULL THEN excluded.description ELSE videos.description END,
       thumbnail = CASE WHEN videos.thumbnail = '' OR videos.thumbnail IS NULL THEN excluded.thumbnail ELSE videos.thumbnail END,
       views = COALESCE(videos.views, excluded.views),
-      duration = COALESCE(videos.duration, excluded.duration)
+      duration = COALESCE(videos.duration, excluded.duration),
+      live_status = CASE
+        WHEN videos.live_status IN ('live', 'upcoming', 'was_live') THEN videos.live_status
+        ELSE excluded.live_status
+      END,
+      is_short = CASE WHEN videos.is_short = 1 THEN 1 ELSE COALESCE(videos.is_short, excluded.is_short) END
   `).run(
     info.videoId,
     info.channelId,
@@ -863,7 +893,7 @@ async function selectVideo(uid: number, videoId: string) {
   return await database.prepare(`
     SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
            v.published_at, v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
-           v.is_short, v.views, v.likes, uv.liked,
+           v.is_short, v.is_private, v.views, v.likes, uv.liked, uv.watched,
            v.duration, uv.watch_position, uv.watch_duration, v.external,
            EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ?) AS in_history,
            COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
@@ -986,22 +1016,35 @@ async function setDiscoveryGeneratedAt(uid: number) {
 
 async function readStoredDiscoveryRecommendations(uid: number, limit: number): Promise<DiscoveryRecommendation[]> {
   const rows = await database.prepare(`
-    SELECT video_id, score, reasons_json, query
-    FROM discovery_recommendations
-    WHERE user_id = ?
+    SELECT dr.video_id, dr.score, dr.reasons_json, dr.query
+    FROM discovery_recommendations dr
+    JOIN videos v ON v.video_id = dr.video_id
+    JOIN channels c ON c.channel_id = v.channel_id
+    LEFT JOIN user_videos uv ON uv.user_id = dr.user_id AND uv.video_id = dr.video_id
+    WHERE dr.user_id = ?
+      AND v.is_short = 0
+      AND v.live_status = 'none'
+      AND COALESCE(v.is_private, 0) = 0
+      AND v.published_at IS NOT NULL AND v.published_at != ''
+      AND TRIM(v.title) != '' AND TRIM(v.thumbnail) != ''
+      AND TRIM(COALESCE(c.custom_title, c.title)) != ''
+      AND COALESCE(uv.status, 'inbox') != 'archived'
+      AND COALESCE(uv.watched, 0) != 1
+      AND (uv.watch_position IS NULL OR uv.watch_duration IS NULL OR uv.watch_duration <= 30
+        OR uv.watch_position < 3 OR CAST(uv.watch_position AS REAL) / uv.watch_duration < 0.92)
       AND NOT EXISTS (
         SELECT 1 FROM recommendation_feedback rf
-        WHERE rf.user_id = discovery_recommendations.user_id
-          AND rf.video_id = discovery_recommendations.video_id
+        WHERE rf.user_id = dr.user_id
+          AND rf.video_id = dr.video_id
           AND rf.action = 'dismiss'
       )
-    ORDER BY rank ASC
+    ORDER BY dr.rank ASC
     LIMIT ?
   `).all(uid, limit) as { video_id: string; score: number; reasons_json: string; query: string | null }[];
   const out: DiscoveryRecommendation[] = [];
   for (const row of rows) {
     const video = await selectVideo(uid, row.video_id);
-    if (!video) continue;
+    if (!video || !isEligibleRecommendation(video)) continue;
     out.push({
       kind: "local",
       score: Number(row.score),
@@ -1035,97 +1078,172 @@ async function storedDiscoveryAgeMs(uid: number) {
   return Math.max(0, Date.now() - ts);
 }
 
-function mixRecommendations(recommendations: DiscoveryRecommendation[], limit: number, settings: Record<string, number>) {
-  const seen = new Set<string>();
-  const sorted = recommendations
-    .filter((r) => {
-      const id = r.video?.video_id;
-      if (!id || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const first = sorted.shift();
-  if (!first) return [];
-
-  const out: DiscoveryRecommendation[] = [first];
-  const earlyExternal = takeExternalPicks(sorted.slice(0, 18), settings.early_external_count);
-  removePicked(sorted, earlyExternal);
-  const randomPicks = takeRandom(sorted.slice(0, 12), settings.random_pick_count);
-  removePicked(sorted, randomPicks);
-  out.push(...interleave([earlyExternal, randomPicks]));
-
-  const highPicks = sorted.splice(0, settings.high_pick_count);
-  out.push(...highPicks);
-  out.push(...weightedShuffle(sorted));
-
-  return limitPerChannel(out, settings.per_channel_limit).slice(0, limit);
+export interface RecommendationSummary {
+  top_channels: { channel_id: string; title: string; count: number; seconds: number }[];
+  top_tags: { id: number; name: string; color: string; count: number; seconds: number }[];
+  time_of_day: RecommendationTimeOfDay | null;
+  current_hour: number | null;
+  watch_count: number;
+  partial_count: number;
+  based_on: ("watch_history" | "channels" | "tags" | "time_of_day" | "likes" | "unfinished")[];
 }
 
-function limitPerChannel(recommendations: DiscoveryRecommendation[], perChannel: number) {
-  const counts = new Map<string, number>();
-  return recommendations.filter((r) => {
-    const channelId = r.video?.channel_id;
-    if (!channelId) return false;
-    const count = counts.get(channelId) ?? 0;
-    if (count >= perChannel) return false;
-    counts.set(channelId, count + 1);
-    return true;
+async function recommendationSummary(uid: number): Promise<RecommendationSummary> {
+  const local = zonedDayHour();
+  const nearbyHours = recommendationHoursNear(local.hour);
+  const nearbyHourPlaceholders = nearbyHours.map(() => "?").join(",");
+  const stats = await database.prepare(`
+    SELECT
+      (SELECT COUNT(DISTINCT video_id) FROM history WHERE user_id = ?) AS watch_count,
+      (SELECT COUNT(*)
+       FROM user_videos partial_uv
+       JOIN videos partial_v ON partial_v.video_id = partial_uv.video_id
+       WHERE partial_uv.user_id = ? AND COALESCE(partial_uv.watched, 0) != 1
+         AND COALESCE(partial_uv.status, 'inbox') != 'archived'
+         AND partial_v.is_short = 0 AND partial_v.live_status = 'none'
+         AND COALESCE(partial_v.is_private, 0) = 0
+         AND partial_uv.watch_position IS NOT NULL AND partial_uv.watch_duration IS NOT NULL
+         AND partial_uv.watch_duration > 30 AND partial_uv.watch_position >= 3
+         AND CAST(partial_uv.watch_position AS REAL) / partial_uv.watch_duration < 0.92) AS partial_count,
+      (SELECT COUNT(*) FROM user_videos WHERE user_id = ? AND liked = 1) AS liked_count
+  `).get(uid, uid, uid) as { watch_count: number; partial_count: number; liked_count: number };
+
+  const channelRows = await database.prepare(`
+    WITH channel_signals AS (
+      SELECT v.channel_id, COUNT(DISTINCT h.video_id) AS watch_count, 0.0 AS seconds
+      FROM history h JOIN videos v ON v.video_id = h.video_id
+      WHERE h.user_id = ?
+      GROUP BY v.channel_id
+      UNION ALL
+      SELECT v.channel_id, 0 AS watch_count, SUM(w.seconds) AS seconds
+      FROM watch_time_log w JOIN videos v ON v.video_id = w.video_id
+      WHERE w.user_id = ? AND w.hour IN (${nearbyHourPlaceholders})
+      GROUP BY v.channel_id
+    )
+    SELECT cs.channel_id, COALESCE(c.custom_title, c.title) AS title,
+           SUM(cs.watch_count) AS watch_count, SUM(cs.seconds) AS seconds
+    FROM channel_signals cs JOIN channels c ON c.channel_id = cs.channel_id
+    GROUP BY cs.channel_id, COALESCE(c.custom_title, c.title)
+    ORDER BY SUM(cs.seconds) DESC, SUM(cs.watch_count) DESC, cs.channel_id ASC
+    LIMIT 3
+  `).all(uid, uid, ...nearbyHours) as { channel_id: string; title: string; watch_count: number; seconds: number }[];
+  const topChannels = channelRows.map((row) => ({
+    channel_id: row.channel_id,
+    title: row.title,
+    count: Number(row.watch_count) || 0,
+    seconds: Math.round(Number(row.seconds) || 0),
+  }));
+
+  const tagRows = await database.prepare(`${effectiveVideoTagsCte},
+    tag_signals AS (
+      SELECT evt.tag_id AS id, evt.name, evt.color,
+             COUNT(DISTINCT h.video_id) AS watch_count, 0.0 AS seconds
+      FROM effective_video_tags evt
+      JOIN history h ON h.video_id = evt.video_id AND h.user_id = ?
+      WHERE evt.user_id = ?
+      GROUP BY evt.tag_id, evt.name, evt.color
+      UNION ALL
+      SELECT wt.tag_id AS id, t.name, t.color, 0 AS watch_count, SUM(wt.seconds) AS seconds
+      FROM watch_tag_time_log wt
+      JOIN tags t ON t.id = wt.tag_id AND t.user_id = wt.user_id
+      WHERE wt.user_id = ? AND wt.hour IN (${nearbyHourPlaceholders})
+      GROUP BY wt.tag_id, t.name, t.color
+    )
+    SELECT id, name, color, SUM(watch_count) AS watch_count, SUM(seconds) AS seconds
+    FROM tag_signals
+    GROUP BY id, name, color
+    ORDER BY SUM(seconds) DESC, SUM(watch_count) DESC, id ASC
+    LIMIT 3
+  `).all(uid, uid, uid, ...nearbyHours) as { id: number; name: string; color: string; watch_count: number; seconds: number }[];
+  const topTags = tagRows.map((row) => ({
+    id: Number(row.id),
+    name: row.name,
+    color: row.color,
+    count: Number(row.watch_count) || 0,
+    seconds: Math.round(Number(row.seconds) || 0),
+  }));
+
+  const current = recommendationTimeOfDay(local.hour);
+  const clock = await database.prepare(`
+    SELECT COALESCE(SUM(seconds), 0) AS seconds
+    FROM watch_time_log
+    WHERE user_id = ? AND hour IN (${nearbyHourPlaceholders})
+  `).get(uid, ...nearbyHours) as { seconds: number };
+
+  const watchCount = Number(stats.watch_count) || 0;
+  const partialCount = Number(stats.partial_count) || 0;
+  const likedCount = Number(stats.liked_count) || 0;
+  const hasCurrentTimeSignal = (Number(clock.seconds) || 0) > 0;
+  const basedOn: RecommendationSummary["based_on"] = [];
+  if (watchCount > 0) basedOn.push("watch_history");
+  if (topChannels.length > 0) basedOn.push("channels");
+  if (topTags.length > 0) basedOn.push("tags");
+  if (hasCurrentTimeSignal) basedOn.push("time_of_day");
+  if (likedCount > 0) basedOn.push("likes");
+  if (partialCount > 0) basedOn.push("unfinished");
+
+  return {
+    top_channels: topChannels,
+    top_tags: topTags,
+    time_of_day: hasCurrentTimeSignal ? current : null,
+    current_hour: hasCurrentTimeSignal ? local.hour : null,
+    watch_count: watchCount,
+    partial_count: partialCount,
+    based_on: basedOn,
+  };
+}
+
+export interface RecommendationFeedOptions {
+  page?: number;
+  limit?: number;
+  refresh?: boolean;
+  allowExternal?: boolean;
+  downloadsOnly?: boolean;
+}
+
+/** Core recommendations are always available. Enabling Discovery only extends
+ * this same ranked pool with profile-owned external search results. */
+export async function recommendationFeed(uid: number, options: RecommendationFeedOptions = {}) {
+  const page = Math.max(0, Math.floor(options.page ?? 0));
+  const limit = Math.min(60, Math.max(1, Math.floor(options.limit ?? 40)));
+  const settings = await discoverySettings(uid);
+  const externalEnabled = pluginEnabled("discovery")
+    && options.allowExternal !== false
+    && options.downloadsOnly !== true;
+  let extended: DiscoveryRecommendation[] = [];
+  if (externalEnabled) {
+    extended = (options.refresh
+      ? await refreshDiscoveryNow(uid)
+      : await discoveryRecommendations(uid)).recommendations;
+  }
+
+  // Rank and diversify the complete bounded pool before slicing pages. This
+  // keeps page boundaries deterministic and lets lower-ranked channels fill
+  // slots left by the per-channel cap.
+  const local = await localRecommendations(uid, 300, settings, {
+    allowExternal: externalEnabled,
+    downloadsOnly: options.downloadsOnly,
   });
+  const ranked = mixRecommendations([...extended, ...local], 300, settings);
+  const offset = page * limit;
+  const recommendations = ranked.slice(offset, offset + limit);
+  return {
+    enabled: true,
+    external_enabled: externalEnabled,
+    recommendations,
+    page,
+    limit,
+    has_more: ranked.length > offset + limit,
+    summary: await recommendationSummary(uid),
+  };
 }
 
-function takeExternalPicks(items: DiscoveryRecommendation[], count: number) {
-  return items.filter((item) => item.video?.external === 1).slice(0, count);
-}
-
-function interleave<T>(groups: T[][]) {
-  const out: T[] = [];
-  let added = true;
-  while (added) {
-    added = false;
-    for (const group of groups) {
-      const item = group.shift();
-      if (item) {
-        out.push(item);
-        added = true;
-      }
-    }
-  }
-  return out;
-}
-
-function takeRandom<T>(items: T[], count: number) {
-  const pool = [...items];
-  const out: T[] = [];
-  while (pool.length > 0 && out.length < count) {
-    const idx = Math.floor(Math.random() * pool.length);
-    out.push(pool.splice(idx, 1)[0]);
-  }
-  return out;
-}
-
-function removePicked(items: DiscoveryRecommendation[], picked: DiscoveryRecommendation[]) {
-  const ids = new Set(picked.map((r) => r.video?.video_id).filter(Boolean));
-  for (let i = items.length - 1; i >= 0; i--) {
-    if (ids.has(items[i].video?.video_id)) items.splice(i, 1);
-  }
-}
-
-function weightedShuffle(items: DiscoveryRecommendation[]) {
-  const pool = [...items];
-  const out: DiscoveryRecommendation[] = [];
-  while (pool.length > 0) {
-    const total = pool.reduce((sum, item) => sum + Math.max(1, item.score), 0);
-    let cursor = Math.random() * total;
-    let idx = 0;
-    for (; idx < pool.length; idx++) {
-      cursor -= Math.max(1, pool[idx].score);
-      if (cursor <= 0) break;
-    }
-    out.push(pool.splice(Math.min(idx, pool.length - 1), 1)[0]);
-  }
-  return out;
+function mixRecommendations(recommendations: DiscoveryRecommendation[], limit: number, settings: Record<string, number>) {
+  return diversifyRecommendations(
+    recommendations,
+    Math.max(0, Math.floor(limit)),
+    Math.max(1, Math.floor(settings.per_channel_limit ?? 5)),
+  );
 }
 
 export async function dismissDiscoveryRecommendation(uid: number, videoId: string) {

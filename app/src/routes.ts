@@ -35,12 +35,12 @@ import { isValidTimeZone, zonedDayHour } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
-import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
+import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, cancelAllPendingDownloads, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, downloadStatusSummary, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "./downloadRules";
 import { fetchVideoComments, validYouTubeVideoId, VideoCommentsError } from "./youtubeComments";
 import { SUBTITLE_LANGUAGE_CODES } from "./subtitleLanguages";
-import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
+import { activeChildPlayback, applyGrant, CHILD_GRANTS, type ChildGrant, childDownloadsOnly, childHidesLive, childLocalOnly, childStatus, clearChildLockFailures, isChildUser, isParentLocked, isPinLocked, lastWatchedVideo, lockChildByParent, recordWatchTick, registerChildLockFailure, unlockChildProfile } from "./childTime";
 import { buildHouseholdInsights, INSIGHT_RANGES } from "./insights";
 import { recordSchedulingSignal } from "./contentSignals";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, saveChannelPlaylists, videoPlaylistsForUser } from "./channelPlaylists";
@@ -1351,6 +1351,49 @@ api.get("/videos/:id/file", async (c) => {
       "Content-Type": extension === "webm" ? "video/webm" : "video/mp4",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
     },
+  });
+});
+
+api.get("/recommendations", async (c) => {
+  const uid = currentUserId(c);
+  const requestedPage = Number(c.req.query("page") ?? 0);
+  const requestedLimit = Number(c.req.query("limit") ?? 40);
+  const page = Number.isFinite(requestedPage) ? Math.max(0, Math.floor(requestedPage)) : 0;
+  const limit = Number.isFinite(requestedLimit) ? Math.min(60, Math.max(1, Math.floor(requestedLimit))) : 40;
+  const data = await recommendationFeed(uid, {
+    page,
+    limit,
+    refresh: page === 0 && c.req.query("refresh") === "1",
+    allowExternal: !childLocalOnly(uid),
+    downloadsOnly: childDownloadsOnly(uid),
+  });
+
+  // Hydrate the ranked ids through the same complete per-profile projection as
+  // Feed (download state, progress, source playlist, channel metadata), then
+  // restore the deterministic ranking order. Scores/reasons stay server-side.
+  const ids = data.recommendations
+    .map((recommendation) => recommendation.video?.video_id as string | undefined)
+    .filter((id): id is string => Boolean(id));
+  let videos: Awaited<ReturnType<typeof attachTags>> = [];
+  if (ids.length > 0) {
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = await database.prepare(`${videoSelect(uid)}
+      WHERE v.video_id IN (${placeholders})
+        AND v.is_short = 0 AND v.live_status = 'none' AND COALESCE(v.is_private, 0) = 0
+    `).all(...ids) as VideoRow[];
+    const tagged = await attachTags(uid, rows);
+    const byId = new Map(tagged.map((video) => [video.video_id, video]));
+    videos = ids.map((id) => byId.get(id)).filter((video): video is (typeof tagged)[number] => Boolean(video));
+  }
+
+  return c.json({
+    enabled: data.enabled,
+    external_enabled: data.external_enabled,
+    videos,
+    page: data.page,
+    limit: data.limit,
+    has_more: data.has_more,
+    summary: data.summary,
   });
 });
 

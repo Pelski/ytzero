@@ -481,6 +481,32 @@ export type DiscoveryRecommendation =
   | { kind: "local"; score: number; reasons: string[]; video: Video; query?: string }
   | { kind: "external"; score: number; reasons: string[]; result: SearchResult; query: string };
 
+export type RecommendationTimeOfDay = "night" | "morning" | "afternoon" | "evening";
+
+export interface RecommendationSummary {
+  top_channels: Array<{ channel_id: string; title: string; count: number; seconds: number }>;
+  top_tags: Array<Pick<Tag, "id" | "name" | "color"> & { count: number; seconds: number }>;
+  time_of_day: RecommendationTimeOfDay | null;
+  current_hour: number | null;
+  watch_count: number;
+  partial_count: number;
+  based_on: string[];
+}
+
+export interface RecommendationsResponse {
+  videos: Video[];
+  page: number;
+  limit: number;
+  has_more: boolean;
+  summary: RecommendationSummary;
+}
+
+export interface RecommendationsRequest {
+  page: number;
+  limit: number;
+  refresh?: boolean;
+}
+
 export interface VideoInfo {
   videoId: string;
   title: string;
@@ -491,7 +517,7 @@ export interface VideoInfo {
   viewCount: number | null;
   publishedAt: string | null;
   duration: string | null;
-  liveStatus: "none" | "live" | "upcoming";
+  liveStatus: "none" | "live" | "upcoming" | "was_live";
 }
 
 export interface SponsorSegment {
@@ -1015,6 +1041,11 @@ export const api = {
   discoveryRecommendations: (refresh = false) => http<{ enabled: boolean; recommendations: DiscoveryRecommendation[] }>(`/discovery/recommendations${refresh ? "?refresh=1" : ""}`),
   dismissDiscoveryRecommendation: (id: string) =>
     http<{ ok: true }>(`/discovery/recommendations/${id}/dismiss`, { method: "POST", body: "{}" }),
+  recommendations: ({ page, limit, refresh = false }: RecommendationsRequest) => {
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (refresh) qs.set("refresh", "1");
+    return http<RecommendationsResponse>(`/recommendations?${qs.toString()}`);
+  },
   videoInfo: (id: string) => http<{ info: VideoInfo }>(`/videos/${id}/info`),
   externalVideos: () => http<{ videos: Video[] }>("/external"),
   clearExternal: () => http<{ deleted: number }>("/external", { method: "DELETE" }),

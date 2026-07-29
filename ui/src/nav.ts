@@ -1,11 +1,11 @@
-import { Archive, ArrowDownToLine, Clapperboard, Clock, HeartPulse, History, Home, ListVideo, Radio, Settings, Sparkles, ThumbsUp, type LucideIcon } from "lucide-react";
+import { Archive, ArrowDownToLine, Clapperboard, Clock, Compass, HeartPulse, History, Home, ListVideo, Radio, Settings, ThumbsUp, type LucideIcon } from "lucide-react";
 import type { I18nKey } from "./i18n";
 
 export type NavItem = { to: string; labelKey: I18nKey; icon: LucideIcon; end?: boolean };
 
 export const NAV_ITEMS: NavItem[] = [
   { to: "/", labelKey: "navToday", icon: Home, end: true },
-  { to: "/discovery", labelKey: "navDiscovery", icon: Sparkles },
+  { to: "/recommendations", labelKey: "navRecommendations", icon: Compass },
   { to: "/shorts", labelKey: "navShorts", icon: Clapperboard },
   { to: "/live", labelKey: "navLive", icon: Radio },
   { to: "/watchlist", labelKey: "navWatchlist", icon: Clock },
@@ -33,7 +33,13 @@ export function parseNavConfig(raw: string | undefined | null): NavConfigEntry[]
       if (Array.isArray(arr)) {
         parsed = arr
           .filter((e) => e && typeof e.key === "string")
-          .map((e) => ({ key: e.key as string, hidden: !!e.hidden }));
+          .map((e) => ({
+            // Discovery was the original experimental name for the now
+            // first-class recommendations view. Preserve the user's sidebar
+            // order/visibility when upgrading an existing nav configuration.
+            key: e.key === "/discovery" ? "/recommendations" : e.key as string,
+            hidden: !!e.hidden,
+          }));
       }
     } catch { /* fall back to default below */ }
   }
@@ -46,8 +52,9 @@ export function parseNavConfig(raw: string | undefined | null): NavConfigEntry[]
       result.push(e);
     }
   }
+  const hiddenByDefault = new Set(["/recommendations", "/shorts", "/insights", "/followed-playlists"]);
   for (const i of NAV_ITEMS) {
-    if (!seen.has(i.to)) result.push({ key: i.to, hidden: i.to === "/shorts" || i.to === "/insights" || i.to === "/followed-playlists" });
+    if (!seen.has(i.to)) result.push({ key: i.to, hidden: hiddenByDefault.has(i.to) });
   }
   return result;
 }

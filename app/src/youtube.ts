@@ -1051,7 +1051,7 @@ export interface VideoInfo {
   viewCount: number | null;
   publishedAt: string | null;
   duration: string | null;
-  liveStatus: "none" | "live" | "upcoming";
+  liveStatus: "none" | "live" | "upcoming" | "was_live";
 }
 
 export interface VideoCreatorInfo {
@@ -1165,7 +1165,9 @@ function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
     ? "live"
     : scheduledStart || pr?.playabilityStatus?.status === "LIVE_STREAM_OFFLINE"
       ? "upcoming"
-      : "none";
+      : vd.isLiveContent === true
+        ? "was_live"
+        : "none";
 
   return {
     videoId: vd.videoId,
@@ -1283,7 +1285,7 @@ export async function fetchVideoChapters(videoId: string): Promise<VideoChapter[
  * Detect whether a video is a YouTube Short. /shorts/<id> responds 200 for
  * Shorts and redirects (303) to /watch for regular videos.
  */
-export async function checkIsShort(videoId: string, title: string): Promise<boolean> {
+export async function classifyIsShort(videoId: string, title: string): Promise<boolean | null> {
   if (/#shorts?\b/i.test(title)) return true;
   try {
     const res = await fetch(`https://www.youtube.com/shorts/${videoId}`, {
@@ -1291,10 +1293,19 @@ export async function checkIsShort(videoId: string, title: string): Promise<bool
       redirect: "manual",
       headers: FETCH_HEADERS,
     });
-    return res.status === 200;
+    if (res.status === 200) return true;
+    const location = res.headers.get("location") ?? "";
+    if (res.status >= 300 && res.status < 400 && /\/watch(?:\?|$)/i.test(location)) return false;
+    return null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Backwards-compatible best-effort check used by metadata maintenance. New
+ * recommendation imports use classifyIsShort directly and reject `null`. */
+export async function checkIsShort(videoId: string, title: string): Promise<boolean> {
+  return (await classifyIsShort(videoId, title)) ?? false;
 }
 
 /** Parse an OPML export (e.g. from NewPipe/FreeTube) into channel IDs. */

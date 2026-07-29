@@ -36,7 +36,7 @@ stays deliberately quiet.
 | `/followed-playlists` | `playlistEmpty` | Primary destination |
 | `/playlists/:id` | `playlistEmpty` | Same meaning, same drawing — reuse, don't invent |
 | `/subscriptions` (unfiltered) | `noSubscriptions` | Primary destination |
-| `/discovery` (enabled, no picks) | `noDiscovery` | Primary destination |
+| `/recommendations` (no picks) | `noDiscovery` | Primary destination |
 | `/insights` (no data, no error) | `noInsights` | Primary destination |
 
 ### Deliberately **not** illustrated
@@ -54,8 +54,6 @@ stays deliberately quiet.
 - **Settings panels** (`logsEmpty`, `changelogEmpty`, `externalEmpty`) — dense
   config surfaces, rule 1.
 - **Notification popover** — a small surface; `compact` exists for this.
-- **`/discovery` disabled** — that is a call to action ("turn the plugin on"),
-  so it belongs in an `Alert` with a button, not an illustration.
 
 ## Anatomy
 

@@ -9,7 +9,7 @@ import { splitNavItems, parseNavConfig, type NavConfigEntry } from "./nav";
 import { img } from "./img";
 import FeedPage from "./pages/FeedPage";
 import SearchPage from "./pages/SearchPage";
-import DiscoveryPage from "./pages/DiscoveryPage";
+import RecommendationsPage from "./pages/RecommendationsPage";
 import LivePage from "./pages/LivePage";
 import WatchlistPage from "./pages/WatchlistPage";
 import HistoryPage from "./pages/HistoryPage";
@@ -35,8 +35,10 @@ import { applyVideoCardSize } from "./videoCardSize";
 import { AppNameContext } from "./useDocumentTitle";
 import "./AppShell.css";
 
-// Routes owned by plugins — visible in the sidebar only while enabled.
-const PLUGIN_ROUTES = ["/discovery"];
+// Routes owned exclusively by plugins — visible only while enabled. Discovery
+// now enriches the core recommendations page, so disabling it removes outside
+// search but never removes the local, database-backed destination itself.
+const PLUGIN_ROUTES: string[] = [];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
@@ -570,7 +572,6 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const childRouteVisible = (to: string) =>
     !(childStatus?.hide_shorts && to === "/shorts")
     && !(childStatus?.hide_live && to === "/live")
-    && !(childStatus?.local_only && to === "/discovery")
     && !(childStatus?.is_child && (to === "/downloads" || to === "/insights"));
   const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
   const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
@@ -662,7 +663,8 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
             <Routes>
               <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} feedSort={feedSort} />} />
               <Route path="/search" element={<SearchPage onPlay={play} hideExternalSearch={childStatus?.local_only ?? false} />} />
-              <Route path="/discovery" element={<DiscoveryPage onPlay={play} />} />
+              <Route path="/recommendations" element={<RecommendationsPage onPlay={play} loadRecommendations={api.recommendations} />} />
+              <Route path="/discovery" element={<Navigate to="/recommendations" replace />} />
               <Route path="/shorts" element={<ShortsPage />} />
               <Route path="/shorts/:videoId" element={<ShortsPage />} />
               <Route path="/live" element={<LivePage onPlay={play} />} />
