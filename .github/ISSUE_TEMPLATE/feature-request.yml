@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest an improvement or a new capability
+title: "feat: "
+labels: ["enhancement"]
+assignees: ["Pelski"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to suggest an improvement!
+
+        Please describe the underlying need as well as the feature itself. That context helps us find the smallest solution that fits YT Zero.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation or limitation you are running into.
+      placeholder: I am unable to... because...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      description: Describe the feature or behaviour you would find useful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: workflow
+    attributes:
+      label: How should it work?
+      description: Examples, sketches, screenshots, or a suggested flow are especially helpful.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Is there a workaround or another approach you have tried?
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Anything else?
+      description: Add any other context that could help evaluate the request.
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Please confirm
+      options:
+        - label: I searched for an existing issue that covers this request.
+          required: true
+        - label: I added a concise description after the title prefix above.
+          required: true

@@ -1,0 +1,28 @@
+name: Question or other issue
+description: Open an issue that does not fit the bug or feature templates
+title: "other: "
+labels: ["question"]
+assignees: ["Pelski"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when the bug report and feature request forms do not fit.
+
+  - type: textarea
+    id: details
+    attributes:
+      label: What would you like to discuss?
+      description: Include enough context, links, screenshots, or logs to make the issue easy to understand.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Please confirm
+      options:
+        - label: I searched for an existing issue that covers this topic.
+          required: true
+        - label: I added a concise description after the title prefix above.
+          required: true
