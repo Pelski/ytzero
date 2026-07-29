@@ -47,7 +47,7 @@ import TagChip from "../components/TagChip";
 import LocalPlayer, { type LocalPlayerShortcut } from "../components/LocalPlayer";
 import Popconfirm from "../components/Popconfirm";
 import PlaylistPicker from "../components/PlaylistPicker";
-import { BUCKET_ICONS, formatVideoDuration } from "../components/VideoCard";
+import { BUCKET_ICONS, formatVideoDuration, parseVideoDurationSeconds } from "../components/VideoCard";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
 import UpNextOverlay from "../components/UpNextOverlay";
@@ -60,7 +60,7 @@ import Tooltip from "../components/Tooltip";
 import { normalizeSponsorSegments } from "../sponsorblock";
 import { markYouTubeUrl } from "../youtubeUrl";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
-import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
+import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
 import VideoComments from "../components/VideoComments";
 
@@ -448,7 +448,8 @@ export default function WatchPage() {
         title: video.title,
         channelId: video.channel_id,
         channelTitle: video.channel_title,
-        duration: video.duration,
+        duration: parseVideoDurationSeconds(video.duration) ?? 0,
+        contentType: resolveEnhanceContentType(video),
       },
       playback: {
         rate: Number(video.channel_playback_speed ?? settings?.player_speed ?? 1) || 1,

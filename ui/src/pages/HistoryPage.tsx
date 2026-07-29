@@ -8,7 +8,7 @@ import { Button, EmptyState, PageHeader, SectionHeader } from "../components/ui"
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { appDayKey, calendarDayDifference, formatCalendarDay } from "../dateTime";
 
-export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) {
+export default function HistoryPage({ onPlay, allowHistoryDeletion }: { onPlay: (v: Video) => void; allowHistoryDeletion: boolean }) {
   const { t, locale, timeZone } = useI18n();
   useDocumentTitle(t("historyTitle"));
   const [videos, setVideos] = useState<Video[]>([]);
@@ -105,7 +105,7 @@ export default function HistoryPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     video={v}
                     onPlay={onPlay}
                     onChanged={refresh}
-                    onRemoveFromHistory={api.removeFromHistory}
+                    onRemoveFromHistory={allowHistoryDeletion ? api.removeFromHistory : undefined}
                     showWatchProgress
                   />
                 ))}

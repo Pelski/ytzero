@@ -19,6 +19,18 @@ export const ENHANCE_BRIDGE_EVENTS = {
   playerCommand: "ytzero:enhance:player-command",
 } as const;
 
+export const ENHANCE_CONTENT_TYPES = ["default", "short", "livestream"] as const;
+export type EnhanceContentType = typeof ENHANCE_CONTENT_TYPES[number];
+
+export function resolveEnhanceContentType(video: {
+  live_status: "none" | "upcoming" | "live" | "was_live";
+  is_short: number | null;
+}): EnhanceContentType {
+  if (video.live_status === "live" || video.live_status === "upcoming") return "livestream";
+  if (video.is_short === 1) return "short";
+  return "default";
+}
+
 export interface EnhancePlayerState {
   paused: boolean;
   ended: boolean;

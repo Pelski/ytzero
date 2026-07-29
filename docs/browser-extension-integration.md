@@ -109,7 +109,7 @@ document.dispatchEvent(new CustomEvent("ytzero:enhance:ready"));
 YT Zero responds with `ytzero:enhance:context`. It also publishes context when
 the active embedded video or relevant data changes. Context includes:
 
-- video id, title, channel id/title and duration;
+- video id, title, channel id/title, duration and semantic content type;
 - effective playback rate (including the per-channel override);
 - seek seconds and frame-step FPS;
 - effective caption language/style;
@@ -117,6 +117,130 @@ the active embedded video or relevant data changes. Context includes:
 - screenshot format, quality and filename template.
 
 Install the `context` listener before sending `ready`.
+
+### Content type contract
+
+The application describes the active material with one field instead of a set
+of overlapping booleans:
+
+```ts
+type ContentType = "default" | "short" | "livestream";
+
+interface EnhanceContextVideo {
+  id: string;
+  title: string;
+  channelId: string;
+  channelTitle: string;
+  duration: number;
+  contentType: ContentType;
+}
+```
+
+`contentType` belongs in `context.video`. Its values mean:
+
+- `default` — an ordinary on-demand video, including a finished broadcast
+  replay;
+- `short` — a short-form, normally vertical video;
+- `livestream` — a broadcast that is currently live or scheduled to start.
+
+If several source flags could match, `livestream` has priority over `short`.
+The application is the source of truth: the extension must not classify a
+video as `short` from its aspect ratio and must not treat every video that was
+once broadcast live as a current `livestream`.
+
+The field is additive in bridge version 1. For compatibility with an older YT
+Zero build, a missing or unknown value is normalized as follows:
+
+1. Use `short` when the paired top page is on its `/shorts` route.
+2. Use `livestream` only when the embedded player's native API or media element
+   confirms active live playback.
+3. Otherwise use `default`.
+
+Once a valid context with `contentType` arrives, it overrides those fallbacks.
+Apply a changed type in place without reloading the iframe, while preserving
+playback position, volume, mute and caption selection.
+
+The extension-side validator should normalize the value at the contract
+boundary, not throughout the UI:
+
+```ts
+const CONTENT_TYPES = ["default", "short", "livestream"] as const;
+type ContentType = typeof CONTENT_TYPES[number];
+
+function contentType(value: unknown, legacyFallback: ContentType): ContentType {
+  return CONTENT_TYPES.includes(value as ContentType)
+    ? value as ContentType
+    : legacyFallback;
+}
+```
+
+Keep the URL/native-player compatibility fallback separate from this parser so
+an invalid page payload can never force privileged or unsupported behavior.
+Forward the normalized type with the already validated context from the top
+frame to the matching embedded frame. The iframe controller should expose one
+`setContentType(type)` operation and make that operation idempotent.
+
+### Player presentation by content type
+
+The three modes share typography, focus treatment, caption styling and button
+icons, but not the same control density or behavior.
+
+#### `default`
+
+- Keep the complete horizontal control bar and ordinary on-demand timeline.
+- Show play/pause, mute with expandable volume, elapsed/total time, captions,
+  picture-in-picture and fullscreen.
+- Support configured playback speed, number-key seeking, frame stepping,
+  chapters, SponsorBlock markers and the configured seek interval.
+- Keep the existing idle fade and large central play affordance.
+
+#### `short`
+
+- Keep the video stage visually vertical and centered. On a wide host, black
+  side space belongs outside the vertical stage; controls should align to the
+  stage rather than span the entire iframe.
+- Use a compact bottom gradient with circular touch targets of at least 40 by
+  40 CSS pixels. Keep play/pause, mute, captions and fullscreen immediately
+  available.
+- Hide the expanded volume slider, elapsed/total time and picture-in-picture.
+  Frame capture remains available through the `S` shortcut and bridge command,
+  even when it has no visible button.
+- Use a thin, low-emphasis timeline. It may expand on hover/focus, but it must
+  not dominate the vertical image.
+- Up/Down navigate to the previous/next short through the top-page navigation
+  bridge. Left/Right retain the configured seek behavior. Do not interpret
+  Up/Down as volume changes in this mode.
+- Keep metadata and social actions outside the media controls when the parent
+  page already owns them. Do not duplicate like/channel UI inside the iframe.
+
+#### `livestream`
+
+- Use the live accent only for live-specific information: the played timeline,
+  live dot and live-edge action. Do not tint the entire control surface red.
+- Replace elapsed/total time with a `LIVE` / `Go live` control. When DVR is
+  available, derive the timeline from `video.seekable`, show the delay from the
+  live edge, and seek to the latest seekable point when the control is pressed.
+- When no DVR window exists, keep the timeline visibly disabled and do not
+  pretend that the media duration is seekable.
+- Force playback rate to `1`. Disable 2× hold, frame stepping, number-key
+  percentage seeking and playback-rate commands. Play/pause, mute, captions,
+  fullscreen and picture-in-picture remain available.
+- A `set-playback-rate`, frame-step or unavailable seek command must return a
+  `command-result` explaining that the operation is unsupported for the active
+  content type; it must not silently report success.
+- The live dot may pulse subtly, but respect `prefers-reduced-motion` and avoid
+  continuous attention-heavy animation elsewhere.
+
+For all modes, changing controls must not hide captions, the buffering layer or
+advertisement/player safety layers. A single click toggles playback and a
+double-click outside the controls toggles fullscreen. Keyboard handling must
+retain the editable-target guard and touch layouts must respect safe-area
+insets.
+
+Add regression coverage for all three accepted values, a missing value, an
+unknown future value, precedence of a valid context over URL detection, an
+in-place mode change, DVR and non-DVR livestreams, disabled livestream
+commands, Shorts Up/Down routing, and `prefers-reduced-motion` styling.
 
 ### Reporting that the extension is active
 

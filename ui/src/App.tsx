@@ -45,7 +45,7 @@ import { Badge, Button, Toast } from "./components/ui";
 import { ENHANCE_CONFIGURATION_ELEMENT_ID, serializeEnhanceConfiguration } from "./enhanceBridge";
 import { subscribeServerEvent } from "./serverEvents";
 import { queueSettingWrite } from "./settingsWriteQueue";
-import { isIncognitoMode, setIncognitoMode } from "./incognitoMode";
+import { isIncognitoMode, setIncognitoAllowed, setIncognitoMode } from "./incognitoMode";
 import { getNewCompletedDownloads, observeDownloadSummary } from "./downloadActivity";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
@@ -217,10 +217,11 @@ function SpyLogo() {
   );
 }
 
-function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, onFeedSortChange, incognito, onIncognitoChange }: {
+function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermissions, feedSort, onFeedSortChange, incognito, onIncognitoChange }: {
   appName: string;
   appIconColor: string;
   isAdmin: boolean;
+  isChildProfile: boolean;
   profilePermissions: ProfilePermissions;
   feedSort: "published" | "arrival";
   onFeedSortChange: (next: "published" | "arrival") => void;
@@ -278,6 +279,7 @@ function TopBar({ appName, appIconColor, isAdmin, profilePermissions, feedSort, 
       </form>
       <ProfileMenu
         isAdmin={isAdmin}
+        isChildProfile={isChildProfile}
         profilePermissions={profilePermissions}
         feedSort={feedSort}
         onFeedSortChange={onFeedSortChange}
@@ -347,9 +349,11 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
 
   const changeIncognito = useCallback((next: boolean) => {
-    setIncognitoMode(next);
-    setIncognito(next);
-  }, []);
+    const allowed = childStatus?.is_child !== true;
+    setIncognitoAllowed(allowed);
+    setIncognitoMode(allowed && next);
+    setIncognito(allowed && next);
+  }, [childStatus?.is_child]);
 
   useEffect(() => {
     document.body.classList.toggle("incognito-mode", incognito);
@@ -516,7 +520,9 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => {
     const load = () => {
       api.childStatus().then((s) => {
+        setIncognitoAllowed(!s.is_child);
         setChildStatus(s);
+        setIncognito(isIncognitoMode());
       }).catch(() => {}).finally(() => setChildStatusReady(true));
     };
     load();
@@ -619,6 +625,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
         appName={appName}
         appIconColor={appIconColor}
         isAdmin={isAdmin}
+        isChildProfile={childStatus?.is_child === true}
         profilePermissions={profilePermissions}
         feedSort={feedSort}
         onFeedSortChange={changeFeedSort}
@@ -669,7 +676,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
               <Route path="/watchlist" element={<WatchlistPage />} />
               <Route path="/downloads" element={<DownloadsPage />} />
               <Route path="/liked" element={<LikedPage onPlay={play} />} />
-              <Route path="/history" element={<HistoryPage onPlay={play} />} />
+              <Route path="/history" element={<HistoryPage onPlay={play} allowHistoryDeletion={childStatus?.is_child !== true} />} />
               <Route path="/archive" element={<ArchivePage onPlay={play} />} />
               <Route path="/cleanup" element={<CleanupPage />} />
               <Route path="/insights" element={<InsightsPage />} />

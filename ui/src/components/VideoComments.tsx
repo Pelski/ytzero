@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { ChevronDown, Heart, LoaderCircle, MessageCircle, MessageCircleOff, Pin, RefreshCw, ThumbsUp } from "lucide-react";
+import { ChevronDown, Heart, MessageCircle, MessageCircleOff, Pin, RefreshCw, ThumbsUp } from "lucide-react";
 import { api, ApiError, type VideoComment } from "../api";
 import { parseCommentText } from "../commentTimestamps";
 import { compactNumber, formatTimeAgo, useI18n } from "../i18n";
@@ -325,11 +325,8 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
         </div>
       )}
       {status === "loading" && (
-        <div className="video-comments__loading" aria-label={t("commentsLoading")}>
-          <div className="video-comments__spinner"><LoaderCircle className="spin" /> <span>{t("commentsLoading")}</span></div>
-          <div className="video-comments__skeleton">
+        <div className="video-comments__skeleton" aria-hidden="true">
           {[0, 1, 2].map((item) => <div key={item} className="video-comment-skeleton"><span /><div><b /><i /><i /></div></div>)}
-          </div>
         </div>
       )}
       {status === "disabled" && (

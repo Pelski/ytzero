@@ -118,7 +118,7 @@ export async function fetchLiveInfo(channelId: string): Promise<LiveInfo | null>
     headers: FETCH_HEADERS,
     redirect: "follow",
   });
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`channel live request failed (${res.status})`);
   const html = await res.text();
 
   // When the channel has a live/upcoming stream, /live canonicalizes to the
@@ -705,6 +705,18 @@ export function hasMembersOnlyBadge(node: any): boolean {
   );
 }
 
+export function hasLiveBadge(node: any): boolean {
+  return deepCollect(node, "thumbnailBadgeViewModel").some((badge: any) =>
+    badge?.badgeStyle === "THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE"
+    || badge?.icon?.sources?.some((source: any) => source?.clientResource?.imageName === "LIVE")
+    || badge?.text === "LIVE"
+  ) || deepCollect(node, "metadataBadgeRenderer").some((badge: any) =>
+    badge?.style === "BADGE_STYLE_TYPE_LIVE_NOW"
+  ) || deepCollect(node, "thumbnailOverlayTimeStatusRenderer").some((badge: any) =>
+    badge?.style === "LIVE"
+  );
+}
+
 function relativePublishedFromNode(node: any): string | null {
   for (const parts of deepCollect(node, "metadataParts")) {
     for (const part of Array.isArray(parts) ? parts : []) {
@@ -727,7 +739,7 @@ function relativePublishedFromNode(node: any): string | null {
  */
 async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams"): Promise<ScrapedVideo[]> {
   const res = await fetch(`https://www.youtube.com/channel/${channelId}/${tab}`, { headers: FETCH_HEADERS });
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`channel ${tab} request failed (${res.status})`);
   const data = extractInitialData(await res.text());
   const out: ScrapedVideo[] = [];
   const seen = new Set<string>();
@@ -748,6 +760,7 @@ async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams
       publishedAt: relativePublishedFromNode(r),
       publishedAtApproximate: true,
       membersOnly: hasMembersOnlyBadge(r),
+      isLive: hasLiveBadge(r),
     });
   }
 
@@ -774,7 +787,7 @@ async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams
       publishedAt: relativePublishedFromNode(vm),
       publishedAtApproximate: true,
       membersOnly: hasMembersOnlyBadge(vm),
-      isLive: badges.includes("LIVE"),
+      isLive: hasLiveBadge(vm),
     });
   }
   return out;

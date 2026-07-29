@@ -32,6 +32,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const tab = (searchParams.get("tab") as Tab) ?? "videos";
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
   const [about, setAbout] = useState<ChannelAbout | null>(null);
+  const [loadedBanner, setLoadedBanner] = useState<string | null>(null);
   useDocumentTitle(about?.title);
   const [videos, setVideos] = useState<Video[]>([]);
   const [processingVideos, setProcessingVideos] = useState<Video[]>([]);
@@ -73,6 +74,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   useEffect(() => {
     if (!id) return;
     setAbout(null);
+    setLoadedBanner(null);
     setVideos([]);
     setProcessingVideos([]);
     setLiveStreams([]);
@@ -375,7 +377,16 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
 
   return (
     <>
-      {about?.banner && <img className="channel-banner" src={img(about.banner)} alt="" />}
+      <div className="channel-banner" aria-hidden="true">
+        {about?.banner && (
+          <img
+            className={loadedBanner === about.banner ? "channel-banner__image is-loaded" : "channel-banner__image"}
+            src={img(about.banner)}
+            alt=""
+            onLoad={() => setLoadedBanner(about.banner)}
+          />
+        )}
+      </div>
       <div className="channel-header">
         {about?.avatar && <img className="channel-avatar" src={img(about.avatar)} alt="" />}
         <div className="channel-info">
@@ -568,7 +579,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       {liveStreams.length > 0 && (
         <section className="channel-live-section">
           <SectionHeader title="LIVE" icon={<Radio />} variant="uppercase" className="channel-live-title" />
-          <div className="video-grid channel-live-row">
+          <div className="video-grid">
             {liveStreams.map((v) => (
               <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={reload} showChannelAvatar={false} />
             ))}

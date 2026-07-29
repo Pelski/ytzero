@@ -15,6 +15,7 @@ import { estimateUploadCadenceMs, selectRefreshBatch, targetRefreshIntervalMs, t
 import { publishAppEventSoon } from "./appEvents";
 import { configuredTimeZone } from "./timeZone";
 import { manualScheduleIsDue, nextScheduleOccurrenceMs, parseManualRefreshSchedule } from "./channelRefreshSchedule";
+import { resolveActiveLivestreams } from "./liveStatus";
 
 const upsertVideo = database.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -594,28 +595,31 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
 }
 
 export async function refreshLiveStatus(channelId: string) {
-  const primaryLive = await fetchLiveInfo(channelId);
-  // /channel/:id/live resolves to one primary stream even when a channel has
-  // many concurrent streams. The /streams cards expose every LIVE badge.
-  const streamLives = primaryLive
-    ? (await fetchChannelStreams(channelId).catch(() => [])).filter((stream) => stream.isLive)
-    : [];
-  const active = streamLives.length > 0
-    ? streamLives.map((stream) => ({ ...stream, status: "live" as const }))
-    : primaryLive
-      ? [{ ...primaryLive, status: primaryLive.isLiveNow ? "live" as const : "upcoming" as const }]
-      : [];
+  const [primaryResult, streamsResult] = await Promise.allSettled([
+    fetchLiveInfo(channelId),
+    fetchChannelStreams(channelId),
+  ]);
+  if (primaryResult.status === "rejected" && streamsResult.status === "rejected") {
+    throw new Error(`live discovery failed: ${String(primaryResult.reason)}; ${String(streamsResult.reason)}`);
+  }
+  const { active, canDemoteMissing } = resolveActiveLivestreams(
+    primaryResult.status === "fulfilled" ? primaryResult.value : undefined,
+    streamsResult.status === "fulfilled" ? streamsResult.value : undefined,
+  );
   const activeIds = active.map((stream) => stream.videoId);
 
   // Anything previously live/upcoming on this channel that is no longer in
-  // the active set becomes was_live / none.
-  const inactiveSql = activeIds.length > 0
-    ? ` AND video_id NOT IN (${activeIds.map(() => "?").join(",")})`
-    : "";
-  await database.prepare(
-    `UPDATE videos SET live_status = CASE live_status WHEN 'live' THEN 'was_live' ELSE 'none' END
-     WHERE channel_id = ? AND live_status IN ('live', 'upcoming')${inactiveSql}`
-  ).run(channelId, ...activeIds);
+  // the active set becomes was_live / none, but only after an authoritative
+  // discovery. A partial failure must not strip badges from sibling streams.
+  if (canDemoteMissing) {
+    const inactiveSql = activeIds.length > 0
+      ? ` AND video_id NOT IN (${activeIds.map(() => "?").join(",")})`
+      : "";
+    await database.prepare(
+      `UPDATE videos SET live_status = CASE live_status WHEN 'live' THEN 'was_live' ELSE 'none' END
+       WHERE channel_id = ? AND live_status IN ('live', 'upcoming')${inactiveSql}`
+    ).run(channelId, ...activeIds);
+  }
 
   for (const live of active) {
     const existing = await videoExists.get(live.videoId);

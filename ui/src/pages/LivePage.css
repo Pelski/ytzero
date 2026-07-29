@@ -27,9 +27,6 @@
 }
 .live-mini .live-mini-channel { font-size: 11.5px; color: var(--text-2); padding-top: 2px; }
 
-.channel-live-section { margin: 2px 0 26px; }
-.channel-live-title { display: flex; align-items: center; gap: 7px; color: var(--live); }
-.channel-live-row { grid-template-columns: repeat(auto-fill, minmax(220px, 300px)); }
 
 .live-channel-group { margin-top: 30px; }
 .live-channel-group-header {
@@ -57,30 +54,6 @@
   letter-spacing: 0.35px;
 }
 
-.live-badge {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  background: var(--live);
-  color: #fff;
-  font-size: 10.5px;
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: 4px;
-  letter-spacing: 0.1px;
-}
-.live-badge .pulse {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #fff;
-  animation: pulse 1.6s ease-in-out infinite;
-}
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
-.live-badge.upcoming { background: rgba(0, 0, 0, 0.75); }
 .live-page .video-card { position: relative; }
 .video-card .members-only-marker {
   position: absolute;
@@ -108,4 +81,3 @@
   z-index: 5;
 }
 .short-card-members-only--stacked { top: 38px; }
-.thumb-wrap { position: relative; }

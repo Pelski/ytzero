@@ -1860,6 +1860,7 @@ api.post("/videos/:id/complete", async (c) => {
 api.delete("/videos/:id/complete", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
+  const preserveHistory = await isChildUser(uid);
   if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
   await database.transaction(async () => {
     const state = await database.prepare("SELECT watched FROM user_videos WHERE user_id = ? AND video_id = ?")
@@ -1873,7 +1874,7 @@ api.delete("/videos/:id/complete", async (c) => {
     // Completing a video creates one history entry. Remove only the newest one
     // so undoing an accidental click does not erase older, legitimate watches.
     // Checking the old state also keeps repeated DELETE requests idempotent.
-    if (state?.watched === 1) {
+    if (state?.watched === 1 && !preserveHistory) {
       await database.prepare(
         `DELETE FROM history WHERE id = (
            SELECT id FROM history WHERE user_id = ? AND video_id = ?
@@ -1976,6 +1977,7 @@ api.get("/history", async (c) => {
 
 api.delete("/history/:id", async (c) => {
   const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   // The history view groups repeat watches into one card. Remove every watch
   // for that card so an older occurrence does not immediately take its place.
   await database.prepare(

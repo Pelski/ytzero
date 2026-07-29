@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { isIncognitoMode, setIncognitoMode } from "../src/incognitoMode";
+import { isIncognitoMode, setIncognitoAllowed, setIncognitoMode } from "../src/incognitoMode";
 
 const values = new Map<string, string>();
 const sessionStorage = {
@@ -13,7 +13,10 @@ Object.defineProperty(globalThis, "window", {
   value: { sessionStorage },
 });
 
-beforeEach(() => values.clear());
+beforeEach(() => {
+  values.clear();
+  setIncognitoAllowed(true);
+});
 
 describe("incognito mode session state", () => {
   test("is off by default and toggles for the current tab", () => {
@@ -29,5 +32,15 @@ describe("incognito mode session state", () => {
     window.sessionStorage.getItem = () => { throw new Error("blocked"); };
     expect(isIncognitoMode()).toBe(false);
     window.sessionStorage.getItem = original;
+  });
+
+  test("cannot be enabled while the active profile is a child", () => {
+    setIncognitoMode(true);
+    setIncognitoAllowed(false);
+    expect(isIncognitoMode()).toBe(false);
+    expect(values.size).toBe(0);
+    setIncognitoMode(true);
+    expect(isIncognitoMode()).toBe(false);
+    expect(values.size).toBe(0);
   });
 });

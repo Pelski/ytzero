@@ -27,8 +27,9 @@ export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "
   );
 }
 
-export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onFeedSortChange, incognito, onIncognitoChange }: {
+export default function ProfileMenu({ isAdmin, isChildProfile, profilePermissions, feedSort, onFeedSortChange, incognito, onIncognitoChange }: {
   isAdmin: boolean;
+  isChildProfile: boolean;
   profilePermissions: ProfilePermissions;
   feedSort: "published" | "arrival";
   onFeedSortChange: (next: "published" | "arrival") => void;
@@ -250,7 +251,7 @@ export default function ProfileMenu({ isAdmin, profilePermissions, feedSort, onF
               </SettingRow>
             </>
           )}
-          {!active.is_child && (
+          {!isChildProfile && (
             <>
               <MenuSeparator />
               <SettingRow

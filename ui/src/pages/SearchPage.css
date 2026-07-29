@@ -170,12 +170,6 @@ button.video-card {
   font: inherit; color: inherit; text-align: left; width: 100%; cursor: pointer;
 }
 button.video-card:disabled { cursor: default; }
-.video-card .thumb-wrap {
-  --actions-proximity: 0;
-  border-radius: var(--radius);
-  overflow: hidden;
-  cursor: pointer;
-}
 .video-card .thumb-wrap::after {
   content: "";
   position: absolute;

@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { createEnhanceConfiguration, ENHANCE_BRIDGE_EVENTS, ENHANCE_CONFIGURATION_FORMAT, parseEnhancePlayerEvent, serializeEnhanceConfiguration } from "./enhanceBridge";
+import { createEnhanceConfiguration, ENHANCE_BRIDGE_EVENTS, ENHANCE_CONFIGURATION_FORMAT, parseEnhancePlayerEvent, resolveEnhanceContentType, serializeEnhanceConfiguration } from "./enhanceBridge";
 
 describe("YT Zero Enhance configuration", () => {
+  test("maps watch-page video metadata to the embedded-player content type", () => {
+    expect(resolveEnhanceContentType({ live_status: "none", is_short: 0 })).toBe("default");
+    expect(resolveEnhanceContentType({ live_status: "was_live", is_short: 0 })).toBe("default");
+    expect(resolveEnhanceContentType({ live_status: "none", is_short: 1 })).toBe("short");
+    expect(resolveEnhanceContentType({ live_status: "live", is_short: 0 })).toBe("livestream");
+    expect(resolveEnhanceContentType({ live_status: "upcoming", is_short: 1 })).toBe("livestream");
+  });
+
   test("serializes authenticated profile settings with native JSON types", () => {
     const config = createEnhanceConfiguration({
       enhance_enabled: "1",

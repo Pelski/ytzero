@@ -197,9 +197,6 @@
 
 .video-comments__error { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .video-comments__error-copy { display: grid; gap: 10px; }
-.video-comments__loading { display: grid; gap: 4px; }
-.video-comments__spinner { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; color: var(--text-2); font-size: 13px; }
-.video-comments__spinner svg { width: 18px; height: 18px; }
 .video-comments__skeleton { display: flex; flex-direction: column; }
 .video-comment-skeleton { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; padding: 14px 4px; }
 .video-comment-skeleton > span,

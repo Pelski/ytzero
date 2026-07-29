@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hasMembersOnlyBadge, parsePublishedTimeText, parseVideoCreatorsFromInitialData, relativePublishedAt } from "./youtube";
+import { hasLiveBadge, hasMembersOnlyBadge, parsePublishedTimeText, parseVideoCreatorsFromInitialData, relativePublishedAt } from "./youtube";
 
 describe("YouTube publication metadata", () => {
   test("parses relative publication labels returned by supported locales", () => {
@@ -19,6 +19,14 @@ describe("YouTube publication metadata", () => {
     expect(hasMembersOnlyBadge({ badgeViewModel: { badgeStyle: "BADGE_MEMBERS_ONLY" } })).toBe(true);
     expect(hasMembersOnlyBadge({ metadataBadgeRenderer: { style: "BADGE_STYLE_TYPE_MEMBERS_ONLY" } })).toBe(true);
     expect(hasMembersOnlyBadge({ thumbnailBadgeViewModel: { text: "21:00" } })).toBe(false);
+  });
+
+  test("recognizes current and legacy live badges", () => {
+    expect(hasLiveBadge({ thumbnailBadgeViewModel: { badgeStyle: "THUMBNAIL_OVERLAY_BADGE_STYLE_LIVE" } })).toBe(true);
+    expect(hasLiveBadge({ thumbnailBadgeViewModel: { icon: { sources: [{ clientResource: { imageName: "LIVE" } }] } } })).toBe(true);
+    expect(hasLiveBadge({ metadataBadgeRenderer: { style: "BADGE_STYLE_TYPE_LIVE_NOW" } })).toBe(true);
+    expect(hasLiveBadge({ thumbnailOverlayTimeStatusRenderer: { style: "LIVE" } })).toBe(true);
+    expect(hasLiveBadge({ thumbnailBadgeViewModel: { text: "21:00" } })).toBe(false);
   });
 
   test("parses an arbitrary number of native video collaborators", () => {

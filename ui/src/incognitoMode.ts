@@ -1,7 +1,13 @@
 const INCOGNITO_MODE_KEY = "ytzero_incognito_mode";
+let incognitoAllowed = false;
+
+export function setIncognitoAllowed(allowed: boolean): void {
+  incognitoAllowed = allowed;
+  if (!allowed) setIncognitoMode(false);
+}
 
 export function isIncognitoMode(): boolean {
-  if (typeof window === "undefined") return false;
+  if (!incognitoAllowed || typeof window === "undefined") return false;
   try {
     return window.sessionStorage.getItem(INCOGNITO_MODE_KEY) === "1";
   } catch {
@@ -12,7 +18,7 @@ export function isIncognitoMode(): boolean {
 export function setIncognitoMode(enabled: boolean): void {
   if (typeof window === "undefined") return;
   try {
-    if (enabled) window.sessionStorage.setItem(INCOGNITO_MODE_KEY, "1");
+    if (enabled && incognitoAllowed) window.sessionStorage.setItem(INCOGNITO_MODE_KEY, "1");
     else window.sessionStorage.removeItem(INCOGNITO_MODE_KEY);
   } catch {
     // A sandboxed browser context may deny session storage. Incognito then

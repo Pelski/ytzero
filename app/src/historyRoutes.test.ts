@@ -46,4 +46,10 @@ describe("watch history routes", () => {
     expect(result.primaryRowsAfterDelete).toBe(0);
     expect(result.secondaryRowsAfterDelete).toBe(1);
   });
+
+  test("does not let child profiles erase their watch history", () => {
+    expect(result.childDeleteStatus).toBe(403);
+    expect(result.childUnwatchStatus).toBe(200);
+    expect(result.childRowsAfterAttempts).toBe(1);
+  });
 });
