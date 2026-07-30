@@ -69,7 +69,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   const loadAppSettings = useCallback(() => {
     return api
-      .settings()
+      .bootstrapSettings()
       .then((r) => {
         const next = normalizeLanguage(r.settings.language);
         setLanguageState(next);

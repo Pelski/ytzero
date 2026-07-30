@@ -1,7 +1,7 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { database } from "./database";
-import { getSetting } from "./db";
+import { DB_PATH, getSetting, setSetting } from "./db";
 import { downloadCookieAttempts, downloadFormat, renderDownloadOutputTemplate } from "./downloadStrategy";
 import { log } from "./logger";
 import { beginMutation, maintenanceActive } from "./maintenance";
@@ -14,7 +14,9 @@ import { automaticDownloadCandidates, migrateLegacyDownloadAutomation } from "./
 // profile. Retention below is the only thing that removes them.
 const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR ?? resolve(import.meta.dir, "../../data/downloads");
 mkdirSync(DOWNLOADS_DIR, { recursive: true });
-const DOWNLOAD_COOKIES_FILE = resolve(import.meta.dir, "../../data/yt-dlp-cookies.txt");
+const DOWNLOAD_COOKIES_DIR = process.env.DOWNLOAD_COOKIES_DIR ?? resolve(dirname(DB_PATH), "../download-cookies");
+const LEGACY_DOWNLOAD_COOKIES_FILE = process.env.LEGACY_DOWNLOAD_COOKIES_FILE ?? resolve(import.meta.dir, "../../data/yt-dlp-cookies.txt");
+mkdirSync(DOWNLOAD_COOKIES_DIR, { recursive: true });
 const MAX_COOKIES_BYTES = 4 * 1024 * 1024;
 
 const YTDLP = process.env.YTDLP_PATH ?? "yt-dlp";
@@ -24,8 +26,6 @@ const CLEANUP_INTERVAL_MS = 10 * 60_000;
 const TICK_INTERVAL_MS = 30_000;
 
 // ---------- settings ----------
-// Stored in the global `settings` table under plugin_downloads_<key> (written
-// by the plugin settings framework with settingsScope = "global").
 
 export const DL_DEFAULTS = {
   quality: "1080",
@@ -63,29 +63,46 @@ export const DL_DEFAULTS = {
 
 export type DlSettings = { [K in keyof typeof DL_DEFAULTS]: (typeof DL_DEFAULTS)[K] extends number ? number : string };
 
-export function dlSettings(): DlSettings {
+const ADMIN_DOWNLOAD_SETTING_KEYS = new Set([
+  "output_template", "write_thumbnail", "embed_metadata", "write_info_json", "write_nfo",
+  "write_subs", "max_storage_gb",
+]);
+
+export async function dlSettings(userId?: number): Promise<DlSettings> {
+  const profileValues = new Map<string, string>();
+  if (userId != null) {
+    const rows = await database.prepare("SELECT key,value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=?").all(userId) as { key: string; value: string }[];
+    for (const row of rows) profileValues.set(row.key, row.value);
+  }
   const out: Record<string, number | string> = {};
   for (const [key, def] of Object.entries(DL_DEFAULTS)) {
-    const raw = getSetting(`plugin_downloads_${key}`);
+    const raw = ADMIN_DOWNLOAD_SETTING_KEYS.has(key)
+      ? getSetting(`plugin_downloads_${key}`)
+      : profileValues.get(key);
     if (raw == null) { out[key] = def; continue; }
     out[key] = typeof def === "number" ? (Number.isFinite(Number(raw)) ? Number(raw) : def) : raw;
   }
   return out as DlSettings;
 }
 
-/** Cookie jar is deliberately stored outside the settings database, so it is
- * never returned by a settings API response or rendered back into the UI. */
-export function downloadCookiesConfigured() {
-  return existsSync(DOWNLOAD_COOKIES_FILE);
+function downloadCookiesFile(userId: number) {
+  if (!Number.isInteger(userId) || userId <= 0) throw new Error("invalid profile id");
+  return join(DOWNLOAD_COOKIES_DIR, `${userId}.txt`);
+}
+
+/** Cookie jars are deliberately stored outside the settings database, one per
+ * profile, so they are never returned by a settings API or portable backup. */
+export function downloadCookiesConfigured(userId: number) {
+  return existsSync(downloadCookiesFile(userId));
 }
 
 /** Build an argv list for metadata-only features that share yt-dlp and its
  * optional cookie jar without exposing the cookie path outside this module. */
-export function ytdlpCommand(args: string[], useCookies = false): string[] {
-  return [YTDLP, ...args, ...(useCookies && downloadCookiesConfigured() ? ["--cookies", DOWNLOAD_COOKIES_FILE] : [])];
+export function ytdlpCommand(userId: number, args: string[], useCookies = false): string[] {
+  return [YTDLP, ...args, ...(useCookies && downloadCookiesConfigured(userId) ? ["--cookies", downloadCookiesFile(userId)] : [])];
 }
 
-export function saveDownloadCookies(contents: string) {
+export function saveDownloadCookies(userId: number, contents: string) {
   if (!contents.trim()) throw new Error("cookies file is empty");
   if (new TextEncoder().encode(contents).byteLength > MAX_COOKIES_BYTES) {
     throw new Error("cookies file is too large");
@@ -94,14 +111,33 @@ export function saveDownloadCookies(contents: string) {
   if (!/^# (?:(?:Netscape )?HTTP Cookie File|Netscape Cookie File)\b/m.test(normalized)) {
     throw new Error("cookies must be in Netscape cookies.txt format");
   }
-  const temporary = `${DOWNLOAD_COOKIES_FILE}.tmp`;
+  const destination = downloadCookiesFile(userId);
+  const temporary = `${destination}.tmp`;
   writeFileSync(temporary, normalized, { mode: 0o600 });
-  renameSync(temporary, DOWNLOAD_COOKIES_FILE);
-  try { chmodSync(DOWNLOAD_COOKIES_FILE, 0o600); } catch { /* unsupported on some hosts */ }
+  renameSync(temporary, destination);
+  try { chmodSync(destination, 0o600); } catch { /* unsupported on some hosts */ }
 }
 
-export function removeDownloadCookies() {
-  if (existsSync(DOWNLOAD_COOKIES_FILE)) unlinkSync(DOWNLOAD_COOKIES_FILE);
+export function removeDownloadCookies(userId: number) {
+  const path = downloadCookiesFile(userId);
+  if (existsSync(path)) unlinkSync(path);
+}
+
+/** Move the former instance-wide cookie jar into each existing profile once.
+ * Copying preserves the old behavior immediately; profiles can then replace or
+ * remove their own secret independently. */
+export async function migrateLegacyDownloadCookies() {
+  if (getSetting("downloads_profile_cookies_migrated") === "1") return;
+  if (existsSync(LEGACY_DOWNLOAD_COOKIES_FILE)) {
+    const users = await database.prepare("SELECT id FROM users").all() as { id: number }[];
+    for (const user of users) {
+      const destination = downloadCookiesFile(user.id);
+      if (!existsSync(destination)) copyFileSync(LEGACY_DOWNLOAD_COOKIES_FILE, destination);
+      try { chmodSync(destination, 0o600); } catch { /* unsupported on some hosts */ }
+    }
+    unlinkSync(LEGACY_DOWNLOAD_COOKIES_FILE);
+  }
+  setSetting("downloads_profile_cookies_migrated", "1");
 }
 
 async function dlEnabled(): Promise<boolean> {
@@ -280,7 +316,7 @@ export async function listSubtitleFiles(videoId: string): Promise<SubtitleFile[]
  * wasn't downloaded with the video). --skip-download makes this a quick,
  * metadata-only yt-dlp run writing next to the existing file.
  */
-async function fetchSubtitleSidecars(videoId: string, langs: string, options: SubtitleFetchOptions): Promise<boolean> {
+async function fetchSubtitleSidecars(userId: number, videoId: string, langs: string, options: SubtitleFetchOptions): Promise<boolean> {
   const base = await outputBaseFor(videoId) ?? videoId;
   mkdirSync(dirname(join(DOWNLOADS_DIR, base)), { recursive: true });
   const args = [
@@ -293,7 +329,7 @@ async function fetchSubtitleSidecars(videoId: string, langs: string, options: Su
   if (options.manual) args.push("--write-subs");
   if (options.automatic) args.push("--write-auto-subs");
   if (langs.trim()) args.push("--sub-langs", langs.trim());
-  if (downloadCookiesConfigured()) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
+  if (downloadCookiesConfigured(userId)) args.push("--cookies", downloadCookiesFile(userId));
   try {
     const stderrTail: string[] = [];
     const proc = Bun.spawn([YTDLP, ...args], { stdout: "ignore", stderr: "pipe" });
@@ -319,8 +355,8 @@ async function fetchSubtitleSidecars(videoId: string, langs: string, options: Su
   }
 }
 
-export async function fetchSubtitles(videoId: string, lang: string): Promise<boolean> {
-  return fetchSubtitleSidecars(videoId, lang, { manual: true, automatic: true });
+export async function fetchSubtitles(userId: number, videoId: string, lang: string): Promise<boolean> {
+  return fetchSubtitleSidecars(userId, videoId, lang, { manual: true, automatic: true });
 }
 
 /** Naive SRT → WebVTT conversion, enough for <track> playback. */
@@ -333,9 +369,21 @@ export function srtToVtt(srt: string): string {
 
 // ---------- public queue operations ----------
 
-export async function enqueueDownload(videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean; automationRuleId?: number | null } = {}): Promise<boolean> {
+async function claimDownload(userId: number, videoId: string, source: "manual" | "scheduled" | "feed", automationRuleId?: number | null) {
+  await database.prepare(`
+    INSERT INTO download_owners (user_id, video_id, source, automation_rule_id, created_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(user_id, video_id) DO UPDATE SET
+      source=excluded.source,
+      automation_rule_id=excluded.automation_rule_id,
+      created_at=excluded.created_at
+  `).run(userId, videoId, source, source === "feed" ? automationRuleId ?? null : null);
+}
+
+export async function enqueueDownload(userId: number, videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean; automationRuleId?: number | null } = {}): Promise<boolean> {
   const row = await database.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
   if (row) {
+    await claimDownload(userId, videoId, source, context.automationRuleId);
     if (row.status === "downloading") return false;
     if (row.status === "done" && row.path && existsSync(row.path)) return false;
     // Auto policies never resurrect rows they've already handled (incl. the
@@ -343,25 +391,27 @@ export async function enqueueDownload(videoId: string, source: "manual" | "sched
     // scheduled policy may revive a tombstone when the user re-queued the video
     // after the file was removed (reviveDeleted).
     if (source !== "manual" && !(reviveDeleted && row.status === "deleted")) return false;
-    await database.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, automation_rule_id = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
-      .run(source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null, videoId);
+    await database.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, automation_rule_id = ?, requested_by_user_id = ?, error = NULL, attempts = 0, created_at = datetime('now') WHERE video_id = ?")
+      .run(source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null, userId, videoId);
     if (context.notify !== false) notifyDownloadChanged(videoId);
     return true;
   }
   const exists = await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId);
   if (!exists) return false;
-  await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title, automation_rule_id) VALUES (?, 'queued', ?, ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null);
+  await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title, automation_rule_id, requested_by_user_id) VALUES (?, 'queued', ?, ?, ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null, userId);
+  await claimDownload(userId, videoId, source, context.automationRuleId);
   if (context.notify !== false) notifyDownloadChanged(videoId);
   return true;
 }
 
-export async function enqueuePlaylistDownloads(videoIds: string[], playlistTitle: string) {
+export async function enqueuePlaylistDownloads(userId: number, videoIds: string[], playlistTitle: string) {
   let queued = 0;
   const existingDownload = database.prepare("SELECT status FROM downloads WHERE video_id = ?");
   for (const videoId of videoIds) {
     const existing = await existingDownload.get(videoId) as { status: string } | null;
-    if (existing?.status === "queued" || existing?.status === "downloading") continue;
-    if (await enqueueDownload(videoId, "manual", false, false, { playlistTitle, notify: false })) queued++;
+    const owned = await database.prepare("SELECT 1 FROM download_owners WHERE user_id=? AND video_id=?").get(userId, videoId);
+    if (owned && (existing?.status === "queued" || existing?.status === "downloading" || existing?.status === "done")) continue;
+    if (await enqueueDownload(userId, videoId, "manual", false, false, { playlistTitle, notify: false })) queued++;
   }
   publishAppEvent("downloads", { playlistTitle, queued });
   if (queued > 0) setTimeout(() => tick().catch((error) => log.error("downloads.tick_failed", { error: error instanceof Error ? error.message : String(error) })), 300);
@@ -373,8 +423,8 @@ export async function enqueuePlaylistDownloads(videoIds: string[], playlistTitle
  * currently running job back into the queue (its .part files survive, so it
  * resumes later) and start immediately instead of on the next tick.
  */
-export async function prioritizeDownload(videoId: string): Promise<boolean> {
-  const queued = await enqueueDownload(videoId, "manual", true);
+export async function prioritizeDownload(userId: number, videoId: string): Promise<boolean> {
+  const queued = await enqueueDownload(userId, videoId, "manual", true);
   const row = await database.prepare("SELECT status FROM downloads WHERE video_id = ?").get(videoId) as { status: string } | null;
   if (!row || (row.status !== "queued" && row.status !== "downloading")) return queued;
   await database.prepare("UPDATE downloads SET priority = 1 WHERE video_id = ?").run(videoId);
@@ -390,7 +440,14 @@ export async function prioritizeDownload(videoId: string): Promise<boolean> {
 
 // Removal keeps a 'deleted' tombstone row so the auto policies never bring the
 // video back — from the user's perspective it was rejected, not merely purged.
-export async function removeDownload(videoId: string) {
+export async function removeDownload(userId: number, videoId: string) {
+  await database.prepare("DELETE FROM download_owners WHERE user_id=? AND video_id=?").run(userId, videoId);
+  const remaining = await database.prepare("SELECT user_id FROM download_owners WHERE video_id=? ORDER BY created_at,user_id LIMIT 1").get(videoId) as { user_id: number } | null;
+  if (remaining) {
+    await database.prepare("UPDATE downloads SET requested_by_user_id=? WHERE video_id=? AND requested_by_user_id=?").run(remaining.user_id, videoId, userId);
+    notifyDownloadChanged(videoId);
+    return;
+  }
   if (active?.videoId === videoId) {
     active.cancelled = true;
     try { active.proc.kill(); } catch {}
@@ -402,23 +459,14 @@ export async function removeDownload(videoId: string) {
 
 /** Stop every unfinished job without touching completed downloads. Deleted
  * tombstones keep automatic rules from immediately recreating the queue. */
-export async function cancelAllPendingDownloads(): Promise<number> {
-  const rows = await database.prepare(
-    "SELECT video_id FROM downloads WHERE status IN ('queued', 'downloading', 'error')"
-  ).all() as { video_id: string }[];
+export async function cancelAllPendingDownloads(userId: number): Promise<number> {
+  const rows = await database.prepare(`
+    SELECT d.video_id FROM downloads d
+    JOIN download_owners owner ON owner.video_id=d.video_id
+    WHERE owner.user_id=? AND d.status IN ('queued', 'downloading', 'error')
+  `).all(userId) as { video_id: string }[];
   if (rows.length === 0) return 0;
-
-  await database.prepare(`
-    UPDATE downloads
-    SET status = 'deleted', path = NULL, size_bytes = NULL, error = NULL,
-        priority = 0, finished_at = datetime('now')
-    WHERE status IN ('queued', 'downloading', 'error')
-  `).run();
-  if (active && rows.some((row) => row.video_id === active?.videoId)) {
-    active.cancelled = true;
-    try { active.proc.kill(); } catch {}
-  }
-  for (const { video_id } of rows) await unlinkFiles(video_id);
+  for (const { video_id } of rows) await removeDownload(userId, video_id);
   publishAppEvent("downloads", { cancelled: rows.length });
   log.info("downloads.queue_cancelled", { count: rows.length });
   return rows.length;
@@ -429,57 +477,65 @@ export async function cancelAllPendingDownloads(): Promise<number> {
  * scheduled) is pointless unless some other profile still waits for it. Manual
  * requests and finished files are left alone — retention handles those.
  */
-export async function cancelAutoDownloadIfUnwanted(videoId: string) {
-  const row = await database.prepare("SELECT status, source FROM downloads WHERE video_id = ?").get(videoId) as { status: string; source: string } | null;
+export async function cancelAutoDownloadIfUnwanted(userId: number, videoId: string) {
+  const row = await database.prepare("SELECT d.status, owner.source FROM downloads d JOIN download_owners owner ON owner.video_id=d.video_id WHERE d.video_id=? AND owner.user_id=?").get(videoId, userId) as { status: string; source: string } | null;
   if (!row || row.source === "manual") return;
   if (row.status !== "queued" && row.status !== "downloading") return;
-  const stillWanted = await database.prepare(
-    "SELECT 1 FROM user_videos uv WHERE uv.video_id = ? AND uv.status = 'queued' AND COALESCE(uv.watched, 0) = 0"
-  ).get(videoId);
+  const stillWanted = await database.prepare("SELECT 1 FROM user_videos uv WHERE uv.user_id=? AND uv.video_id=? AND uv.status='queued' AND COALESCE(uv.watched,0)=0").get(userId, videoId);
   if (stillWanted) return;
-  await removeDownload(videoId);
+  await removeDownload(userId, videoId);
   log.info("downloads.cancelled_after_reject", { videoId, source: row.source });
 }
 
-export async function setDownloadPinned(videoId: string, pinned: boolean): Promise<boolean> {
-  const r = await database.prepare("UPDATE downloads SET pinned = ? WHERE video_id = ?").run(pinned ? 1 : 0, videoId);
+export async function setDownloadPinned(userId: number, videoId: string, pinned: boolean): Promise<boolean> {
+  const r = await database.prepare("UPDATE download_owners SET pinned = ? WHERE user_id=? AND video_id = ?").run(pinned ? 1 : 0, userId, videoId);
   if (r.changes > 0) notifyDownloadChanged(videoId);
   return r.changes > 0;
 }
 
-export async function listDownloads() {
+export async function listDownloads(userId: number, includeAllProfiles = false) {
   const rows = await database.prepare(`
-    SELECT d.video_id, d.status, d.source, d.quality, d.size_bytes, d.error, d.attempts, d.pinned,
-           d.created_at, d.finished_at, d.automation_rule_id, dr.name AS automation_rule_name,
+    SELECT d.video_id, d.status, owner.source, d.quality, d.size_bytes, d.error, d.attempts, owner.pinned,
+           owner.created_at, d.finished_at, owner.automation_rule_id, dr.name AS automation_rule_name,
+           owner.user_id, u.name AS profile_name, u.avatar_color AS profile_color,
            v.title, v.thumbnail, v.duration, v.is_short, v.published_at,
            c.channel_id, COALESCE(c.custom_title, c.title) AS channel_title
     FROM downloads d
+    JOIN download_owners owner ON owner.video_id=d.video_id
+    JOIN users u ON u.id=owner.user_id
     JOIN videos v ON v.video_id = d.video_id
     JOIN channels c ON c.channel_id = v.channel_id
-    LEFT JOIN download_rules dr ON dr.id = d.automation_rule_id
-    WHERE d.status != 'deleted'
+    LEFT JOIN download_rules dr ON dr.id = owner.automation_rule_id AND dr.user_id=owner.user_id
+    WHERE d.status != 'deleted' AND (?=1 OR owner.user_id=?)
     ORDER BY CASE d.status WHEN 'downloading' THEN 0 WHEN 'queued' THEN 1 WHEN 'error' THEN 2 ELSE 3 END,
              COALESCE(d.finished_at, d.created_at) DESC
-  `).all() as any[];
+  `).all(includeAllProfiles ? 1 : 0, userId) as any[];
   return rows;
 }
 
-export async function downloadStats() {
-  const row = await database.prepare("SELECT COUNT(*) AS files, COALESCE(SUM(size_bytes), 0) AS bytes FROM downloads WHERE status = 'done'").get() as { files: number; bytes: number };
-  const queued = (await database.prepare("SELECT COUNT(*) AS n FROM downloads WHERE status IN ('queued','downloading')").get() as { n: number }).n;
-  const s = dlSettings();
+export async function downloadStats(userId: number, includeAllProfiles = false) {
+  const row = await database.prepare(`
+    SELECT COUNT(*) AS files, COALESCE(SUM(size_bytes),0) AS bytes FROM (
+      SELECT DISTINCT d.video_id, d.size_bytes
+      FROM downloads d JOIN download_owners owner ON owner.video_id=d.video_id
+      WHERE d.status='done' AND (?=1 OR owner.user_id=?)
+    ) scoped_downloads
+  `).get(includeAllProfiles ? 1 : 0, userId) as { files: number; bytes: number };
+  const queued = (await database.prepare("SELECT COUNT(DISTINCT d.video_id) AS n FROM downloads d JOIN download_owners owner ON owner.video_id=d.video_id WHERE d.status IN ('queued','downloading') AND (?=1 OR owner.user_id=?)").get(includeAllProfiles ? 1 : 0, userId) as { n: number }).n;
+  const s = await dlSettings(userId);
   return { files: row.files, bytes: row.bytes, queued, cap_bytes: s.max_storage_gb * 1024 ** 3 };
 }
 
-export async function downloadStatusSummary() {
+export async function downloadStatusSummary(userId: number) {
   const row = await database.prepare(`
     SELECT
       SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) AS queued,
       SUM(CASE WHEN status = 'downloading' THEN 1 ELSE 0 END) AS downloading,
       SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) AS completed,
       SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors
-    FROM downloads
-  `).get() as { queued: number | string | null; downloading: number | string | null; completed: number | string | null; errors: number | string | null };
+    FROM downloads d JOIN download_owners owner ON owner.video_id=d.video_id
+    WHERE owner.user_id=?
+  `).get(userId) as { queued: number | string | null; downloading: number | string | null; completed: number | string | null; errors: number | string | null };
   return {
     queued: Number(row.queued ?? 0),
     downloading: Number(row.downloading ?? 0),
@@ -488,25 +544,19 @@ export async function downloadStatusSummary() {
   };
 }
 
-export async function getDownload(videoId: string) {
-  return await database.prepare("SELECT video_id, status, quality, path, size_bytes, error, pinned FROM downloads WHERE video_id = ? AND status != 'deleted'")
-    .get(videoId) as { video_id: string; status: string; quality: string | null; path: string | null; size_bytes: number | null; error: string | null; pinned: number } | null;
+export async function getDownload(userId: number, videoId: string) {
+  return await database.prepare("SELECT d.video_id, d.status, d.quality, d.path, d.size_bytes, d.error, owner.pinned FROM downloads d JOIN download_owners owner ON owner.video_id=d.video_id WHERE owner.user_id=? AND d.video_id=? AND d.status!='deleted'")
+    .get(userId, videoId) as { video_id: string; status: string; quality: string | null; path: string | null; size_bytes: number | null; error: string | null; pinned: number } | null;
 }
 
-/** Full reset for the plugin: kill the active job, drop every file and row. */
-export async function resetDownloadsState() {
-  if (active) {
-    active.cancelled = true;
-    try { active.proc.kill(); } catch {}
-    active = null;
-  }
-  const rows = await database.prepare("SELECT video_id FROM downloads").all() as { video_id: string }[];
-  for (const { video_id } of rows) await unlinkFiles(video_id);
-  await database.prepare("DELETE FROM downloads").run();
-  for (const key of Object.keys(DL_DEFAULTS)) {
-    await database.prepare("DELETE FROM settings WHERE key = ?").run(`plugin_downloads_${key}`);
-  }
-  publishAppEvent("downloads", { reset: true });
+/** Reset only the active profile's download ownership and preferences. Shared
+ * files survive while another profile still owns them. */
+export async function resetDownloadsState(userId: number) {
+  const rows = await database.prepare("SELECT video_id FROM download_owners WHERE user_id=?").all(userId) as { video_id: string }[];
+  for (const { video_id } of rows) await removeDownload(userId, video_id);
+  await database.prepare("DELETE FROM download_rules WHERE user_id=?").run(userId);
+  await database.prepare("DELETE FROM plugin_settings WHERE plugin_id='downloads' AND user_id=?").run(userId);
+  publishAppEvent("downloads", { reset: true, userId });
 }
 
 // ---------- auto-enqueue policies ----------
@@ -524,7 +574,7 @@ function parseDurationSeconds(duration: string | null): number | null {
   return values.reduce((total, value) => total * 60 + value, 0);
 }
 
-async function autoEnqueue(s: DlSettings) {
+async function autoEnqueue() {
   // A members-only badge can arrive after a feed job was queued. Remove stale
   // automatic jobs (including visible errors) when no following profile would
   // see that upload in its feed. Manual and scheduled intent is untouched.
@@ -545,32 +595,33 @@ async function autoEnqueue(s: DlSettings) {
     publishAppEvent("downloads", { pruned: prunedMembersOnly.changes });
   }
 
-  if (s.download_scheduled === 1) {
+  const users = await database.prepare("SELECT id FROM users").all() as { id: number }[];
+  for (const user of users) {
+    const enabled = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='profile_enabled'").get(user.id) as { value: string } | null;
+    const settings = await dlSettings(user.id);
+    if (enabled?.value === "0" || settings.download_scheduled !== 1) continue;
     // Anything any profile put on a watch-later bucket and hasn't watched yet.
     // An explicit schedule is intent enough to download even a Short. The
     // 30-day window keeps a fresh plugin enable from crawling years of
     // long-forgotten watch-later backlog.
     const rows = await database.prepare(`
-      SELECT DISTINCT v.video_id FROM user_videos uv
+      SELECT DISTINCT uv.user_id, v.video_id FROM user_videos uv
       JOIN videos v ON v.video_id = uv.video_id
-      WHERE uv.status = 'queued'
+      WHERE uv.user_id=? AND uv.status = 'queued'
         AND v.live_status = 'none'
         AND v.is_private = 0
         AND COALESCE(uv.watched, 0) = 0
         AND COALESCE(uv.queued_at, datetime('now')) >= datetime('now', '-30 days')
-        AND NOT EXISTS (
-          SELECT 1 FROM downloads d WHERE d.video_id = v.video_id
-            -- A removed download ('deleted' tombstone) is fair game again once
-            -- the user re-queued the video AFTER the removal.
-            AND NOT (d.status = 'deleted' AND uv.queued_at > COALESCE(d.finished_at, d.created_at))
-        )
+        AND NOT EXISTS (SELECT 1 FROM download_owners owner WHERE owner.user_id=uv.user_id AND owner.video_id=v.video_id)
       LIMIT 50
-    `).all() as { video_id: string }[];
-    for (const { video_id } of rows) await enqueueDownload(video_id, "scheduled", false, true);
+    `).all(user.id) as { user_id: number; video_id: string }[];
+    for (const { user_id, video_id } of rows) await enqueueDownload(user_id, video_id, "scheduled", false, true);
   }
 
   for (const candidate of await automaticDownloadCandidates(50)) {
-    await enqueueDownload(candidate.video_id, "feed", false, false, { automationRuleId: candidate.rule_id });
+    const enabled = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='profile_enabled'").get(candidate.user_id) as { value: string } | null;
+    if (enabled?.value === "0") continue;
+    await enqueueDownload(candidate.user_id, candidate.video_id, "feed", false, false, { automationRuleId: candidate.rule_id });
   }
 }
 
@@ -584,15 +635,43 @@ async function retryErrors() {
 
 // ---------- retention / cleanup ----------
 
-// A download survives auto-cleanup while it's pinned, still scheduled by an
-// unwatched profile, or liked (when keep_liked is on).
-function protectedSql(s: DlSettings) {
-  let sql = `(d.pinned = 1
-    OR EXISTS (SELECT 1 FROM user_videos uv WHERE uv.video_id = d.video_id AND uv.status = 'queued' AND COALESCE(uv.watched, 0) = 0)`;
-  if (s.keep_liked === 1) {
-    sql += ` OR EXISTS (SELECT 1 FROM user_videos uv2 WHERE uv2.video_id = d.video_id AND uv2.liked = 1)`;
+interface CleanupOwnerRow {
+  user_id: number;
+  video_id: string;
+  pinned: number;
+  finished_at: string | null;
+  status: string | null;
+  watched: number;
+  liked: number;
+  watched_at: string | null;
+}
+
+function sqliteTime(value: string | null): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function ownerProtected(row: CleanupOwnerRow, settings: DlSettings) {
+  return row.pinned === 1
+    || (row.status === "queued" && row.watched !== 1)
+    || (row.liked === 1 && settings.keep_liked === 1);
+}
+
+async function physicalDownloadProtected(videoId: string) {
+  const owners = await database.prepare(`
+    SELECT owner.user_id, owner.video_id, owner.pinned, d.finished_at,
+           uv.status, COALESCE(uv.watched, 0) AS watched,
+           COALESCE(uv.liked, 0) AS liked, NULL AS watched_at
+    FROM download_owners owner
+    JOIN downloads d ON d.video_id=owner.video_id
+    LEFT JOIN user_videos uv ON uv.user_id=owner.user_id AND uv.video_id=owner.video_id
+    WHERE owner.video_id=?
+  `).all(videoId) as CleanupOwnerRow[];
+  for (const owner of owners) {
+    if (ownerProtected(owner, await dlSettings(owner.user_id))) return true;
   }
-  return sql + ")";
+  return false;
 }
 
 // Retention keeps a 'deleted' tombstone so auto policies don't re-download;
@@ -604,40 +683,51 @@ async function tombstone(videoId: string) {
 }
 
 async function cleanup(s: DlSettings) {
-  const prot = protectedSql(s);
-
-  // 1. Age-based retention: N days after the download finished.
-  const aged = await database.prepare(`
-    SELECT d.video_id FROM downloads d
-    WHERE d.status = 'done' AND d.finished_at <= datetime('now', ?) AND NOT ${prot}
-  `).all(`-${s.retention_days} days`) as { video_id: string }[];
-  for (const { video_id } of aged) await tombstone(video_id);
-
-  // 2. Watched: a grace period after the last watch, then gone.
-  if (s.delete_watched === 1) {
-    const watched = await database.prepare(`
-      SELECT d.video_id FROM downloads d
-      WHERE d.status = 'done' AND NOT ${prot}
-        AND EXISTS (SELECT 1 FROM user_videos uv WHERE uv.video_id = d.video_id AND uv.watched = 1)
-        AND COALESCE(
-          (SELECT MAX(h.watched_at) FROM history h WHERE h.video_id = d.video_id),
-          d.finished_at
-        ) <= datetime('now', ?)
-    `).all(`-${s.delete_watched_hours} hours`) as { video_id: string }[];
-    for (const { video_id } of watched) await tombstone(video_id);
+  // 1–2. Retention and watched cleanup are profile policies. Remove only that
+  // profile's ownership; removeDownload tombstones the physical file only when
+  // no other profile still owns it.
+  const owners = await database.prepare(`
+    SELECT owner.user_id, owner.video_id, owner.pinned, d.finished_at,
+           uv.status, COALESCE(uv.watched, 0) AS watched,
+           COALESCE(uv.liked, 0) AS liked,
+           (SELECT MAX(h.watched_at) FROM history h WHERE h.user_id=owner.user_id AND h.video_id=owner.video_id) AS watched_at
+    FROM download_owners owner
+    JOIN downloads d ON d.video_id=owner.video_id
+    LEFT JOIN user_videos uv ON uv.user_id=owner.user_id AND uv.video_id=owner.video_id
+    WHERE d.status='done'
+  `).all() as CleanupOwnerRow[];
+  const now = Date.now();
+  const settingsByUser = new Map<number, DlSettings>();
+  for (const owner of owners) {
+    let profileSettings = settingsByUser.get(owner.user_id);
+    if (!profileSettings) {
+      profileSettings = await dlSettings(owner.user_id);
+      settingsByUser.set(owner.user_id, profileSettings);
+    }
+    if (ownerProtected(owner, profileSettings)) continue;
+    const finishedAt = sqliteTime(owner.finished_at);
+    const watchedAt = sqliteTime(owner.watched_at) ?? finishedAt;
+    const retentionExpired = finishedAt != null && finishedAt <= now - profileSettings.retention_days * 86_400_000;
+    const watchedExpired = profileSettings.delete_watched === 1 && owner.watched === 1
+      && watchedAt != null && watchedAt <= now - profileSettings.delete_watched_hours * 3_600_000;
+    if (!retentionExpired && !watchedExpired) continue;
+    await removeDownload(owner.user_id, owner.video_id);
+    log.info("downloads.profile_retention_removed", { videoId: owner.video_id, userId: owner.user_id, reason: watchedExpired ? "watched" : "age" });
   }
 
-  // 3. Storage cap: drop oldest unprotected files until under the limit.
+  // 3. The physical storage cap remains administrator-owned. A file is still
+  // protected when any owner pins/schedules it or protects their own like.
   const cap = s.max_storage_gb * 1024 ** 3;
   let total = (await database.prepare("SELECT COALESCE(SUM(size_bytes), 0) AS b FROM downloads WHERE status = 'done'").get() as { b: number }).b;
   if (total > cap) {
     const candidates = await database.prepare(`
       SELECT d.video_id, d.size_bytes FROM downloads d
-      WHERE d.status = 'done' AND NOT ${prot}
+      WHERE d.status = 'done'
       ORDER BY d.finished_at ASC
     `).all() as { video_id: string; size_bytes: number | null }[];
     for (const row of candidates) {
       if (total <= cap) break;
+      if (await physicalDownloadProtected(row.video_id)) continue;
       await tombstone(row.video_id);
       total -= row.size_bytes ?? 0;
       log.info("downloads.evicted_for_space", { videoId: row.video_id });
@@ -676,6 +766,12 @@ async function cleanup(s: DlSettings) {
     }
   }
   pruneAllEmptyDirs(DOWNLOADS_DIR);
+}
+
+/** Explicit entry point used by maintenance flows and migration regression
+ * tests; the scheduler invokes the same profile-aware cleanup internally. */
+export async function cleanupDownloadsNow() {
+  await cleanup(await dlSettings());
 }
 
 function walkFiles(dir: string, out: string[] = []): string[] {
@@ -759,7 +855,7 @@ async function writeNfoFile(videoId: string, base: string) {
   writeFileSync(join(DOWNLOADS_DIR, `${base}.nfo`), xml);
 }
 
-async function runDownload(videoId: string, s: DlSettings) {
+async function runDownload(userId: number, videoId: string, s: DlSettings) {
   const format = downloadFormat(String(s.quality));
   const base = await renderOutputTemplate(videoId, String(s.output_template));
   mkdirSync(dirname(join(DOWNLOADS_DIR, base)), { recursive: true });
@@ -787,7 +883,7 @@ async function runDownload(videoId: string, s: DlSettings) {
   notifyDownloadChanged(videoId);
   log.info("downloads.start", { videoId, quality: s.quality, base });
 
-  const cookieAttempts = downloadCookieAttempts(downloadCookiesConfigured());
+  const cookieAttempts = downloadCookieAttempts(downloadCookiesConfigured(userId));
   let job: ActiveDownload | null = null;
   let code = 1;
   let stderrTail: string[] = [];
@@ -795,7 +891,7 @@ async function runDownload(videoId: string, s: DlSettings) {
   for (let attemptIndex = 0; attemptIndex < cookieAttempts.length; attemptIndex++) {
     const useCookies = cookieAttempts[attemptIndex];
     const args = [...baseArgs];
-    if (useCookies) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
+    if (useCookies) args.push("--cookies", downloadCookiesFile(userId));
 
     let proc: ReturnType<typeof Bun.spawn>;
     try {
@@ -881,7 +977,7 @@ async function runDownload(videoId: string, s: DlSettings) {
       if (s.write_subs === 1 || s.write_auto_subs === 1) {
         // Subtitles are optional sidecars. A missing language or a YouTube 429
         // must never turn a successfully downloaded video into a failed job.
-        await fetchSubtitleSidecars(videoId, String(s.sub_langs ?? ""), {
+        await fetchSubtitleSidecars(userId, videoId, String(s.sub_langs ?? ""), {
           manual: s.write_subs === 1,
           automatic: s.write_auto_subs === 1,
         });
@@ -937,8 +1033,8 @@ interface HlsSession {
 const hlsSessions = new Map<string, HlsSession>();
 let hlsSweeper: ReturnType<typeof setInterval> | null = null;
 
-export async function liveStreamEnabled(): Promise<boolean> {
-  return await dlEnabled() && dlSettings().experimental_streaming === 1;
+export async function liveStreamEnabled(userId?: number): Promise<boolean> {
+  return await dlEnabled() && (await dlSettings(userId)).experimental_streaming === 1;
 }
 
 export function isSegmentName(name: string): boolean {
@@ -949,8 +1045,8 @@ function hlsSessionDir(videoId: string): string {
   return join(HLS_DIR, videoId.replace(/[^A-Za-z0-9_-]/g, "_"));
 }
 
-function streamFormat(): string {
-  const s = dlSettings();
+async function streamFormat(userId: number): Promise<string> {
+  const s = await dlSettings(userId);
   const height = s.quality === "best" ? null : Number(s.quality);
   // H.264 + AAC keeps the on-demand transcode a cheap H.264->H.264 re-encode.
   const cap = height ? `[height<=${height}]` : "";
@@ -958,16 +1054,16 @@ function streamFormat(): string {
 }
 
 /** One yt-dlp call: total duration, source fps and the direct stream URL(s). */
-async function probeSource(videoId: string): Promise<{ durationSec: number; fps: number; videoUrl: string; audioUrl: string | null } | null> {
+async function probeSource(userId: number, videoId: string): Promise<{ durationSec: number; fps: number; videoUrl: string; audioUrl: string | null } | null> {
   const args = [
     `https://www.youtube.com/watch?v=${videoId}`,
     "--no-playlist", "--no-warnings",
-    "-f", streamFormat(),
+    "-f", await streamFormat(userId),
     "--print", "%(duration)s",
     "--print", "%(fps)s",
     "--print", "urls",
   ];
-  if (downloadCookiesConfigured()) args.push("--cookies", DOWNLOAD_COOKIES_FILE);
+  if (downloadCookiesConfigured(userId)) args.push("--cookies", downloadCookiesFile(userId));
   try {
     const proc = Bun.spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
     const out = await new Response(proc.stdout).text();
@@ -1074,13 +1170,13 @@ function sweepHlsSessions() {
  * playlist. Null when yt-dlp/ffmpeg can't resolve the video. Also enqueues a
  * clean background copy download so the next visit plays the local file.
  */
-export async function getHlsPlaylist(videoId: string): Promise<string | null> {
+export async function getHlsPlaylist(userId: number, videoId: string): Promise<string | null> {
   const existing = hlsSessions.get(videoId);
   if (existing) { existing.lastAccess = Date.now(); return existing.playlist; }
   if (!(await ytdlpStatus())) return null;
   if (!await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId)) return null;
 
-  const probe = await probeSource(videoId);
+  const probe = await probeSource(userId, videoId);
   if (!probe) return null;
 
   // A second concurrent request may have created the session while we probed.
@@ -1111,7 +1207,7 @@ export async function getHlsPlaylist(videoId: string): Promise<string | null> {
   // YouTube's per-connection throttling, so the whole file lands in seconds —
   // the moment it's done the player switches to the local, natively seekable
   // file. Until then the on-demand transcode covers playback.
-  void prioritizeDownload(videoId).catch(() => {});
+  await prioritizeDownload(userId, videoId);
 
   log.info("downloads.stream_start", { videoId, durationSec: probe.durationSec, segCount, fps: probe.fps });
   return session.playlist;
@@ -1168,19 +1264,26 @@ async function tick() {
   try {
     if (!await dlEnabled()) return;
     if (!(await ytdlpStatus())) return;
-    const s = dlSettings();
-    await autoEnqueue(s);
+    const cleanupSettings = await dlSettings();
+    await autoEnqueue();
     await retryErrors();
     if (Date.now() - lastCleanupAt > CLEANUP_INTERVAL_MS) {
       lastCleanupAt = Date.now();
-      await cleanup(s);
+      await cleanup(cleanupSettings);
     }
     if (!active) {
       const next = await pickNext();
       // Fire and forget: `active` guards concurrency, ticks keep flowing.
       if (next) {
+        const owner = await database.prepare("SELECT requested_by_user_id AS user_id FROM downloads WHERE video_id=?").get(next) as { user_id: number | null } | null;
+        const fallbackOwner = owner?.user_id == null
+          ? await database.prepare("SELECT id AS user_id FROM users ORDER BY id LIMIT 1").get() as { user_id: number } | null
+          : null;
+        const userId = owner?.user_id ?? fallbackOwner?.user_id;
+        if (userId == null) return;
+        const jobSettings = await dlSettings(userId);
         const runRelease = beginMutation();
-        if (runRelease) runDownload(next, s)
+        if (runRelease) runDownload(userId, next, jobSettings)
           .catch((e) => log.error("downloads.run_failed", { videoId: next, error: e instanceof Error ? e.message : String(e) }))
           .finally(runRelease);
       }
@@ -1194,6 +1297,7 @@ async function tick() {
 export async function startDownloader() {
   // Drop any HLS streaming scratch left behind by a previous run.
   resetHlsScratch();
+  await migrateLegacyDownloadCookies();
   await migrateLegacyDownloadAutomation();
   // Crash recovery: an interrupted download restarts from the queue.
   const crashRecovered = (await database.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run()).changes;

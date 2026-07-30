@@ -9,7 +9,7 @@ import { img } from "../img";
 import { formatVideoDuration } from "../components/VideoCard";
 import Popconfirm from "../components/Popconfirm";
 import Tooltip from "../components/Tooltip";
-import { Alert, Badge, Button, EmptyState, PageHeader, SectionHeader, Tabs } from "../components/ui";
+import { Alert, Badge, Button, EmptyState, PageHeader, SectionHeader, Switch, Tabs } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { subscribeServerEvent } from "../serverEvents";
 import DownloadAutomation from "../components/DownloadAutomation";
@@ -54,6 +54,7 @@ export default function DownloadsPage() {
   const [loadError, setLoadError] = useState("");
   const [queueExpanded, setQueueExpanded] = useState(false);
   const [cancellingQueue, setCancellingQueue] = useState(false);
+  const [showAllProfiles, setShowAllProfiles] = useState(false);
   const requestedView = searchParams.get("view");
   const [view, setViewState] = useState<"library" | "automation" | "configuration">(requestedView === "automation" || requestedView === "configuration" ? requestedView : "library");
   const setView = (next: "library" | "automation" | "configuration") => {
@@ -63,10 +64,10 @@ export default function DownloadsPage() {
 
   const load = useCallback(() => {
     setLoadError("");
-    api.downloads()
+    api.downloads(showAllProfiles ? "all" : "mine")
       .then(setData)
       .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
-  }, []);
+  }, [showAllProfiles]);
 
   useEffect(() => {
     load();
@@ -78,17 +79,17 @@ export default function DownloadsPage() {
   };
 
   const remove = (item: DownloadItem) => {
-    setData((prev) => prev ? { ...prev, downloads: prev.downloads.filter((d) => d.video_id !== item.video_id) } : prev);
-    api.removeDownload(item.video_id).then(load).catch(() => {});
+    setData((prev) => prev ? { ...prev, downloads: prev.downloads.filter((d) => d.video_id !== item.video_id || d.user_id !== item.user_id) } : prev);
+    api.removeDownload(item.video_id, data?.scope === "all" ? item.user_id : undefined).then(load).catch(() => {});
   };
 
   const togglePin = (item: DownloadItem) => {
     const pinned = item.pinned !== 1;
     setData((prev) => prev ? {
       ...prev,
-      downloads: prev.downloads.map((d) => d.video_id === item.video_id ? { ...d, pinned: pinned ? 1 : 0 } : d),
+      downloads: prev.downloads.map((d) => d.video_id === item.video_id && d.user_id === item.user_id ? { ...d, pinned: pinned ? 1 : 0 } : d),
     } : prev);
-    api.pinDownload(item.video_id, pinned).catch(load);
+    api.pinDownload(item.video_id, pinned, data?.scope === "all" ? item.user_id : undefined).catch(load);
   };
 
   const cancelQueue = () => {
@@ -117,7 +118,7 @@ export default function DownloadsPage() {
   const renderRow = (item: DownloadItem) => {
     const progress = data.active?.video_id === item.video_id ? data.active.percent : null;
     return (
-      <div key={item.video_id} className={`dl-row dl-row--${item.status}`}>
+      <div key={`${item.user_id}:${item.video_id}`} className={`dl-row dl-row--${item.status}`}>
         <Link to={`/watch/${item.video_id}`} className="dl-thumb" title={item.title}>
           <img src={img(item.thumbnail)} alt="" loading="lazy" />
           {item.duration && <span className="duration-badge">{formatVideoDuration(item.duration)}</span>}
@@ -125,6 +126,7 @@ export default function DownloadsPage() {
         <div className="dl-info">
           <Link to={`/watch/${item.video_id}`} className="dl-title" title={item.title}>{item.title}</Link>
           <div className="dl-meta">
+            {data.scope === "all" && <span className="dl-profile"><i style={{ background: item.profile_color }} />{item.profile_name}</span>}
             <Link to={`/channel/${item.channel_id}`} className="dl-channel">{item.channel_title}</Link>
             <span className={`dl-status dl-status--${item.status}`}>
               {item.status === "downloading" && <LoaderCircle className="spin" size={11} />}
@@ -175,7 +177,13 @@ export default function DownloadsPage() {
 
   return (
     <>
-      <PageHeader title={t("downloadsTitle")} actions={<div className="dl-storage">
+      <PageHeader title={t("downloadsTitle")} actions={<div className="dl-header-actions">
+        {data.can_view_all && <Switch
+          label={language === "pl" ? "Wszystkie profile" : language === "de" ? "Alle Profile" : "All profiles"}
+          checked={showAllProfiles}
+          onCheckedChange={setShowAllProfiles}
+        />}
+        <div className="dl-storage">
           <HardDrive size={15} />
           <div className="dl-storage-info">
             <span>
@@ -186,7 +194,8 @@ export default function DownloadsPage() {
               <div className="dl-storage-fill" style={{ width: `${usedFrac * 100}%` }} />
             </div>
           </div>
-        </div>} />
+        </div>
+      </div>} />
 
       <Tabs
         variant="subtle"
@@ -216,7 +225,7 @@ export default function DownloadsPage() {
         <>
           {queueItems.length > 0 && (
             <section className="dl-section">
-              <SectionHeader title={t("downloadsSectionQueue")} actions={<div className="dl-queue-actions"><Badge>{queueItems.length}</Badge><Popconfirm message={t("downloadsCancelAllConfirm")} confirmLabel={t("downloadsCancelAll")} onConfirm={cancelQueue}><Button size="sm" variant="danger" disabled={cancellingQueue} leadingIcon={<Square />}>{cancellingQueue ? t("downloadsCancellingAll") : t("downloadsCancelAll")}</Button></Popconfirm></div>} />
+              <SectionHeader title={t("downloadsSectionQueue")} actions={<div className="dl-queue-actions"><Badge>{queueItems.length}</Badge>{data.scope === "mine" && <Popconfirm message={t("downloadsCancelAllConfirm")} confirmLabel={t("downloadsCancelAll")} onConfirm={cancelQueue}><Button size="sm" variant="danger" disabled={cancellingQueue} leadingIcon={<Square />}>{cancellingQueue ? t("downloadsCancellingAll") : t("downloadsCancelAll")}</Button></Popconfirm>}</div>} />
               <div className="dl-list">
                 {visibleQueue.map(renderRow)}
               </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, FolderUp, Info, Trash2 } from "lucide-react";
 import { api, type DownloadConfigResponse, type PluginSettingDef, type PluginSettingValue } from "../api";
 import { useI18n } from "../i18n";
-import { Alert, Button, FileDropzone, Input, MultiSelectMenu, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Textarea } from "./ui";
+import { Alert, Badge, Button, FileDropzone, Input, MultiSelectMenu, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Textarea } from "./ui";
 import "./DownloadConfiguration.css";
 
 const SECTION_KEYS = {
@@ -49,7 +49,16 @@ export default function DownloadConfiguration() {
     return <div className="dl-config-slider"><Slider aria-label={definition.label} min={definition.min ?? 0} max={definition.max ?? 100} step={definition.step} value={Number(value)} onChange={(next) => void update(definition.key, next)} /><Input aria-label={`${definition.label} · ${tx("numeric value", "wartość liczbowa", "Zahlenwert")}`} type="number" min={definition.min} max={definition.max} step={definition.step} value={Number(value)} onChange={(event) => void update(definition.key, Number(event.target.value))} /></div>;
   };
 
-  const section = (title: string, description: string, keys: readonly string[]) => <SettingsSection title={title} description={description}>{keys.map((key) => { const definition = defs.get(key); return definition ? <SettingRow key={key} label={definition.label} description={definition.description}>{renderControl(definition)}</SettingRow> : null; })}</SettingsSection>;
+  const adminLabel = <Badge size="sm" variant="warning">{tx("Administrator", "Administrator", "Administrator")}</Badge>;
+  const section = (title: string, description: string, keys: readonly string[]) => <SettingsSection title={title} description={description}>{keys.map((key) => {
+    const definition = defs.get(key);
+    if (!definition) return null;
+    const adminOnly = config?.admin_setting_keys.includes(key) ?? false;
+    if (adminOnly && !config?.can_manage_admin_settings) return null;
+    return <SettingRow key={key} label={<span className="dl-config-setting-label">{definition.label}{adminOnly && adminLabel}</span>} description={definition.description}>
+      <fieldset className="dl-config-control-lock" disabled={!config?.can_manage || (adminOnly && !config.can_manage_admin_settings)}>{renderControl(definition)}</fieldset>
+    </SettingRow>;
+  })}</SettingsSection>;
 
   const uploadCookies = async (file: File) => {
     setUploading(true); setError("");
@@ -62,9 +71,9 @@ export default function DownloadConfiguration() {
   return <div className="dl-config">
     {error && <Alert variant="danger">{error}</Alert>}
     <SettingsSection title={tx("Video downloads", "Pobieranie filmów", "Video-Downloads")} description={tx("Keep video copies on the server so their availability does not depend on external providers.", "Przechowuj kopie filmów na serwerze, aby ich dostępność nie zależała od zewnętrznych dostawców.", "Speichere Videokopien auf dem Server, damit ihre Verfügbarkeit nicht von externen Anbietern abhängt.")}>
-      <SettingRow label={tx("Allow downloads", "Zezwalaj na pobieranie", "Downloads erlauben")} description={tx("Applies to manual and automatic downloads. Turning it off blocks new jobs but keeps downloaded files and automation rules.", "Dotyczy pobierania ręcznego i automatycznego. Wyłączenie blokuje nowe zadania, ale zachowuje pobrane pliki i reguły automatyzacji.", "Gilt für manuelle und automatische Downloads. Das Ausschalten blockiert neue Aufträge, behält aber Dateien und Regeln.")}><Switch ariaLabel={tx("Allow downloads", "Zezwalaj na pobieranie", "Downloads erlauben")} disabled={!config.can_manage} checked={config.enabled} onCheckedChange={(next) => void setEnabled(next)} /></SettingRow>
+      <SettingRow label={tx("Allow downloads for this profile", "Zezwalaj na pobieranie dla tego profilu", "Downloads für dieses Profil erlauben")} description={tx("Controls manual and automatic downloads only for the active profile.", "Steruje ręcznym i automatycznym pobieraniem tylko dla aktywnego profilu.", "Steuert manuelle und automatische Downloads nur für das aktive Profil.")}><Switch ariaLabel={tx("Allow downloads for this profile", "Zezwalaj na pobieranie dla tego profilu", "Downloads für dieses Profil erlauben")} disabled={!config.can_manage || (!config.plugin_available && !config.can_manage_admin_settings)} checked={config.enabled} onCheckedChange={(next) => void setEnabled(next)} /></SettingRow>
     </SettingsSection>
-    {!config.can_manage && <Alert variant="info">{tx("Only an administrator can change the shared download configuration.", "Tylko administrator może zmieniać wspólną konfigurację pobierania.", "Nur Administratoren können die gemeinsame Download-Konfiguration ändern.")}</Alert>}
+    {!config.can_manage_admin_settings && <Alert className="dl-config-admin-info" variant="info">{tx("Settings marked Administrator affect shared files and can only be changed by an administrator.", "Opcje oznaczone jako Administrator wpływają na wspólne pliki i może je zmieniać tylko administrator.", "Als Administrator markierte Einstellungen betreffen gemeinsame Dateien und können nur von Administratoren geändert werden.")}</Alert>}
     <fieldset className="dl-config-managed" disabled={!config.can_manage}>
     {section(tx("Playback and quality", "Odtwarzanie i jakość", "Wiedergabe und Qualität"), tx("Defaults used by manual and automatic downloads.", "Ustawienia wspólne dla pobrań ręcznych i automatycznych.", "Standards für manuelle und automatische Downloads."), SECTION_KEYS.behavior)}
     {section(tx("Files and metadata", "Pliki i metadane", "Dateien und Metadaten"), tx("Choose which additional data and files are saved alongside each video.", "Wybierz, jakie dodatkowe dane i pliki mają być zapisywane obok filmu.", "Wähle, welche zusätzlichen Daten und Dateien neben jedem Video gespeichert werden."), SECTION_KEYS.files)}
@@ -74,7 +83,7 @@ export default function DownloadConfiguration() {
       <strong className={`dl-cookie-status${cookies ? " is-configured" : ""}`}>{cookies ? tx("Configured", "Skonfigurowane", "Konfiguriert") : tx("Not configured", "Nieskonfigurowane", "Nicht konfiguriert")}</strong>
       <FileDropzone
         accept=".txt,text/plain"
-        disabled={uploading}
+        disabled={uploading || !config.can_manage}
         icon={<FileText />}
         title={tx("cookies.txt file", "Plik cookies.txt", "cookies.txt-Datei")}
         description={tx("Drop a Netscape-format file here or choose it from disk.", "Upuść tutaj plik w formacie Netscape albo wybierz go z dysku.", "Lege hier eine Datei im Netscape-Format ab oder wähle sie vom Datenträger.")}

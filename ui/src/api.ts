@@ -399,10 +399,15 @@ export interface DownloadItem {
   published_at: string | null;
   channel_id: string;
   channel_title: string;
+  user_id: number;
+  profile_name: string;
+  profile_color: string;
 }
 
 export interface DownloadsResponse {
   enabled: boolean;
+  can_view_all: boolean;
+  scope: "mine" | "all";
   ytdlp_version: string | null;
   stats: { files: number; bytes: number; queued: number; cap_bytes: number };
   active: { video_id: string; percent: number; total_bytes: number | null; speed: string | null } | null;
@@ -464,7 +469,10 @@ export interface DownloadAutomationOptions {
 
 export interface DownloadConfigResponse extends PluginSettingsResponse {
   can_manage: boolean;
+  can_manage_admin_settings: boolean;
+  admin_setting_keys: string[];
   enabled: boolean;
+  plugin_available: boolean;
   cookies_configured: boolean;
 }
 
@@ -633,6 +641,7 @@ export interface AuthStatus {
   method: AuthMethod;
   authenticated: boolean;
   can_switch: boolean;
+  hide_other_profiles: boolean;
   is_admin?: boolean;
   scope?: "account" | "profile" | null;
   oidc_mode?: "mapped" | "gateway";
@@ -643,6 +652,7 @@ export interface AuthStatus {
 
 export interface AuthConfig {
   method: AuthMethod;
+  hide_other_profiles: boolean;
   shared: { username: string; password_set: boolean; passkeys: { id: number; label: string | null; created_at: string }[] };
   oidc: {
     issuer: string;
@@ -662,10 +672,18 @@ export interface AuthConfig {
 }
 
 export interface AuthConfigUpdate {
+  hide_other_profiles?: boolean;
   shared?: { username?: string; password?: string };
   oidc?: Partial<AuthConfig["oidc"]> & { client_secret?: string };
   proxy?: { header?: string; logout_url?: string };
-  profiles?: { id: number; username?: string; password?: string; oidc_subject?: string; proxy_match?: string }[];
+  profiles?: { id: number; oidc_subject?: string; proxy_match?: string }[];
+}
+
+export interface TemporaryProfileCredential {
+  id: number;
+  name: string;
+  username: string;
+  password: string;
 }
 
 export interface AppLogs {
@@ -729,11 +747,11 @@ export class ApiError extends Error {
   }
 }
 
-async function http<T>(path: string, init?: RequestInit): Promise<T> {
+async function http<T>(path: string, init?: RequestInit, options?: { suppressAuthenticationNavigation?: boolean }): Promise<T> {
   const res = await apiFetch(`/api${path}`, {
     headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
     ...init,
-  });
+  }, options);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new ApiError((body as any).error ?? `HTTP ${res.status}`, res.status, (body as any).code, (body as any).detail);
@@ -1012,7 +1030,7 @@ export const api = {
     return http<{ configured: boolean }>("/downloads/cookies", { method: "POST", body: fd });
   },
   removeDownloadCookies: () => http<{ configured: boolean }>("/downloads/cookies", { method: "DELETE" }),
-  downloads: () => http<DownloadsResponse>("/downloads"),
+  downloads: (scope: "mine" | "all" = "mine") => http<DownloadsResponse>(`/downloads${scope === "all" ? "?scope=all" : ""}`),
   cancelDownloadQueue: () => http<{ ok: true; cancelled: number }>("/downloads/queue", { method: "DELETE" }),
   downloadSummary: () => http<DownloadSummary>("/downloads/summary"),
   downloadConfig: () => http<DownloadConfigResponse>("/downloads/config"),
@@ -1028,10 +1046,10 @@ export const api = {
     http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download`, { method: "POST", body: JSON.stringify({ priority }) }),
   videoDownload: (id: string) =>
     http<{ download: VideoDownload | null; progress: { percent: number; total_bytes: number | null; speed: string | null } | null }>(`/videos/${id}/download`),
-  removeDownload: (id: string) =>
-    http<{ ok: true }>(`/videos/${id}/download`, { method: "DELETE" }),
-  pinDownload: (id: string, pinned: boolean) =>
-    http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download/pin`, { method: "PUT", body: JSON.stringify({ pinned }) }),
+  removeDownload: (id: string, profileId?: number) =>
+    http<{ ok: true }>(`/videos/${id}/download${profileId ? `?profile_id=${profileId}` : ""}`, { method: "DELETE" }),
+  pinDownload: (id: string, pinned: boolean, profileId?: number) =>
+    http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download/pin${profileId ? `?profile_id=${profileId}` : ""}`, { method: "PUT", body: JSON.stringify({ pinned }) }),
   streamUrl: (id: string) => `/api/videos/${id}/stream`,
   hlsUrl: (id: string) => `/api/videos/${id}/hls/index.m3u8`,
   videoSubtitles: (id: string) => http<{ subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`),
@@ -1160,6 +1178,7 @@ export const api = {
   refresh: () => http<{ channels: number; added: number; errors: string[] }>("/refresh", { method: "POST" }),
 
   settings: () => http<{ settings: AppSettings }>("/settings"),
+  bootstrapSettings: () => http<{ settings: AppSettings }>("/settings", undefined, { suppressAuthenticationNavigation: true }),
   updateSettings: (s: Partial<AppSettings>) =>
     http("/settings", { method: "PUT", body: JSON.stringify(s) }),
   childLock: () => http<{ child_lock: ChildLockStatus }>("/child-lock"),
@@ -1238,7 +1257,7 @@ export const api = {
 
   profiles: () => http<{ profiles: Profile[]; active_id: number; oidc_mapping: { claim: string; required: boolean } | null; can_create: boolean }>("/profiles"),
   createProfile: (p: { name: string; avatar_color?: string; pin?: string; oidc_identity?: string; is_child?: boolean }) =>
-    http<{ profile: Profile }>("/profiles", { method: "POST", body: JSON.stringify(p) }),
+    http<{ profile: Profile; temporary_credentials?: Omit<TemporaryProfileCredential, "id" | "name"> | null }>("/profiles", { method: "POST", body: JSON.stringify(p) }),
   updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null; oidc_identity?: string; is_child?: boolean; child_config?: Partial<ChildConfig> }) =>
     http<{ profile: Profile }>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify(p) }),
   deleteProfile: (id: number, pin?: string) =>
@@ -1282,6 +1301,8 @@ export const api = {
   logout: () => http<{ ok: true; logout_url: string }>("/auth/logout", { method: "POST", body: "{}" }),
   authConfig: () => http<AuthConfig>("/auth/config"),
   saveAuthConfig: (body: AuthConfigUpdate) => http<{ ok: true }>("/auth/config", { method: "PUT", body: JSON.stringify(body) }),
+  generateProfileCredential: (id: number) => http<{ credential: TemporaryProfileCredential }>(`/auth/per-profile/credentials/${id}`, { method: "POST", body: "{}" }),
+  changeProfilePassword: (currentPassword: string, newPassword: string) => http<{ ok: true }>("/auth/profile/password", { method: "PUT", body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }),
   testOidc: () => http<{ ok: boolean; authorization_endpoint?: string; token_endpoint?: string; error?: string }>("/auth/test-oidc", { method: "POST", body: "{}" }),
   setAuthMethod: (method: AuthMethod) => http<{ ok: true }>("/auth/method", { method: "POST", body: JSON.stringify({ method }) }),
   assignAllChannels: (user_id: number) =>

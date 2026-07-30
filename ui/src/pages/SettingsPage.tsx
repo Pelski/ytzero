@@ -3,7 +3,7 @@ import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
@@ -22,7 +22,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Divider, EmptyState, Field, IconButton, Inline, Input, InputGroup, PageHeader, Popover, RevealList, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Dialog, Divider, EmptyState, Field, FormActions, IconButton, Inline, Input, InputGroup, PageHeader, Popover, RevealList, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text } from "../components/ui";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
 import { formatAppDate } from "../dateTime";
 import { mergeRemoteChangelog } from "../changelog";
@@ -879,7 +879,72 @@ function ChildProfileSettings({ profile, onSaved, showToast }: {
   );
 }
 
-function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
+function ProfilePasswordSettings({ showToast }: { showToast: (message: string) => void }) {
+  const { t } = useI18n();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState<{ variant: "success" | "danger"; message: string } | null>(null);
+  const lengthValid = newPassword.length >= 8 && newPassword.length <= 200;
+  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
+  const valid = currentPassword.length > 0 && lengthValid && passwordsMatch;
+  const clearResult = () => setResult(null);
+  const save = async () => {
+    if (!valid || saving) return;
+    setSaving(true);
+    setResult(null);
+    try {
+      await api.changeProfilePassword(currentPassword, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setResult({ variant: "success", message: t("authPasswordChanged") });
+      showToast(t("authPasswordChanged"));
+    } catch (error: unknown) {
+      const rawMessage = error instanceof Error ? error.message : t("loginError");
+      const message = rawMessage === "current password is incorrect" ? t("authCurrentPasswordIncorrect") : rawMessage;
+      setResult({ variant: "danger", message });
+      showToast(message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <div className="profile-password-fields">
+        <Field label={t("authCurrentPassword")} htmlFor="profile-current-password">
+          <Input id="profile-current-password" type="password" autoComplete="current-password" placeholder={t("authCurrentPassword")} value={currentPassword} disabled={saving} onChange={(event) => { setCurrentPassword(event.target.value); clearResult(); }} />
+        </Field>
+        <Field label={t("authNewPassword")} htmlFor="profile-new-password">
+          <Input id="profile-new-password" type="password" autoComplete="new-password" placeholder={t("authNewPassword")} maxLength={200} value={newPassword} disabled={saving} onChange={(event) => { setNewPassword(event.target.value); clearResult(); }} />
+        </Field>
+        <Field label={t("authConfirmNewPassword")} htmlFor="profile-confirm-password">
+          <Input id="profile-confirm-password" type="password" autoComplete="new-password" placeholder={t("authConfirmNewPassword")} maxLength={200} value={confirmPassword} disabled={saving} onChange={(event) => { setConfirmPassword(event.target.value); clearResult(); }} onKeyDown={(event) => event.key === "Enter" && void save()} />
+        </Field>
+      </div>
+      {(newPassword || confirmPassword) && <Alert
+        className="profile-password-feedback"
+        variant={!lengthValid || (confirmPassword.length > 0 && !passwordsMatch) ? "warning" : passwordsMatch ? "success" : "info"}
+        icon={lengthValid && passwordsMatch ? <CheckCircle2 /> : <Info />}
+      >
+        {!lengthValid
+          ? t("authPasswordLengthRequirement")
+          : !confirmPassword
+            ? t("authPasswordConfirmPrompt")
+            : !passwordsMatch
+              ? t("authPasswordMismatch")
+              : t("authPasswordRequirementsMet")}
+      </Alert>}
+      {result && <Alert variant={result.variant} icon={result.variant === "success" ? <CheckCircle2 /> : <AlertTriangle />}>{result.message}</Alert>}
+      <FormActions>
+        <Button variant="primary" leadingIcon={saving ? <LoaderCircle className="spin" size={15} /> : <KeyRound size={15} />} disabled={!valid || saving} onClick={() => void save()}>{saving ? t("authPasswordChanging") : t("save")}</Button>
+      </FormActions>
+    </>
+  );
+}
+
+function ProfilesSettings({ showToast, isAdmin, activeAuthMethod }: { showToast: (m: string) => void; isAdmin: boolean; activeAuthMethod: AuthMethod }) {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -891,6 +956,9 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
   const [newIsChild, setNewIsChild] = useState(false);
   const [oidcMapping, setOidcMapping] = useState<{ claim: string; required: boolean } | null>(null);
   const [canCreate, setCanCreate] = useState(true);
+  const [temporaryCredentials, setTemporaryCredentials] = useState<{ name: string; username: string; password: string } | null>(null);
+  const [hideOtherProfiles, setHideOtherProfiles] = useState(false);
+  const [savingProfileVisibility, setSavingProfileVisibility] = useState(false);
 
   // Reload the list and tell the topbar picker to refresh too.
   const refresh = useCallback(() => {
@@ -902,6 +970,29 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
     emit("profiles-changed");
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
+
+  const supportsPrivatePicker = activeAuthMethod !== "none" && activeAuthMethod !== "shared";
+  useEffect(() => {
+    if (!isAdmin || !supportsPrivatePicker) return;
+    api.authConfig().then((config) => setHideOtherProfiles(config.hide_other_profiles)).catch(() => {});
+  }, [isAdmin, supportsPrivatePicker]);
+
+  const saveProfileVisibility = async (next: boolean) => {
+    if (savingProfileVisibility) return;
+    const previous = hideOtherProfiles;
+    setHideOtherProfiles(next);
+    setSavingProfileVisibility(true);
+    try {
+      await api.saveAuthConfig({ hide_other_profiles: next });
+      emit("profiles-changed");
+      showToast(t("authProfileVisibilitySaved"));
+    } catch (error: unknown) {
+      setHideOtherProfiles(previous);
+      showToast(error instanceof Error ? error.message : t("loginError"));
+    } finally {
+      setSavingProfileVisibility(false);
+    }
+  };
 
   // Opened from the topbar "Add profile" action.
   useEffect(() => {
@@ -915,12 +1006,13 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
   const create = async () => {
     if (!newName.trim() || (oidcMapping?.required && !newOidcIdentity.trim())) return;
     try {
-      await api.createProfile({
+      const result = await api.createProfile({
         name: newName.trim(),
         avatar_color: newColor,
         oidc_identity: oidcMapping ? newOidcIdentity.trim() : undefined,
         is_child: newIsChild,
       });
+      if (result.temporary_credentials) setTemporaryCredentials({ name: newName.trim(), ...result.temporary_credentials });
       setNewName("");
       setNewColor(PROFILE_COLORS[1]);
       setNewOidcIdentity("");
@@ -932,16 +1024,22 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
     }
   };
 
-  // The primary profile may prepare and restrict OIDC profiles before their
-  // first login, including removing a profile that was created by mistake.
-  const iAmPrimary = profiles.find((p) => p.active)?.is_primary ?? false;
-
   return (
     <SettingsSection>
       <Text tone="secondary" className="settings-block-hint">{t("profilesHint")}</Text>
+      {isAdmin && supportsPrivatePicker && (
+        <SettingRow label={t("authHideOtherProfiles")} description={t("authHideOtherProfilesHint")}>
+          <Switch
+            ariaLabel={t("authHideOtherProfiles")}
+            checked={hideOtherProfiles}
+            disabled={savingProfileVisibility}
+            onCheckedChange={(next) => void saveProfileVisibility(next)}
+          />
+        </SettingRow>
+      )}
       <div className="profiles-list">
         {profiles.map((p) => {
-          const canEdit = p.active || iAmPrimary;
+          const canEdit = p.active || isAdmin;
           return (
           <div key={p.id} className={`profile-card${p.active ? " active" : ""}`}>
             <ProfileAvatar profile={p} size={44} />
@@ -972,12 +1070,12 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
                   profile={p}
                   showToast={showToast}
                   allowPin={p.active}
-                  allowPinReset={iAmPrimary && !p.active}
-                  allowChildToggle={iAmPrimary && !p.is_primary}
-                  allowOidcMapping={iAmPrimary && Boolean(oidcMapping)}
+                  allowPinReset={isAdmin && !p.active}
+                  allowChildToggle={isAdmin && !p.is_primary}
+                  allowOidcMapping={isAdmin && Boolean(oidcMapping)}
                   oidcClaim={oidcMapping?.claim}
-                  canDelete={profiles.length > 1 && !p.is_primary && (p.active || iAmPrimary)}
-                  adminDelete={iAmPrimary && !p.active}
+                  canDelete={profiles.length > 1 && !p.is_primary && (p.active || isAdmin)}
+                  adminDelete={isAdmin && !p.active}
                   onSaved={refresh}
                   onDeleted={() => { setExpanded(null); refresh(); }}
                 />
@@ -987,6 +1085,17 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
           );
         })}
       </div>
+
+      <Dialog
+        open={Boolean(temporaryCredentials)}
+        onOpenChange={(open) => { if (!open) setTemporaryCredentials(null); }}
+        title={t("authGeneratedCredentialsTitle")}
+        closeLabel={t("close")}
+        footer={<Button variant="primary" onClick={() => setTemporaryCredentials(null)}>{t("authCredentialsSaved")}</Button>}
+      >
+        <Text tone="secondary">{t("authGeneratedCredentialsHint")}</Text>
+        {temporaryCredentials && <div className="auth-generated-credentials"><div className="auth-generated-credential"><strong>{temporaryCredentials.name}</strong><code>{temporaryCredentials.username}</code><code>{temporaryCredentials.password}</code></div></div>}
+      </Dialog>
 
       {creating ? (
         <div className="profile-card">
@@ -1007,7 +1116,7 @@ function ProfilesSettings({ showToast }: { showToast: (m: string) => void }) {
                 />
               </Field>
             )}
-            {iAmPrimary && (
+            {isAdmin && (
               <Switch
                 label={t("childProfile")}
                 description={t("childProfileHint")}
@@ -1072,6 +1181,25 @@ function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
   );
 }
 
+function SettingsLoadingState() {
+  const { t } = useI18n();
+  return <div className="settings-loading" aria-busy="true" aria-label={t("loading")}>
+    <div className="settings-loading-tabs" aria-hidden="true">
+      {Array.from({ length: 6 }, (_, index) => <div className="skeleton settings-loading-tab" key={index} />)}
+    </div>
+    {Array.from({ length: 2 }, (_, section) => <SettingsSection className="settings-loading-section" key={section}>
+      <div className="skeleton settings-loading-heading" aria-hidden="true" />
+      {Array.from({ length: section === 0 ? 4 : 3 }, (_, row) => <div className="settings-loading-row" aria-hidden="true" key={row}>
+        <div className="settings-loading-copy">
+          <div className="skeleton skeleton-line" />
+          <div className="skeleton skeleton-line short" />
+        </div>
+        <div className="skeleton settings-loading-control" />
+      </div>)}
+    </SettingsSection>)}
+  </div>;
+}
+
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const { t, language, setLanguage, locale, timeZone, setTimeZone } = useI18n();
   useDocumentTitle(t("settingsTitle"));
@@ -1107,6 +1235,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const pluginSettingSaveVersions = useRef(new Map<string, number>());
   const pluginSettingSaveTimers = useRef(new Map<string, number>());
   const [loading, setLoading] = useState(true);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [settingsLoadError, setSettingsLoadError] = useState("");
   const [addingChannel, setAddingChannel] = useState(false);
   const [updatingChannelId, setUpdatingChannelId] = useState<string | null>(null);
   const [updatingChannelStatusId, setUpdatingChannelStatusId] = useState<string | null>(null);
@@ -1149,7 +1279,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [appIconColor, setAppIconColor] = useState("#0a5fff");
   // App-wide settings (app name, icon color, timezone, child lock) are owned by the
   // primary profile; other profiles see them read-only.
-  const [isPrimary, setIsPrimary] = useState(true);
+  const [isPrimary, setIsPrimary] = useState(false);
+  const [activeAuthMethod, setActiveAuthMethod] = useState<AuthMethod>("none");
   const [isChildProfile, setIsChildProfile] = useState<boolean | null>(null);
   const [showShorts, setShowShorts] = useState(false);
   const [showTopChannels, setShowTopChannels] = useState(true);
@@ -1407,64 +1538,80 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     }
   };
 
+  const loadSettingsState = useCallback(async () => {
+    setSettingsReady(false);
+    setSettingsLoadError("");
+    try {
+      const [auth, child, r, cl, permissions] = await Promise.all([
+        api.authStatus(),
+        api.childStatus(),
+        api.settings(),
+        api.childLock(),
+        api.profilePermissions(),
+      ]);
+      // "Admin" = primary profile OR an OIDC session in the configured admin group.
+      // is_admin drives the admin-only tabs/sections (kept in the isPrimary var).
+      setIsPrimary(!!auth.is_admin);
+      setActiveAuthMethod(auth.method);
+      setIsChildProfile(child.is_child);
+      const name = r.settings.app_name || "YT Zero";
+      setAppName(name);
+      setAppNameInput(name);
+      setAppIconColor(r.settings.app_icon_color || "#0a5fff");
+      setUpdateCheckInterval(r.settings.update_check_interval || "off");
+      setShowShorts(r.settings.show_shorts === "1");
+      setShowTopChannels(r.settings.show_top_channels !== "0");
+      setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
+      setWatchShowRelated(r.settings.watch_show_related !== "0");
+      setWatchShowComments(r.settings.watch_show_comments === "1");
+      setFeedMaxAgeValue(r.settings.feed_max_age_value || "6");
+      setFeedMaxAgeUnit(isFeedMaxAgeUnit(r.settings.feed_max_age_unit) ? r.settings.feed_max_age_unit : "off");
+      setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
+      setFeedAutoplayDirection(r.settings.feed_autoplay_direction === "newest" ? "newest" : "oldest");
+      setMembersOnlyVisibility(
+        r.settings.hide_members_only_from_feed === "1"
+          ? r.settings.hide_members_only_on_channel === "1" ? "hidden" : "channel"
+          : "everywhere"
+      );
+      setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
+      setVideoCardSize(parseVideoCardSize(r.settings.grid_size));
+      const raw = r.settings.sidebar_nav;
+      const navCfg = parseNavConfig(raw);
+      if (!raw && r.settings.shorts_tab === "1") {
+        const entry = navCfg.find((e) => e.key === "/shorts");
+        if (entry) entry.hidden = false;
+      }
+      setNavConfig(normalizeNav(navCfg));
+      setPlayerHl(r.settings.player_hl);
+      setPlayerCc(r.settings.player_cc === "1");
+      const rawSubSize = r.settings.player_sub_size;
+      const legacySubSize = rawSubSize === "small" ? 14 : rawSubSize === "large" ? 26 : rawSubSize === "medium" ? 19 : Number(rawSubSize);
+      setSubSize(Number.isFinite(legacySubSize) ? Math.min(48, Math.max(12, legacySubSize)) : 19);
+      setSubColor(r.settings.player_sub_color || "#ffffff");
+      setSubBg(Number.isFinite(Number(r.settings.player_sub_bg)) ? Number(r.settings.player_sub_bg) : 75);
+      setPlayerQuality(r.settings.player_quality);
+      setPlayerSpeed(r.settings.player_speed ?? "1");
+      setKeyboardSeekSeconds(r.settings.keyboard_seek_seconds ?? "5");
+      setScreenshotFormat(parsePlayerScreenshotFormat(r.settings.player_screenshot_format));
+      setScreenshotQuality(r.settings.player_screenshot_quality ?? "0.92");
+      setScreenshotFilename(r.settings.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
+      setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
+      setSbEnabled(r.settings.sponsorblock_enabled === "1");
+      try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
+      setChildLock(cl.child_lock);
+      setProfilePermissions(permissions.permissions);
+      setSettingsReady(true);
+    } catch (error) {
+      console.error(error);
+      setSettingsLoadError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
   useEffect(() => {
-    // "Admin" = primary profile OR an OIDC session in the configured admin group.
-    // is_admin drives the admin-only tabs/sections (kept in the isPrimary var).
-    api.authStatus().then((s) => setIsPrimary(!!s.is_admin)).catch(() => {});
-    api.childStatus().then((s) => setIsChildProfile(s.is_child)).catch(() => setIsChildProfile(false));
+    void loadSettingsState();
     load().catch(console.error);
     loadPlugins();
-    Promise.all([api.settings(), api.childLock(), api.profilePermissions()])
-      .then(([r, cl, permissions]) => {
-        const name = r.settings.app_name || "YT Zero";
-        setAppName(name);
-        setAppNameInput(name);
-        setAppIconColor(r.settings.app_icon_color || "#0a5fff");
-        setUpdateCheckInterval(r.settings.update_check_interval || "off");
-        setShowShorts(r.settings.show_shorts === "1");
-        setShowTopChannels(r.settings.show_top_channels !== "0");
-        setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
-        setWatchShowRelated(r.settings.watch_show_related !== "0");
-        setWatchShowComments(r.settings.watch_show_comments === "1");
-        setFeedMaxAgeValue(r.settings.feed_max_age_value || "6");
-        setFeedMaxAgeUnit(isFeedMaxAgeUnit(r.settings.feed_max_age_unit) ? r.settings.feed_max_age_unit : "off");
-        setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
-        setFeedAutoplayDirection(r.settings.feed_autoplay_direction === "newest" ? "newest" : "oldest");
-        setMembersOnlyVisibility(
-          r.settings.hide_members_only_from_feed === "1"
-            ? r.settings.hide_members_only_on_channel === "1" ? "hidden" : "channel"
-            : "everywhere"
-        );
-        setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
-        setVideoCardSize(parseVideoCardSize(r.settings.grid_size));
-        const raw = r.settings.sidebar_nav;
-        const navCfg = parseNavConfig(raw);
-        if (!raw && r.settings.shorts_tab === "1") {
-          const entry = navCfg.find((e) => e.key === "/shorts");
-          if (entry) entry.hidden = false;
-        }
-        setNavConfig(normalizeNav(navCfg));
-        setPlayerHl(r.settings.player_hl);
-        setPlayerCc(r.settings.player_cc === "1");
-        const rawSubSize = r.settings.player_sub_size;
-        const legacySubSize = rawSubSize === "small" ? 14 : rawSubSize === "large" ? 26 : rawSubSize === "medium" ? 19 : Number(rawSubSize);
-        setSubSize(Number.isFinite(legacySubSize) ? Math.min(48, Math.max(12, legacySubSize)) : 19);
-        setSubColor(r.settings.player_sub_color || "#ffffff");
-        setSubBg(Number.isFinite(Number(r.settings.player_sub_bg)) ? Number(r.settings.player_sub_bg) : 75);
-        setPlayerQuality(r.settings.player_quality);
-        setPlayerSpeed(r.settings.player_speed ?? "1");
-        setKeyboardSeekSeconds(r.settings.keyboard_seek_seconds ?? "5");
-        setScreenshotFormat(parsePlayerScreenshotFormat(r.settings.player_screenshot_format));
-        setScreenshotQuality(r.settings.player_screenshot_quality ?? "0.92");
-        setScreenshotFilename(r.settings.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
-        setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
-        setSbEnabled(r.settings.sponsorblock_enabled === "1");
-        try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
-        setChildLock(cl.child_lock);
-        setProfilePermissions(permissions.permissions);
-      })
-      .catch(console.error);
-  }, [load, loadPlugins]);
+  }, [load, loadPlugins, loadSettingsState]);
 
   const togglePlugin = async (plugin: PluginManifest) => {
     const enabled = !plugin.enabled;
@@ -1953,6 +2100,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const currentPermissionArea = tab === "channels"
     ? channelSubTab === "playlists" ? "followed_playlists" : channelSubTab === "filters" ? "filters" : "channels"
     : tab === "display" ? DISPLAY_PERMISSION_AREAS.find(canManageArea) ?? null
+    : tab === "profiles" && activeAuthMethod === "per_profile" && !canManageArea("profiles") ? null
     : permissionAreaForTab(tab);
   const isCurrentTabLocked = childLock.enabled
     && childLock.locked
@@ -1965,21 +2113,28 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     return (!tabItem.primaryOnly || isPrimary)
       && hasVisibleChannelSection
       && hasVisibleDisplaySection
-      && (tabItem.id === "channels" || isPrimary || permissionArea == null || !profilePermissions.admin_only_areas.includes(permissionArea));
+      && (tabItem.id === "channels" || isPrimary || permissionArea == null || !profilePermissions.admin_only_areas.includes(permissionArea) || (tabItem.id === "profiles" && activeAuthMethod === "per_profile"));
   });
 
   useEffect(() => {
-    if (isChildProfile == null) return;
+    if (!settingsReady || isChildProfile == null) return;
     if (!visibleTabs.some((tabItem) => tabItem.id === tab)) {
       setTab(visibleTabs[0]?.id ?? "tags");
     }
-  }, [isChildProfile, isPrimary, profilePermissions.admin_only_areas, tab]);
+  }, [settingsReady, isChildProfile, isPrimary, profilePermissions.admin_only_areas, tab]);
 
   useEffect(() => {
-    if (tab !== "channels" || channelSubTabOptions.some((option) => option.value === channelSubTab)) return;
+    if (!settingsReady || tab !== "channels" || channelSubTabOptions.some((option) => option.value === channelSubTab)) return;
     const next = channelSubTabOptions[0]?.value;
     if (next) setChannelSubTab(next);
-  }, [tab, channelSubTab, channelSubTabOptions.map((option) => option.value).join(",")]);
+  }, [settingsReady, tab, channelSubTab, channelSubTabOptions.map((option) => option.value).join(",")]);
+
+  if (!settingsReady) return <>
+    <PageHeader title={t("settingsTitle")} />
+    {settingsLoadError
+      ? <SettingsSection><Alert variant="danger" title={t("error")}>{settingsLoadError}</Alert><FormActions><Button onClick={() => void loadSettingsState()}>{t("reload")}</Button></FormActions></SettingsSection>
+      : <SettingsLoadingState />}
+  </>;
 
   return (
     <>
@@ -2029,9 +2184,15 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isCurrentTabLocked && tab === "profiles" && (
         <>
-          <ProfilesSettings showToast={showToast} />
+          {activeAuthMethod === "per_profile" && (
+            <SettingsSection title={t("authChangeOwnPassword")} description={t("authChangeOwnPasswordHint")}>
+              <ProfilePasswordSettings showToast={showToast} />
+            </SettingsSection>
+          )}
 
-          <SettingsSection className="child-lock-panel">
+          {canManageArea("profiles") && <ProfilesSettings showToast={showToast} isAdmin={isPrimary} activeAuthMethod={activeAuthMethod} />}
+
+          {canManageArea("profiles") && <SettingsSection className="child-lock-panel">
             <div className="child-lock-header">
               <ShieldCheck />
               <div>
@@ -2104,9 +2265,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               </>
             )}
 
-          </SettingsSection>
+          </SettingsSection>}
 
-          {isPrimary && (
+          {isPrimary && canManageArea("profiles") && (
             <SettingsSection
               title={t("profilePermissionsTitle")}
               description={t("profilePermissionsHint")}
@@ -2127,7 +2288,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </SettingsSection>
           )}
 
-          {isPrimary && <ChannelOwnership showToast={showToast} />}
+          {isPrimary && canManageArea("profiles") && <ChannelOwnership showToast={showToast} />}
         </>
       )}
 

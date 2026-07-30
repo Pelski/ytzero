@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isAuthenticationRedirect, isExpiredApiSession } from "./apiTransport";
+import { isAuthenticationRedirect, isExpiredApiSession, shouldNavigateForAuthentication } from "./apiTransport";
 
 describe("API authentication redirect detection", () => {
   test("recognizes a manual cross-origin redirect from a forward-auth proxy", () => {
@@ -15,5 +15,11 @@ describe("API authentication redirect detection", () => {
   test("leaves ordinary API errors alone", () => {
     expect(isExpiredApiSession({ type: "basic", status: 403 }, "/api/settings")).toBe(false);
     expect(isExpiredApiSession({ type: "basic", status: 500 }, "/api/feed")).toBe(false);
+  });
+
+  test("does not reload during the unauthenticated localization bootstrap", () => {
+    const unauthorized = { type: "basic" as ResponseType, status: 401 };
+    expect(shouldNavigateForAuthentication(unauthorized, "/api/settings")).toBe(true);
+    expect(shouldNavigateForAuthentication(unauthorized, "/api/settings", true)).toBe(false);
   });
 });

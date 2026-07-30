@@ -36,7 +36,7 @@ describe("download automation rules", () => {
   });
 
   test("uses the same result to feed automatic queue candidates", () => {
-    expect(result.candidates).toEqual([{ video_id: "rule-main", rule_id: result.created.id }]);
+    expect(result.candidates).toEqual([{ video_id: "rule-main", rule_id: result.created.id, user_id: 1 }]);
   });
 
   test("members-only content requires explicit opt-in", () => {

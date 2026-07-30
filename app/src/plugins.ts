@@ -275,6 +275,19 @@ const DOWNLOADS_SETTINGS: PluginSettingSource[] = [
   },
 ];
 
+// These values affect the one physical download store shared by all profiles.
+// They remain instance-wide and may only be changed by an administrator; the
+// remaining download preferences are stored per profile.
+export const DOWNLOADS_ADMIN_SETTING_KEYS = new Set([
+  "output_template",
+  "write_thumbnail",
+  "embed_metadata",
+  "write_info_json",
+  "write_nfo",
+  "write_subs",
+  "max_storage_gb",
+]);
+
 export const PLUGINS: PluginManifest[] = [
   {
     id: "discovery",
@@ -293,7 +306,7 @@ export const PLUGINS: PluginManifest[] = [
     route: "/downloads",
     icon: "Download",
     permissions: ["read:library", "network:video-download", "storage:local-files"],
-    settingsScope: "global",
+    settingsScope: "user",
   },
 ];
 
@@ -330,6 +343,56 @@ for (const plugin of PLUGINS) {
   await database.prepare("INSERT OR IGNORE INTO plugins (id, enabled, version) VALUES (?, ?, ?)")
     .run(plugin.id, 0, plugin.version);
   await database.prepare("UPDATE plugins SET version = ? WHERE id = ?").run(plugin.version, plugin.id);
+}
+
+// Seamless migration from the former instance-wide downloads configuration.
+// Existing profile-level preferences are copied to every current profile;
+// physical-store settings remain global. New profiles simply use defaults.
+if (getSetting("downloads_profile_settings_migrated") !== "1") {
+  const users = await database.prepare("SELECT id FROM users").all() as { id: number }[];
+  const downloadPluginRow = await database.prepare("SELECT enabled FROM plugins WHERE id='downloads'").get() as { enabled: number } | null;
+  const enabled = downloadPluginRow?.enabled === 1 ? "1" : "0";
+  const tx = database.transaction(async () => {
+    for (const user of users) {
+      await database.prepare("INSERT OR IGNORE INTO plugin_settings (plugin_id, user_id, key, value) VALUES ('downloads', ?, 'profile_enabled', ?)")
+        .run(user.id, enabled);
+      for (const def of DOWNLOADS_SETTINGS) {
+        if (DOWNLOADS_ADMIN_SETTING_KEYS.has(def.key)) continue;
+        const legacy = getSetting(`plugin_downloads_${def.key}`);
+        if (legacy == null) continue;
+        await database.prepare("INSERT OR IGNORE INTO plugin_settings (plugin_id, user_id, key, value) VALUES ('downloads', ?, ?, ?)")
+          .run(user.id, def.key, legacy);
+      }
+    }
+    await database.prepare("INSERT INTO settings(key,value) VALUES('downloads_profile_settings_migrated','1') ON CONFLICT(key) DO UPDATE SET value='1'").run();
+  });
+  await tx();
+  await reloadSettingCache();
+}
+
+// These preferences originally remained global during the first profile
+// migration. Copy their legacy values into every existing profile once; an
+// explicit profile value always wins. The old global rows are intentionally
+// left in place so downgrading across this transition remains non-destructive.
+const DOWNLOADS_PROFILE_V2_KEYS = [
+  "write_auto_subs", "sub_langs", "retention_days", "delete_watched",
+  "delete_watched_hours", "keep_liked",
+] as const;
+if (getSetting("downloads_profile_preferences_v2_migrated") !== "1") {
+  const users = await database.prepare("SELECT id FROM users").all() as { id: number }[];
+  const tx = database.transaction(async () => {
+    for (const user of users) {
+      for (const key of DOWNLOADS_PROFILE_V2_KEYS) {
+        const legacy = getSetting(`plugin_downloads_${key}`);
+        if (legacy == null) continue;
+        await database.prepare("INSERT OR IGNORE INTO plugin_settings (plugin_id, user_id, key, value) VALUES ('downloads', ?, ?, ?)")
+          .run(user.id, key, legacy);
+      }
+    }
+    await database.prepare("INSERT INTO settings(key,value) VALUES('downloads_profile_preferences_v2_migrated','1') ON CONFLICT(key) DO UPDATE SET value='1'").run();
+  });
+  await tx();
+  await reloadSettingCache();
 }
 
 function normalizePluginLanguage(language: string | null | undefined): PluginLanguage {
@@ -433,6 +496,13 @@ export async function getPluginSettings(uid: number, pluginId: string, language?
     const rows = await database.prepare("SELECT key, value FROM plugin_settings WHERE plugin_id = ? AND user_id = ?")
       .all(pluginId, uid) as { key: string; value: string }[];
     for (const row of rows) values.set(row.key, row.value);
+    if (pluginId === "downloads") {
+      for (const def of defs) {
+        if (!DOWNLOADS_ADMIN_SETTING_KEYS.has(def.key)) continue;
+        const raw = getSetting(`plugin_downloads_${def.key}`);
+        if (raw != null) values.set(def.key, raw);
+      }
+    }
   }
   const settings: Record<string, PluginSettingValue> = {};
   for (const def of defs) {
@@ -455,7 +525,8 @@ export async function setPluginSettings(uid: number, pluginId: string, patch: Re
       const def = byKey.get(key);
       if (!def) continue;
       const normalized = normalizeSettingValue(value == null ? null : String(value), def);
-      if (manifest.settingsScope === "global") {
+      const globalDownloadSetting = pluginId === "downloads" && DOWNLOADS_ADMIN_SETTING_KEYS.has(key);
+      if (manifest.settingsScope === "global" || globalDownloadSetting) {
         await database.prepare(
           "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
         ).run(`plugin_${pluginId}_${key}`, String(normalized));
@@ -470,7 +541,7 @@ export async function setPluginSettings(uid: number, pluginId: string, patch: Re
   // Global plugin values are read through db.ts' synchronous settings cache.
   // Keep it aligned with the transaction before building the response; without
   // this, the UI receives the previous values and appears to undo the change.
-  if (manifest.settingsScope === "global") await reloadSettingCache();
+  if (manifest.settingsScope === "global" || (pluginId === "downloads" && Object.keys(patch).some((key) => DOWNLOADS_ADMIN_SETTING_KEYS.has(key)))) await reloadSettingCache();
   if (pluginId === "discovery" && "blockedTerms" in patch) {
     await setDiscoveryBlockedTerms(uid, patch.blockedTerms);
   }
@@ -510,15 +581,17 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
   },
   {
     id: "downloads",
-    scope: "instance",
-    schemaVersion: 2,
+    scope: "profile",
+    schemaVersion: 3,
     async export(userId) {
-      const rules = await listDownloadRules();
+      const rules = await listDownloadRules(userId);
       const playlistIds = [...new Set(rules.flatMap((rule) => rule.playlist_ids))];
       const playlists = playlistIds.length
         ? await database.prepare(`SELECT playlist_id, channel_id, title, thumbnail, video_count FROM channel_playlists WHERE playlist_id IN (${playlistIds.map(() => "?").join(",")})`).all(...playlistIds)
         : [];
-      return { settings: (await getPluginSettings(userId, "downloads")).settings, rules, playlists };
+      const allSettings = (await getPluginSettings(userId, "downloads")).settings;
+      const settings = Object.fromEntries(Object.entries(allSettings).filter(([key]) => !DOWNLOADS_ADMIN_SETTING_KEYS.has(key)));
+      return { settings, rules, playlists };
     },
     async restore(userId, value) {
       const input = value && typeof value === "object" ? value as any : {};
@@ -529,7 +602,7 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
         await database.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail,video_count) VALUES(?,?,?,?,?) ON CONFLICT(playlist_id) DO UPDATE SET title=excluded.title,thumbnail=excluded.thumbnail,video_count=excluded.video_count")
           .run(playlist.playlist_id, playlist.channel_id, String(playlist.title ?? ""), String(playlist.thumbnail ?? ""), String(playlist.video_count ?? ""));
       }
-      await restoreDownloadRules(input.rules);
+      await restoreDownloadRules(userId, input.rules);
     },
   },
 ] as const;
@@ -537,7 +610,7 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
 export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
   if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
   if (pluginId === "downloads") {
-    await resetDownloadsState();
+    await resetDownloadsState(uid);
     await reloadSettingCache();
     return getPluginSettings(uid, pluginId, language);
   }
@@ -657,7 +730,7 @@ async function localRecommendations(
   )`;
   const externalWhere = options.allowExternal === false ? "AND v.external = 0" : "";
   const downloadsWhere = options.downloadsOnly
-    ? "AND EXISTS (SELECT 1 FROM downloads allowed_download WHERE allowed_download.video_id = v.video_id AND allowed_download.status = 'done')"
+    ? `AND EXISTS (SELECT 1 FROM downloads allowed_download JOIN download_owners allowed_owner ON allowed_owner.video_id=allowed_download.video_id WHERE allowed_owner.user_id=${uid} AND allowed_download.video_id = v.video_id AND allowed_download.status = 'done')`
     : "";
 
   const rows = await database.prepare(`${effectiveVideoTagsCte}

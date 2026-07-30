@@ -2,7 +2,11 @@
 .dl-config-managed { border: 0; display: flex; flex-direction: column; gap: 12px; margin: 0; min-width: 0; padding: 0; }
 .dl-config > .ui-settings-section,
 .dl-config-managed > .ui-settings-section { margin-bottom: 0; }
+.dl-config-admin-info { box-sizing: border-box; max-width: 980px; width: 100%; }
 .dl-config-managed:disabled { opacity: .68; }
+.dl-config-control-lock { border: 0; margin: 0; min-width: 0; padding: 0; }
+.dl-config-control-lock:disabled { opacity: .62; }
+.dl-config-setting-label { align-items: center; display: inline-flex; flex-wrap: wrap; gap: 7px; }
 .dl-config-slider { align-items: center; display: flex; gap: 12px; min-width: min(360px, 100%); }
 .dl-config-slider .ui-slider { flex: 1; }
 .dl-config-slider .ui-input { width: 82px; }

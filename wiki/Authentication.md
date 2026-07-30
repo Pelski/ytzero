@@ -79,6 +79,8 @@ Sign in through an external OpenID Connect provider such as **Pocket ID**, **Aut
 - **Identity → one profile (mapped)** — each external identity maps to exactly one profile. Profile switching is disabled (you sign out to change profile). Choose the **identity claim** (default `preferred_username`) and, in the profile table, enter the claim value that maps to each profile. Optionally enable **auto-create a profile on first login** to create a profile automatically for unknown identities.
 - **Gateway → profile picker** — OIDC only guards the front door. After signing in, everyone sees the profile picker and can switch freely (similar to **Shared**).
 
+For active profile-bound methods (**Login per profile**, **OIDC**, and **Proxy header**), an administrator can hide other profile names from the profile picker. The signed-in profile remains visible, and administrators can still manage every profile in Settings. This instance-local authentication preference is not included in portable backups.
+
 Set an optional **Logout URL** to send users to your provider's logout endpoint when they sign out.
 
 ### Group-based admin

@@ -35,6 +35,7 @@ export class DownloadRuleValidationError extends Error {}
 interface RuleRow {
   id: number;
   portable_uuid: string;
+  user_id: number;
   name: string;
   enabled: number;
   source_mode: DownloadRuleSourceMode;
@@ -130,21 +131,24 @@ function fromRow(row: RuleRow): DownloadRule {
   };
 }
 
-export async function listDownloadRules(): Promise<DownloadRule[]> {
-  return (await database.prepare("SELECT * FROM download_rules ORDER BY created_at, id").all() as RuleRow[]).map(fromRow);
+export async function listDownloadRules(userId?: number): Promise<DownloadRule[]> {
+  const rows = userId == null
+    ? await database.prepare("SELECT * FROM download_rules ORDER BY created_at, id").all()
+    : await database.prepare("SELECT * FROM download_rules WHERE user_id=? ORDER BY created_at, id").all(userId);
+  return (rows as RuleRow[]).map(fromRow);
 }
 
-export async function createDownloadRule(value: Partial<DownloadRuleInput>): Promise<DownloadRule> {
+export async function createDownloadRule(userId: number, value: Partial<DownloadRuleInput>): Promise<DownloadRule> {
   assertValidRule(value);
   const rule = normalizeRule(value);
   const row = await database.prepare(`
     INSERT INTO download_rules (
-      portable_uuid, name, enabled, source_mode, channel_ids_json, playlist_ids_json,
+      portable_uuid, user_id, name, enabled, source_mode, channel_ids_json, playlist_ids_json,
       include_keywords_json, exclude_keywords_json, keyword_mode, match_field,
       include_shorts, include_members_only, min_duration_seconds, backfill_mode, lookback_hours
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *
   `).get(
-    crypto.randomUUID(), rule.name, rule.enabled ? 1 : 0, rule.source_mode,
+    crypto.randomUUID(), userId, rule.name, rule.enabled ? 1 : 0, rule.source_mode,
     JSON.stringify(rule.channel_ids), JSON.stringify(rule.playlist_ids),
     JSON.stringify(rule.include_keywords), JSON.stringify(rule.exclude_keywords),
     rule.keyword_mode, rule.match_field, rule.include_shorts ? 1 : 0,
@@ -154,8 +158,8 @@ export async function createDownloadRule(value: Partial<DownloadRuleInput>): Pro
   return fromRow(row);
 }
 
-export async function updateDownloadRule(id: number, value: Partial<DownloadRuleInput>): Promise<DownloadRule | null> {
-  const current = await database.prepare("SELECT * FROM download_rules WHERE id = ?").get(id) as RuleRow | null;
+export async function updateDownloadRule(userId: number, id: number, value: Partial<DownloadRuleInput>): Promise<DownloadRule | null> {
+  const current = await database.prepare("SELECT * FROM download_rules WHERE id = ? AND user_id = ?").get(id, userId) as RuleRow | null;
   if (!current) return null;
   const merged = { ...fromRow(current), ...value };
   assertValidRule(merged);
@@ -166,20 +170,20 @@ export async function updateDownloadRule(id: number, value: Partial<DownloadRule
       include_keywords_json=?, exclude_keywords_json=?, keyword_mode=?, match_field=?,
       include_shorts=?, include_members_only=?, min_duration_seconds=?, backfill_mode=?,
       lookback_hours=?, updated_at=datetime('now')
-    WHERE id=? RETURNING *
+    WHERE id=? AND user_id=? RETURNING *
   `).get(
     rule.name, rule.enabled ? 1 : 0, rule.source_mode,
     JSON.stringify(rule.channel_ids), JSON.stringify(rule.playlist_ids),
     JSON.stringify(rule.include_keywords), JSON.stringify(rule.exclude_keywords),
     rule.keyword_mode, rule.match_field, rule.include_shorts ? 1 : 0,
     rule.include_members_only ? 1 : 0, rule.min_duration_seconds,
-    rule.backfill_mode, rule.lookback_hours, id,
+    rule.backfill_mode, rule.lookback_hours, id, userId,
   ) as RuleRow;
   return fromRow(row);
 }
 
-export async function deleteDownloadRule(id: number): Promise<boolean> {
-  return (await database.prepare("DELETE FROM download_rules WHERE id=?").run(id)).changes > 0;
+export async function deleteDownloadRule(userId: number, id: number): Promise<boolean> {
+  return (await database.prepare("DELETE FROM download_rules WHERE id=? AND user_id=?").run(id, userId)).changes > 0;
 }
 
 function parseDurationSeconds(raw: string | null): number | null {
@@ -203,14 +207,14 @@ function matchesKeywords(rule: DownloadRuleInput, title: string, description: st
 
 function placeholders(values: readonly unknown[]) { return values.map(() => "?").join(","); }
 
-export async function previewDownloadRule(value: Partial<DownloadRuleInput>, limit = 8, readyOnly = false) {
+export async function previewDownloadRule(userId: number, value: Partial<DownloadRuleInput>, limit = 8, readyOnly = false) {
   const rule = normalizeRule(value);
   const sourceWhere: string[] = [];
   const params: unknown[] = [];
   if (rule.source_mode === "subscriptions") {
     const exceptions = rule.channel_ids.length ? ` AND v.channel_id NOT IN (${placeholders(rule.channel_ids)})` : "";
-    sourceWhere.push(`EXISTS (SELECT 1 FROM user_channels rule_follow WHERE rule_follow.channel_id=v.channel_id AND rule_follow.followed=1)${exceptions}`);
-    params.push(...rule.channel_ids);
+    sourceWhere.push(`EXISTS (SELECT 1 FROM user_channels rule_follow WHERE rule_follow.user_id=? AND rule_follow.channel_id=v.channel_id AND rule_follow.followed=1)${exceptions}`);
+    params.push(userId, ...rule.channel_ids);
   } else {
     if (rule.channel_ids.length) {
       sourceWhere.push(`v.channel_id IN (${placeholders(rule.channel_ids)})`);
@@ -239,22 +243,23 @@ export async function previewDownloadRule(value: Partial<DownloadRuleInput>, lim
     SELECT v.video_id, v.title, v.description, v.thumbnail, v.channel_id,
            COALESCE(NULLIF(c.custom_title, ''), c.title) AS channel_title,
            v.published_at, v.duration, v.is_short, v.members_only,
-           d.status AS download_status
+           CASE WHEN owner.video_id IS NOT NULL THEN d.status ELSE NULL END AS download_status
     FROM videos v
     JOIN channels c ON c.channel_id=v.channel_id
     LEFT JOIN downloads d ON d.video_id=v.video_id
+    LEFT JOIN download_owners owner ON owner.video_id=v.video_id AND owner.user_id=?
     WHERE v.live_status='none' AND v.is_private=0 AND v.external=0
       AND (${sourceWhere.join(" OR ")})
       ${timeWhere}
-      ${readyOnly ? "AND d.video_id IS NULL" : ""}
+      ${readyOnly ? "AND owner.video_id IS NULL" : ""}
       AND NOT EXISTS (
         SELECT 1 FROM user_videos rule_user_video
-        WHERE rule_user_video.video_id=v.video_id
+        WHERE rule_user_video.user_id=? AND rule_user_video.video_id=v.video_id
           AND (rule_user_video.watched=1 OR rule_user_video.status='archived')
       )
     ORDER BY COALESCE(v.published_at, v.created_at) DESC
     LIMIT 2001
-  `).all(...params) as (DownloadRulePreviewVideo & { description: string; duration: string | null; is_short: number | null; members_only: number })[];
+  `).all(userId, ...params, userId) as (DownloadRulePreviewVideo & { description: string; duration: string | null; is_short: number | null; members_only: number })[];
 
   const matching = rows.filter((row) => {
     if (!rule.include_shorts && row.is_short === 1) return false;
@@ -274,17 +279,20 @@ export async function previewDownloadRule(value: Partial<DownloadRuleInput>, lim
   };
 }
 
-export async function automaticDownloadCandidates(limit = 50): Promise<{ video_id: string; rule_id: number }[]> {
-  const rules = (await listDownloadRules()).filter((rule) => rule.enabled);
+export async function automaticDownloadCandidates(limit = 50): Promise<{ video_id: string; rule_id: number; user_id: number }[]> {
+  const rows = await database.prepare("SELECT DISTINCT user_id FROM download_rules WHERE enabled=1 AND user_id IS NOT NULL").all() as { user_id: number }[];
   const seen = new Set<string>();
-  const result: { video_id: string; rule_id: number }[] = [];
-  for (const rule of rules) {
-    const preview = await previewDownloadRule(rule, limit, true);
-    for (const video of preview.sample) {
-      if (video.download_status != null || seen.has(video.video_id)) continue;
-      seen.add(video.video_id);
-      result.push({ video_id: video.video_id, rule_id: rule.id });
-      if (result.length >= limit) return result;
+  const result: { video_id: string; rule_id: number; user_id: number }[] = [];
+  for (const { user_id } of rows) {
+    for (const rule of (await listDownloadRules(user_id)).filter((entry) => entry.enabled)) {
+      const preview = await previewDownloadRule(user_id, rule, limit, true);
+      for (const video of preview.sample) {
+        const key = `${user_id}:${video.video_id}`;
+        if (video.download_status != null || seen.has(key)) continue;
+        seen.add(key);
+        result.push({ video_id: video.video_id, rule_id: rule.id, user_id });
+        if (result.length >= limit) return result;
+      }
     }
   }
   return result;
@@ -292,10 +300,11 @@ export async function automaticDownloadCandidates(limit = 50): Promise<{ video_i
 
 export async function migrateLegacyDownloadAutomation(): Promise<void> {
   if (getSetting("download_rules_migrated") === "1") return;
+  const primary = (await database.prepare("SELECT id FROM users ORDER BY id LIMIT 1").get() as { id: number }).id;
   const existing = (await database.prepare("SELECT COUNT(*) AS n FROM download_rules").get() as { n: number }).n;
   if (existing === 0 && getSetting("plugin_downloads_download_feed") === "1") {
     const overrides = await database.prepare("SELECT channel_id, auto_download_min_duration_override AS seconds FROM channels WHERE auto_download_min_duration_override IS NOT NULL").all() as { channel_id: string; seconds: number }[];
-    await createDownloadRule({
+    await createDownloadRule(primary, {
       name: "All subscriptions",
       enabled: true,
       source_mode: "subscriptions",
@@ -322,7 +331,7 @@ export async function migrateLegacyDownloadAutomation(): Promise<void> {
       byMinimum.set(seconds, [...(byMinimum.get(seconds) ?? []), row.channel_id]);
     }
     for (const [seconds, channelIds] of byMinimum) {
-      await createDownloadRule({
+      await createDownloadRule(primary, {
         name: `Channel override · ≥ ${Math.round(seconds / 60)} min`,
         enabled: true,
         source_mode: "selected",
@@ -344,7 +353,7 @@ export async function migrateLegacyDownloadAutomation(): Promise<void> {
   await reloadSettingCache();
 }
 
-export async function restoreDownloadRules(values: unknown): Promise<void> {
+export async function restoreDownloadRules(userId: number, values: unknown): Promise<void> {
   if (!Array.isArray(values)) return;
   for (const value of values.slice(0, 500)) {
     if (!value || typeof value !== "object") continue;
@@ -352,20 +361,20 @@ export async function restoreDownloadRules(values: unknown): Promise<void> {
     const uuid = typeof input.portable_uuid === "string" && /^[0-9a-f-]{36}$/i.test(input.portable_uuid)
       ? input.portable_uuid
       : crypto.randomUUID();
-    const existing = await database.prepare("SELECT id FROM download_rules WHERE portable_uuid=?").get(uuid) as { id: number } | null;
+    const existing = await database.prepare("SELECT id FROM download_rules WHERE portable_uuid=? AND user_id=?").get(uuid, userId) as { id: number } | null;
     if (existing) {
-      await updateDownloadRule(existing.id, input);
+      await updateDownloadRule(userId, existing.id, input);
       continue;
     }
     const rule = normalizeRule(input);
     await database.prepare(`
       INSERT INTO download_rules (
-        portable_uuid, name, enabled, source_mode, channel_ids_json, playlist_ids_json,
+        portable_uuid, user_id, name, enabled, source_mode, channel_ids_json, playlist_ids_json,
         include_keywords_json, exclude_keywords_json, keyword_mode, match_field,
         include_shorts, include_members_only, min_duration_seconds, backfill_mode, lookback_hours
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      uuid, rule.name, rule.enabled ? 1 : 0, rule.source_mode,
+      uuid, userId, rule.name, rule.enabled ? 1 : 0, rule.source_mode,
       JSON.stringify(rule.channel_ids), JSON.stringify(rule.playlist_ids),
       JSON.stringify(rule.include_keywords), JSON.stringify(rule.exclude_keywords),
       rule.keyword_mode, rule.match_field, rule.include_shorts ? 1 : 0,

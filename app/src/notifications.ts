@@ -63,7 +63,11 @@ export async function notifyDownloadFailed(videoId: string, error: string): Prom
   }>(videoId);
   if (!video) return 0;
 
-  const users = await database.prepare("SELECT id FROM users WHERE COALESCE(is_child, 0) = 0").all<{ id: number }>();
+  const users = await database.prepare(`
+    SELECT u.id FROM download_owners owner
+    JOIN users u ON u.id=owner.user_id
+    WHERE owner.video_id=? AND COALESCE(u.is_child,0)=0
+  `).all<{ id: number }>(videoId);
   const payload = {
     videoId: video.video_id,
     videoTitle: video.title,

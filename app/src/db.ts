@@ -112,9 +112,8 @@ CREATE TABLE IF NOT EXISTS plugin_state (
   PRIMARY KEY (plugin_id, user_id, key)
 );
 
--- Local copies of videos fetched with yt-dlp (downloads plugin). Files are
--- global — one copy serves every profile; retention is handled by the
--- downloader's cleanup loop, not per user.
+-- Local copies fetched with yt-dlp. The physical file remains shared, while
+-- download_owners below controls which profiles may see and manage it.
 CREATE TABLE IF NOT EXISTS downloads (
   video_id    TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE,
   -- queued | downloading | done | error
@@ -131,9 +130,21 @@ CREATE TABLE IF NOT EXISTS downloads (
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   started_at  TEXT,
   finished_at TEXT,
-  automation_rule_id INTEGER
+  automation_rule_id INTEGER,
+  requested_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
+
+CREATE TABLE IF NOT EXISTS download_owners (
+  user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id            TEXT NOT NULL REFERENCES downloads(video_id) ON DELETE CASCADE,
+  source              TEXT NOT NULL DEFAULT 'manual',
+  automation_rule_id  INTEGER,
+  pinned              INTEGER NOT NULL DEFAULT 0,
+  created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, video_id)
+);
+CREATE INDEX IF NOT EXISTS idx_download_owners_video ON download_owners(video_id);
 
 -- Portable, instance-wide automation rules for the shared download library.
 -- JSON columns contain stable YouTube ids or simple keyword strings; runtime
@@ -141,6 +152,7 @@ CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE TABLE IF NOT EXISTS download_rules (
   id                   INTEGER PRIMARY KEY AUTOINCREMENT,
   portable_uuid        TEXT NOT NULL UNIQUE,
+  user_id              INTEGER REFERENCES users(id) ON DELETE CASCADE,
   name                 TEXT NOT NULL,
   enabled              INTEGER NOT NULL DEFAULT 1,
   source_mode          TEXT NOT NULL DEFAULT 'selected' CHECK (source_mode IN ('subscriptions', 'selected')),
@@ -622,6 +634,8 @@ try { db.exec("ALTER TABLE downloads ADD COLUMN playlist_title TEXT"); } catch {
 // Rule attribution makes automatic decisions explainable without coupling
 // queue rows to the lifecycle of a rule (deleted rules leave useful history).
 try { db.exec("ALTER TABLE downloads ADD COLUMN automation_rule_id INTEGER"); } catch {}
+try { db.exec("ALTER TABLE downloads ADD COLUMN requested_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL"); } catch {}
+try { db.exec("ALTER TABLE download_rules ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE CASCADE"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN chapters_fetched_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN creators_fetched_at TEXT"); } catch {}
 try { db.exec("ALTER TABLE video_creators ADD COLUMN handle TEXT NOT NULL DEFAULT ''"); } catch {}
@@ -702,6 +716,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // ---------- authentication (all app-wide, owned by the primary profile) ----------
   // none | shared | per_profile | oidc | proxy_header
   auth_method: "none",
+  // For identity-bound login methods, optionally keep other profile names out
+  // of the profile picker. Authentication configuration stays instance-local.
+  auth_hide_other_profiles: "0",
   auth_shared_username: "",
   auth_shared_password_hash: "",
   auth_oidc_issuer: "",
@@ -732,6 +749,7 @@ export const GLOBAL_SETTING_KEYS = new Set([
   "app_icon_color",
   "timezone",
   "auth_method",
+  "auth_hide_other_profiles",
   "auth_shared_username",
   "auth_shared_password_hash",
   "auth_oidc_issuer",
@@ -880,6 +898,25 @@ if (getSetting("multiuser_migrated") !== "1") {
 if ((db.prepare("SELECT count(*) AS n FROM users").get() as { n: number }).n === 0) {
   db.prepare("INSERT INTO users (name, avatar_color) VALUES (?, ?)").run("Default", "#f2293a");
 }
+
+// Downloads used to be instance-wide. Preserve existing rows by assigning
+// their ownership, rules and queue configuration to the primary profile. The
+// marker is essential: running this backfill on every startup would recreate
+// ownership that a profile deliberately removed from a shared physical file.
+if (getSetting("downloads_profile_ownership_migrated") !== "1") {
+  const legacyDownloadsOwner = (db.prepare("SELECT id FROM users ORDER BY id ASC LIMIT 1").get() as { id: number }).id;
+  const migrateLegacyDownloads = db.transaction(() => {
+    db.prepare("UPDATE downloads SET requested_by_user_id = ? WHERE requested_by_user_id IS NULL").run(legacyDownloadsOwner);
+    db.prepare("UPDATE download_rules SET user_id = ? WHERE user_id IS NULL").run(legacyDownloadsOwner);
+    db.prepare(`
+      INSERT OR IGNORE INTO download_owners (user_id, video_id, source, automation_rule_id, pinned, created_at)
+      SELECT ?, video_id, source, automation_rule_id, pinned, created_at FROM downloads
+    `).run(legacyDownloadsOwner);
+    setSetting("downloads_profile_ownership_migrated", "1");
+  });
+  migrateLegacyDownloads();
+}
+db.exec("CREATE INDEX IF NOT EXISTS idx_download_rules_user_enabled ON download_rules(user_id, enabled)");
 
 // Stable identities used by portable backup/restore. Local integer ids remain
 // implementation details and are never written to a portable archive.

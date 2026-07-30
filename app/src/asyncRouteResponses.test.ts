@@ -58,10 +58,10 @@ describe("async database route response shapes", () => {
     expect(result.reloadedDownloadSetting).toBe(17);
   });
 
-  test("returns and reloads plugin defaults after reset", () => {
+  test("profile reset preserves administrator-owned storage settings", () => {
     expect(result.resetDownloadSettingsStatus).toBe(200);
-    expect(result.resetDownloadSetting).toBe(25);
-    expect(result.reloadedResetDownloadSetting).toBe(25);
+    expect(result.resetDownloadSetting).toBe(17);
+    expect(result.reloadedResetDownloadSetting).toBe(17);
   });
 
   test("reloads committed profile and global settings after a write", () => {

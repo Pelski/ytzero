@@ -788,6 +788,23 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .profile-card > .profile-card-actions { margin-left: auto; }
 .profile-edit-grid { display: flex; flex-direction: column; gap: 16px; }
 .profile-edit-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.profile-password-fields { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.profile-password-feedback { margin-top: 12px; }
+@container settings-section (max-width: 700px) {
+  .profile-password-fields { grid-template-columns: minmax(0, 1fr); }
+}
+
+.settings-loading { display: flex; flex-direction: column; gap: 18px; }
+.settings-loading-tabs { display: flex; gap: 8px; max-width: 980px; overflow: hidden; width: 100%; }
+.settings-loading-tab { border-radius: 9px; flex: 0 0 112px; height: 38px; }
+.settings-loading-section { margin-bottom: 0; }
+.settings-loading-section .ui-settings-section__body { gap: 0; }
+.settings-loading-heading { border-radius: 99px; height: 16px; margin-bottom: 15px; width: min(230px, 58%); }
+.settings-loading-row { align-items: center; border-top: 1px solid var(--surface-3); display: flex; gap: 24px; justify-content: space-between; min-height: 63px; }
+.settings-loading-copy { display: grid; gap: 8px; max-width: 430px; width: 55%; }
+.settings-loading-copy .skeleton-line { height: 11px; }
+.settings-loading-copy .skeleton-line.short { width: 68%; }
+.settings-loading-control { border-radius: 99px; height: 24px; width: 44px; }
 
 /* Avatar + name side by side */
 .profile-edit-top { display: flex; gap: 16px; align-items: center; }

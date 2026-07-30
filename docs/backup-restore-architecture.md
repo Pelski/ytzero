@@ -192,10 +192,11 @@ below.
 - `user_playlists`, `user_playlist_videos`, `user_playlist_rules`.
 - shared channel choices such as `custom_title` and the explicit automatic
   download threshold override.
-- `download_rules`: portable instance-wide automation configuration. Rules use
+- `download_rules`: portable per-profile automation configuration. Rules use
   stable UUIDs and stable YouTube channel/playlist identifiers. Required and
   excluded keywords are configuration; rule previews and queue decisions are
-  transient. Merge restore updates matching UUIDs idempotently.
+  transient. Merge restore updates matching UUIDs idempotently within the
+  mapped profile.
 - profile avatars after MIME, size, and image validation.
 - stable `portable_uuid` values on profiles, tags, and personal playlists are
   object identity metadata and travel only through their owning domain section.
@@ -226,6 +227,9 @@ below.
 - active/expired authentication sessions
 - in-progress download jobs, errors, output paths, and temporary playlist-name
   context used to render local filenames
+- `download_owners`, which is profile-scoped runtime ownership/visibility for
+  shared local files and is rebuilt by future download requests rather than
+  exported as portable configuration
 - image cache and other network-derived cache
 - `portable_object_mappings` restore bookkeeping and automatic pre-restore
   SQLite safety snapshots (local recovery data, not portable archive content)
@@ -236,7 +240,9 @@ below.
 ### Secrets and machine-bound data — excluded in v1
 
 - passwords and PIN hashes
-- OIDC client secret and active authentication configuration
+- OIDC client secret and active authentication configuration, including the
+  instance-local choice to hide other profile names in the authenticated
+  profile picker
 - profile identity mappings, proxy matches, and usernames
 - WebAuthn/passkey credentials
 - Child Lock secret
@@ -269,11 +275,19 @@ interface BackupSectionDefinition {
 
 The Discovery adapter exports validated settings, `blocked_terms`, and optional
 feedback; it does not export generated recommendations or `last_terms`. The
-Downloads feature adapter exports validated engine configuration, automation
-rules, and explicit channel overrides; it does not export cookies, paths,
-media, queue state, previews, or errors. Downloads is presented as a
-first-class application area while the compatibility adapter continues to read
-older `plugin_downloads_*` keys.
+Downloads adapter exports validated per-profile preferences (including subtitle
+languages, automatic subtitles, retention, watched-file cleanup and liked-file
+protection) and that profile's automation rules. Instance storage policy
+(including output paths/templates, administrator-selected sidecar files and the
+physical storage cap) remains administrator-owned operational configuration.
+Each profile's yt-dlp cookies are a separate machine-local secret; cookies,
+paths, media, `download_owners`, queue state, previews and errors are not
+exported. Downloads is presented as a
+first-class application area while the automatic migration continues to read
+older `plugin_downloads_*` keys and assigns legacy jobs and rules to the
+primary profile. Ownership backfill is guarded by a durable one-time marker so
+later restarts cannot recreate a profile/file relationship that was deliberately
+removed after migration.
 
 If a backup contains configuration for a plugin unavailable in the target
 version, analysis reports it as skipped. The user can install/enable a

@@ -16,3 +16,10 @@
 - Every persistent field must be explicitly classified as portable configuration, portable personal state, rebuildable cache, transient state, secret, or machine-bound data. Update the document and the owning backup adapter/section when that classification or serialized shape changes.
 - Portable backup is domain-based and versioned; never expose a new table or setting through a generic database/settings dump. New portable entities need stable identifiers, dependencies, merge/replace semantics, idempotent restore behavior, and old-backup compatibility.
 - Add or update round-trip and exclusion tests for persistent features. A feature that silently disappears from a selected backup, leaks into an unselected category, exports a secret, or breaks restore of an older supported archive is incomplete.
+
+## Per-profile authentication
+
+- Per-profile usernames are derived from profile names: whitespace becomes `_`, characters other than Unicode letters, numbers, and `_` are removed, and case-insensitive collisions receive a numeric suffix.
+- The primary profile generates or regenerates credentials for one profile at a time. Regeneration invalidates the previous password. Temporary passwords are returned once, stored only as hashes, and must never be added to logs, backups, settings, or later API responses.
+- When per-profile login is active, renaming or creating a profile keeps its login derived from its name. A newly created profile receives one-time temporary credentials in the creation response.
+- An authenticated profile changes only its own password and must provide its current password. Administrative authentication settings must not offer editable per-profile username or password fields.

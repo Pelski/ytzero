@@ -105,3 +105,7 @@
 .auth-confirm-actions .ui-button[disabled] { opacity: 0.55; cursor: not-allowed; }
 .auth-mapping-issues { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .auth-actions .ui-button[disabled] { opacity: 0.55; cursor: not-allowed; }
+.auth-generated-credentials { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+.auth-generated-credential { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(120px, 1fr) minmax(160px, 1fr); gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--surface-3); border-radius: 10px; background: var(--surface-2); }
+.auth-generated-credential code { user-select: all; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .auth-generated-credential { grid-template-columns: 1fr; } }

@@ -35,23 +35,23 @@ const input = {
   lookback_hours: 48,
 };
 
-const preview = await previewDownloadRule(input);
-const created = await createDownloadRule(input);
+const preview = await previewDownloadRule(1, input);
+const created = await createDownloadRule(1, input);
 const candidates = await automaticDownloadCandidates();
-const updated = await updateDownloadRule(created.id, { include_members_only: true });
-const updatedPreview = await previewDownloadRule(updated!);
-const rules = await listDownloadRules();
+const updated = await updateDownloadRule(1, created.id, { include_members_only: true });
+const updatedPreview = await previewDownloadRule(1, updated!);
+const rules = await listDownloadRules(1);
 let invalidRuleError = "";
-try { await createDownloadRule({ name: "Invalid", source_mode: "selected" }); }
+try { await createDownloadRule(1, { name: "Invalid", source_mode: "selected" }); }
 catch (error) { invalidRuleError = error instanceof Error ? error.message : String(error); }
-const subscriptionExceptions = await previewDownloadRule({ ...input, source_mode: "subscriptions", channel_ids: ["UC-rule"] });
+const subscriptionExceptions = await previewDownloadRule(1, { ...input, source_mode: "subscriptions", channel_ids: ["UC-rule"] });
 db.prepare("DELETE FROM download_rules").run();
 db.prepare("UPDATE channels SET auto_download_min_duration_override=300 WHERE channel_id='UC-rule'").run();
 db.prepare("UPDATE channels SET auto_download_min_duration_override=0 WHERE channel_id='UC-other'").run();
 setSetting("plugin_downloads_download_feed", "1");
 setSetting("plugin_downloads_feed_max_age_hours", "72");
 await migrateLegacyDownloadAutomation();
-const legacyRules = await listDownloadRules();
+const legacyRules = await listDownloadRules(1);
 
 console.log("RESULT " + JSON.stringify({ preview, created, candidates, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
 db.close();

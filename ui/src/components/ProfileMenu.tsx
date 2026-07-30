@@ -68,6 +68,9 @@ export default function ProfileMenu({ isAdmin, isChildProfile, profilePermission
   useEffect(() => subscribe("profiles-changed", load), [load]);
 
   const active = profiles.find((p) => p.active) ?? profiles[0];
+  // Until auth status is known, expose only the active profile. This avoids a
+  // brief flash of other profile names when the administrator hid the list.
+  const pickerProfiles = auth && !auth.hide_other_profiles ? profiles : profiles.filter((profile) => profile.active);
   const cardSizeSteps = [180, 220, 260, 300, 372, 480] as const;
   // Leaving a child profile is gated by the app-wide child lock PIN.
   const needsChildLock = Boolean(active?.is_child && childLockEnabled);
@@ -154,7 +157,7 @@ export default function ProfileMenu({ isAdmin, isChildProfile, profilePermission
       >
         <div className="profile-picker" role="menu">
           <ScrollArea viewportClassName="profile-dropdown-list">
-            {profiles.map((p) => (
+            {pickerProfiles.map((p) => (
               <button key={p.id} className={`profile-row${p.active ? " active" : ""}`} role="menuitem" onClick={() => onPick(p)}>
                 <ProfileAvatar profile={p} size={36} />
                 <span className="profile-row-name">{p.name}</span>

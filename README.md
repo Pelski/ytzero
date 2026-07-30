@@ -65,7 +65,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **User playlists** — local playlists with icons, manual additions, and rules.
 - **Profiles** — multiple isolated profiles on one install, each with its own state.
 - **Pulse** — an optional, default-hidden sidebar view with combined and per-profile viewing patterns, favorite channels and tags, activity hours, content mix, and time saved by SponsorBlock.
-- **Authentication** — none, shared login, per-profile login, OIDC, or proxy headers, with password and passkey support.
+- **Authentication** — none, shared login, per-profile login, OIDC, or proxy headers, with password and passkey support. Per-profile logins derive from profile names; an administrator can generate or reset a one-time temporary password for one profile at a time, and each profile can replace it after signing in.
 - **Child lock** — PIN-protect household settings while leaving each profile's own tags and playlists editable.
 - **Child profiles** — daily watch-time limits, parent-approved extensions, subscribed-content-only mode, optional Shorts/live blocking, downloaded-videos-only mode, reduced settings access, and a parent activity panel with immediate stop/unlock controls.
 - **Downloads (yt-dlp)** — an optional plugin that downloads scheduled or fresh videos, plays them in a built-in local player, shows download progress on thumbnails and in a dedicated Downloads tab, and cleans up after itself with retention rules and a storage cap.

@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { subscribe, subscribeToast, emit, type ToastVariant } from "./events";
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, Download, Menu, Play, Plus, Search, Users } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Download, Menu, Play, Plus, RefreshCw, Search, Users } from "lucide-react";
 import { api, type AppSettings, type AuthStatus, type ChildStatus, type DownloadSummary, type ProfilePermissions, type UserPlaylist, type Video } from "./api";
 import ChildLockScreen from "./components/ChildLockScreen";
 import LoginPage from "./pages/LoginPage";
@@ -232,9 +232,11 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const location = useLocation();
   const [params] = useSearchParams();
   const [q, setQ] = useState(params.get("q") ?? "");
   const [solid, setSolid] = useState(window.scrollY > 8);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
 
   useEffect(() => setQ(params.get("q") ?? ""), [params]);
 
@@ -244,13 +246,25 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    const unsubscribeStarted = subscribe("feed-refresh-started", () => setFeedRefreshing(true));
+    const unsubscribeFinished = subscribe("feed-refresh-finished", () => setFeedRefreshing(false));
+    return () => {
+      unsubscribeStarted();
+      unsubscribeFinished();
+    };
+  }, []);
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     navigate(q.trim() ? `/search?q=${encodeURIComponent(q.trim())}` : "/");
   };
 
   return (
-    <div className={`topbar${solid ? " topbar--solid" : ""}${incognito ? " topbar--incognito" : ""}`}>
+    <div
+      className={`topbar${solid ? " topbar--solid" : ""}${incognito ? " topbar--incognito" : ""}${feedRefreshing ? " topbar--feed-refreshing" : ""}`}
+      aria-busy={feedRefreshing}
+    >
       <button
         className="sidebar-toggle-btn"
         aria-label="Menu"
@@ -263,12 +277,31 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
       >
         <Menu size={20} />
       </button>
-      <Link to="/" className="topbar-logo">
+      <Link
+        to="/"
+        className="topbar-logo"
+        onClick={(event) => {
+          if (
+            location.pathname === "/"
+            && event.button === 0
+            && !event.metaKey
+            && !event.ctrlKey
+            && !event.shiftKey
+            && !event.altKey
+          ) {
+            event.preventDefault();
+            emit("feed-refresh-requested");
+          }
+        }}
+      >
         <span className={`logo-mark${incognito ? " logo-mark--incognito" : ""}`} style={incognito ? undefined : { background: appIconColor }}>
-          {incognito ? <SpyLogo /> : <Play fill="currentColor" />}
+          {feedRefreshing
+            ? <RefreshCw className="topbar-logo-refresh-icon" />
+            : incognito ? <SpyLogo /> : <Play fill="currentColor" />}
         </span>
         <span className="logo-text">{appName}</span>
       </Link>
+      {feedRefreshing && <span className="topbar-refresh-progress" aria-hidden="true" />}
       <form className="search-wrap" onSubmit={submit}>
         <input
           placeholder={t("searchPlaceholder")}

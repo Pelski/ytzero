@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./FeedPage.css";
-import { subscribe } from "../events";
+import { emit, subscribe } from "../events";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
@@ -138,6 +138,7 @@ export default function FeedPage({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const refreshingRef = useRef(false);
   const [gridSize, setGridSize] = useState<GridSize>(readGridSize);
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [inProgressExpanded, setInProgressExpanded] = useState(false);
@@ -303,7 +304,10 @@ export default function FeedPage({
     sessionStorage.removeItem("feedTags");
   };
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    emit("feed-refresh-started");
     setRefreshing(true);
     try {
       const r = await api.refresh();
@@ -314,9 +318,13 @@ export default function FeedPage({
     } catch (e) {
       showToast(`${t("refreshError")} ${e instanceof Error ? e.message : e}`);
     } finally {
+      refreshingRef.current = false;
+      emit("feed-refresh-finished");
       setRefreshing(false);
     }
-  };
+  }, [load, showToast, t]);
+
+  useEffect(() => subscribe("feed-refresh-requested", () => { void refresh(); }), [refresh]);
 
   const reload = () => {
     setLoading(true);

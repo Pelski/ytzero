@@ -48,6 +48,7 @@ describe("portable backup classification and restore", () => {
   test("configuration export excludes authentication values and runtime tables", async () => {
     setSetting("auth_oidc_client_secret", "DO-NOT-EXPORT-THIS");
     setSetting("auth_shared_password_hash", "HASH-DO-NOT-EXPORT");
+    setSetting("auth_hide_other_profiles", "1");
     setSetting("child_lock_enabled", "1");
     setSetting("child_lock_pin_hash", "CHILD-PIN-HASH-DO-NOT-EXPORT");
     setSetting("profile_admin_only_areas", '["settings","profiles"]');
@@ -59,6 +60,7 @@ describe("portable backup classification and restore", () => {
     const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
     expect(serialized).not.toContain("DO-NOT-EXPORT-THIS");
     expect(serialized).not.toContain("HASH-DO-NOT-EXPORT");
+    expect(serialized).not.toContain("auth_hide_other_profiles");
     expect(serialized).not.toContain("CHILD-PIN-HASH-DO-NOT-EXPORT");
     expect(serialized).not.toContain("child_lock_enabled");
     expect(serialized).toContain("profile_admin_only_areas");
@@ -81,8 +83,8 @@ describe("portable backup classification and restore", () => {
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
     setSetting("timezone", "Europe/London");
     const ruleUuid = crypto.randomUUID();
-    db.prepare(`INSERT INTO download_rules(portable_uuid,name,source_mode,channel_ids_json,include_keywords_json,exclude_keywords_json,backfill_mode)
-      VALUES(?, 'Portable downloads', 'selected', '["UCportable"]', '["episode"]', '["trailer"]', 'all')`).run(ruleUuid);
+    db.prepare(`INSERT INTO download_rules(portable_uuid,user_id,name,source_mode,channel_ids_json,include_keywords_json,exclude_keywords_json,backfill_mode)
+      VALUES(?, 1, 'Portable downloads', 'selected', '["UCportable"]', '["episode"]', '["trailer"]', 'all')`).run(ruleUuid);
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();

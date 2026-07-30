@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import "./AuthSettings.css";
 import { startRegistration } from "@simplewebauthn/browser";
-import { Check, KeyRound, TriangleAlert, Trash2 } from "lucide-react";
-import { api, type AuthConfig, type AuthConfigUpdate, type AuthMethod } from "../api";
+import { Check, Copy, KeyRound, TriangleAlert, Trash2 } from "lucide-react";
+import { api, type AuthConfig, type AuthConfigUpdate, type AuthMethod, type TemporaryProfileCredential } from "../api";
 import { useI18n, type I18nKey } from "../i18n";
 import Popconfirm from "./Popconfirm";
 import { Button, Checkbox, Dialog, Field, FormActions, IconButton, Input, SelectMenu, SettingsSection, Text } from "./ui";
@@ -28,9 +28,9 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
   const [oidcSecret, setOidcSecret] = useState("");
   const [proxyHeader, setProxyHeader] = useState("");
   const [proxyLogout, setProxyLogout] = useState("");
-  const [pwDraft, setPwDraft] = useState<Record<number, string>>({});
   const [mapDraft, setMapDraft] = useState<Record<number, string>>({}); // oidc_subject or proxy_match
-  const [userDraft, setUserDraft] = useState<Record<number, string>>({});
+  const [generatedCredentials, setGeneratedCredentials] = useState<TemporaryProfileCredential[]>([]);
+  const [generatingProfileId, setGeneratingProfileId] = useState<number | null>(null);
   const [test, setTest] = useState<{ ok: boolean; msg: string } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [countdown, setCountdown] = useState(0);
@@ -46,7 +46,6 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
         setOidc(c.oidc);
         setProxyHeader(c.proxy.header);
         setProxyLogout(c.proxy.logout_url);
-        setUserDraft(Object.fromEntries(c.profiles.map((p) => [p.id, p.username])));
         setMapDraft(
           Object.fromEntries(
             c.profiles.map((p) => [p.id, c.method === "proxy_header" ? p.proxy_match : p.oidc_subject])
@@ -60,7 +59,7 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
   // Refresh only the status indicators (password_set, passkeys, …) after a save —
   // without resetting the selected method, the active subtab, or the user's drafts.
   const refreshCfg = useCallback(() => {
-    api.authConfig().then(setCfg).catch(() => {});
+    return api.authConfig().then((next) => { setCfg(next); return next; }).catch(() => null);
   }, []);
 
   // While the activation modal is open, gate the confirm button behind a 5s
@@ -92,8 +91,6 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
     proxy: { header: proxyHeader, logout_url: proxyLogout },
     profiles: cfg.profiles.map((p) => ({
       id: p.id,
-      username: userDraft[p.id] ?? "",
-      ...(pwDraft[p.id] ? { password: pwDraft[p.id] } : {}),
       ...(selected === "oidc" ? { oidc_subject: mapDraft[p.id] ?? "" } : {}),
       ...(selected === "proxy_header" ? { proxy_match: mapDraft[p.id] ?? "" } : {}),
     })),
@@ -106,7 +103,6 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
       await api.saveAuthConfig(buildUpdate());
       setSharedPw("");
       setOidcSecret("");
-      setPwDraft({});
       showToast(t("authSaved"));
       refreshCfg();
     } catch (e: any) {
@@ -145,6 +141,21 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
     }
   };
 
+  const generateProfileCredential = async (id: number) => {
+    if (generatingProfileId !== null) return;
+    setGeneratingProfileId(id);
+    try {
+      const result = await api.generateProfileCredential(id);
+      setGeneratedCredentials([result.credential]);
+      await refreshCfg();
+      showToast(t("authCredentialsGenerated"));
+    } catch (error: any) {
+      showToast(error?.message ?? t("loginError"));
+    } finally {
+      setGeneratingProfileId(null);
+    }
+  };
+
   // Methods that map each profile to a per-profile identifier — every profile
   // must be filled (and unique) before the method can be activated.
   const requiresMapping =
@@ -152,7 +163,7 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
   const mappingIssues = (() => {
     if (!requiresMapping) return null;
     const valueOf = (id: number) =>
-      (selected === "per_profile" ? userDraft[id] ?? "" : mapDraft[id] ?? "").trim();
+      (selected === "per_profile" ? cfg.profiles.find((profile) => profile.id === id)?.username ?? "" : mapDraft[id] ?? "").trim();
     const missing = cfg.profiles.filter((p) => !valueOf(p.id)).map((p) => p.name);
     const seen = new Map<string, true>();
     const dups = new Set<string>();
@@ -164,7 +175,7 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
     }
     const credMissing =
       selected === "per_profile"
-        ? cfg.profiles.filter((p) => !(pwDraft[p.id] ?? "").trim() && !p.has_password && !p.has_passkey).map((p) => p.name)
+        ? cfg.profiles.filter((p) => !p.has_password && !p.has_passkey).map((p) => p.name)
         : [];
     const ok = missing.length === 0 && dups.size === 0 && credMissing.length === 0;
     return { ok, missing, duplicates: [...dups], credMissing };
@@ -212,21 +223,27 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
 
       {selected === "per_profile" && (
         <div className="auth-config-block">
+          <Text tone="secondary">{t("authPerProfileGeneratedHint")}</Text>
           <table className="auth-profile-table">
-            <thead><tr><th>{t("profileName")}</th><th>{t("authUsername")}</th><th>{t("authPassword")}</th></tr></thead>
+            <thead><tr><th>{t("profileName")}</th><th>{t("authUsername")}</th><th>{t("authPassword")}</th><th>{t("authCredentialAction")}</th></tr></thead>
             <tbody>
               {cfg.profiles.map((p) => (
                 <tr key={p.id}>
                   <td>{p.name}</td>
-                  <td><Input value={userDraft[p.id] ?? ""} onChange={(e) => setUserDraft({ ...userDraft, [p.id]: e.target.value })} /></td>
+                  <td><code>{p.username || "—"}</code></td>
+                  <td>{p.has_password ? t("authPasswordSet") : t("authPasswordPending")}</td>
                   <td>
-                    <Input
-                      type="password"
-                      placeholder={p.has_password ? t("authPasswordSet") : ""}
-                      value={pwDraft[p.id] ?? ""}
-                      autoComplete="new-password"
-                      onChange={(e) => setPwDraft({ ...pwDraft, [p.id]: e.target.value })}
-                    />
+                    {p.has_password ? (
+                      <Popconfirm message={t("authRegenerateCredentialsConfirm")} onConfirm={() => generateProfileCredential(p.id)}>
+                        <Button size="sm" disabled={generatingProfileId !== null}>
+                          <KeyRound size={15} /> {t("authRegenerateCredentials")}
+                        </Button>
+                      </Popconfirm>
+                    ) : (
+                      <Button size="sm" disabled={generatingProfileId !== null} onClick={() => generateProfileCredential(p.id)}>
+                        <KeyRound size={15} /> {t("authGenerateCredentials")}
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -321,6 +338,25 @@ export default function AuthSettings({ showToast }: { showToast: (m: string) => 
               <code className="auth-confirm-code">YTZERO_AUTH_DISABLE=1</code>
             </div>
           </div>
+      </Dialog>
+      <Dialog
+        open={generatedCredentials.length > 0}
+        onOpenChange={(open) => { if (!open) setGeneratedCredentials([]); }}
+        title={t("authGeneratedCredentialsTitle")}
+        closeLabel={t("close")}
+        footer={<Button variant="primary" onClick={() => setGeneratedCredentials([])}>{t("authCredentialsSaved")}</Button>}
+      >
+        <Text tone="secondary">{t("authGeneratedCredentialsHint")}</Text>
+        <div className="auth-generated-credentials">
+          {generatedCredentials.map((credential) => (
+            <div key={credential.id} className="auth-generated-credential">
+              <strong>{credential.name}</strong>
+              <code>{credential.username}</code>
+              <code>{credential.password}</code>
+            </div>
+          ))}
+        </div>
+        <Button onClick={() => void navigator.clipboard.writeText(generatedCredentials.map((item) => `${item.name}\n${t("authUsername")}: ${item.username}\n${t("authPassword")}: ${item.password}`).join("\n\n"))}><Copy size={15} /> {t("copyAll")}</Button>
       </Dialog>
     </SettingsSection>
   );

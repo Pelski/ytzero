@@ -110,6 +110,7 @@ const childResponse = await request(child.id, "/recommendations?limit=60");
 const childData = await childResponse.json() as any;
 const downloadsOnlyBefore = await (await request(downloadsChild.id, "/recommendations?limit=60")).json() as any;
 db.prepare("INSERT INTO downloads(video_id, status, source) VALUES(?, 'done', 'manual')").run("rec-fresh-b");
+db.prepare("INSERT INTO download_owners(user_id, video_id, source) VALUES(?, ?, 'manual')").run(downloadsChild.id, "rec-fresh-b");
 const downloadsOnlyAfter = await (await request(downloadsChild.id, "/recommendations?limit=60")).json() as any;
 
 console.log("RESULT " + JSON.stringify({

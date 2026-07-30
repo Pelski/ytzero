@@ -35,7 +35,7 @@ import { isValidTimeZone, zonedDayHour } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
-import { discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
+import { DOWNLOADS_ADMIN_SETTING_KEYS, discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, cancelAllPendingDownloads, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, downloadStatusSummary, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "./downloadRules";
 import { fetchVideoComments, validYouTubeVideoId, VideoCommentsError } from "./youtubeComments";
@@ -77,6 +77,7 @@ import {
   resolveProxyUser,
   proxyHeaderValue,
 } from "./auth";
+import { generateTemporaryPassword, uniqueProfileUsername } from "./profileCredentials";
 
 export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean } }>();
 
@@ -312,6 +313,11 @@ function canSwitchProfiles(): boolean {
   return false;
 }
 
+function hideOtherProfilesInPicker(): boolean {
+  const method = authMethod();
+  return method !== "none" && method !== "shared" && getSetting("auth_hide_other_profiles") === "1";
+}
+
 function methodLogoutUrl(): string {
   const method = authMethod();
   if (method === "oidc") return getSetting("auth_oidc_logout_url") || "";
@@ -516,7 +522,7 @@ async function attachTags(uid: number, videos: VideoRow[]) {
   // downloads_enabled additionally requires the plugin to be turned on. The UI
   // shows the download action for allowed-but-disabled and links to settings.
   const downloadsAllowed = !await isChildUser(uid);
-  const downloadsEnabled = pluginEnabled("downloads") && downloadsAllowed;
+  const downloadsEnabled = downloadsAllowed && await profileDownloadsEnabled(uid);
   // Live percentage for the one video the downloader is fetching right now,
   // so lists can paint a download progress bar without a dedicated request.
   const dlProgress = activeDownloadProgress();
@@ -589,7 +595,7 @@ function videoSelect(uid: number) {
           WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1
           ORDER BY cpv.discovered_at DESC LIMIT 1) AS source_playlist_id,
          EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
-         (SELECT d.status FROM downloads d WHERE d.video_id = v.video_id AND d.status != 'deleted') AS download_status,
+         (SELECT d.status FROM downloads d JOIN download_owners owner ON owner.video_id=d.video_id WHERE owner.user_id=${uid} AND d.video_id=v.video_id AND d.status!='deleted') AS download_status,
          COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id
   LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}`;
@@ -759,7 +765,7 @@ api.post("/cleanup/apply", async (c) => {
   await applyCleanupAction(uid, videoIds, body.action);
   // Both outcomes end in status=archived, so a pending auto download nobody
   // will see anymore should stop the same way a single reject/watch does.
-  for (const id of videoIds) await cancelAutoDownloadIfUnwanted(id);
+  for (const id of videoIds) await cancelAutoDownloadIfUnwanted(uid, id);
   await saveBulkUndo(uid, body.action, snapshot);
   refreshDiscoveryInBackground(uid);
   return c.json({ affected: videoIds.length });
@@ -1025,6 +1031,12 @@ api.put("/plugins/:id/settings", async (c) => {
   try {
     const uid = currentUserId(c);
     const body = await c.req.json();
+    if (c.req.param("id") === "downloads") {
+      if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+      if (!isAdmin(c) && body && typeof body === "object" && Object.keys(body).some((key) => DOWNLOADS_ADMIN_SETTING_KEYS.has(key))) {
+        return c.json({ error: "administrator setting" }, 403);
+      }
+    }
     return c.json(await setPluginSettings(uid, c.req.param("id"), body, getUserSetting(uid, "language")));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
@@ -1034,6 +1046,7 @@ api.put("/plugins/:id/settings", async (c) => {
 api.post("/plugins/:id/reset", async (c) => {
   try {
     const uid = currentUserId(c);
+    if (c.req.param("id") === "downloads" && await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
     return c.json(await resetPluginState(uid, c.req.param("id"), getUserSetting(uid, "language")));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
@@ -1044,78 +1057,116 @@ api.post("/plugins/:id/reset", async (c) => {
 // the dedicated downloads configuration endpoints below.
 // yt-dlp accepts a Netscape-format cookie jar. Keep the secret in a private
 // server-side file rather than the settings table, which is returned to UI.
-api.get("/plugins/downloads/cookies", (c) => c.json({ configured: downloadCookiesConfigured() }));
+api.get("/plugins/downloads/cookies", async (c) => {
+  const uid = currentUserId(c);
+  return await isChildUser(uid) ? c.json({ error: "not allowed" }, 403) : c.json({ configured: downloadCookiesConfigured(uid) });
+});
 
 api.post("/plugins/downloads/cookies", async (c) => {
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   try {
     const form = await c.req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return c.json({ error: "cookies.txt file required" }, 400);
-    saveDownloadCookies(await file.text());
+    saveDownloadCookies(uid, await file.text());
     return c.json({ configured: true });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 });
 
-api.delete("/plugins/downloads/cookies", (c) => {
-  removeDownloadCookies();
+api.delete("/plugins/downloads/cookies", async (c) => {
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  removeDownloadCookies(uid);
   return c.json({ configured: false });
 });
 
 // ---------- downloads plugin ----------
 
+async function profileDownloadsEnabled(userId: number) {
+  const row = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='profile_enabled'").get(userId) as { value: string } | null;
+  return pluginEnabled("downloads") && row?.value !== "0";
+}
+
+async function setProfileDownloadsEnabled(userId: number, enabled: boolean) {
+  await database.prepare(`
+    INSERT INTO plugin_settings(plugin_id,user_id,key,value) VALUES('downloads',?,'profile_enabled',?)
+    ON CONFLICT(plugin_id,user_id,key) DO UPDATE SET value=excluded.value
+  `).run(userId, enabled ? "1" : "0");
+}
+
 api.get("/downloads/config", async (c) => {
   const uid = currentUserId(c);
   return c.json({
-    can_manage: isAdmin(c),
-    enabled: pluginEnabled("downloads"),
+    can_manage: !await isChildUser(uid),
+    can_manage_admin_settings: isAdmin(c),
+    admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS],
+    enabled: await profileDownloadsEnabled(uid),
+    plugin_available: pluginEnabled("downloads"),
     ...(await getPluginSettings(uid, "downloads", getUserSetting(uid, "language"))),
-    cookies_configured: downloadCookiesConfigured(),
+    cookies_configured: downloadCookiesConfigured(uid),
   });
 });
 
 api.put("/downloads/config", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
-  const body = await c.req.json<{ enabled?: boolean; settings?: Record<string, unknown> }>();
-  if (typeof body.enabled === "boolean") await setPluginEnabled("downloads", body.enabled);
   const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  const body = await c.req.json<{ enabled?: boolean; settings?: Record<string, unknown> }>();
+  if (typeof body.enabled === "boolean") {
+    if (body.enabled && !pluginEnabled("downloads")) {
+      if (!isAdmin(c)) return c.json({ error: "downloads are disabled by administrator" }, 403);
+      await setPluginEnabled("downloads", true);
+    }
+    await setProfileDownloadsEnabled(uid, body.enabled);
+  }
+  if (!isAdmin(c) && body.settings && Object.keys(body.settings).some((key) => DOWNLOADS_ADMIN_SETTING_KEYS.has(key))) {
+    return c.json({ error: "administrator setting" }, 403);
+  }
   const settings = body.settings && typeof body.settings === "object"
     ? await setPluginSettings(uid, "downloads", body.settings, getUserSetting(uid, "language"))
     : await getPluginSettings(uid, "downloads", getUserSetting(uid, "language"));
-  publishAppEvent("downloads", { enabled: pluginEnabled("downloads"), config: true });
-  return c.json({ can_manage: true, enabled: pluginEnabled("downloads"), ...settings, cookies_configured: downloadCookiesConfigured() });
+  const enabled = await profileDownloadsEnabled(uid);
+  publishAppEvent("downloads", { enabled, config: true, userId: uid });
+  return c.json({ can_manage: true, can_manage_admin_settings: isAdmin(c), admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS], enabled, plugin_available: pluginEnabled("downloads"), ...settings, cookies_configured: downloadCookiesConfigured(uid) });
 });
 
-api.get("/downloads/automation", async (c) => c.json({ rules: await listDownloadRules(), can_manage: isAdmin(c) }));
+api.get("/downloads/automation", async (c) => {
+  const uid = currentUserId(c);
+  return c.json({ rules: await listDownloadRules(uid), can_manage: !await isChildUser(uid) });
+});
 
 api.get("/downloads/automation/options", async (c) => {
+  const uid = currentUserId(c);
   const channels = await database.prepare(`
     SELECT DISTINCT c.channel_id, COALESCE(NULLIF(c.custom_title, ''), c.title) AS title, c.thumbnail
     FROM user_channels uc JOIN channels c ON c.channel_id=uc.channel_id
-    WHERE uc.followed=1 ORDER BY title COLLATE NOCASE
-  `).all();
+    WHERE uc.user_id=? AND uc.followed=1 ORDER BY title COLLATE NOCASE
+  `).all(uid);
   const playlists = await database.prepare(`
     SELECT DISTINCT cp.playlist_id, cp.title, cp.thumbnail,
            COALESCE(NULLIF(c.custom_title, ''), c.title) AS channel_title
     FROM channel_playlists cp
     JOIN channels c ON c.channel_id=cp.channel_id
-    WHERE EXISTS (SELECT 1 FROM user_followed_playlists ufp WHERE ufp.playlist_id=cp.playlist_id)
-       OR EXISTS (SELECT 1 FROM user_channels uc WHERE uc.channel_id=cp.channel_id AND uc.followed=1)
+    WHERE EXISTS (SELECT 1 FROM user_followed_playlists ufp WHERE ufp.user_id=? AND ufp.playlist_id=cp.playlist_id)
+       OR EXISTS (SELECT 1 FROM user_channels uc WHERE uc.user_id=? AND uc.channel_id=cp.channel_id AND uc.followed=1)
     ORDER BY channel_title COLLATE NOCASE, cp.title COLLATE NOCASE
-  `).all();
+  `).all(uid, uid);
   return c.json({ channels, playlists });
 });
 
 api.post("/downloads/automation/preview", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
-  return c.json(await previewDownloadRule(await c.req.json<Partial<DownloadRuleInput>>()));
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  return c.json(await previewDownloadRule(uid, await c.req.json<Partial<DownloadRuleInput>>()));
 });
 
 api.post("/downloads/automation", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   try {
-    const rule = await createDownloadRule(await c.req.json<Partial<DownloadRuleInput>>());
+    const rule = await createDownloadRule(uid, await c.req.json<Partial<DownloadRuleInput>>());
     publishAppEvent("downloads", { automation: true, ruleId: rule.id });
     return c.json({ rule }, 201);
   } catch (error) {
@@ -1125,11 +1176,12 @@ api.post("/downloads/automation", async (c) => {
 });
 
 api.put("/downloads/automation/:id", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid rule id" }, 400);
   try {
-    const rule = await updateDownloadRule(id, await c.req.json<Partial<DownloadRuleInput>>());
+    const rule = await updateDownloadRule(uid, id, await c.req.json<Partial<DownloadRuleInput>>());
     if (!rule) return c.json({ error: "not found" }, 404);
     publishAppEvent("downloads", { automation: true, ruleId: rule.id });
     return c.json({ rule });
@@ -1140,57 +1192,71 @@ api.put("/downloads/automation/:id", async (c) => {
 });
 
 api.delete("/downloads/automation/:id", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid rule id" }, 400);
-  if (!await deleteDownloadRule(id)) return c.json({ error: "not found" }, 404);
+  if (!await deleteDownloadRule(uid, id)) return c.json({ error: "not found" }, 404);
   publishAppEvent("downloads", { automation: true, ruleId: id });
   return c.json({ ok: true });
 });
 
-api.get("/downloads/cookies", (c) => c.json({ configured: downloadCookiesConfigured() }));
+api.get("/downloads/cookies", async (c) => {
+  const uid = currentUserId(c);
+  return await isChildUser(uid) ? c.json({ error: "not allowed" }, 403) : c.json({ configured: downloadCookiesConfigured(uid) });
+});
 
 api.post("/downloads/cookies", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   try {
     const form = await c.req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return c.json({ error: "cookies.txt file required" }, 400);
-    saveDownloadCookies(await file.text());
+    saveDownloadCookies(uid, await file.text());
     return c.json({ configured: true });
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
 });
 
-api.delete("/downloads/cookies", (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
-  removeDownloadCookies();
+api.delete("/downloads/cookies", async (c) => {
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  removeDownloadCookies(uid);
   return c.json({ configured: false });
 });
 
 api.get("/downloads", async (c) => {
+  const uid = currentUserId(c);
+  const includeAllProfiles = c.req.query("scope") === "all" && isAdmin(c);
+  const downloads = await listDownloads(uid, includeAllProfiles);
+  const progress = activeDownloadProgress();
   return c.json({
-    enabled: pluginEnabled("downloads"),
+    enabled: await profileDownloadsEnabled(uid),
+    can_view_all: isAdmin(c),
+    scope: includeAllProfiles ? "all" : "mine",
     ytdlp_version: await ytdlpStatus(),
-    stats: await downloadStats(),
-    active: activeDownloadProgress(),
-    downloads: await listDownloads(),
+    stats: await downloadStats(uid, includeAllProfiles),
+    active: progress && downloads.some((item) => item.video_id === progress.video_id) ? progress : null,
+    downloads,
   });
 });
 
 api.get("/downloads/summary", async (c) => {
-  return c.json({ enabled: pluginEnabled("downloads"), ...await downloadStatusSummary() });
+  const uid = currentUserId(c);
+  return c.json({ enabled: await profileDownloadsEnabled(uid), ...await downloadStatusSummary(uid) });
 });
 
 api.delete("/downloads/queue", async (c) => {
   if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
-  return c.json({ ok: true, cancelled: await cancelAllPendingDownloads() });
+  return c.json({ ok: true, cancelled: await cancelAllPendingDownloads(currentUserId(c)) });
 });
 
 api.post("/videos/:id/download", async (c) => {
   if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
-  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  const uid = currentUserId(c);
+  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
   const id = c.req.param("id");
   const video = await database.prepare("SELECT live_status, is_private FROM videos WHERE video_id = ?").get(id) as { live_status: string; is_private: number } | null;
   if (!video) return c.json({ error: "not found" }, 404);
@@ -1199,15 +1265,15 @@ api.post("/videos/:id/download", async (c) => {
     return c.json({ error: "live streams cannot be downloaded while they are active" }, 409);
   }
   const body = await c.req.json().catch(() => ({} as { priority?: boolean }));
-  if (body.priority) await prioritizeDownload(id);
-  else await enqueueDownload(id, "manual");
-  return c.json({ ok: true, download: await getDownload(id) });
+  if (body.priority) await prioritizeDownload(uid, id);
+  else await enqueueDownload(uid, id, "manual");
+  return c.json({ ok: true, download: await getDownload(uid, id) });
 });
 
 // Download state for one video, with live progress while it's the active job.
 api.get("/videos/:id/download", async (c) => {
   const id = c.req.param("id");
-  const download = await getDownload(id);
+  const download = await getDownload(currentUserId(c), id);
   const progress = activeDownloadProgress();
   return c.json({
     download,
@@ -1216,22 +1282,28 @@ api.get("/videos/:id/download", async (c) => {
 });
 
 api.delete("/videos/:id/download", async (c) => {
-  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
-  await removeDownload(c.req.param("id"));
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  const requestedProfile = Number(c.req.query("profile_id"));
+  const ownerId = Number.isInteger(requestedProfile) && requestedProfile > 0 && isAdmin(c) ? requestedProfile : uid;
+  await removeDownload(ownerId, c.req.param("id"));
   return c.json({ ok: true });
 });
 
 api.put("/videos/:id/download/pin", async (c) => {
-  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const { pinned } = await c.req.json() as { pinned?: boolean };
-  await setDownloadPinned(c.req.param("id"), !!pinned);
-  return c.json({ ok: true, download: await getDownload(c.req.param("id")) });
+  const requestedProfile = Number(c.req.query("profile_id"));
+  const ownerId = Number.isInteger(requestedProfile) && requestedProfile > 0 && isAdmin(c) ? requestedProfile : uid;
+  await setDownloadPinned(ownerId, c.req.param("id"), !!pinned);
+  return c.json({ ok: true, download: await getDownload(ownerId, c.req.param("id")) });
 });
 
 // Serves the downloaded file to the <video> element. Range support is what
 // makes seeking work, so it's handled explicitly.
 api.get("/videos/:id/stream", async (c) => {
-  const row = await getDownload(c.req.param("id"));
+  const row = await getDownload(currentUserId(c), c.req.param("id"));
   if (!row || row.status !== "done" || !row.path || !existsSync(row.path)) {
     return c.json({ error: "not downloaded" }, 404);
   }
@@ -1271,23 +1343,24 @@ api.get("/videos/:id/stream", async (c) => {
 api.get("/videos/:id/hls/:file", async (c) => {
   const uid = currentUserId(c);
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-  if (!await liveStreamEnabled()) return c.json({ error: "streaming disabled" }, 409);
+  if (!await liveStreamEnabled(uid)) return c.json({ error: "streaming disabled" }, 409);
   const id = c.req.param("id");
   const file = c.req.param("file");
 
   if (file === "index.m3u8") {
-    const done = await getDownload(id);
+    const done = await getDownload(uid, id);
     if (done && done.status === "done" && done.path && existsSync(done.path)) {
       return c.json({ error: "already downloaded" }, 409);
     }
     if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-    const playlist = await getHlsPlaylist(id);
+    const playlist = await getHlsPlaylist(uid, id);
     if (!playlist) return c.json({ error: "stream unavailable" }, 502);
     return new Response(playlist, {
       headers: { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store" },
     });
   }
 
+  if (!await getDownload(uid, id)) return c.json({ error: "not found" }, 404);
   const path = await getHlsSegment(id, file, c.req.raw.signal);
   if (!path) return c.json({ error: "not found" }, 404);
   return new Response(Bun.file(path), {
@@ -1305,10 +1378,12 @@ async function subtitleList(videoId: string) {
 }
 
 api.get("/videos/:id/subtitles", async (c) => {
+  if (!await getDownload(currentUserId(c), c.req.param("id"))) return c.json({ subtitles: [] });
   return c.json({ subtitles: await subtitleList(c.req.param("id")) });
 });
 
 api.get("/videos/:id/subtitles/:lang", async (c) => {
+  if (!await getDownload(currentUserId(c), c.req.param("id"))) return c.json({ error: "not found" }, 404);
   const file = (await listSubtitleFiles(c.req.param("id"))).find((s) => s.lang === c.req.param("lang"));
   if (!file || !existsSync(file.path)) return c.json({ error: "not found" }, 404);
   let text = await Bun.file(file.path).text();
@@ -1323,14 +1398,15 @@ api.get("/videos/:id/subtitles/:lang", async (c) => {
 api.post("/videos/:id/subtitles", async (c) => {
   const uid = currentUserId(c);
   if (childLocalOnly(uid)) return c.json({ error: "restricted" }, 403);
-  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
   const id = c.req.param("id");
+  if (!await getDownload(uid, id)) return c.json({ error: "not downloaded" }, 404);
   const { lang } = await c.req.json().catch(() => ({}));
   if (typeof lang !== "string" || !SUBTITLE_LANGUAGE_CODES.has(lang)) {
     return c.json({ error: "invalid language" }, 400);
   }
   if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-  const ok = await fetchSubtitles(id, lang);
+  const ok = await fetchSubtitles(uid, id, lang);
   const subtitles = await subtitleList(id);
   return c.json({ ok, downloaded: subtitles.some((s) => s.lang === lang), subtitles });
 });
@@ -1338,7 +1414,7 @@ api.post("/videos/:id/subtitles", async (c) => {
 // Download a locally saved video as a file rather than streaming it in the
 // player. Kept separate from /stream so local playback retains range support.
 api.get("/videos/:id/file", async (c) => {
-  const row = await getDownload(c.req.param("id"));
+  const row = await getDownload(currentUserId(c), c.req.param("id"));
   if (!row || row.status !== "done" || !row.path || !existsSync(row.path)) {
     return c.json({ error: "not downloaded" }, 404);
   }
@@ -1612,7 +1688,7 @@ api.get("/videos/:id/comments", async (c) => {
   if (!validYouTubeVideoId(videoId)) return c.json({ error: "invalid video id" }, 400);
   if (childLocalOnly(currentUserId(c))) return c.json({ error: "restricted" }, 403);
   try {
-    return c.json(await fetchVideoComments(videoId, c.req.query("refresh") === "1"));
+    return c.json(await fetchVideoComments(currentUserId(c), videoId, c.req.query("refresh") === "1"));
   } catch (error) {
     const failure = error instanceof VideoCommentsError
       ? error
@@ -1852,7 +1928,7 @@ api.post("/videos/:id/archive", async (c) => {
      ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'archived', bucket = NULL, show_from = NULL`
   ).run(uid, id);
   // Rejecting a video also stops a pending auto download nobody else waits for.
-  await cancelAutoDownloadIfUnwanted(id);
+  await cancelAutoDownloadIfUnwanted(uid, id);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
@@ -2684,8 +2760,9 @@ api.get("/channel-playlists/:id/videos", async (c) => {
 });
 
 api.post("/channel-playlists/:id/download", async (c) => {
-  if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
-  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
   const playlist = await database.prepare("SELECT title FROM channel_playlists WHERE playlist_id = ?").get(c.req.param("id")) as { title: string } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
   const videoIds = (await database.prepare(`
@@ -2695,7 +2772,7 @@ api.post("/channel-playlists/:id/download", async (c) => {
       AND v.live_status NOT IN ('live', 'upcoming')
     ORDER BY cpv.position ASC
   `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
-  const result = await enqueuePlaylistDownloads(videoIds, playlist.title);
+  const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.title);
   log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.title, ...result });
   return c.json(result);
 });
@@ -2864,7 +2941,7 @@ api.get("/playlists/:id", async (c) => {
 api.post("/playlists/:id/download", async (c) => {
   const uid = currentUserId(c);
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-  if (!pluginEnabled("downloads")) return c.json({ error: "plugin disabled" }, 409);
+  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
   const playlist = await database.prepare("SELECT name FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { name: string } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
   const videoIds = (await database.prepare(`
@@ -2874,7 +2951,7 @@ api.post("/playlists/:id/download", async (c) => {
       AND v.live_status NOT IN ('live', 'upcoming')
     ORDER BY upv.added_at ASC
   `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
-  const result = await enqueuePlaylistDownloads(videoIds, playlist.name);
+  const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.name);
   log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.name, ...result });
   return c.json(result);
 });
@@ -3553,25 +3630,40 @@ api.post("/profiles", async (c) => {
   const row = await database
     .prepare("INSERT INTO users (name, avatar_color, pin_hash, oidc_subject, is_child, sort_order, portable_uuid) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING *")
     .get(name.trim(), avatar_color || "#7c5cff", pinHash, identity || null, is_child ? 1 : 0, nextOrder, crypto.randomUUID()) as UserRow;
+  let temporaryCredentials: { username: string; password: string } | null = null;
+  if (authMethod() === "per_profile") {
+    const existing = await database.prepare("SELECT username FROM users WHERE id != ? AND username IS NOT NULL").all(row.id) as Array<{ username: string }>;
+    const username = uniqueProfileUsername(row.name, new Set(existing.map((entry) => entry.username.toLowerCase())), row.id);
+    const password = generateTemporaryPassword();
+    await database.prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?").run(username, await hashPassword(password), row.id);
+    temporaryCredentials = { username, password };
+  }
   if (is_child) await setUserSetting(row.id, "child_local_only", "1");
   if (is_child) {
     publishAppEvent("child-status");
     publishAppEvent("child-watching");
   }
   log.info("profile.created", { id: row.id, name: row.name });
-  return c.json({ profile: await serializeProfile(row, currentUserId(c), isAdmin(c) && mapping.mapped) });
+  return c.json({ profile: await serializeProfile(row, currentUserId(c), isAdmin(c) && mapping.mapped), temporary_credentials: temporaryCredentials });
 });
 
 api.patch("/profiles/:id", async (c) => {
   const id = Number(c.req.param("id"));
   const current = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!current) return c.json({ error: "not found" }, 404);
-  // Only the owner or the primary profile may edit a profile at all.
+  // Only the owner or an administrator may edit a profile at all.
   if (!canManageProfile(c, id)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.json().catch(() => ({}));
   if (body.name !== undefined) {
     if (!String(body.name).trim()) return c.json({ error: "name required" }, 400);
-    await database.prepare("UPDATE users SET name = ? WHERE id = ?").run(String(body.name).trim(), id);
+    const nextName = String(body.name).trim();
+    if (authMethod() === "per_profile") {
+      const existing = await database.prepare("SELECT username FROM users WHERE id != ? AND username IS NOT NULL").all(id) as Array<{ username: string }>;
+      const username = uniqueProfileUsername(nextName, new Set(existing.map((entry) => entry.username.toLowerCase())), id);
+      await database.prepare("UPDATE users SET name = ?, username = ? WHERE id = ?").run(nextName, username, id);
+    } else {
+      await database.prepare("UPDATE users SET name = ? WHERE id = ?").run(nextName, id);
+    }
   }
   if (body.avatar_color !== undefined) {
     await database.prepare("UPDATE users SET avatar_color = ? WHERE id = ?").run(String(body.avatar_color), id);
@@ -3589,7 +3681,7 @@ api.patch("/profiles/:id", async (c) => {
   // is_child: admin-only, so a child profile can never unmark itself. The
   // primary profile is the household admin and cannot be a child profile.
   if (body.is_child !== undefined) {
-    if (!isAdmin(c)) return c.json({ error: "only the primary profile can change this" }, 403);
+    if (!isAdmin(c)) return c.json({ error: "only an administrator can change this" }, 403);
     if (id === primaryUserId()) return c.json({ error: "the primary profile cannot be a child profile" }, 400);
     await database.prepare("UPDATE users SET is_child = ? WHERE id = ?").run(body.is_child ? 1 : 0, id);
     // Restricted content is the safe default for a fresh child profile.
@@ -3600,7 +3692,7 @@ api.patch("/profiles/:id", async (c) => {
   }
   // Child time limit & restrictions: admin-only, stored in the child's settings.
   if (body.child_config !== undefined) {
-    if (!isAdmin(c)) return c.json({ error: "only the primary profile can change this" }, 403);
+    if (!isAdmin(c)) return c.json({ error: "only an administrator can change this" }, 403);
     const cc = body.child_config ?? {};
     if (cc.limit_minutes !== undefined) {
       const minutes = Math.max(0, Math.min(24 * 60, parseInt(cc.limit_minutes, 10) || 0));
@@ -3651,7 +3743,10 @@ api.delete("/profiles/:id", async (c) => {
       return c.json({ error: "invalid PIN" }, 401);
     }
   }
-  await database.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all per-user state
+  const ownedDownloads = await database.prepare("SELECT video_id FROM download_owners WHERE user_id=?").all(id) as { video_id: string }[];
+  for (const download of ownedDownloads) await removeDownload(id, download.video_id);
+  removeDownloadCookies(id);
+  await database.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all remaining per-user state
   if (user.is_child) {
     publishAppEvent("child-status");
     publishAppEvent("child-watching");
@@ -3755,7 +3850,7 @@ const OIDC_FLOW_COOKIE = "ytzero_oidc_flow";
 // What the SPA needs to decide between rendering the app or the login screen.
 api.get("/auth/status", async (c) => {
   const method = authMethod();
-  if (method === "none") return c.json({ method, authenticated: true, can_switch: true, is_admin: isAdmin(c) });
+  if (method === "none") return c.json({ method, authenticated: true, can_switch: true, hide_other_profiles: false, is_admin: isAdmin(c) });
 
   if (method === "proxy_header") {
     const uid = await resolveProxyUser(c);
@@ -3763,6 +3858,7 @@ api.get("/auth/status", async (c) => {
       method,
       authenticated: Boolean(uid),
       can_switch: false,
+      hide_other_profiles: hideOtherProfilesInPicker(),
       is_admin: isAdmin(c),
       proxy_header_seen: Boolean(proxyHeaderValue(c)),
     });
@@ -3776,6 +3872,7 @@ api.get("/auth/status", async (c) => {
     authenticated: Boolean(session),
     scope: session?.scope ?? null,
     can_switch: canSwitchProfiles(),
+    hide_other_profiles: hideOtherProfilesInPicker(),
     is_admin: isAdmin(c),
     oidc_mode: method === "oidc" ? getSetting("auth_oidc_mode") || "mapped" : undefined,
     // per_profile always needs a username; shared only when one was configured.
@@ -3933,6 +4030,7 @@ api.get("/auth/config", async (c) => {
   })));
   return c.json({
     method: getSetting("auth_method") || "none",
+    hide_other_profiles: getSetting("auth_hide_other_profiles") === "1",
     shared: {
       username: getSetting("auth_shared_username") || "",
       password_set: Boolean(getSetting("auth_shared_password_hash")),
@@ -3964,6 +4062,11 @@ api.put("/auth/config", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
   const body = await c.req.json().catch(() => ({}));
 
+  if (body.hide_other_profiles !== undefined) {
+    if (typeof body.hide_other_profiles !== "boolean") return c.json({ error: "invalid profile visibility setting" }, 400);
+    await setSetting("auth_hide_other_profiles", body.hide_other_profiles ? "1" : "0");
+  }
+
   if (body.shared) {
     if (body.shared.username !== undefined) await setSetting("auth_shared_username", String(body.shared.username));
     if (body.shared.password) await setSetting("auth_shared_password_hash", await hashPassword(String(body.shared.password)));
@@ -3994,14 +4097,51 @@ api.put("/auth/config", async (c) => {
     for (const p of body.profiles) {
       const id = Number(p.id);
       if (!await database.prepare("SELECT 1 FROM users WHERE id = ?").get(id)) continue;
-      if (p.username !== undefined) await database.prepare("UPDATE users SET username = ? WHERE id = ?").run(String(p.username).trim() || null, id);
-      if (p.password) await database.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(String(p.password)), id);
-      else if (p.password === "") await database.prepare("UPDATE users SET password_hash = NULL WHERE id = ?").run(id);
       if (p.oidc_subject !== undefined) await database.prepare("UPDATE users SET oidc_subject = ? WHERE id = ?").run(String(p.oidc_subject).trim() || null, id);
       if (p.proxy_match !== undefined) await database.prepare("UPDATE users SET proxy_match = ? WHERE id = ?").run(String(p.proxy_match).trim() || null, id);
     }
   }
 
+  return c.json({ ok: true });
+});
+
+api.post("/auth/per-profile/credentials/:id", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+  const targetId = Number(c.req.param("id"));
+  if (!Number.isSafeInteger(targetId) || targetId < 1) return c.json({ error: "invalid profile id" }, 400);
+  const rows = await database.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
+  const target = rows.find((row) => row.id === targetId);
+  if (!target) return c.json({ error: "profile not found" }, 404);
+  const used = new Set<string>();
+  const prepared = rows.map((row) => {
+    const username = uniqueProfileUsername(row.name, used, row.id);
+    return { row, username };
+  });
+  const password = generateTemporaryPassword();
+  const passwordHash = await hashPassword(password);
+  await database.transaction(async () => {
+    for (const entry of prepared) {
+      if (entry.row.id === targetId) await database.prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?").run(entry.username, passwordHash, entry.row.id);
+      else await database.prepare("UPDATE users SET username = ? WHERE id = ?").run(entry.username, entry.row.id);
+    }
+  })();
+  const targetEntry = prepared.find((entry) => entry.row.id === targetId)!;
+  log.info("auth.per_profile_credentials_generated", { id: targetId });
+  return c.json({
+    credential: { id: target.id, name: target.name, username: targetEntry.username, password },
+  });
+});
+
+api.put("/auth/profile/password", async (c) => {
+  if (authMethod() !== "per_profile") return c.json({ error: "per-profile login is not active" }, 400);
+  const id = currentUserId(c);
+  const row = await database.prepare("SELECT password_hash FROM users WHERE id = ?").get(id) as { password_hash: string | null } | null;
+  const { current_password, new_password } = await c.req.json().catch(() => ({}));
+  if (!row?.password_hash || !(await verifyPassword(String(current_password ?? ""), row.password_hash))) return c.json({ error: "current password is incorrect" }, 401);
+  const next = String(new_password ?? "");
+  if (next.length < 8 || next.length > 200) return c.json({ error: "new password must contain 8 to 200 characters" }, 400);
+  await database.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(next), id);
+  log.info("auth.profile_password_changed", { id });
   return c.json({ ok: true });
 });
 
@@ -4058,6 +4198,15 @@ api.post("/auth/method", async (c) => {
   if (method === "oidc") {
     const probe = await testOidc();
     if (!probe.ok) return c.json({ error: `OIDC not reachable: ${probe.error}` }, 400);
+  }
+  if (method === "per_profile") {
+    const rows = await database.prepare("SELECT id, name FROM users ORDER BY sort_order ASC, id ASC").all() as Array<{ id: number; name: string }>;
+    const used = new Set<string>();
+    const usernames = rows.map((row) => ({ id: row.id, username: uniqueProfileUsername(row.name, used, row.id) }));
+    const sync = database.transaction(async () => {
+      for (const entry of usernames) await database.prepare("UPDATE users SET username = ? WHERE id = ?").run(entry.username, entry.id);
+    });
+    await sync();
   }
   // per_profile / oidc-mapped / proxy_header: require a complete, unique mapping.
   const m = await validateMapping(method);

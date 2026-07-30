@@ -1,6 +1,8 @@
 .live-upcoming-header { margin-top: 32px; }
 .dl-page-tabs { margin-top: 4px; }
 
+.dl-header-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 16px; justify-content: flex-end; }
+
 .dl-storage {
   align-items: center;
   color: var(--text-2);
@@ -62,6 +64,8 @@
 }
 .dl-title:hover { color: var(--accent); }
 .dl-meta { align-items: center; color: var(--text-2); display: flex; flex-wrap: wrap; font-size: 12px; gap: 10px; }
+.dl-profile { align-items: center; color: var(--text); display: inline-flex; font-weight: 600; gap: 5px; }
+.dl-profile i { border-radius: 50%; height: 7px; width: 7px; }
 .dl-channel:hover { color: var(--text); }
 .dl-status { align-items: center; display: inline-flex; font-weight: 500; gap: 5px; }
 .dl-status--done { color: #7ee08a; }

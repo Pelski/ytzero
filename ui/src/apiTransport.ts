@@ -18,6 +18,14 @@ export function isExpiredApiSession(response: Pick<Response, "type" | "status">,
   return response.status === 401 && !requestPath(input).startsWith("/api/auth/");
 }
 
+export function shouldNavigateForAuthentication(
+  response: Pick<Response, "type" | "status">,
+  input: RequestInfo | URL,
+  suppressAuthenticationNavigation = false,
+): boolean {
+  return !suppressAuthenticationNavigation && isExpiredApiSession(response, input);
+}
+
 function beginAuthenticationNavigation() {
   if (authenticationNavigationStarted) return;
   authenticationNavigationStarted = true;
@@ -28,11 +36,15 @@ function beginAuthenticationNavigation() {
 }
 
 /** Fetch an application API resource without following an auth-proxy redirect. */
-export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+export async function apiFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  options?: { suppressAuthenticationNavigation?: boolean },
+): Promise<Response> {
   if (authenticationNavigationStarted) return navigationPending;
 
   const response = await fetch(input, { ...init, redirect: "manual" });
-  if (!isExpiredApiSession(response, input)) return response;
+  if (!shouldNavigateForAuthentication(response, input, options?.suppressAuthenticationNavigation)) return response;
 
   beginAuthenticationNavigation();
   return navigationPending;

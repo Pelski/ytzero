@@ -7,6 +7,7 @@ db.prepare("INSERT INTO videos(video_id, channel_id, title, thumbnail) VALUES(?,
   .run("notifyvideo1", "UCnotify", "Failed video", "https://example.com/thumb.jpg");
 db.prepare("INSERT INTO downloads(video_id, status, error, attempts, created_at) VALUES(?, 'error', ?, 1, ?)")
   .run("notifyvideo1", "network failure", "2026-07-28 20:00:00");
+db.prepare("INSERT INTO download_owners(user_id, video_id, source) VALUES(1, ?, 'manual')").run("notifyvideo1");
 db.prepare("INSERT INTO users(name, avatar_color, sort_order, portable_uuid, is_child) VALUES(?, ?, ?, ?, 1)")
   .run("Child", "#123456", 1, crypto.randomUUID());
 

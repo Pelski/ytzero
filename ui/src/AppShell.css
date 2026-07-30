@@ -567,6 +567,38 @@ body.cinema .topbar.topbar--solid {
   color: var(--text);
 }
 .topbar-logo:hover .logo-text { color: var(--text-2); }
+.topbar--feed-refreshing .logo-mark {
+  box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 16%, transparent);
+}
+.topbar-logo-refresh-icon {
+  animation: topbar-feed-refresh-spin 850ms linear infinite;
+  fill: none !important;
+}
+.topbar-refresh-progress {
+  animation: topbar-feed-refresh-progress 1.15s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  bottom: 0;
+  height: 2px;
+  left: -36%;
+  pointer-events: none;
+  position: absolute;
+  width: 36%;
+  z-index: 2;
+}
+.topbar--incognito > .topbar-refresh-progress { position: absolute; z-index: 2; }
+
+@keyframes topbar-feed-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes topbar-feed-refresh-progress {
+  from { left: -36%; }
+  to { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-logo-refresh-icon { animation: none; }
+  .topbar-refresh-progress { animation-duration: 2.4s; }
+}
 .search-wrap {
   display: flex;
   align-items: stretch;

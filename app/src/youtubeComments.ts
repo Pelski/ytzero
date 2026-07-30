@@ -126,7 +126,7 @@ export function normalizeVideoComments(value: unknown): VideoComment[] {
   });
 }
 
-async function runYtdlp(videoId: string, useCookies: boolean): Promise<VideoComment[]> {
+async function runYtdlp(userId: number, videoId: string, useCookies: boolean): Promise<VideoComment[]> {
   const args = [
     "--ignore-config",
     "--no-playlist",
@@ -140,7 +140,7 @@ async function runYtdlp(videoId: string, useCookies: boolean): Promise<VideoComm
   ];
   let proc: ReturnType<typeof Bun.spawn>;
   try {
-    proc = Bun.spawn(ytdlpCommand(args, useCookies), { stdout: "pipe", stderr: "pipe" });
+    proc = Bun.spawn(ytdlpCommand(userId, args, useCookies), { stdout: "pipe", stderr: "pipe" });
   } catch (error) {
     throw classifyVideoCommentsError(error);
   }
@@ -173,11 +173,11 @@ async function runYtdlp(videoId: string, useCookies: boolean): Promise<VideoComm
   }
 }
 
-async function extractVideoComments(videoId: string): Promise<VideoComment[]> {
+async function extractVideoComments(userId: number, videoId: string): Promise<VideoComment[]> {
   let lastError: unknown;
-  for (const useCookies of downloadCookieAttempts(downloadCookiesConfigured())) {
+  for (const useCookies of downloadCookieAttempts(downloadCookiesConfigured(userId))) {
     try {
-      return await runYtdlp(videoId, useCookies);
+      return await runYtdlp(userId, videoId, useCookies);
     } catch (error) {
       lastError = error;
     }
@@ -231,11 +231,16 @@ export function createVideoCommentsFetcher(
   };
 }
 
-const fetchCachedVideoComments = createVideoCommentsFetcher(extractVideoComments);
+const profileCommentFetchers = new Map<number, ReturnType<typeof createVideoCommentsFetcher>>();
 
-export async function fetchVideoComments(videoId: string, force = false): Promise<VideoCommentsResult> {
+export async function fetchVideoComments(userId: number, videoId: string, force = false): Promise<VideoCommentsResult> {
   try {
-    return await fetchCachedVideoComments(videoId, force);
+    let fetcher = profileCommentFetchers.get(userId);
+    if (!fetcher) {
+      fetcher = createVideoCommentsFetcher((id) => extractVideoComments(userId, id));
+      profileCommentFetchers.set(userId, fetcher);
+    }
+    return await fetcher(videoId, force);
   } catch (error) {
     log.warn("youtube.comments_failed", { videoId, error: error instanceof Error ? error.message : String(error) });
     throw error;
