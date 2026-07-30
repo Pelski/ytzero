@@ -655,7 +655,7 @@ api.get("/feed", async (c) => {
       where.push("v.channel_id = ?");
       params.push(channel);
     } else if (!allSources) {
-      where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
+      where.push(`(${followedExists(uid)} OR ${followedPlaylistExists(uid)})`);
     }
     if (q) {
       where.push("(v.title LIKE ? OR v.description LIKE ?)");

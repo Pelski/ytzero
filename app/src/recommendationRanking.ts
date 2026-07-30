@@ -64,7 +64,8 @@ export function isEligibleRecommendation(candidate: RecommendationCandidate): bo
   if (candidate.is_short !== 0) return false;
   // Archived streams (`was_live`) are excluded together with live/upcoming.
   if (candidate.live_status !== "none") return false;
-  if (candidate.is_private === 1 || candidate.status === "archived" || candidate.watched === 1) return false;
+  // Queued videos already have an explicit destination in Scheduled.
+  if (candidate.is_private === 1 || candidate.status !== "inbox" || candidate.watched === 1) return false;
   const progress = recommendationProgress(candidate);
   return progress == null || progress < RECOMMENDATION_COMPLETE_RATIO;
 }

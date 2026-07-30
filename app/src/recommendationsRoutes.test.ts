@@ -31,20 +31,35 @@ beforeAll(async () => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("recommendations route", () => {
+  test("keeps the recommendations plugin disabled on a fresh installation", () => {
+    expect(result.enabledByDefault).toBe(false);
+  });
+
   test("returns the feed contract without exposing per-video ranking metadata", () => {
     expect(result.fullStatus).toBe(200);
     expect(result.ids.length).toBeGreaterThan(1);
     expect(result.leaksRankingMetadata).toBe(false);
     expect(result.everyRegular).toBe(true);
     expect(result.externalEnabled).toBe(false);
+    expect(result.ids).not.toContain("rec-external-followed");
+    expect(result.recommendationStateRows).toBe(0);
   });
 
   test("strictly excludes shorts, live formats, private, completed and incomplete videos", () => {
     for (const excluded of [
       "rec-completed", "rec-near-complete", "rec-short", "rec-unknown-short",
-      "rec-live", "rec-upcoming", "rec-was-live", "rec-private", "rec-incomplete",
+      "rec-scheduled", "rec-live", "rec-upcoming", "rec-was-live", "rec-private", "rec-incomplete",
     ]) expect(result.ids).not.toContain(excluded);
     expect(result.ids).toContain("rec-partial");
+  });
+
+  test("shows Recommendation-first uploads from followed channels in Main", () => {
+    expect(result.feedIds).toContain("rec-external-followed");
+  });
+
+  test("returns no recommendations while the plugin is disabled", () => {
+    expect(result.disabledEnabled).toBe(false);
+    expect(result.disabledIds).toEqual([]);
   });
 
   test("isolates the active profile's candidate pool", () => {

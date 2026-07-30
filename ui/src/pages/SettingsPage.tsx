@@ -498,10 +498,11 @@ function FilterRuleGroups({ rules, channels, onSave, onRemove }: {
   );
 }
 
-function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChange: (next: NavConfigEntry[]) => void }) {
+function SidebarNavEditor({ value, onChange, excludedKeys = new Set<string>() }: { value: NavConfigEntry[]; onChange: (next: NavConfigEntry[]) => void; excludedKeys?: ReadonlySet<string> }) {
   const { t } = useI18n();
   const [dragKey, setDragKey] = useState<string | null>(null);
   const byKey = new Map(NAV_ITEMS.map((i) => [i.to, i] as const));
+  const displayedValue = value.filter((entry) => !excludedKeys.has(entry.key));
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const prevTops = useRef<Map<string, number>>(new Map());
   const flipAnims = useRef<Map<string, Animation>>(new Map());
@@ -530,21 +531,26 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
   });
 
   const move = (from: number, to: number) => {
-    if (to < 0 || to >= value.length || from === to) return;
+    if (to < 0 || to >= displayedValue.length || from === to) return;
+    const fromKey = displayedValue[from]?.key;
+    const toKey = displayedValue[to]?.key;
+    const actualFrom = value.findIndex((entry) => entry.key === fromKey);
+    const actualTo = value.findIndex((entry) => entry.key === toKey);
+    if (actualFrom < 0 || actualTo < 0) return;
     const next = value.slice();
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved);
+    const [moved] = next.splice(actualFrom, 1);
+    next.splice(actualTo, 0, moved);
     onChange(next);
   };
 
   const toggleHidden = (key: string) =>
     onChange(value.map((v) => (v.key === key ? { ...v, hidden: !v.hidden } : v)));
 
-  const firstHidden = value.findIndex((e) => e.hidden);
+  const firstHidden = displayedValue.findIndex((e) => e.hidden);
 
   return (
     <div className={`sidebar-order-list${dragKey ? " is-dragging" : ""}`}>
-      {value.map((entry, i) => {
+      {displayedValue.map((entry, i) => {
         const item = byKey.get(entry.key);
         if (!item) return null;
         const Icon = item.icon;
@@ -562,7 +568,7 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
               onDragOver={(e) => {
                 e.preventDefault();
                 if (!dragKey || dragKey === entry.key) return;
-                const from = value.findIndex((v) => v.key === dragKey);
+                const from = displayedValue.findIndex((v) => v.key === dragKey);
                 if (from === -1 || from === i) return;
                 // Only swap once the cursor passes the target's midpoint in the
                 // direction of travel — prevents jittery back-and-forth reorders.
@@ -578,7 +584,7 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
                 <IconButton label={t("moveUp")} disabled={i === 0} onClick={() => move(i, i - 1)}>
                   <ChevronUp size={15} />
                 </IconButton>
-                <IconButton label={t("moveDown")} disabled={i === value.length - 1} onClick={() => move(i, i + 1)}>
+                <IconButton label={t("moveDown")} disabled={i === displayedValue.length - 1} onClick={() => move(i, i + 1)}>
                   <ChevronDown size={15} />
                 </IconButton>
                 <IconButton label={entry.hidden ? t("showItem") : t("hideItem")} onClick={() => toggleHidden(entry.key)}>
@@ -3050,7 +3056,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               <Button>{t("resetOrder")}</Button>
             </Popconfirm>
           </div>
-          <SidebarNavEditor value={navConfig} onChange={persistNavConfig} />
+          <SidebarNavEditor
+            value={navConfig}
+            onChange={persistNavConfig}
+            excludedKeys={plugins.some((plugin) => plugin.id === "discovery" && !plugin.enabled)
+              ? new Set(["/recommendations"])
+              : undefined}
+          />
           </SettingsSection>
           }
         </div>
@@ -3092,19 +3104,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 id: "display",
                 title: t("pluginSectionDisplay"),
                 description: t("pluginSectionDisplayHint"),
-                keys: ["total_limit", "per_channel_limit", "early_external_count", "random_pick_count", "high_pick_count"],
+                keys: ["total_limit", "per_channel_limit", "random_pick_count", "high_pick_count"],
               },
               {
                 id: "personalization",
                 title: t("pluginSectionPersonalization"),
                 description: t("pluginSectionPersonalizationHint"),
                 keys: ["shared_tag_points", "tag_history_points", "tag_history_cap", "watched_channel_points", "watched_channel_cap", "playlist_points", "liked_points", "already_watched_points", "started_points", "recency_points"],
-              },
-              {
-                id: "outside",
-                title: t("pluginSectionOutside"),
-                description: t("pluginSectionOutsideHint"),
-                keys: ["external_adjustment", "outside_base_points", "outside_exact_match_points", "outside_partial_match_points"],
               },
             ];
             const sectionKeys = plugin.id === "discovery" ? discoverySections : null;

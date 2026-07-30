@@ -1,6 +1,10 @@
 const { api } = await import("../src/routes");
 const { db, setUserSetting } = await import("../src/db");
+const { pluginEnabled, setPluginEnabled } = await import("../src/plugins");
 const { zonedDayHour } = await import("../src/timeZone");
+
+const enabledByDefault = pluginEnabled("discovery");
+await setPluginEnabled("discovery", true);
 
 const primaryId = 1;
 const secondary = db.prepare(
@@ -57,7 +61,9 @@ video("rec-fresh-a");
 video("rec-fresh-b", "UC-rec-b");
 video("rec-partial", "UC-rec-b");
 video("rec-completed");
+video("rec-scheduled");
 video("rec-near-complete");
+video("rec-external-followed");
 video("rec-short", "UC-rec-a", { isShort: 1 });
 video("rec-unknown-short", "UC-rec-a", { isShort: null });
 video("rec-live", "UC-rec-a", { live: "live" });
@@ -86,8 +92,13 @@ db.prepare("INSERT INTO user_videos(user_id, video_id, watch_position, watch_dur
 db.prepare("INSERT INTO user_videos(user_id, video_id, watch_position, watch_duration) VALUES(?, ?, ?, ?)")
   .run(primaryId, "rec-short", 20, 100);
 db.prepare("INSERT INTO user_videos(user_id, video_id, watched) VALUES(?, ?, 1)").run(primaryId, "rec-completed");
+db.prepare("INSERT INTO user_videos(user_id, video_id, status, bucket) VALUES(?, ?, 'queued', 'tomorrow')")
+  .run(primaryId, "rec-scheduled");
 db.prepare("INSERT INTO user_videos(user_id, video_id, watch_position, watch_duration) VALUES(?, ?, ?, ?)")
   .run(primaryId, "rec-near-complete", 930, 1000);
+// Recommendations can discover an upload before the followed channel's RSS
+// refresh. Its temporary provenance must not hide it from Main.
+db.prepare("UPDATE videos SET external = 1 WHERE video_id = 'rec-external-followed'").run();
 
 const local = zonedDayHour();
 db.prepare("INSERT INTO watch_time_log(user_id, video_id, day, hour, seconds) VALUES(?, ?, ?, ?, ?)")
@@ -101,6 +112,7 @@ const request = (profileId: number, path: string) => api.request(`http://localho
 
 const fullResponse = await request(primaryId, "/recommendations?limit=60");
 const full = await fullResponse.json() as any;
+const feed = await (await request(primaryId, "/feed?limit=100")).json() as any;
 const firstResponse = await request(primaryId, "/recommendations?limit=1&page=0");
 const first = await firstResponse.json() as any;
 const firstRepeat = await (await request(primaryId, "/recommendations?limit=1&page=0")).json() as any;
@@ -112,14 +124,22 @@ const downloadsOnlyBefore = await (await request(downloadsChild.id, "/recommenda
 db.prepare("INSERT INTO downloads(video_id, status, source) VALUES(?, 'done', 'manual')").run("rec-fresh-b");
 db.prepare("INSERT INTO download_owners(user_id, video_id, source) VALUES(?, ?, 'manual')").run(downloadsChild.id, "rec-fresh-b");
 const downloadsOnlyAfter = await (await request(downloadsChild.id, "/recommendations?limit=60")).json() as any;
+const recommendationStateRows = (db.prepare("SELECT count(*) AS count FROM discovery_recommendations").get() as { count: number }).count;
+await setPluginEnabled("discovery", false);
+const disabled = await (await request(primaryId, "/recommendations?limit=60")).json() as any;
 
 console.log("RESULT " + JSON.stringify({
+  enabledByDefault,
   fullStatus: fullResponse.status,
   ids: full.videos.map((item: any) => item.video_id),
+  feedIds: feed.videos.map((item: any) => item.video_id),
   leaksRankingMetadata: full.videos.some((item: any) => "score" in item || "reasons" in item),
   everyRegular: full.videos.every((item: any) => item.is_short === 0 && item.live_status === "none"),
   summary: full.summary,
   externalEnabled: full.external_enabled,
+  recommendationStateRows,
+  disabledEnabled: disabled.enabled,
+  disabledIds: disabled.videos.map((item: any) => item.video_id),
   firstStatus: firstResponse.status,
   firstId: first.videos[0]?.video_id,
   firstRepeatId: firstRepeat.videos[0]?.video_id,

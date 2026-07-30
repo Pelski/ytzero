@@ -33,7 +33,10 @@ export function feedVisibilityWhere(
     where.push("COALESCE(uv.status, 'inbox') = ?");
     params.push(status);
   }
-  where.push(`((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})`);
+  // Following is the profile-level source of truth. A video may have first
+  // entered storage as a temporary Recommendation (`external = 1`), but once
+  // its channel is followed it belongs in Main just like an RSS-first upload.
+  where.push(`(${followedExists(uid)} OR ${followedPlaylistExists(uid)})`);
   if (!opts.includeHidden) {
     // Age limit: old uploads stay in the library and on channel pages, they just
     // never surface in the feed (see feed_max_age_* in SETTING_DEFAULTS).

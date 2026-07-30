@@ -9,6 +9,7 @@ const video = (
   is_short: options.short === undefined ? 0 : options.short,
   live_status: options.live ?? "none",
   watched: options.watched ?? null,
+  status: "inbox" as const,
 });
 
 describe("recommendation page filtering", () => {
@@ -26,6 +27,7 @@ describe("recommendation page filtering", () => {
 
   test("excludes completed videos but keeps a partially watched one", () => {
     expect(isEligibleRecommendation(video("completed", { watched: 1 }))).toBe(false);
+    expect(isEligibleRecommendation({ ...video("scheduled"), status: "queued" })).toBe(false);
     const partial = { ...video("partial"), watch_position: 180, watch_duration: 900 };
     expect(isEligibleRecommendation(partial)).toBe(true);
   });

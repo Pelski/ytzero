@@ -82,12 +82,7 @@ const DISCOVERY_SETTINGS: PluginSettingSource[] = [
   { key: "liked_points", label: { en: "Liked videos", pl: "Polubione filmy", de: "Favorisierte Videos" }, description: { en: "Raises videos you marked as liked.", pl: "Podbija filmy oznaczone jako polubione.", de: "Hebt Videos an, die du favorisiert hast." }, min: 0, max: 100, step: 1, defaultValue: 35 },
   { key: "already_watched_points", label: { en: "Opened before", pl: "Wcześniej otwarte", de: "Zuvor geöffnet" }, description: { en: "Gives a small boost to videos you opened but did not complete.", pl: "Lekko podbija filmy otwarte wcześniej, ale niedokończone.", de: "Gewichtet zuvor geöffnete, aber nicht beendete Videos leicht höher." }, min: 0, max: 50, step: 1, defaultValue: 10 },
   { key: "started_points", label: { en: "Started videos", pl: "Rozpoczęte filmy", de: "Begonnene Videos" }, description: { en: "Raises videos where you watched part of the material.", pl: "Podbija filmy, które były już częściowo oglądane.", de: "Hebt Videos an, von denen du bereits einen Teil gesehen hast." }, min: 0, max: 80, step: 1, defaultValue: 15 },
-  { key: "external_adjustment", label: { en: "Temporary videos", pl: "Filmy tymczasowe", de: "Temporäre Videos" }, description: { en: "Adjusts how strongly videos from outside your subscriptions are promoted.", pl: "Reguluje, jak mocno promowane są filmy spoza subskrypcji.", de: "Steuert, wie stark Videos außerhalb deiner Abos gewichtet werden." }, min: -50, max: 50, step: 1, defaultValue: -5 },
   { key: "recency_points", label: { en: "Freshness", pl: "Świeżość", de: "Aktualität" }, description: { en: "Raises newer videos so the list does not feel stale.", pl: "Podbija nowsze filmy, żeby lista nie była zbyt stara.", de: "Hebt neuere Videos an, damit die Liste aktuell bleibt." }, min: 0, max: 60, step: 1, defaultValue: 18 },
-  { key: "outside_base_points", label: { en: "Outside suggestions", pl: "Propozycje z zewnątrz", de: "Externe Vorschläge" }, description: { en: "Base weight for videos discovered outside your saved channels.", pl: "Bazowa waga filmów znalezionych poza zapisanymi kanałami.", de: "Grundgewicht für Videos außerhalb deiner gespeicherten Kanäle." }, min: 0, max: 100, step: 1, defaultValue: 35 },
-  { key: "outside_exact_match_points", label: { en: "Exact topic match", pl: "Dokładne dopasowanie tematu", de: "Genaue Themenübereinstimmung" }, description: { en: "Raises outside videos whose titles use topics from your library.", pl: "Podbija filmy z zewnątrz, których tytuły używają tematów z Twojej biblioteki.", de: "Hebt externe Videos an, deren Titel Themen aus deiner Bibliothek enthalten." }, min: 0, max: 40, step: 1, defaultValue: 12 },
-  { key: "outside_partial_match_points", label: { en: "Loose topic match", pl: "Luźne dopasowanie tematu", de: "Lockere Themenübereinstimmung" }, description: { en: "Raises outside videos with titles loosely related to your library.", pl: "Podbija filmy z zewnątrz luźno powiązane tytułem z Twoją biblioteką.", de: "Hebt externe Videos an, deren Titel grob zu deiner Bibliothek passen." }, min: 0, max: 30, step: 1, defaultValue: 5 },
-  { key: "early_external_count", label: { en: "Early outside videos", pl: "Wczesne filmy z zewnątrz", de: "Frühe externe Videos" }, description: { en: "How many outside videos may appear near the beginning.", pl: "Ile filmów z zewnątrz może trafić blisko początku listy.", de: "Wie viele externe Videos früh in der Liste erscheinen dürfen." }, min: 0, max: 8, step: 1, defaultValue: 2 },
   { key: "random_pick_count", label: { en: "Variety near the top", pl: "Różnorodność na początku", de: "Abwechslung am Anfang" }, description: { en: "Mixes in a few strong suggestions so the list changes between reloads.", pl: "Miesza kilka mocnych propozycji, żeby lista zmieniała się po przeładowaniu.", de: "Mischt starke Vorschläge ein, damit die Liste beim Neuladen variiert." }, min: 0, max: 10, step: 1, defaultValue: 3 },
   { key: "high_pick_count", label: { en: "Top matches after variety", pl: "Najlepsze po miksie", de: "Beste Treffer nach dem Mix" }, description: { en: "How many strongest matches should follow the first mixed items.", pl: "Ile najmocniejszych dopasowań ma iść po pierwszych wymieszanych pozycjach.", de: "Wie viele stärkste Treffer nach den gemischten Einträgen folgen." }, min: 0, max: 20, step: 1, defaultValue: 6 },
 ];
@@ -291,12 +286,12 @@ export const DOWNLOADS_ADMIN_SETTING_KEYS = new Set([
 export const PLUGINS: PluginManifest[] = [
   {
     id: "discovery",
-    name: "Extended recommendations",
+    name: "Recommendations",
     version: "0.1.0",
-    description: "Adds suggestions from outside your library to the core recommendations view.",
+    description: "Ranks eligible videos already stored in your local library.",
     route: "/recommendations",
     icon: "Sparkles",
-    permissions: ["read:library", "read:history", "network:video-search"],
+    permissions: ["read:library", "read:history"],
   },
   {
     id: "downloads",
@@ -312,16 +307,15 @@ export const PLUGINS: PluginManifest[] = [
 
 const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: LocalizedText; permissions: Record<string, LocalizedText> }> = {
   discovery: {
-    name: { en: "Extended recommendations", pl: "Rozszerzone rekomendacje", de: "Erweiterte Empfehlungen" },
+    name: { en: "Recommendations", pl: "Rekomendacje", de: "Empfehlungen" },
     description: {
-      en: "Adds suggestions from outside your library to the core recommendations view.",
-      pl: "Dodaje do podstawowych rekomendacji propozycje spoza Twojej biblioteki.",
-      de: "Ergänzt die grundlegenden Empfehlungen um Vorschläge außerhalb deiner Bibliothek.",
+      en: "Ranks eligible videos already stored in your local library.",
+      pl: "Porządkuje pasujące filmy, które są już zapisane w lokalnej bibliotece.",
+      de: "Sortiert passende Videos, die bereits in deiner lokalen Bibliothek gespeichert sind.",
     },
     permissions: {
       "read:library": { en: "reads your local library", pl: "czyta lokalną bibliotekę", de: "liest deine lokale Bibliothek" },
       "read:history": { en: "uses your watch history", pl: "używa historii oglądania", de: "nutzt deinen Verlauf" },
-      "network:video-search": { en: "can search for new video ideas", pl: "może szukać nowych propozycji", de: "kann nach neuen Videovorschlägen suchen" },
     },
   },
   downloads: {
@@ -718,7 +712,7 @@ async function localRecommendations(
   // Candidate ownership is intentionally profile-scoped. Videos are global in
   // storage, so a plain scan would leak another profile's library and habits.
   const profileOwnsCandidate = `(
-    ((${followedExists(uid)} AND v.external = 0) OR ${followedPlaylistExists(uid)})
+    (${followedExists(uid)} OR ${followedPlaylistExists(uid)})
     OR EXISTS (SELECT 1 FROM user_videos own_uv WHERE own_uv.user_id = ${uid} AND own_uv.video_id = v.video_id)
     OR EXISTS (SELECT 1 FROM history own_h WHERE own_h.user_id = ${uid} AND own_h.video_id = v.video_id)
     OR EXISTS (
@@ -815,7 +809,7 @@ async function localRecommendations(
       AND v.published_at IS NOT NULL AND v.published_at != ''
       AND TRIM(v.title) != '' AND TRIM(v.thumbnail) != ''
       AND TRIM(COALESCE(c.custom_title, c.title)) != ''
-      AND COALESCE(uv.status, 'inbox') != 'archived'
+      AND COALESCE(uv.status, 'inbox') = 'inbox'
       AND COALESCE(uv.watched, 0) != 1
       AND (uv.watch_position IS NULL OR uv.watch_duration IS NULL OR uv.watch_duration <= 30
         OR uv.watch_position < 3 OR CAST(uv.watch_position AS REAL) / uv.watch_duration < 0.92)
@@ -976,47 +970,17 @@ async function selectVideo(uid: number, videoId: string) {
   `).get(uid, uid, videoId) as any | null;
 }
 
-export async function discoveryRecommendations(uid: number) {
-  if (!pluginEnabled("discovery")) return { recommendations: [], enabled: false };
-  const settings = await discoverySettings(uid);
-  let recommendations = await readStoredDiscoveryRecommendations(uid, settings.total_limit);
-  if (recommendations.length === 0) {
-    await runDiscoveryRefresh(uid);
-    recommendations = await readStoredDiscoveryRecommendations(uid, settings.total_limit);
-  } else if (await storedDiscoveryAgeMs(uid) > DISCOVERY_REFRESH_INTERVAL_MS) {
-    refreshDiscoveryInBackground(uid);
-  }
-  return { recommendations, enabled: true };
+export async function discoveryRecommendations(_uid: number): Promise<{ recommendations: DiscoveryRecommendation[]; enabled: boolean }> {
+  return { recommendations: [], enabled: pluginEnabled("discovery") };
 }
 
-export async function refreshDiscoveryNow(uid: number) {
-  if (!pluginEnabled("discovery")) return { recommendations: [], enabled: false };
-  const timer = discoveryRefreshTimers.get(uid);
-  if (timer) {
-    clearTimeout(timer);
-    discoveryRefreshTimers.delete(uid);
-  }
-  await runDiscoveryRefresh(uid);
-  const settings = await discoverySettings(uid);
-  return { recommendations: await readStoredDiscoveryRecommendations(uid, settings.total_limit), enabled: true };
+export async function refreshDiscoveryNow(_uid: number): Promise<{ recommendations: DiscoveryRecommendation[]; enabled: boolean }> {
+  return { recommendations: [], enabled: pluginEnabled("discovery") };
 }
 
-export function refreshDiscoveryInBackground(uid: number) {
-  if (!pluginEnabled("discovery") || discoveryRefreshInFlight.has(uid) || discoveryRefreshTimers.has(uid)) return;
-  void storedDiscoveryAgeMs(uid).then((ageMs) => {
-    if (discoveryRefreshInFlight.has(uid) || discoveryRefreshTimers.has(uid)) return;
-    const delay = Math.max(0, DISCOVERY_REFRESH_INTERVAL_MS - ageMs);
-    const timer = setTimeout(() => {
-      discoveryRefreshTimers.delete(uid);
-      runDiscoveryRefresh(uid).catch((error) => {
-        log.warn("discovery.background_refresh_failed", { userId: uid, error: error instanceof Error ? error.message : String(error) });
-      });
-    }, delay);
-    discoveryRefreshTimers.set(uid, timer);
-  }).catch((error) => {
-    log.warn("discovery.background_schedule_failed", { userId: uid, error: error instanceof Error ? error.message : String(error) });
-  });
-}
+// Recommendations are a read-only projection. Library mutations must never
+// schedule searches, imports or recommendation-state writes.
+export function refreshDiscoveryInBackground(_uid: number) {}
 
 async function runDiscoveryRefresh(uid: number) {
   if (maintenanceActive()) return;
@@ -1101,7 +1065,7 @@ async function readStoredDiscoveryRecommendations(uid: number, limit: number): P
       AND v.published_at IS NOT NULL AND v.published_at != ''
       AND TRIM(v.title) != '' AND TRIM(v.thumbnail) != ''
       AND TRIM(COALESCE(c.custom_title, c.title)) != ''
-      AND COALESCE(uv.status, 'inbox') != 'archived'
+      AND COALESCE(uv.status, 'inbox') = 'inbox'
       AND COALESCE(uv.watched, 0) != 1
       AND (uv.watch_position IS NULL OR uv.watch_duration IS NULL OR uv.watch_duration <= 30
         OR uv.watch_position < 3 OR CAST(uv.watch_position AS REAL) / uv.watch_duration < 0.92)
@@ -1274,35 +1238,30 @@ export interface RecommendationFeedOptions {
   downloadsOnly?: boolean;
 }
 
-/** Core recommendations are always available. Enabling Discovery only extends
- * this same ranked pool with profile-owned external search results. */
+/** Read-only recommendations from videos already owned by the instance. */
 export async function recommendationFeed(uid: number, options: RecommendationFeedOptions = {}) {
   const page = Math.max(0, Math.floor(options.page ?? 0));
   const limit = Math.min(60, Math.max(1, Math.floor(options.limit ?? 40)));
   const settings = await discoverySettings(uid);
-  const externalEnabled = pluginEnabled("discovery")
-    && options.allowExternal !== false
-    && options.downloadsOnly !== true;
-  let extended: DiscoveryRecommendation[] = [];
-  if (externalEnabled) {
-    extended = (options.refresh
-      ? await refreshDiscoveryNow(uid)
-      : await discoveryRecommendations(uid)).recommendations;
-  }
+  const enabled = pluginEnabled("discovery");
+  if (!enabled) return {
+    enabled: false, external_enabled: false, recommendations: [], page, limit,
+    has_more: false, summary: await recommendationSummary(uid),
+  };
 
   // Rank and diversify the complete bounded pool before slicing pages. This
   // keeps page boundaries deterministic and lets lower-ranked channels fill
   // slots left by the per-channel cap.
   const local = await localRecommendations(uid, 300, settings, {
-    allowExternal: externalEnabled,
+    allowExternal: false,
     downloadsOnly: options.downloadsOnly,
   });
-  const ranked = mixRecommendations([...extended, ...local], 300, settings);
+  const ranked = mixRecommendations(local, 300, settings);
   const offset = page * limit;
   const recommendations = ranked.slice(offset, offset + limit);
   return {
-    enabled: true,
-    external_enabled: externalEnabled,
+    enabled,
+    external_enabled: false,
     recommendations,
     page,
     limit,
@@ -1319,10 +1278,7 @@ function mixRecommendations(recommendations: DiscoveryRecommendation[], limit: n
   );
 }
 
-export async function dismissDiscoveryRecommendation(uid: number, videoId: string) {
-  await database.prepare(
-    "INSERT INTO recommendation_feedback (user_id, video_id, action, created_at) VALUES (?, ?, 'dismiss', datetime('now')) ON CONFLICT(user_id, video_id) DO UPDATE SET action = 'dismiss', created_at = excluded.created_at"
-  ).run(uid, videoId);
-  await database.prepare("DELETE FROM discovery_recommendations WHERE user_id = ? AND video_id = ?").run(uid, videoId);
-  refreshDiscoveryInBackground(uid);
+export async function dismissDiscoveryRecommendation(_uid: number, _videoId: string) {
+  // Kept as a no-op for older clients. The current recommendation surface is
+  // deliberately passive and does not maintain per-video decision state.
 }

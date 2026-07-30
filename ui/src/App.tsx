@@ -35,10 +35,8 @@ import { applyVideoCardSize } from "./videoCardSize";
 import { AppNameContext } from "./useDocumentTitle";
 import "./AppShell.css";
 
-// Routes owned exclusively by plugins — visible only while enabled. Discovery
-// now enriches the core recommendations page, so disabling it removes outside
-// search but never removes the local, database-backed destination itself.
-const PLUGIN_ROUTES: string[] = [];
+// Routes owned exclusively by plugins — visible only while enabled.
+const PLUGIN_ROUTES = ["/recommendations"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
@@ -721,7 +719,9 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
             <Routes>
               <Route path="/" element={<FeedPage onPlay={play} showToast={showToast} feedSort={feedSort} />} />
               <Route path="/search" element={<SearchPage onPlay={play} hideExternalSearch={childStatus?.local_only ?? false} />} />
-              <Route path="/recommendations" element={<RecommendationsPage onPlay={play} loadRecommendations={api.recommendations} />} />
+              <Route path="/recommendations" element={enabledPluginRoutes?.has("/recommendations")
+                ? <RecommendationsPage onPlay={play} loadRecommendations={api.recommendations} />
+                : <Navigate to="/" replace />} />
               <Route path="/discovery" element={<Navigate to="/recommendations" replace />} />
               <Route path="/shorts" element={<ShortsPage />} />
               <Route path="/shorts/:videoId" element={<ShortsPage />} />

@@ -1,13 +1,13 @@
 import type { Video } from "../api";
 
-export type RecommendationContent = Pick<Video, "video_id" | "is_short" | "live_status" | "watched">;
+export type RecommendationContent = Pick<Video, "video_id" | "is_short" | "live_status" | "watched" | "status">;
 
 /**
  * The API excludes these formats too, but the page keeps a defensive boundary:
  * a recommendation surface must never flash a Short or any kind of live upload.
  */
 export function isEligibleRecommendation(video: RecommendationContent): boolean {
-  return video.is_short === 0 && video.live_status === "none" && video.watched !== 1;
+  return video.is_short === 0 && video.live_status === "none" && video.watched !== 1 && video.status === "inbox";
 }
 
 /** Preserve the ranking supplied by the backend while removing unsafe formats

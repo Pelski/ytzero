@@ -48,6 +48,7 @@ describe("recommendation eligibility", () => {
     expect(isEligibleRecommendation(candidate({ is_private: 1 }))).toBe(false);
     expect(isEligibleRecommendation(candidate({ watched: 1 }))).toBe(false);
     expect(isEligibleRecommendation(candidate({ status: "archived" }))).toBe(false);
+    expect(isEligibleRecommendation(candidate({ status: "queued" }))).toBe(false);
     expect(isEligibleRecommendation(candidate({ watch_position: 500, watch_duration: 1000 }))).toBe(true);
     expect(isEligibleRecommendation(candidate({ watch_position: 920, watch_duration: 1000 }))).toBe(false);
   });
