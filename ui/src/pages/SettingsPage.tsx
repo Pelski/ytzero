@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, MonitorPlay, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Tags, Trash2, Tv, UserMinus, UserPlus, Users, Wrench, X, Zap } from "lucide-react";
+import { AlertTriangle, ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
@@ -22,7 +22,7 @@ import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
-import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Dialog, Divider, EmptyState, Field, FormActions, IconButton, Inline, Input, InputGroup, PageHeader, Popover, RevealList, SectionHeader, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Tabs, Text } from "../components/ui";
+import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Dialog, Divider, EmptyState, Field, FormActions, IconButton, Inline, Input, InputGroup, PageHeader, Popover, RevealList, SectionHeader, SelectMenu, SettingRow, SettingsNav, SettingsSection, Slider, Switch, Text, type SettingsNavGroup } from "../components/ui";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type PlayerScreenshotFormat } from "../playerScreenshot";
 import { formatAppDate } from "../dateTime";
 import { mergeRemoteChangelog } from "../changelog";
@@ -40,16 +40,16 @@ const TIME_ZONES = (() => {
   return [...new Set(["UTC", ...supported])];
 })();
 
-// Tabs unavailable to a profile are omitted entirely, not shown as dead ends.
-const TABS: { id: Tab; labelKey: I18nKey; icon: React.ReactNode; primaryOnly?: boolean }[] = [
-  { id: "channels", labelKey: "channels", icon: <Tv size={15} /> },
-  { id: "tags", labelKey: "tagsRules", icon: <Tags size={15} /> },
-  { id: "playlists", labelKey: "playlists", icon: <ListMusic size={15} /> },
-  { id: "display", labelKey: "display", icon: <MonitorPlay size={15} /> },
-  { id: "plugins", labelKey: "pluginsTab", icon: <Plug size={15} /> },
-  { id: "advanced", labelKey: "advanced", icon: <Wrench size={15} />, primaryOnly: true },
-  { id: "profiles", labelKey: "profiles", icon: <Users size={15} /> },
-  { id: "auth", labelKey: "authTab", icon: <KeyRound size={15} />, primaryOnly: true },
+// Areas unavailable to a profile are omitted entirely, not shown as dead ends.
+const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
+  { id: "channels" },
+  { id: "tags" },
+  { id: "playlists" },
+  { id: "display" },
+  { id: "plugins" },
+  { id: "advanced", primaryOnly: true },
+  { id: "profiles" },
+  { id: "auth", primaryOnly: true },
 ];
 
 const DISPLAY_PERMISSION_AREAS: ProfilePermissionArea[] = ["appearance", "feed", "navigation", "playback"];
@@ -1223,10 +1223,11 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   useDocumentTitle(t("settingsTitle"));
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const tab: Tab = TABS.some((item) => item.id === requestedTab) ? requestedTab as Tab : "channels";
+  const tab: Tab = SETTINGS_AREAS.some((item) => item.id === requestedTab) ? requestedTab as Tab : "channels";
   const section = searchParams.get("section");
   const channelSubTab: "list" | "playlists" | "filters" = section === "filters" || section === "playlists" ? section : "list";
   const tagSubTab: "list" | "rules" = section === "rules" ? "rules" : "list";
+  const displaySubTab: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "sponsorblock" = section === "feed" || section === "navigation" || section === "playback" || section === "subtitles" || section === "screenshots" || section === "sponsorblock" ? section : "appearance";
   const advancedSubTab: "external" | "logs" | "changelog" | "dangerous" = section === "external" || section === "logs" || section === "dangerous" ? section : "changelog";
   const setSettingsRoute = (nextTab: Tab, nextSection?: string) => {
     const next = new URLSearchParams();
@@ -1237,6 +1238,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const setTab = (nextTab: Tab) => setSettingsRoute(nextTab);
   const setChannelSubTab = (nextSection: "list" | "playlists" | "filters") => setSettingsRoute("channels", nextSection === "list" ? undefined : nextSection);
   const setTagSubTab = (nextSection: "list" | "rules") => setSettingsRoute("tags", nextSection === "list" ? undefined : nextSection);
+  const setDisplaySubTab = (nextSection: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "sponsorblock") => setSettingsRoute("display", nextSection === "appearance" ? undefined : nextSection);
   const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog" | "dangerous") => setSettingsRoute("advanced", nextSection === "changelog" ? undefined : nextSection);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -2127,16 +2129,28 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     ...(canManageArea("followed_playlists") ? [{ value: "playlists" as const, label: t("followedPlaylists"), count: followedPlaylists.length }] : []),
     ...(canManageArea("filters") ? [{ value: "filters" as const, label: t("filters"), count: filterRules.length }] : []),
   ];
+  const displaySubTabOptions: { value: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "sponsorblock"; label: string }[] = [
+    ...(canManageArea("appearance") ? [{ value: "appearance" as const, label: t("displayAppearance") }] : []),
+    ...(canManageArea("feed") ? [{ value: "feed" as const, label: t("displayFeed") }] : []),
+    ...(canManageArea("navigation") ? [{ value: "navigation" as const, label: t("displayNavigation") }] : []),
+    ...(canManageArea("playback") ? [
+      { value: "playback" as const, label: t("displayPlayback") },
+      { value: "subtitles" as const, label: t("subtitles") },
+      { value: "screenshots" as const, label: t("playerScreenshots") },
+      { value: "sponsorblock" as const, label: "SponsorBlock" },
+    ] : []),
+  ];
   const currentPermissionArea = tab === "channels"
     ? channelSubTab === "playlists" ? "followed_playlists" : channelSubTab === "filters" ? "filters" : "channels"
-    : tab === "display" ? DISPLAY_PERMISSION_AREAS.find(canManageArea) ?? null
+    : tab === "display"
+      ? displaySubTab === "appearance" || displaySubTab === "feed" || displaySubTab === "navigation" ? displaySubTab : "playback"
     : tab === "profiles" && activeAuthMethod === "per_profile" && !canManageArea("profiles") ? null
     : permissionAreaForTab(tab);
   const isCurrentTabLocked = childLock.enabled
     && childLock.locked
     && currentPermissionArea != null
     && PIN_PROTECTED_PERMISSION_AREAS.has(currentPermissionArea);
-  const visibleTabs = TABS.filter((tabItem) => {
+  const visibleAreas = SETTINGS_AREAS.filter((tabItem) => {
     const permissionArea = permissionAreaForTab(tabItem.id);
     const hasVisibleChannelSection = tabItem.id !== "channels" || channelSubTabOptions.length > 0;
     const hasVisibleDisplaySection = tabItem.id !== "display" || DISPLAY_PERMISSION_AREAS.some(canManageArea);
@@ -2146,11 +2160,61 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       && hasVisibleDisplaySection
       && (tabItem.id === "channels" || isPrimary || permissionArea == null || !profilePermissions.admin_only_areas.includes(permissionArea) || (tabItem.id === "profiles" && activeAuthMethod === "per_profile"));
   });
+  const tabIsVisible = (candidate: Tab) => visibleAreas.some((tabItem) => tabItem.id === candidate);
+  const currentSettingsView = tab === "channels"
+    ? channelSubTab === "list" ? "channels" : `channels:${channelSubTab}`
+    : tab === "tags"
+      ? tagSubTab === "list" ? "tags" : "tags:rules"
+      : tab === "display"
+        ? displaySubTab === "appearance" ? "display" : `display:${displaySubTab}`
+        : tab === "advanced"
+          ? advancedSubTab === "changelog" ? "advanced" : `advanced:${advancedSubTab}`
+          : tab;
+  const settingsNavGroups: SettingsNavGroup<string>[] = [
+    {
+      label: t("settingsGroupLibrary"),
+      items: [
+        ...(channelSubTabOptions.some((option) => option.value === "list") ? [{ value: "channels", label: t("channels"), count: channels.length }] : []),
+        ...(channelSubTabOptions.some((option) => option.value === "playlists") ? [{ value: "channels:playlists", label: t("followedPlaylists"), count: followedPlaylists.length }] : []),
+        ...(channelSubTabOptions.some((option) => option.value === "filters") ? [{ value: "channels:filters", label: t("filters"), count: filterRules.length }] : []),
+        ...(tabIsVisible("tags") ? [{ value: "tags", label: t("tags"), count: tags.length }, { value: "tags:rules", label: t("rules"), count: rules.length }] : []),
+        ...(tabIsVisible("playlists") ? [{ value: "playlists", label: t("playlists"), count: playlists.length }] : []),
+      ],
+    },
+    {
+      label: t("settingsGroupExperience"),
+      items: tabIsVisible("display") ? displaySubTabOptions.map((option) => ({
+        value: option.value === "appearance" ? "display" : `display:${option.value}`,
+        label: option.label,
+      })) : [],
+    },
+    {
+      label: t("settingsGroupAdministration"),
+      items: [
+        ...(tabIsVisible("plugins") ? [{ value: "plugins", label: t("pluginsTab") }] : []),
+        ...(tabIsVisible("profiles") ? [{ value: "profiles", label: t("profiles") }] : []),
+        ...(tabIsVisible("auth") ? [{ value: "auth", label: t("authTab") }] : []),
+      ],
+    },
+    {
+      label: t("settingsGroupSystem"),
+      items: tabIsVisible("advanced") ? [
+        { value: "advanced", label: t("changelog") },
+        { value: "advanced:logs", label: t("logs") },
+        { value: "advanced:external", label: t("navExternal"), count: externalVideos.length },
+        { value: "advanced:dangerous", label: t("dangerous") },
+      ] : [],
+    },
+  ].filter((group) => group.items.length > 0);
+  const setSettingsView = (next: string) => {
+    const [nextTab, nextSection] = next.split(":") as [Tab, string | undefined];
+    setSettingsRoute(nextTab, nextSection);
+  };
 
   useEffect(() => {
     if (!settingsReady || isChildProfile == null) return;
-    if (!visibleTabs.some((tabItem) => tabItem.id === tab)) {
-      setTab(visibleTabs[0]?.id ?? "tags");
+    if (!visibleAreas.some((tabItem) => tabItem.id === tab)) {
+      setTab(visibleAreas[0]?.id ?? "tags");
     }
   }, [settingsReady, isChildProfile, isPrimary, canManageAdministrators, profilePermissions.admin_only_areas, tab]);
 
@@ -2159,6 +2223,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     const next = channelSubTabOptions[0]?.value;
     if (next) setChannelSubTab(next);
   }, [settingsReady, tab, channelSubTab, channelSubTabOptions.map((option) => option.value).join(",")]);
+
+  useEffect(() => {
+    if (!settingsReady || tab !== "display" || displaySubTabOptions.some((option) => option.value === displaySubTab)) return;
+    const next = displaySubTabOptions[0]?.value;
+    if (next) setDisplaySubTab(next);
+  }, [settingsReady, tab, displaySubTab, displaySubTabOptions.map((option) => option.value).join(",")]);
 
   if (!settingsReady) return <>
     <PageHeader title={t("settingsTitle")} />
@@ -2184,7 +2254,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </button>
       )}
 
-      <Tabs variant="settings" className="settings-tabs-layout" label={t("settingsTitle")} value={tab} onChange={setTab} options={visibleTabs.map((tabItem) => ({ value: tabItem.id, label: t(tabItem.labelKey), icon: tabItem.icon, count: tabItem.id === "channels" ? channels.length : undefined }))} />
+      <div className="settings-shell">
+        <SettingsNav value={currentSettingsView} groups={settingsNavGroups} onChange={setSettingsView} label={t("settingsTitle")} />
+        <div className="settings-shell__content">
 
       {isCurrentTabLocked && (
         <SettingsSection className="child-lock-panel">
@@ -2327,7 +2399,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isCurrentTabLocked && tab === "channels" && (
         <SettingsSection>
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("channels")} value={channelSubTab} onChange={setChannelSubTab} options={channelSubTabOptions} />
 
           {channelSubTab === "list" && canManageArea("channels") && (
             <>
@@ -2571,7 +2642,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isCurrentTabLocked && tab === "tags" && (
         <SettingsSection>
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("tagsRules")} value={tagSubTab} onChange={setTagSubTab} options={[{ value: "list", label: t("tags"), count: tags.length }, { value: "rules", label: t("rules"), count: rules.length }]} />
 
           {tagSubTab === "list" && (
             <>
@@ -2685,8 +2755,10 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       )}
 
       {!isCurrentTabLocked && tab === "display" && (
-        <div className="settings-display-groups">
-          {canManageArea("appearance") && <SettingsSection title={t("displayAppearance")} className="settings-display-group">
+        <>
+          <div className="settings-display-groups">
+
+          {displaySubTab === "appearance" && canManageArea("appearance") && <SettingsSection title={t("displayAppearance")} className="settings-display-group">
           {isPrimary ? (
             <>
               <SettingRow label={t("appNameLabel")} htmlFor="app-name">
@@ -2774,7 +2846,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
           }
 
-          {canManageArea("feed") && <SettingsSection title={t("displayFeed")} className="settings-display-group">
+          {displaySubTab === "feed" && canManageArea("feed") && <SettingsSection title={t("displayFeed")} className="settings-display-group">
 
           <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
@@ -2820,7 +2892,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingsSection>
           }
 
-          {canManageArea("playback") && <SettingsSection title={t("displayPlayback")} className="settings-display-group">
+          {displaySubTab === "playback" && canManageArea("playback") && <SettingsSection title={t("displayPlayback")} className="settings-display-group">
           <SettingRow label={t("watchShowRelated")} description={t("watchShowRelatedHint")}>
             <Switch checked={watchShowRelated} onCheckedChange={() => toggleWatchRelated()} />
           </SettingRow>
@@ -2859,80 +2931,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
               </SettingRow>
             </>
           )}
-          <SettingRow label={t("forceCaptions")} description={t("forceCaptionsHint")}>
-            <Switch
-              checked={playerCc}
-              onCheckedChange={(next) => {
-                setPlayerCc(next);
-                savePlayer({ player_cc: next ? "1" : "0" });
-              }}
-            />
-          </SettingRow>
-          <SettingRow label={t("playerLanguage")}>
-            <SelectMenu
-              label={t("playerLanguage")}
-              value={playerHl}
-              options={[{ value: "pl", label: "polski" }, { value: "en", label: "English" }, { value: "de", label: "Deutsch" }, { value: "es", label: "español" }, { value: "fr", label: "français" }, { value: "uk", label: "українська" }, { value: "ja", label: "日本語" }]}
-              onChange={(next) => {
-                setPlayerHl(next);
-                savePlayer({ player_hl: next, player_cc_lang: next });
-              }}
-            />
-          </SettingRow>
-
-          <div className="sub-style-panel">
-            <div>
-              <div className="switch-label">{t("subtitleStyleTitle")}</div>
-              <div className="switch-sub">{t("subtitleStyleHint")}</div>
-            </div>
-            <div className="sub-style-controls">
-              <label className="sub-style-field">
-                <span>{t("subtitleSize")}</span>
-                <InputGroup suffix="px" className="sub-size-input">
-                  <Input
-                    type="number"
-                    min={12}
-                    max={48}
-                    step={1}
-                    value={subSize}
-                    onChange={(e) => setSubSize(Math.min(48, Math.max(12, Number(e.target.value) || 12)))}
-                    onBlur={() => savePlayer({ player_sub_size: String(subSize) })}
-                  />
-                </InputGroup>
-              </label>
-              <label className="sub-style-field">
-                <span>{t("subtitleColor")}</span>
-                <ColorPicker
-                  label={t("subtitleColor")}
-                  value={subColor}
-                  onChange={(next) => {
-                    setSubColor(next);
-                    scheduleSettingWrite("player_sub_color", { player_sub_color: next }, {
-                      onSaved: () => { emit("player-settings-changed"); showToast(t("playerSettingsSaved")); },
-                      onError: (error) => { load(); showToast(error instanceof Error ? error.message : String(error)); },
-                    });
-                  }}
-                />
-              </label>
-              <label className="sub-style-field sub-style-field--wide">
-                <span>{t("subtitleBackground")} ({subBg}%)</span>
-                <Slider
-                  min={0}
-                  max={100}
-                  step={5}
-                  value={subBg}
-                  onChange={setSubBg}
-                  onPointerUp={() => savePlayer({ player_sub_bg: String(subBg) })}
-                />
-              </label>
-            </div>
-            <div className="sub-style-preview">
-              <span style={{ color: subColor, background: `rgba(0, 0, 0, ${subBg / 100})`, fontSize: `${subSize}px` }}>
-                {t("subtitlePreviewLine")}
-              </span>
-            </div>
-          </div>
-
           <SettingRow label={t("quality")} description={t("qualityHint")}>
             <SelectMenu
               label={t("quality")}
@@ -2984,7 +2982,84 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingsSection>
           }
 
-          {canManageArea("playback") && <SettingsSection title={t("playerScreenshots")} className="settings-display-group">
+          {displaySubTab === "subtitles" && canManageArea("playback") && <SettingsSection title={t("subtitles")} className="settings-display-group">
+          <SettingRow label={t("forceCaptions")} description={t("forceCaptionsHint")}>
+            <Switch
+              checked={playerCc}
+              onCheckedChange={(next) => {
+                setPlayerCc(next);
+                savePlayer({ player_cc: next ? "1" : "0" });
+              }}
+            />
+          </SettingRow>
+          <SettingRow label={t("playerLanguage")}>
+            <SelectMenu
+              label={t("playerLanguage")}
+              value={playerHl}
+              options={[{ value: "pl", label: "polski" }, { value: "en", label: "English" }, { value: "de", label: "Deutsch" }, { value: "es", label: "español" }, { value: "fr", label: "français" }, { value: "uk", label: "українська" }, { value: "ja", label: "日本語" }]}
+              onChange={(next) => {
+                setPlayerHl(next);
+                savePlayer({ player_hl: next, player_cc_lang: next });
+              }}
+            />
+          </SettingRow>
+
+          <div className="sub-style-panel">
+            <div>
+              <div className="switch-label">{t("subtitleStyleTitle")}</div>
+              <div className="ui-control-description">{t("subtitleStyleHint")}</div>
+            </div>
+            <div className="sub-style-controls">
+              <label className="sub-style-field">
+                <span>{t("subtitleSize")}</span>
+                <InputGroup suffix="px" className="sub-size-input">
+                  <Input
+                    type="number"
+                    min={12}
+                    max={48}
+                    step={1}
+                    value={subSize}
+                    onChange={(e) => setSubSize(Math.min(48, Math.max(12, Number(e.target.value) || 12)))}
+                    onBlur={() => savePlayer({ player_sub_size: String(subSize) })}
+                  />
+                </InputGroup>
+              </label>
+              <label className="sub-style-field">
+                <span>{t("subtitleColor")}</span>
+                <ColorPicker
+                  label={t("subtitleColor")}
+                  value={subColor}
+                  onChange={(next) => {
+                    setSubColor(next);
+                    scheduleSettingWrite("player_sub_color", { player_sub_color: next }, {
+                      onSaved: () => { emit("player-settings-changed"); showToast(t("playerSettingsSaved")); },
+                      onError: (error) => { load(); showToast(error instanceof Error ? error.message : String(error)); },
+                    });
+                  }}
+                />
+              </label>
+              <label className="sub-style-field sub-style-field--wide">
+                <span>{t("subtitleBackground")} ({subBg}%)</span>
+                <Slider
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={subBg}
+                  onChange={setSubBg}
+                  onPointerUp={() => savePlayer({ player_sub_bg: String(subBg) })}
+                />
+              </label>
+            </div>
+            <div className="sub-style-preview">
+              <span style={{ color: subColor, background: `rgba(0, 0, 0, ${subBg / 100})`, fontSize: `${subSize}px` }}>
+                {t("subtitlePreviewLine")}
+              </span>
+            </div>
+          </div>
+          </SettingsSection>
+          }
+
+          {displaySubTab === "screenshots" && canManageArea("playback") && <SettingsSection title={t("playerScreenshots")} className="settings-display-group">
           <SettingRow label={t("playerScreenshotFormat")} description={t("playerScreenshotFormatHint")}>
             <SelectMenu
               label={t("playerScreenshotFormat")}
@@ -3036,14 +3111,14 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingsSection>
           }
 
-          {canManageArea("playback") && <SettingsSection title={t("displayEnhancements")} className="settings-display-group">
-          <SettingRow label="SponsorBlock" description={t("sponsorblockHint")}>
+          {displaySubTab === "sponsorblock" && canManageArea("playback") && <SettingsSection title="SponsorBlock" className="settings-display-group">
+          <SettingRow label={t("sponsorblockEnabled")} description={t("sponsorblockHint")}>
             <Switch checked={sbEnabled} onCheckedChange={() => toggleSb()} />
           </SettingRow>
 
           {sbEnabled && (
             <div className="sb-category-grid">
-              <div className="switch-sub" style={{ gridColumn: "1 / -1", marginBottom: 2 }}>{t("sponsorblockCategories")}</div>
+              <div className="ui-control-description" style={{ gridColumn: "1 / -1", marginBottom: 2 }}>{t("sponsorblockCategories")}</div>
               {SB_CATEGORIES.map((cat) => {
                 const active = sbCategories.includes(cat.id);
                 return (
@@ -3059,7 +3134,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingsSection>
           }
 
-          {canManageArea("navigation") && <SettingsSection title={t("displayNavigation")} className="settings-display-group">
+          {displaySubTab === "navigation" && canManageArea("navigation") && <SettingsSection title={t("displayNavigation")} className="settings-display-group">
           <SettingRow label={t("showShorts")} description={t("showShortsHint")}>
             <Switch checked={showShorts} onCheckedChange={() => toggleShorts()} />
           </SettingRow>
@@ -3086,7 +3161,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           />
           </SettingsSection>
           }
-        </div>
+          </div>
+        </>
       )}
 
       {!isCurrentTabLocked && tab === "plugins" && (
@@ -3307,7 +3383,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
       {!isCurrentTabLocked && tab === "advanced" && (
         <SettingsSection>
-          <Tabs variant="subtle" className="settings-subtabs-layout" label={t("advanced")} value={advancedSubTab} onChange={setAdvancedSubTab} options={[{ value: "changelog", label: t("changelog") }, { value: "logs", label: t("logs") }, { value: "external", label: t("navExternal"), count: externalVideos.length }, { value: "dangerous", label: t("dangerous") }]} />
 
           {advancedSubTab === "dangerous" && isPrimary && (
             <>
@@ -3567,6 +3642,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           )}
         </SettingsSection>
       )}
+        </div>
+      </div>
     </>
   );
 }

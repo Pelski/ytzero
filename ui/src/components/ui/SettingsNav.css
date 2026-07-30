@@ -1,0 +1,26 @@
+.ui-settings-nav { min-width: 0; }
+.ui-settings-nav__desktop { display: grid; gap: 0; max-height: calc(100vh - 150px); max-height: calc(100dvh - 150px); overflow-y: auto; overscroll-behavior-y: contain; padding: 2px 8px 12px 0; position: sticky; scrollbar-color: var(--surface-3) transparent; scrollbar-gutter: stable; scrollbar-width: thin; top: 12px; }
+.ui-settings-nav__desktop::-webkit-scrollbar { width: 7px; }
+.ui-settings-nav__desktop::-webkit-scrollbar-track { background: transparent; }
+.ui-settings-nav__desktop::-webkit-scrollbar-thumb { background: var(--surface-3); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
+.ui-settings-nav__group { display: grid; gap: 5px; }
+.ui-settings-nav__group + .ui-settings-nav__group { border-top: 1px solid var(--surface-3); margin-top: 15px; padding-top: 15px; }
+.ui-settings-nav__group-label { color: var(--text-3); font-size: 11px; font-weight: 700; letter-spacing: .045em; padding: 0 11px 4px; text-transform: uppercase; }
+.ui-settings-nav__items { display: grid; gap: 2px; }
+.ui-settings-nav__item { align-items: center; background: transparent; border: 0; border-radius: 9px; color: var(--text-2); cursor: pointer; display: flex; font: inherit; font-size: 14px; gap: 8px; justify-content: space-between; min-height: 36px; padding: 8px 11px; text-align: left; width: 100%; }
+.ui-settings-nav__item:hover { background: var(--surface-2); color: var(--text); }
+.ui-settings-nav__item--active { background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--text); font-weight: 600; }
+.ui-settings-nav__item--active:hover { background: color-mix(in srgb, var(--accent) 17%, transparent); }
+.ui-settings-nav__item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ui-settings-nav__count { background: var(--surface-3); border-radius: 999px; color: var(--text-2); font-size: 11px; font-weight: 600; line-height: 1.4; min-width: 19px; padding: 1px 6px; text-align: center; }
+.ui-settings-nav__item--active .ui-settings-nav__count { background: color-mix(in srgb, var(--accent) 22%, var(--surface-2)); color: var(--text); }
+.ui-settings-nav__mobile { display: none; }
+
+@media (max-width: 880px) {
+  .ui-settings-nav__desktop { display: none; }
+  .ui-settings-nav__mobile { display: block; width: 100%; }
+  .ui-settings-nav__mobile-trigger { border-radius: 11px; justify-content: space-between; width: 100%; }
+  .ui-settings-nav__mobile-popover { box-sizing: border-box; max-height: min(70vh, 560px); max-height: min(70dvh, 560px); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; width: min(360px, calc(100vw - 32px)); }
+  .ui-settings-nav__mobile-popover .ui-menu__item { font-size: 14px; min-height: 38px; }
+  .ui-settings-nav__mobile-popover .ui-menu__label-heading { font-size: 11px; }
+}

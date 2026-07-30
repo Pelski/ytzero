@@ -16,5 +16,6 @@ export * from "./ScrollArea";
 export * from "./RevealList";
 export * from "./HorizontalDragScroll";
 export * from "./Settings";
+export * from "./SettingsNav";
 export { default as SteppedSlider } from "./SteppedSlider";
 export type { SteppedSliderProps } from "./SteppedSlider";

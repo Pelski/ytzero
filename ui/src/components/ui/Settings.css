@@ -1,6 +1,4 @@
 .ui-settings-section { background: var(--surface); border-radius: 16px; box-sizing: border-box; container-name: settings-section; container-type: inline-size; margin-bottom: 18px; max-width: 980px; min-width: 0; padding: 20px 22px; width: 100%; }
-.settings-tabs-layout { margin-bottom: 16px; max-width: 980px; width: 100%; }
-.settings-subtabs-layout { margin-bottom: 20px; width: 100%; }
 .ui-settings-section__body { display: grid; min-width: 0; }
 .ui-settings-section__body > * { min-width: 0; }
 .ui-settings-section__body > .ui-text { margin-bottom: 16px; }

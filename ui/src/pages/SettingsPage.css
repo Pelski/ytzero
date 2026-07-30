@@ -90,6 +90,8 @@
 }
 .settings-section h2 svg { width: 18px; height: 18px; stroke-width: 1.8; color: var(--text-2); }
 .settings-section .hint { color: var(--text-2); font-size: 12.5px; margin: 0 0 16px; line-height: 1.5; }
+.settings-shell { align-items: start; display: grid; gap: 24px; grid-template-columns: 214px minmax(0, 980px); max-width: 1218px; width: 100%; }
+.settings-shell__content { min-width: 0; }
 .settings-display-groups { display: grid; gap: 16px; }
 .settings-display-group {
   margin: 0;
@@ -1010,11 +1012,6 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .plugin-slider-control > .ui-input { box-sizing: border-box; width: 100%; }
 
 @media (max-width: 760px) {
-  .settings-tabs-layout, .settings-subtabs-layout { max-width: 100%; }
-  .settings-tabs-layout .ui-tabs__tab { font-size: 12.5px; padding-inline: 11px; scroll-snap-align: start; }
-  .settings-tabs-layout .ui-tabs__tab svg { display: none; }
-  .settings-tabs-layout .ui-tabs { scroll-snap-type: x proximity; touch-action: pan-x; }
-  .settings-subtabs-layout .ui-tabs__tab { min-width: max-content; padding-inline: 13px; }
   .ui-settings-section { border-radius: 12px; padding: 14px; }
   .ui-setting-row { flex-wrap: wrap; gap: 10px; }
   .ui-setting-row__copy { flex: 1 1 220px; }
@@ -1051,6 +1048,10 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   .watched-style-option { min-width: 0; }
   .sidebar-order-item { min-width: 0; padding-inline: 7px; }
   .sidebar-order-actions .ui-button { height: 30px; width: 30px; }
+}
+
+@media (max-width: 880px) {
+  .settings-shell { gap: 16px; grid-template-columns: minmax(0, 1fr); max-width: 980px; }
 }
 
 @media (max-width: 480px) {
