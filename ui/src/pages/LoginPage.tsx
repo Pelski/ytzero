@@ -6,6 +6,7 @@ import { api, type AuthStatus } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, ButtonAnchor, Input } from "../components/ui";
+import LoginBackdrop from "./LoginBackdrop";
 
 /**
  * Full-screen sign-in shown when `auth/status` reports the request is not
@@ -54,6 +55,7 @@ export default function LoginPage({ status }: { status: AuthStatus }) {
 
   return (
     <div className="login-page">
+      <LoginBackdrop />
       <div className="login-card">
         <span className="logo-mark login-logo">
           <Play fill="currentColor" />

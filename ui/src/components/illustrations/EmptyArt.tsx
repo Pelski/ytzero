@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from "react";
+import { useId, type CSSProperties, type ReactNode } from "react";
 import "./EmptyArt.css";
 
 /**
@@ -51,6 +51,18 @@ function Card({ id, x, y, w, h, r, rotate, opacity, play = false }: { id: string
 function Sparkle({ x, y, size, opacity }: { x: number; y: number; size: number; opacity: number }) {
   const s = size;
   return <path d={`M${x} ${y - s} Q${x} ${y} ${x + s} ${y} Q${x} ${y} ${x} ${y + s} Q${x} ${y} ${x - s} ${y} Q${x} ${y} ${x} ${y - s} Z`} fill="currentColor" fillOpacity={opacity} />;
+}
+
+/** Badge + sparkles from the illustration language, without a scene subject. */
+export function EmptyArtMotif({ scene, className, style }: { scene: EmptyArtScene; className?: string; style?: CSSProperties }) {
+  return (
+    <svg className={className ? `empty-art-motif ${className}` : "empty-art-motif"} style={style} viewBox="0 0 72 58" fill="none" aria-hidden="true">
+      <Sparkle x={8} y={13} size={5} opacity={0.32} />
+      <Sparkle x={65} y={45} size={4} opacity={0.22} />
+      <circle cx="36" cy="29" r="18" fill="currentColor" fillOpacity=".16" stroke="currentColor" strokeOpacity=".55" strokeWidth="2.4" />
+      <path className="empty-art__glyph" d={GLYPH[scene]} transform="translate(-74 -29)" />
+    </svg>
+  );
 }
 
 /** The outlined object each scene sits on. Drawn last so it reads as the foreground. */

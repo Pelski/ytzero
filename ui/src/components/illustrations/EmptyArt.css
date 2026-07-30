@@ -6,6 +6,8 @@
   width: 100%;
 }
 
+.empty-art-motif { color: var(--accent); display: block; height: auto; width: 100%; }
+
 .empty-art__base {
   fill: color-mix(in srgb, var(--accent) 7%, var(--surface-2));
   stroke: color-mix(in srgb, var(--accent) 30%, var(--text-3));
