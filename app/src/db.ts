@@ -712,9 +712,10 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   sponsorblock_enabled: "0",
   sponsorblock_categories: '["sponsor"]',
   update_check_interval: "off",
-  // "Autoplay my feed" (#55): auto-advance through the main feed on video end.
+  // Context-aware continuation through the list that opened the watch page.
   feed_autoplay_enabled: "0",
-  feed_autoplay_direction: "oldest", // oldest | newest
+  feed_autoplay_behavior: "autoplay", // autoplay | prompt
+  feed_autoplay_direction: "newest", // newest = list order | oldest = reverse
   // Main-feed chronology is a portable per-profile viewing preference.
   feed_sort: "published", // published | arrival
   // ---------- authentication (all app-wide, owned by the primary profile) ----------

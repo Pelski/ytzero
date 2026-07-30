@@ -282,6 +282,7 @@ export interface AppSettings {
   sponsorblock_categories: string;
   update_check_interval: string;
   feed_autoplay_enabled: string;
+  feed_autoplay_behavior: string;
   feed_autoplay_direction: string;
   feed_sort: string;
 }

@@ -6,8 +6,9 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { EmptyState, PageHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
+import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
 
-export default function ArchivePage({ onPlay }: { onPlay: (v: Video) => void }) {
+export default function ArchivePage({ onPlay }: { onPlay: PlayVideo }) {
   const { t } = useI18n();
   useDocumentTitle(t("navArchive"));
   const [videos, setVideos] = useState<Video[]>([]);
@@ -30,6 +31,7 @@ export default function ArchivePage({ onPlay }: { onPlay: (v: Video) => void }) 
   }, []);
 
   const visible = showShorts ? videos : videos.filter((v) => v.is_short !== 1);
+  const playbackQueue = snapshotPlaybackQueue(visible, t("navArchive"));
 
   return (
     <>
@@ -41,7 +43,7 @@ export default function ArchivePage({ onPlay }: { onPlay: (v: Video) => void }) 
       ) : (
         <div className="video-grid">
           {visible.map((v) => (
-            <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={load} showRestore />
+            <VideoCard key={v.video_id} video={v} onPlay={(video) => onPlay(video, playbackQueue)} onChanged={load} showRestore />
           ))}
         </div>
       )}

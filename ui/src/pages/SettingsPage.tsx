@@ -1310,7 +1310,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [feedMaxAgeValue, setFeedMaxAgeValue] = useState("6");
   const [feedMaxAgeUnit, setFeedMaxAgeUnit] = useState<FeedMaxAgeUnit>("months");
   const [feedAutoplayEnabled, setFeedAutoplayEnabled] = useState(false);
-  const [feedAutoplayDirection, setFeedAutoplayDirection] = useState<"oldest" | "newest">("oldest");
+  const [feedAutoplayBehavior, setFeedAutoplayBehavior] = useState<"autoplay" | "prompt">("autoplay");
+  const [feedAutoplayDirection, setFeedAutoplayDirection] = useState<"oldest" | "newest">("newest");
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("everywhere");
   const [watchedStyle, setWatchedStyle] = useState<WatchedStyle>("dimmed");
   const [videoCardSize, setVideoCardSize] = useState(248);
@@ -1589,6 +1590,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       setFeedMaxAgeValue(r.settings.feed_max_age_value || "6");
       setFeedMaxAgeUnit(isFeedMaxAgeUnit(r.settings.feed_max_age_unit) ? r.settings.feed_max_age_unit : "off");
       setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
+      setFeedAutoplayBehavior(r.settings.feed_autoplay_behavior === "prompt" ? "prompt" : "autoplay");
       setFeedAutoplayDirection(r.settings.feed_autoplay_direction === "newest" ? "newest" : "oldest");
       setMembersOnlyVisibility(
         r.settings.hide_members_only_from_feed === "1"
@@ -1821,6 +1823,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const changeFeedAutoplayDirection = async (next: "oldest" | "newest") => {
     setFeedAutoplayDirection(next);
     await api.updateSettings({ feed_autoplay_direction: next });
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const changeFeedAutoplayBehavior = async (next: "autoplay" | "prompt") => {
+    setFeedAutoplayBehavior(next);
+    await api.updateSettings({ feed_autoplay_behavior: next });
     showToast(t("displaySettingsSaved"));
   };
 
@@ -2826,17 +2834,30 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingRow>
 
           {feedAutoplayEnabled && (
-            <SettingRow label={t("feedAutoplayDirection")} description={t("feedAutoplayDirectionHint")}>
-              <SelectMenu
-                label={t("feedAutoplayDirection")}
-                value={feedAutoplayDirection}
-                onChange={changeFeedAutoplayDirection}
-                options={[
-                  { value: "oldest", label: t("feedAutoplayOldestFirst") },
-                  { value: "newest", label: t("feedAutoplayNewestFirst") },
-                ]}
-              />
-            </SettingRow>
+            <>
+              <SettingRow label={t("feedAutoplayBehavior")} description={t("feedAutoplayBehaviorHint")}>
+                <SelectMenu
+                  label={t("feedAutoplayBehavior")}
+                  value={feedAutoplayBehavior}
+                  onChange={changeFeedAutoplayBehavior}
+                  options={[
+                    { value: "autoplay", label: t("feedAutoplayBehaviorPlay") },
+                    { value: "prompt", label: t("feedAutoplayBehaviorPrompt") },
+                  ]}
+                />
+              </SettingRow>
+              <SettingRow label={t("feedAutoplayDirection")} description={t("feedAutoplayDirectionHint")}>
+                <SelectMenu
+                  label={t("feedAutoplayDirection")}
+                  value={feedAutoplayDirection}
+                  onChange={changeFeedAutoplayDirection}
+                  options={[
+                    { value: "newest", label: t("feedAutoplayNewestFirst") },
+                    { value: "oldest", label: t("feedAutoplayOldestFirst") },
+                  ]}
+                />
+              </SettingRow>
+            </>
           )}
           <SettingRow label={t("forceCaptions")} description={t("forceCaptionsHint")}>
             <Switch
@@ -3050,7 +3071,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           <div className="sidebar-order-head">
             <div>
               <div className="switch-label">{t("sidebarOrderTitle")}</div>
-              <div className="switch-sub">{t("sidebarOrderHint")}</div>
+              <div className="ui-control-description">{t("sidebarOrderHint")}</div>
             </div>
             <Popconfirm message={t("resetOrderConfirm")} onConfirm={resetNavConfig}>
               <Button>{t("resetOrder")}</Button>

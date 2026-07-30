@@ -47,6 +47,7 @@ import { subscribeServerEvent } from "./serverEvents";
 import { queueSettingWrite } from "./settingsWriteQueue";
 import { isIncognitoMode, setIncognitoAllowed, setIncognitoMode } from "./incognitoMode";
 import { getNewCompletedDownloads, observeDownloadSummary } from "./downloadActivity";
+import type { PlaybackQueueContext } from "./playbackQueue";
 
 type RecentChannel = { channel_id: string; title: string; thumbnail: string; latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null };
 
@@ -404,7 +405,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const downloadSummaryRequestRef = useRef(0);
   const downloadsPageActiveRef = useRef(location.pathname === "/downloads");
 
-  const play = useCallback((v: Video) => navigate(`/watch/${v.video_id}`), [navigate]);
+  const play = useCallback((v: Video, playbackQueue?: PlaybackQueueContext) => navigate(
+    `/watch/${v.video_id}`,
+    playbackQueue ? { state: { playbackQueue } } : undefined,
+  ), [navigate]);
 
   const changeIncognito = useCallback((next: boolean) => {
     const allowed = childStatus?.is_child !== true;

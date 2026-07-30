@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./FeedPage.css";
 import { emit, subscribe } from "../events";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { ArrowRight, Clock, Eye, Inbox, Plus, RefreshCw, Upload } from "lucide-react";
 import { api, type Bucket, type Channel, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -15,6 +15,7 @@ import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 import { Button, ButtonLink, Divider, EmptyState, IconButton, RevealRegion } from "../components/ui";
 import { parseAppTimestamp } from "../dateTime";
+import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
 type FeedSort = "published" | "arrival";
@@ -118,13 +119,12 @@ export default function FeedPage({
   showToast,
   feedSort,
 }: {
-  onPlay: (v: Video) => void;
+  onPlay: PlayVideo;
   showToast: (m: string) => void;
   feedSort: FeedSort;
 }) {
   const { t } = useI18n();
   useDocumentTitle();
-  const navigate = useNavigate();
   const [videos, setVideos] = useState<Video[]>([]);
   const [queued, setQueued] = useState<Video[]>([]);
   const [inProgress, setInProgress] = useState<Video[]>([]);
@@ -159,13 +159,12 @@ export default function FeedPage({
   // Only the plain chronological feed grid gets a feed-context marker — the
   // queued/in-progress rows are different lists, so "next" there wouldn't
   // match what /feed/adjacent (and thus the autoplay setting) expects.
-  const handleFeedPlay = useCallback((v: Video) => {
-    const params = new URLSearchParams({ feedContext: "1" });
-    if (selectedTags.length) params.set("tags", selectedTags.join(","));
-    if (showAll) params.set("show_all", "1");
-    if (feedSort === "arrival") params.set("sort", "arrival");
-    navigate(`/watch/${v.video_id}?${params.toString()}`);
-  }, [navigate, selectedTags, showAll, feedSort]);
+  const handleFeedPlay = useCallback((v: Video) => onPlay(v, {
+    kind: "feed",
+    tags: selectedTags,
+    showAll,
+    sort: feedSort,
+  }), [onPlay, selectedTags, showAll, feedSort]);
   const hScrollWrapRef = useRef<HTMLDivElement>(null);
   const [hCardWidth, setHCardWidth] = useState(220);
   const [hCardMin, setHCardMin] = useState(248);
@@ -393,6 +392,8 @@ export default function FeedPage({
   const feedVideos = videos.filter((video) => !inProgressIds.has(video.video_id));
   const showQueuedSection = dueQueuedVideos.length > 0 && selectedTags.length === 0;
   const showFeedPreludeDivider = inProgress.length > 0 || showQueuedSection;
+  const inProgressQueue = snapshotPlaybackQueue(inProgress, t("continueWatching"));
+  const dueQueuedQueue = snapshotPlaybackQueue(dueQueuedVideos, t("navWatchlist"));
 
   if (!loading && !subscriptionStateLoading && instanceHasData === false) {
     return (
@@ -444,7 +445,7 @@ export default function FeedPage({
             >
               {inProgress.map((v) => (
                 <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
-                  <VideoCard video={v} onPlay={onPlay} onChanged={handleInProgressChanged} />
+                  <VideoCard video={v} onPlay={(video) => onPlay(video, inProgressQueue)} onChanged={handleInProgressChanged} />
                 </div>
               ))}
             </div>
@@ -478,7 +479,7 @@ export default function FeedPage({
             >
               {dueQueuedVideos.map((v) => (
                 <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
-                  <VideoCard video={v} onPlay={onPlay} onChanged={reload} />
+                  <VideoCard video={v} onPlay={(video) => onPlay(video, dueQueuedQueue)} onChanged={reload} />
                 </div>
               ))}
             </div>

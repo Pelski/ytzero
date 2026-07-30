@@ -21,13 +21,14 @@ import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { readGridSize, type GridSize } from "../gridSize";
 import { mergeRecommendationVideos, prepareRecommendationVideos } from "./recommendationsPageLogic";
+import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
 
 const PAGE_SIZE = 40;
 
 export type LoadRecommendations = (request: RecommendationsRequest) => Promise<RecommendationsResponse>;
 
 export interface RecommendationsPageProps {
-  onPlay: (video: Video) => void;
+  onPlay: PlayVideo;
   loadRecommendations: LoadRecommendations;
 }
 
@@ -117,6 +118,7 @@ export default function RecommendationsPage({ onPlay, loadRecommendations }: Rec
 
   const pulseTags = summary?.top_tags.filter((tag) => tag.seconds > 0).slice(0, 5) ?? [];
   const pulseChannels = summary?.top_channels.filter((channel) => channel.seconds > 0).slice(0, 4) ?? [];
+  const playbackQueue = snapshotPlaybackQueue(videos, title);
 
   return (
     <div className="recommendations-page">
@@ -191,7 +193,7 @@ export default function RecommendationsPage({ onPlay, loadRecommendations }: Rec
         <>
           <div className={`video-grid video-grid--${gridSize}`}>
             {videos.map((video) => (
-              <VideoCard key={video.video_id} video={video} onPlay={onPlay} onChanged={removeCard} showWatchProgress />
+              <VideoCard key={video.video_id} video={video} onPlay={(item) => onPlay(item, playbackQueue)} onChanged={removeCard} showWatchProgress />
             ))}
           </div>
           {loadingMore && <VideoGridSkeleton count={4} gridSize={gridSize} />}

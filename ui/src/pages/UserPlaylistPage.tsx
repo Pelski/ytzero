@@ -12,8 +12,9 @@ import { formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, EmptyState, IconButton, Input, LocalToast, PageHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
+import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
 
-export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => void }) {
+export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   const { t, language } = useI18n();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -80,6 +81,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
 
   if (!playlist && loading) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return null;
+  const playbackQueue = snapshotPlaybackQueue(videos, playlist.name);
 
   return (
     <>
@@ -120,7 +122,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: (v: Video) => voi
             <VideoCard
               key={v.video_id}
               video={v}
-              onPlay={onPlay}
+              onPlay={(video) => onPlay(video, playbackQueue)}
               onChanged={load}
               onRemoveFromPlaylist={(videoId) => api.removeVideoFromUserPlaylist(playlist.id, videoId)}
             />

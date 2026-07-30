@@ -14,6 +14,7 @@ import { EmptyState, IconButton, LocalToast, PageHeader, SectionHeader, SelectMe
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { img } from "../img";
 import { addCalendarDays, appDayKey, formatAppDate, formatAppTime, parseAppTimestamp } from "../dateTime";
+import { snapshotPlaybackQueue } from "../playbackQueue";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 const BUCKET_SECTIONS: { id: string; labelKey: I18nKey; Icon: typeof Sun; buckets: Bucket[] }[] = [
@@ -90,6 +91,7 @@ export default function WatchlistPage() {
     ...section,
     items: sortScheduled(videos.filter((v) => v.bucket && section.buckets.includes(v.bucket))),
   })).filter((section) => section.items.length > 0);
+  const playbackQueue = snapshotPlaybackQueue(sections.flatMap((section) => section.items), t("navWatchlist"));
 
   return (
     <>
@@ -126,13 +128,13 @@ export default function WatchlistPage() {
                 <div className="scheduled-list">
                   {items.map((v) => (
                     <article key={v.video_id} className="scheduled-item">
-                      <Link to={`/watch/${v.video_id}`} className="scheduled-thumb-link" aria-label={v.title} title={v.title}>
+                      <Link to={`/watch/${v.video_id}`} state={{ playbackQueue }} className="scheduled-thumb-link" aria-label={v.title} title={v.title}>
                         <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="scheduled">
                           {v.duration && v.is_short !== 1 && <span className="duration-badge">{formatVideoDuration(v.duration)}</span>}
                         </VideoThumbnail>
                       </Link>
                       <div className="scheduled-info">
-                        <Link to={`/watch/${v.video_id}`} className="scheduled-title" title={v.title}>{v.title}</Link>
+                        <Link to={`/watch/${v.video_id}`} state={{ playbackQueue }} className="scheduled-title" title={v.title}>{v.title}</Link>
                         <div className="muted scheduled-channel">{v.channel_title}</div>
                       </div>
                       <div className="muted scheduled-date">

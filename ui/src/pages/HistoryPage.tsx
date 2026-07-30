@@ -7,8 +7,9 @@ import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { appDayKey, calendarDayDifference, formatCalendarDay } from "../dateTime";
+import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
 
-export default function HistoryPage({ onPlay, allowHistoryDeletion }: { onPlay: (v: Video) => void; allowHistoryDeletion: boolean }) {
+export default function HistoryPage({ onPlay, allowHistoryDeletion }: { onPlay: PlayVideo; allowHistoryDeletion: boolean }) {
   const { t, locale, timeZone } = useI18n();
   useDocumentTitle(t("historyTitle"));
   const [videos, setVideos] = useState<Video[]>([]);
@@ -75,6 +76,7 @@ export default function HistoryPage({ onPlay, allowHistoryDeletion }: { onPlay: 
     else result.push({ key, videos: [video] });
     return result;
   }, []);
+  const playbackQueue = snapshotPlaybackQueue(videos, t("historyTitle"));
 
   const groupLabel = (day: string) => {
     const today = appDayKey(new Date(), timeZone);
@@ -103,7 +105,7 @@ export default function HistoryPage({ onPlay, allowHistoryDeletion }: { onPlay: 
                   <VideoCard
                     key={`${v.history_id ?? v.video_id}`}
                     video={v}
-                    onPlay={onPlay}
+                    onPlay={(video) => onPlay(video, playbackQueue)}
                     onChanged={refresh}
                     onRemoveFromHistory={allowHistoryDeletion ? api.removeFromHistory : undefined}
                     showWatchProgress

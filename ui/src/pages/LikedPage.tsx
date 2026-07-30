@@ -7,8 +7,9 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, Chip, EmptyState, PageHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
+import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
 
-export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
+export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
   const { t } = useI18n();
   useDocumentTitle(t("navLiked"));
   const [videos, setVideos] = useState<Video[]>([]);
@@ -48,6 +49,7 @@ export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
     setVideos([]);
     setShowShorts((prev) => !(prev ?? false));
   };
+  const playbackQueue = snapshotPlaybackQueue(videos, t("navLiked"));
 
   return (
     <>
@@ -70,7 +72,7 @@ export default function LikedPage({ onPlay }: { onPlay: (v: Video) => void }) {
         <>
           <div className="video-grid">
             {videos.map((v) => (
-              <VideoCard key={v.video_id} video={v} onPlay={onPlay} onChanged={() => { setPage(0); load(0); }} />
+              <VideoCard key={v.video_id} video={v} onPlay={(video) => onPlay(video, playbackQueue)} onChanged={() => { setPage(0); load(0); }} />
             ))}
           </div>
           {loadingMore && <VideoGridSkeleton count={4} />}
