@@ -80,6 +80,7 @@ const changedHash = (db.prepare("SELECT password_hash FROM users WHERE id = 1").
 
 // Keep temporary passwords entirely inside the harness. Even derived values
 // from credentials must not cross the subprocess boundary through stdout.
+if (!rowsAfterFirst[0]?.password_hash || rowsAfterFirst[1]?.password_hash !== null) throw new Error("Credential generation updated an unexpected profile");
 if (!(await Bun.password.verify(firstCredential.password, rowsAfterSecond[0]!.password_hash))) throw new Error("First generated credential did not verify");
 if (!(await Bun.password.verify(secondCredential.password, rowsAfterSecond[1]!.password_hash))) throw new Error("Second generated credential did not verify");
 if (regeneratedCredential.password === firstCredential.password) throw new Error("Credential regeneration reused the previous password");
@@ -92,7 +93,7 @@ console.log("RESULT " + JSON.stringify({
   secondStatus: secondResponse.status,
   regenerateStatus: regenerateResponse.status,
   usernames: rowsAfterSecond.map((row) => row.username),
-  firstOnlyTargetHasPassword: Boolean(rowsAfterFirst[0]?.password_hash) && rowsAfterFirst[1]?.password_hash === null,
+  firstOnlyTargetHasPassword: true,
   generatedCredentialsVerified: true,
   regenerationVerified: true,
   passwordChangeVerified: true,
