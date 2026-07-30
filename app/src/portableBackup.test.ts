@@ -52,7 +52,7 @@ describe("portable backup classification and restore", () => {
     setSetting("child_lock_enabled", "1");
     setSetting("child_lock_pin_hash", "CHILD-PIN-HASH-DO-NOT-EXPORT");
     setSetting("profile_admin_only_areas", '["settings","profiles"]');
-    db.prepare("UPDATE users SET oidc_subject = ? WHERE id = 1").run("profile-identity-do-not-export@example.com");
+    db.prepare("UPDATE users SET oidc_subject = ?, is_admin = 1 WHERE id = 1").run("profile-identity-do-not-export@example.com");
     db.prepare("UPDATE channels SET feed_refresh_attempted_at = ?, feed_refresh_failures = ? WHERE channel_id = 'UCportable'")
       .run("2099-12-31 23:59:58", 987654321);
     const options = await backup.backupOptions();
@@ -66,6 +66,7 @@ describe("portable backup classification and restore", () => {
     expect(serialized).toContain("profile_admin_only_areas");
     expect(serialized).toContain('\\\"appearance\\\",\\\"feed\\\",\\\"navigation\\\",\\\"playback\\\",\\\"profiles\\\"');
     expect(serialized).not.toContain("profile-identity-do-not-export@example.com");
+    expect(serialized).not.toContain('"is_admin"');
     expect(serialized).not.toContain("2099-12-31 23:59:58");
     expect(serialized).not.toContain("987654321");
     expect(serialized).not.toContain("auth_sessions");

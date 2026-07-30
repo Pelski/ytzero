@@ -26,6 +26,10 @@ const visibilityConfigured = (await visibilityConfig.json() as any).hide_other_p
 await setSetting("auth_method", "shared");
 const sharedAuthStatus = await api.request("http://localhost/auth/status");
 const sharedPickerProfilesHidden = (await sharedAuthStatus.json() as any).hide_other_profiles;
+const sharedCookie = `${AUTH_SESSION_COOKIE}=${await createSession(null, "account")}`;
+const sharedAdminGrant = await api.request(`http://localhost/profiles/${inserted.id}/admin`, {
+  method: "PUT", headers: { Cookie: sharedCookie, "Content-Type": "application/json" }, body: JSON.stringify({ is_admin: true }),
+});
 await setSetting("auth_method", "per_profile");
 const cookie = `${AUTH_SESSION_COOKIE}=${await createSession(1, "profile")}`;
 const authStatus = await api.request("http://localhost/auth/status", { headers: { Cookie: cookie } });
@@ -44,6 +48,28 @@ const nonAdminChildUpdate = await api.request(`http://localhost/profiles/${inser
 });
 const childRow = db.prepare("SELECT is_child FROM users WHERE id = ?").get(inserted.id) as { is_child: number };
 const childLimit = db.prepare("SELECT value FROM user_settings WHERE user_id = ? AND key = 'child_limit_minutes'").get(inserted.id) as { value: string };
+const delegate = db.prepare("INSERT INTO users (name, avatar_color, sort_order, portable_uuid) VALUES (?, ?, ?, ?) RETURNING id").get("Pomocnik", "#3ea6ff", 2, crypto.randomUUID()) as { id: number };
+const grantAdmin = await api.request(`http://localhost/profiles/${delegate.id}/admin`, {
+  method: "PUT", headers: { Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ is_admin: true }),
+});
+const delegateCookie = `${AUTH_SESSION_COOKIE}=${await createSession(delegate.id, "profile")}`;
+const delegatedStatusBody = await (await api.request("http://localhost/auth/status", { headers: { Cookie: delegateCookie } })).json() as any;
+const delegatedPrimaryEdit = await api.request("http://localhost/profiles/1", {
+  method: "PATCH", headers: { Cookie: delegateCookie, "Content-Type": "application/json" }, body: JSON.stringify({ name: "Nie wolno" }),
+});
+const delegatedRoleChange = await api.request(`http://localhost/profiles/${inserted.id}/admin`, {
+  method: "PUT", headers: { Cookie: delegateCookie, "Content-Type": "application/json" }, body: JSON.stringify({ is_admin: true }),
+});
+const delegatedChildUpdate = await api.request(`http://localhost/profiles/${inserted.id}`, {
+  method: "PATCH", headers: { Cookie: delegateCookie, "Content-Type": "application/json" }, body: JSON.stringify({ child_config: { limit_minutes: 60 } }),
+});
+const delegatedVisibilityUpdate = await api.request("http://localhost/profiles/visibility", {
+  method: "PUT", headers: { Cookie: delegateCookie, "Content-Type": "application/json" }, body: JSON.stringify({ hide_other_profiles: false }),
+});
+const revokeAdmin = await api.request(`http://localhost/profiles/${delegate.id}/admin`, {
+  method: "PUT", headers: { Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ is_admin: false }),
+});
+const revokedStatusBody = await (await api.request("http://localhost/auth/status", { headers: { Cookie: delegateCookie } })).json() as any;
 const wrongChange = await api.request("http://localhost/auth/profile/password", {
   method: "PUT", headers: { Cookie: cookie, "Content-Type": "application/json" }, body: JSON.stringify({ current_password: "wrong", new_password: "new-password-123" }),
 });
@@ -66,12 +92,22 @@ console.log("RESULT " + JSON.stringify({
   visibilityUpdateStatus: visibilityUpdate.status,
   visibilityConfigured,
   sharedPickerProfilesHidden,
+  sharedAdminGrantStatus: sharedAdminGrant.status,
   pickerProfilesHidden,
   nonAdminVisibilityUpdateStatus: nonAdminVisibilityUpdate.status,
   adminChildUpdateStatus: adminChildUpdate.status,
   nonAdminChildUpdateStatus: nonAdminChildUpdate.status,
   childFlag: childRow.is_child,
   childLimit: childLimit.value,
+  grantAdminStatus: grantAdmin.status,
+  delegatedIsAdmin: delegatedStatusBody.is_admin,
+  delegatedCanManageAdministrators: delegatedStatusBody.can_manage_administrators,
+  delegatedPrimaryEditStatus: delegatedPrimaryEdit.status,
+  delegatedRoleChangeStatus: delegatedRoleChange.status,
+  delegatedChildUpdateStatus: delegatedChildUpdate.status,
+  delegatedVisibilityUpdateStatus: delegatedVisibilityUpdate.status,
+  revokeAdminStatus: revokeAdmin.status,
+  revokedIsAdmin: revokedStatusBody.is_admin,
   wrongChangeStatus: wrongChange.status,
   changedStatus: changed.status,
   newPasswordVerifies: await Bun.password.verify("new-password-123", changedHash),

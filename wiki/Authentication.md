@@ -1,6 +1,6 @@
 By default YT Zero uses **no authentication** — it assumes a trusted local network, and [profiles](Profiles) are just named views. If you expose the app beyond your LAN, or want each member of the household to sign in, the **primary profile** can switch the login method under **Settings → Authentication**.
 
-> The **Authentication** tab (and the other admin-only settings) is visible to **admins**: the primary profile (the first profile created), or — with OIDC — any signed-in identity whose groups claim contains the configured admin group. See [Profiles](Profiles) for what "primary" means and [OIDC → Group-based admin](#group-based-admin) below.
+> The **Authentication** tab is owner-only: only the primary profile (the first profile created) can change login configuration or administrator roles. Delegated and OIDC group administrators can manage ordinary admin-only settings, but cannot change the primary profile or its credentials. See [Profiles](Profiles) for what "primary" means.
 
 ## Methods at a glance
 
@@ -81,16 +81,27 @@ Sign in through an external OpenID Connect provider such as **Pocket ID**, **Aut
 
 For active profile-bound methods (**Login per profile**, **OIDC**, and **Proxy header**), an administrator can hide other profile names from the profile picker. The signed-in profile remains visible, and administrators can still manage every profile in Settings. This instance-local authentication preference is not included in portable backups.
 
+### Delegated profile administrators
+
+While a profile-bound login is active (**Login per profile**, **OIDC mapped mode**, or **Proxy header**), the primary profile can grant administrator access to another non-child profile in **Settings → Profiles**. Delegated administrators can manage shared settings, other non-primary profiles, and child restrictions. They cannot:
+
+- grant or revoke administrator access,
+- edit, delete, or demote the primary profile,
+- change the primary profile's credentials,
+- open or change Authentication settings.
+
+The grant is checked on every request, so revoking it takes effect immediately. It is instance-local security policy and is excluded from portable backups. Delegation is unavailable for **None**, **Shared**, and OIDC **Gateway** because those methods do not securely bind the current request to one profile.
+
 Set an optional **Logout URL** to send users to your provider's logout endpoint when they sign out.
 
 ### Group-based admin
 
-By default only the **primary profile** has admin powers (the Authentication tab, global settings, and profile/channel management). With OIDC you can additionally grant those powers to identities based on a group claim from your provider:
+By default only the **primary profile** has admin powers. With OIDC you can additionally grant ordinary administrator powers to identities based on a group claim from your provider:
 
 - **Groups claim** — the claim in the ID token / userinfo that lists the user's groups (default `groups`).
-- **Admin group** — the group name that grants admin. Leave it **empty to disable** group-based admin entirely (primary-only). When set, any signed-in identity whose groups claim contains this value gets **primary-equivalent** powers.
+- **Admin group** — the group name that grants admin. Leave it **empty to disable** group-based admin entirely. When set, any signed-in identity whose groups claim contains this value can manage admin-only app settings and non-primary profiles.
 
-This works in both mapping modes. It is convenient for delegating administration without sharing the primary profile, but it also means your IdP's group membership now controls who can change the login configuration — treat the admin group as sensitive. The primary profile always keeps admin powers regardless of groups, so local recovery still works.
+This works in both mapping modes. Group administrators cannot change authentication configuration, administrator grants, or the primary profile. The primary profile always keeps owner powers regardless of groups, so local recovery still works.
 
 ### Troubleshooting
 

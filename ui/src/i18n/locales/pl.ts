@@ -737,6 +737,10 @@ export const pl: Locale = {
     primaryOnlyHint: "Tylko profil główny może zmieniać nazwę aplikacji, kolor ikony i blokadę rodzicielską.",
     cannotDeleteLastProfile: "Nie można usunąć ostatniego profilu",
     profileSaved: "Profil zapisany",
+    profileAdministrator: "Administrator",
+    profileAdministratorHint: "Może zarządzać ustawieniami wspólnymi i innymi profilami, ale nie może zmieniać profilu głównego, logowania ani ról administratorów.",
+    profileAdministratorGranted: "Przyznano uprawnienia administratora",
+    profileAdministratorRevoked: "Odebrano uprawnienia administratora",
     // ---------- logowanie ----------
     authTab: "Logowanie",
     advanced: "Zaawansowane",

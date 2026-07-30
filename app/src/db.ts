@@ -265,6 +265,7 @@ CREATE TABLE IF NOT EXISTS users (
   avatar       TEXT NOT NULL DEFAULT '',
   avatar_color TEXT NOT NULL DEFAULT '#7c5cff',
   pin_hash     TEXT,
+  is_admin     INTEGER NOT NULL DEFAULT 0,
   sort_order   INTEGER NOT NULL DEFAULT 0,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -471,6 +472,9 @@ for (const stmt of [
   "ALTER TABLE users ADD COLUMN password_hash TEXT",
   "ALTER TABLE users ADD COLUMN oidc_subject TEXT",
   "ALTER TABLE users ADD COLUMN proxy_match TEXT",
+  // Instance-local delegated administrator grant. The primary profile remains
+  // the immutable owner regardless of this flag.
+  "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
   // is_admin grants primary-equivalent powers to OIDC sessions whose groups
   // claim contains the configured admin group (older DBs predate this column).
   "ALTER TABLE auth_sessions ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0",
@@ -975,6 +979,9 @@ if (databaseConfig.engine === "postgres") {
     }
     await migrateSQLiteToPostgres(DB_PATH, databaseConfig.url);
   }
+  // Existing PostgreSQL installations predate delegated profile admins. This
+  // authorization flag is intentionally migrated in place and is not portable.
+  await database.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER NOT NULL DEFAULT 0");
   runtimeSettingsReady = true;
   await reloadSettingCache();
 } else {

@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import "./LoginPage.css";
 import { startAuthentication } from "@simplewebauthn/browser";
 import { KeyRound, LogIn, Play, ShieldAlert } from "lucide-react";
 import { api, type AuthStatus } from "../api";

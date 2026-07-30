@@ -243,6 +243,8 @@ below.
 - OIDC client secret and active authentication configuration, including the
   instance-local choice to hide other profile names in the authenticated
   profile picker
+- delegated profile administrator grants; these are instance-local
+  authorization policy and are never imported onto another installation
 - profile identity mappings, proxy matches, and usernames
 - WebAuthn/passkey credentials
 - Child Lock secret

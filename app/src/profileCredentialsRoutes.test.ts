@@ -59,4 +59,17 @@ describe("per-profile credential routes", () => {
     expect(result.childFlag).toBe(1);
     expect(result.childLimit).toBe("45");
   });
+
+  test("lets only the primary owner delegate and revoke administrator access", () => {
+    expect(result.sharedAdminGrantStatus).toBe(409);
+    expect(result.grantAdminStatus).toBe(200);
+    expect(result.delegatedIsAdmin).toBe(true);
+    expect(result.delegatedCanManageAdministrators).toBe(false);
+    expect(result.delegatedPrimaryEditStatus).toBe(403);
+    expect(result.delegatedRoleChangeStatus).toBe(403);
+    expect(result.delegatedChildUpdateStatus).toBe(200);
+    expect(result.delegatedVisibilityUpdateStatus).toBe(200);
+    expect(result.revokeAdminStatus).toBe(200);
+    expect(result.revokedIsAdmin).toBe(false);
+  });
 });

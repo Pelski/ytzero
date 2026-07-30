@@ -346,7 +346,14 @@ export default function App() {
   const [auth, setAuth] = useState<AuthStatus | null>(null);
 
   useEffect(() => {
-    api.authStatus().then(setAuth).catch(() => setAuth({ method: "none", authenticated: true, can_switch: true }));
+    api.authStatus().then(setAuth).catch(() => setAuth({
+      method: "none",
+      authenticated: true,
+      can_switch: true,
+      hide_other_profiles: false,
+      can_manage_administrators: false,
+      admin_delegation_available: false,
+    }));
   }, []);
 
   if (!auth) return <AppBootstrap />;

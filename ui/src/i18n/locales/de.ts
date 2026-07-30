@@ -735,6 +735,10 @@ export const de: Locale = {
     primaryOnlyHint: "Nur das primäre Profil kann App-Name, Icon-Farbe und Kindersicherung ändern.",
     cannotDeleteLastProfile: "Das letzte Profil kann nicht gelöscht werden",
     profileSaved: "Profil gespeichert",
+    profileAdministrator: "Administrator",
+    profileAdministratorHint: "Kann gemeinsame Einstellungen und andere Profile verwalten, aber weder das primäre Profil noch Anmeldung oder Administratorrollen ändern.",
+    profileAdministratorGranted: "Administratorzugriff gewährt",
+    profileAdministratorRevoked: "Administratorzugriff entzogen",
     // ---------- Anmeldung ----------
     authTab: "Anmeldung",
     advanced: "Erweitert",

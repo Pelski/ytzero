@@ -79,7 +79,7 @@ import {
 } from "./auth";
 import { generateTemporaryPassword, uniqueProfileUsername } from "./profileCredentials";
 
-export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean } }>();
+export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } }>();
 
 api.onError((err, c) => {
   log.error("api.unhandled_error", { path: c.req.path, method: c.req.method, error: err.message });
@@ -222,16 +222,23 @@ function primaryUserId(): number {
 function isPrimaryUser(c: any): boolean {
   return currentUserId(c) === primaryUserId();
 }
-// Admin = the primary profile (always, for local recovery) OR an OIDC session
-// whose groups claim matched the configured admin group. Admins get
-// primary-equivalent powers (auth config, global settings, profile/channel mgmt).
+// Admin = the immutable primary owner, an OIDC group administrator, or a
+// delegated profile administrator. Authentication configuration and role
+// delegation remain owner-only even when other admin capabilities are granted.
 function isAdmin(c: any): boolean {
-  return isPrimaryUser(c) || Boolean(c.get("sessionAdmin"));
+  return isPrimaryUser(c) || Boolean(c.get("sessionAdmin")) || Boolean(c.get("profileAdmin"));
 }
 // Who may edit a profile's general settings (name/color/avatar): the owner, or
-// an admin. PIN changes remain owner-only; admins may delete non-primary profiles.
+// an admin. Nobody except the owner may mutate the primary profile.
 function canManageProfile(c: any, id: number): boolean {
+  if (id === primaryUserId()) return isPrimaryUser(c);
   return currentUserId(c) === id || isAdmin(c);
+}
+
+async function setDelegatedProfileAdmin(c: any, userId: number): Promise<void> {
+  if (!canDelegateProfileAdmins() || userId <= 0 || userId === primaryUserId()) return;
+  const row = await database.prepare("SELECT is_admin FROM users WHERE id = ?").get(userId) as { is_admin: number } | null;
+  c.set("profileAdmin", row?.is_admin === 1);
 }
 
 /** Active profile id for the request (validated; falls back to the first profile). */
@@ -266,6 +273,7 @@ api.use("*", async (c, next) => {
     const uid = await resolveProxyUser(c);
     if (uid) {
       c.set("userId", uid);
+      await setDelegatedProfileAdmin(c, uid);
       return next();
     }
     c.set("userId", 0);
@@ -276,8 +284,10 @@ api.use("*", async (c, next) => {
   // shared | per_profile | oidc → server-side session
   const session = await validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
   if (session) {
-    c.set("userId", session.scope === "account" ? await profileFromCookie(c) : session.user_id ?? 0);
+    const userId = session.scope === "account" ? await profileFromCookie(c) : session.user_id ?? 0;
+    c.set("userId", userId);
     c.set("sessionAdmin", session.is_admin);
+    if (session.scope === "profile") await setDelegatedProfileAdmin(c, userId);
     return next();
   }
   c.set("userId", 0);
@@ -311,6 +321,13 @@ function canSwitchProfiles(): boolean {
   if (method === "none" || method === "shared") return true;
   if (method === "oidc") return (getSetting("auth_oidc_mode") || "mapped") === "gateway";
   return false;
+}
+
+/** Delegation is safe only when authentication binds a request to one profile. */
+function canDelegateProfileAdmins(): boolean {
+  const method = authMethod();
+  if (method === "per_profile" || method === "proxy_header") return true;
+  return method === "oidc" && (getSetting("auth_oidc_mode") || "mapped") === "mapped";
 }
 
 function hideOtherProfilesInPicker(): boolean {
@@ -3544,6 +3561,7 @@ interface UserRow {
   password_hash: string | null;
   oidc_subject: string | null;
   proxy_match: string | null;
+  is_admin: number;
   is_child: number;
 }
 
@@ -3580,6 +3598,7 @@ async function serializeProfile(u: UserRow, activeId: number, includeOidcIdentit
     has_pin: method === "none" ? Boolean(u.pin_hash) : false,
     active: u.id === activeId,
     is_primary: u.id === primaryUserId(),
+    is_admin: u.id === primaryUserId() || u.is_admin === 1,
     is_child: u.is_child === 1,
     pin_locked: u.is_child === 1 && (isPinLocked(u.id) || isParentLocked(u.id)),
     child_config: u.is_child === 1 ? {
@@ -3608,7 +3627,34 @@ api.get("/profiles", async (c) => {
     active_id: activeId,
     oidc_mapping: mapping.mapped ? { claim: mapping.claim, required: true } : null,
     can_create: !mapping.mapped || admin,
+    hide_other_profiles: getSetting("auth_hide_other_profiles") === "1",
   });
+});
+
+api.put("/profiles/visibility", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  if (authMethod() === "none" || authMethod() === "shared") return c.json({ error: "profile visibility requires authenticated profiles" }, 409);
+  const body = await c.req.json().catch(() => ({}));
+  if (typeof body.hide_other_profiles !== "boolean") return c.json({ error: "hide_other_profiles must be a boolean" }, 400);
+  await setSetting("auth_hide_other_profiles", body.hide_other_profiles ? "1" : "0");
+  return c.json({ ok: true });
+});
+
+api.put("/profiles/:id/admin", async (c) => {
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  if (!canDelegateProfileAdmins()) return c.json({ error: "profile administrator delegation requires identity-bound login" }, 409);
+  const id = Number(c.req.param("id"));
+  if (!Number.isSafeInteger(id) || id < 1) return c.json({ error: "invalid profile id" }, 400);
+  if (id === primaryUserId()) return c.json({ error: "the primary profile owner cannot be changed" }, 400);
+  const profile = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
+  if (!profile) return c.json({ error: "not found" }, 404);
+  if (profile.is_child === 1) return c.json({ error: "a child profile cannot be an administrator" }, 400);
+  const body = await c.req.json().catch(() => ({}));
+  if (typeof body.is_admin !== "boolean") return c.json({ error: "is_admin must be a boolean" }, 400);
+  await database.prepare("UPDATE users SET is_admin = ? WHERE id = ?").run(body.is_admin ? 1 : 0, id);
+  profile.is_admin = body.is_admin ? 1 : 0;
+  log.info("profile.admin_changed", { id, is_admin: body.is_admin });
+  return c.json({ profile: await serializeProfile(profile, currentUserId(c), false) });
 });
 
 api.post("/profiles", async (c) => {
@@ -3683,7 +3729,8 @@ api.patch("/profiles/:id", async (c) => {
   if (body.is_child !== undefined) {
     if (!isAdmin(c)) return c.json({ error: "only an administrator can change this" }, 403);
     if (id === primaryUserId()) return c.json({ error: "the primary profile cannot be a child profile" }, 400);
-    await database.prepare("UPDATE users SET is_child = ? WHERE id = ?").run(body.is_child ? 1 : 0, id);
+    if (current.is_admin === 1 && !isPrimaryUser(c)) return c.json({ error: "only the primary profile can change an administrator role" }, 403);
+    await database.prepare("UPDATE users SET is_child = ?, is_admin = CASE WHEN ? = 1 THEN 0 ELSE is_admin END WHERE id = ?").run(body.is_child ? 1 : 0, body.is_child ? 1 : 0, id);
     // Restricted content is the safe default for a fresh child profile.
     if (body.is_child && getUserSetting(id, "child_local_only") == null) {
       await setUserSetting(id, "child_local_only", "1");
@@ -3731,6 +3778,7 @@ api.delete("/profiles/:id", async (c) => {
   if (count <= 1) return c.json({ error: "cannot delete the last profile" }, 400);
   const user = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!user) return c.json({ error: "not found" }, 404);
+  if (user.is_admin === 1 && !isPrimaryUser(c)) return c.json({ error: "only the primary profile can remove an administrator" }, 403);
   // The owner may delete their own profile; an admin may remove any non-primary
   // profile without requiring that person to sign in first.
   const deletingOwnProfile = currentUserId(c) === id;
@@ -3783,6 +3831,7 @@ api.post("/profiles/:id/avatar", async (c) => {
 api.post("/profiles/:id/reset-pin", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "only an admin can reset PINs" }, 403);
   const id = Number(c.req.param("id"));
+  if (id === primaryUserId() && !isPrimaryUser(c)) return c.json({ error: "the primary profile can only be changed by its owner" }, 403);
   const row = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow | null;
   if (!row) return c.json({ error: "not found" }, 404);
   await database.prepare("UPDATE users SET pin_hash = NULL WHERE id = ?").run(id);
@@ -3850,7 +3899,11 @@ const OIDC_FLOW_COOKIE = "ytzero_oidc_flow";
 // What the SPA needs to decide between rendering the app or the login screen.
 api.get("/auth/status", async (c) => {
   const method = authMethod();
-  if (method === "none") return c.json({ method, authenticated: true, can_switch: true, hide_other_profiles: false, is_admin: isAdmin(c) });
+  const ownerCapabilities = {
+    can_manage_administrators: isPrimaryUser(c),
+    admin_delegation_available: canDelegateProfileAdmins(),
+  };
+  if (method === "none") return c.json({ method, authenticated: true, can_switch: true, hide_other_profiles: false, is_admin: isAdmin(c), ...ownerCapabilities });
 
   if (method === "proxy_header") {
     const uid = await resolveProxyUser(c);
@@ -3860,6 +3913,7 @@ api.get("/auth/status", async (c) => {
       can_switch: false,
       hide_other_profiles: hideOtherProfilesInPicker(),
       is_admin: isAdmin(c),
+      ...ownerCapabilities,
       proxy_header_seen: Boolean(proxyHeaderValue(c)),
     });
   }
@@ -3874,6 +3928,7 @@ api.get("/auth/status", async (c) => {
     can_switch: canSwitchProfiles(),
     hide_other_profiles: hideOtherProfilesInPicker(),
     is_admin: isAdmin(c),
+    ...ownerCapabilities,
     oidc_mode: method === "oidc" ? getSetting("auth_oidc_mode") || "mapped" : undefined,
     // per_profile always needs a username; shared only when one was configured.
     username_field: method === "per_profile" || (method === "shared" && Boolean(getSetting("auth_shared_username"))),
@@ -3933,7 +3988,7 @@ api.post("/auth/passkey/login/verify", async (c) => {
 api.post("/auth/passkey/register/options", async (c) => {
   const { target } = await c.req.json().catch(() => ({}));
   if (target === "shared") {
-    if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+    if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
     const { options, flowId } = await passkeyRegisterOptions(c, null, getSetting("auth_shared_username") || "shared");
     return c.json({ options, flowId });
   }
@@ -3956,7 +4011,7 @@ api.delete("/auth/passkey/:id", async (c) => {
   const cred = await database.prepare("SELECT user_id FROM webauthn_credentials WHERE id = ?").get(id) as { user_id: number | null } | null;
   if (!cred) return c.json({ error: "not found" }, 404);
   if (cred.user_id === null) {
-    if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+    if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
   } else if (cred.user_id !== currentUserId(c)) {
     return c.json({ error: "not allowed" }, 403);
   }
@@ -4017,7 +4072,7 @@ api.post("/auth/logout", async (c) => {
 // ---------- auth configuration (primary profile only) ----------
 
 api.get("/auth/config", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
   const profileRows = await database.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
   const profiles = await Promise.all(profileRows.map(async (u) => ({
     id: u.id,
@@ -4059,7 +4114,7 @@ api.get("/auth/config", async (c) => {
 });
 
 api.put("/auth/config", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
   const body = await c.req.json().catch(() => ({}));
 
   if (body.hide_other_profiles !== undefined) {
@@ -4106,7 +4161,7 @@ api.put("/auth/config", async (c) => {
 });
 
 api.post("/auth/per-profile/credentials/:id", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
   const targetId = Number(c.req.param("id"));
   if (!Number.isSafeInteger(targetId) || targetId < 1) return c.json({ error: "invalid profile id" }, 400);
   const rows = await database.prepare("SELECT * FROM users ORDER BY sort_order ASC, id ASC").all() as UserRow[];
@@ -4146,7 +4201,7 @@ api.put("/auth/profile/password", async (c) => {
 });
 
 api.post("/auth/test-oidc", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "primary only" }, 403);
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
   return c.json(await testOidc());
 });
 
@@ -4187,7 +4242,7 @@ async function validateMapping(method: string): Promise<{ missing: string[]; dup
 
 // Activate an auth method after validating its prerequisites (anti-lockout).
 api.post("/auth/method", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
+  if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
   const { method } = await c.req.json().catch(() => ({}));
   const valid = ["none", "shared", "per_profile", "oidc", "proxy_header"];
   if (!valid.includes(method)) return c.json({ error: "invalid method" }, 400);

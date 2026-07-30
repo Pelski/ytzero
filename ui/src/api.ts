@@ -572,6 +572,7 @@ export interface Profile {
   has_pin: boolean;
   active: boolean;
   is_primary: boolean;
+  is_admin: boolean;
   is_child: boolean;
   pin_locked: boolean;
   child_config: ChildConfig | null;
@@ -643,6 +644,8 @@ export interface AuthStatus {
   can_switch: boolean;
   hide_other_profiles: boolean;
   is_admin?: boolean;
+  can_manage_administrators: boolean;
+  admin_delegation_available: boolean;
   scope?: "account" | "profile" | null;
   oidc_mode?: "mapped" | "gateway";
   proxy_header_seen?: boolean;
@@ -1255,11 +1258,15 @@ export const api = {
   videoCreators: (videoId: string) =>
     http<{ creators: VideoCreator[] }>(`/videos/${videoId}/creators`),
 
-  profiles: () => http<{ profiles: Profile[]; active_id: number; oidc_mapping: { claim: string; required: boolean } | null; can_create: boolean }>("/profiles"),
+  profiles: () => http<{ profiles: Profile[]; active_id: number; oidc_mapping: { claim: string; required: boolean } | null; can_create: boolean; hide_other_profiles: boolean }>("/profiles"),
   createProfile: (p: { name: string; avatar_color?: string; pin?: string; oidc_identity?: string; is_child?: boolean }) =>
     http<{ profile: Profile; temporary_credentials?: Omit<TemporaryProfileCredential, "id" | "name"> | null }>("/profiles", { method: "POST", body: JSON.stringify(p) }),
   updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null; oidc_identity?: string; is_child?: boolean; child_config?: Partial<ChildConfig> }) =>
     http<{ profile: Profile }>(`/profiles/${id}`, { method: "PATCH", body: JSON.stringify(p) }),
+  setProfileAdministrator: (id: number, isAdmin: boolean) =>
+    http<{ profile: Profile }>(`/profiles/${id}/admin`, { method: "PUT", body: JSON.stringify({ is_admin: isAdmin }) }),
+  setProfileVisibility: (hideOtherProfiles: boolean) =>
+    http<{ ok: true }>("/profiles/visibility", { method: "PUT", body: JSON.stringify({ hide_other_profiles: hideOtherProfiles }) }),
   deleteProfile: (id: number, pin?: string) =>
     http<{ active_id?: number }>(`/profiles/${id}`, { method: "DELETE", body: JSON.stringify({ pin }) }),
   switchProfile: (id: number, pin?: string, childLockPin?: string) =>

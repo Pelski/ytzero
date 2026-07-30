@@ -736,6 +736,10 @@ export const en = {
     primaryOnlyHint: "Only the primary profile can change app name, icon color and child lock.",
     cannotDeleteLastProfile: "Can't delete the last profile",
     profileSaved: "Profile saved",
+    profileAdministrator: "Administrator",
+    profileAdministratorHint: "Can manage shared settings and other profiles, but cannot change the primary profile, authentication, or administrator roles.",
+    profileAdministratorGranted: "Administrator access granted",
+    profileAdministratorRevoked: "Administrator access revoked",
     // ---------- authentication ----------
     authTab: "Authentication",
     advanced: "Advanced",

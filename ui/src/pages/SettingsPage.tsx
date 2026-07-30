@@ -595,7 +595,7 @@ function SidebarNavEditor({ value, onChange }: { value: NavConfigEntry[]; onChan
 
 const PROFILE_COLORS = ["#f2293a", "#7c5cff", "#3ea6ff", "#00b894", "#e17055", "#fdcb6e", "#e84393", "#636e72"];
 
-function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, adminDelete, allowPin, allowPinReset, allowChildToggle, allowOidcMapping, oidcClaim }: {
+function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, adminDelete, allowPin, allowPinReset, allowChildToggle, allowAdminToggle, allowOidcMapping, oidcClaim }: {
   profile: Profile;
   onSaved: () => void;
   onDeleted: () => void;
@@ -605,6 +605,7 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, admi
   allowPin: boolean;
   allowPinReset: boolean;
   allowChildToggle: boolean;
+  allowAdminToggle: boolean;
   allowOidcMapping: boolean;
   oidcClaim?: string;
 }) {
@@ -755,6 +756,19 @@ function ProfileEditor({ profile, onSaved, onDeleted, showToast, canDelete, admi
               onSaved();
             }}
           />
+      )}
+
+      {allowAdminToggle && (
+        <Switch
+          label={t("profileAdministrator")}
+          description={t("profileAdministratorHint")}
+          checked={profile.is_admin}
+          onCheckedChange={async (next) => {
+            await api.setProfileAdministrator(profile.id, next);
+            showToast(t(next ? "profileAdministratorGranted" : "profileAdministratorRevoked"));
+            onSaved();
+          }}
+        />
       )}
 
       {allowChildToggle && profile.is_child && (
@@ -944,7 +958,7 @@ function ProfilePasswordSettings({ showToast }: { showToast: (message: string) =
   );
 }
 
-function ProfilesSettings({ showToast, isAdmin, activeAuthMethod }: { showToast: (m: string) => void; isAdmin: boolean; activeAuthMethod: AuthMethod }) {
+function ProfilesSettings({ showToast, isAdmin, canManageAdministrators, adminDelegationAvailable, activeAuthMethod }: { showToast: (m: string) => void; isAdmin: boolean; canManageAdministrators: boolean; adminDelegationAvailable: boolean; activeAuthMethod: AuthMethod }) {
   const { t } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -966,24 +980,20 @@ function ProfilesSettings({ showToast, isAdmin, activeAuthMethod }: { showToast:
       setProfiles(r.profiles);
       setOidcMapping(r.oidc_mapping);
       setCanCreate(r.can_create);
+      setHideOtherProfiles(r.hide_other_profiles);
     }).catch(() => {});
     emit("profiles-changed");
   }, []);
   useEffect(() => { refresh(); }, [refresh]);
 
   const supportsPrivatePicker = activeAuthMethod !== "none" && activeAuthMethod !== "shared";
-  useEffect(() => {
-    if (!isAdmin || !supportsPrivatePicker) return;
-    api.authConfig().then((config) => setHideOtherProfiles(config.hide_other_profiles)).catch(() => {});
-  }, [isAdmin, supportsPrivatePicker]);
-
   const saveProfileVisibility = async (next: boolean) => {
     if (savingProfileVisibility) return;
     const previous = hideOtherProfiles;
     setHideOtherProfiles(next);
     setSavingProfileVisibility(true);
     try {
-      await api.saveAuthConfig({ hide_other_profiles: next });
+      await api.setProfileVisibility(next);
       emit("profiles-changed");
       showToast(t("authProfileVisibilitySaved"));
     } catch (error: unknown) {
@@ -1051,6 +1061,7 @@ function ProfilesSettings({ showToast, isAdmin, activeAuthMethod }: { showToast:
               <div className="profile-card-meta">
                 {[
                   p.is_primary && t("primaryProfile"),
+                  p.is_admin && !p.is_primary && t("profileAdministrator"),
                   p.is_child && t("childProfile"),
                   p.oidc_identity && (oidcMapping?.claim.toLowerCase() === "email" ? p.oidc_identity : `${oidcMapping?.claim}: ${p.oidc_identity}`),
                   p.has_pin && t("profilePin") + " ••••••",
@@ -1072,6 +1083,7 @@ function ProfilesSettings({ showToast, isAdmin, activeAuthMethod }: { showToast:
                   allowPin={p.active}
                   allowPinReset={isAdmin && !p.active}
                   allowChildToggle={isAdmin && !p.is_primary}
+                  allowAdminToggle={canManageAdministrators && adminDelegationAvailable && !p.is_primary && !p.is_child}
                   allowOidcMapping={isAdmin && Boolean(oidcMapping)}
                   oidcClaim={oidcMapping?.claim}
                   canDelete={profiles.length > 1 && !p.is_primary && (p.active || isAdmin)}
@@ -1280,6 +1292,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   // App-wide settings (app name, icon color, timezone, child lock) are owned by the
   // primary profile; other profiles see them read-only.
   const [isPrimary, setIsPrimary] = useState(false);
+  const [canManageAdministrators, setCanManageAdministrators] = useState(false);
+  const [adminDelegationAvailable, setAdminDelegationAvailable] = useState(false);
   const [activeAuthMethod, setActiveAuthMethod] = useState<AuthMethod>("none");
   const [isChildProfile, setIsChildProfile] = useState<boolean | null>(null);
   const [showShorts, setShowShorts] = useState(false);
@@ -1552,6 +1566,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       // "Admin" = primary profile OR an OIDC session in the configured admin group.
       // is_admin drives the admin-only tabs/sections (kept in the isPrimary var).
       setIsPrimary(!!auth.is_admin);
+      setCanManageAdministrators(auth.can_manage_administrators);
+      setAdminDelegationAvailable(auth.admin_delegation_available);
       setActiveAuthMethod(auth.method);
       setIsChildProfile(child.is_child);
       const name = r.settings.app_name || "YT Zero";
@@ -2111,6 +2127,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     const hasVisibleChannelSection = tabItem.id !== "channels" || channelSubTabOptions.length > 0;
     const hasVisibleDisplaySection = tabItem.id !== "display" || DISPLAY_PERMISSION_AREAS.some(canManageArea);
     return (!tabItem.primaryOnly || isPrimary)
+      && (tabItem.id !== "auth" || canManageAdministrators)
       && hasVisibleChannelSection
       && hasVisibleDisplaySection
       && (tabItem.id === "channels" || isPrimary || permissionArea == null || !profilePermissions.admin_only_areas.includes(permissionArea) || (tabItem.id === "profiles" && activeAuthMethod === "per_profile"));
@@ -2121,7 +2138,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     if (!visibleTabs.some((tabItem) => tabItem.id === tab)) {
       setTab(visibleTabs[0]?.id ?? "tags");
     }
-  }, [settingsReady, isChildProfile, isPrimary, profilePermissions.admin_only_areas, tab]);
+  }, [settingsReady, isChildProfile, isPrimary, canManageAdministrators, profilePermissions.admin_only_areas, tab]);
 
   useEffect(() => {
     if (!settingsReady || tab !== "channels" || channelSubTabOptions.some((option) => option.value === channelSubTab)) return;
@@ -2190,7 +2207,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </SettingsSection>
           )}
 
-          {canManageArea("profiles") && <ProfilesSettings showToast={showToast} isAdmin={isPrimary} activeAuthMethod={activeAuthMethod} />}
+          {canManageArea("profiles") && <ProfilesSettings showToast={showToast} isAdmin={isPrimary} canManageAdministrators={canManageAdministrators} adminDelegationAvailable={adminDelegationAvailable} activeAuthMethod={activeAuthMethod} />}
 
           {canManageArea("profiles") && <SettingsSection className="child-lock-panel">
             <div className="child-lock-header">
@@ -2292,7 +2309,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </>
       )}
 
-      {!isCurrentTabLocked && tab === "auth" && isPrimary && <AuthSettings showToast={showToast} />}
+      {!isCurrentTabLocked && tab === "auth" && canManageAdministrators && <AuthSettings showToast={showToast} />}
 
       {!isCurrentTabLocked && tab === "channels" && (
         <SettingsSection>
