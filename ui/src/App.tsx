@@ -514,6 +514,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => subscribe("watched-style-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("video-card-size-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("player-settings-changed", loadSettings), [loadSettings]);
+  useEffect(() => subscribe("child-watching-settings-changed", loadSettings), [loadSettings]);
 
   const loadPlugins = useCallback(() => {
     api.plugins()
@@ -752,7 +753,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
         </main>
       </div>
       {toast && <Toast message={toast.message} variant={toast.variant} />}
-      <ChildNowWatching />
+      {appSettings && appSettings.child_watching_monitor_enabled !== "0" && <ChildNowWatching />}
       {childStatus?.locked && <ChildLockScreen status={childStatus} />}
     </div>
     </AppNameContext.Provider>

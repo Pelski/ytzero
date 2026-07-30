@@ -172,6 +172,9 @@ below.
   Enabling Child Lock and its PIN remain local and are never exported.
 - `user_settings`: registered settings for selected profiles.
   This includes `feed_sort`, the portable per-profile choice between publication and first-seen chronology, and `watch_show_comments`, the opt-in presentation preference for the on-demand comments section. Comment payloads remain transient cache data and are not exported.
+  The visibility of the child-watching shortcut is also a portable per-profile
+  presentation preference. It defaults to visible; live child activity remains
+  transient and is never included in a backup.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The

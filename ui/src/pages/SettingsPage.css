@@ -796,9 +796,19 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
   .profile-password-fields { grid-template-columns: minmax(0, 1fr); }
 }
 
-.settings-loading { display: flex; flex-direction: column; gap: 18px; }
-.settings-loading-tabs { display: flex; gap: 8px; max-width: 980px; overflow: hidden; width: 100%; }
-.settings-loading-tab { border-radius: 9px; flex: 0 0 112px; height: 38px; }
+.settings-loading-content { display: flex; flex-direction: column; gap: 18px; }
+.settings-loading-nav { min-width: 0; }
+.settings-loading-nav-desktop { display: grid; padding: 2px 8px 12px 0; }
+.settings-loading-nav-group { display: grid; gap: 5px; }
+.settings-loading-nav-group + .settings-loading-nav-group { border-top: 1px solid var(--surface-3); margin-top: 15px; padding-top: 15px; }
+.settings-loading-nav-label { border-radius: 99px; height: 8px; margin: 4px 11px 8px; width: 72px; }
+.settings-loading-nav-group:nth-child(2) .settings-loading-nav-label { width: 94px; }
+.settings-loading-nav-group:nth-child(3) .settings-loading-nav-label { width: 108px; }
+.settings-loading-nav-items { display: grid; gap: 2px; }
+.settings-loading-nav-item { align-items: center; display: flex; height: 36px; padding: 0 11px; }
+.settings-loading-nav-item-line { border-radius: 99px; height: 10px; width: 68%; }
+.settings-loading-nav-item:nth-child(even) .settings-loading-nav-item-line { width: 52%; }
+.settings-loading-nav-mobile { display: none; border-radius: 11px; height: 38px; width: 100%; }
 .settings-loading-section { margin-bottom: 0; }
 .settings-loading-section .ui-settings-section__body { gap: 0; }
 .settings-loading-heading { border-radius: 99px; height: 16px; margin-bottom: 15px; width: min(230px, 58%); }
@@ -1052,6 +1062,8 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 
 @media (max-width: 880px) {
   .settings-shell { gap: 16px; grid-template-columns: minmax(0, 1fr); max-width: 980px; }
+  .settings-loading-nav-desktop { display: none; }
+  .settings-loading-nav-mobile { display: block; }
 }
 
 @media (max-width: 480px) {

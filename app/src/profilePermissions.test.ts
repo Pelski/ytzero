@@ -49,6 +49,7 @@ describe("profile administrator permissions", () => {
     expect(permissionAreasForSettings({ feed_max_age_unit: "months", hide_live_from_feed: "1" })).toEqual(["feed"]);
     expect(permissionAreasForSettings({ show_shorts: "1", sidebar_nav: "[]" })).toEqual(["navigation"]);
     expect(permissionAreasForSettings({ player_speed: "1.5", sponsorblock_enabled: "1" })).toEqual(["playback"]);
+    expect(permissionAreasForSettings({ child_watching_monitor_enabled: "0" })).toEqual(["profiles"]);
     expect(permissionAreasForSettings({ language: "pl", player_speed: "1.5" })).toEqual(["appearance", "playback"]);
     expect(permissionAreasForSettings({ feed_sort: "arrival" })).toEqual([]);
   });

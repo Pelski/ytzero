@@ -680,6 +680,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // Mobile: rotating to landscape on the watch page enters fullscreen.
   auto_fullscreen_landscape: "0",
   grid_size: "sm",
+  // Portable per-profile presentation preference for the child activity
+  // shortcut. Live viewing activity remains transient and is never exported.
+  child_watching_monitor_enabled: "1",
   child_lock_enabled: "0",
   child_lock_pin_hash: "",
   // Portable, non-secret policy defining which areas non-admin profiles may

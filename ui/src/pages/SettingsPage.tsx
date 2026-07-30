@@ -1201,20 +1201,33 @@ function ChannelOwnership({ showToast }: { showToast: (m: string) => void }) {
 
 function SettingsLoadingState() {
   const { t } = useI18n();
-  return <div className="settings-loading" aria-busy="true" aria-label={t("loading")}>
-    <div className="settings-loading-tabs" aria-hidden="true">
-      {Array.from({ length: 6 }, (_, index) => <div className="skeleton settings-loading-tab" key={index} />)}
+  const navGroups = [5, 7, 3, 4];
+  return <div className="settings-shell settings-loading" aria-busy="true" aria-label={t("loading")}>
+    <div className="settings-loading-nav" aria-hidden="true">
+      <div className="settings-loading-nav-desktop">
+        {navGroups.map((itemCount, group) => <div className="settings-loading-nav-group" key={group}>
+          <div className="skeleton settings-loading-nav-label" />
+          <div className="settings-loading-nav-items">
+            {Array.from({ length: itemCount }, (_, item) => <div className="settings-loading-nav-item" key={item}>
+              <div className="skeleton settings-loading-nav-item-line" />
+            </div>)}
+          </div>
+        </div>)}
+      </div>
+      <div className="skeleton settings-loading-nav-mobile" />
     </div>
-    {Array.from({ length: 2 }, (_, section) => <SettingsSection className="settings-loading-section" key={section}>
-      <div className="skeleton settings-loading-heading" aria-hidden="true" />
-      {Array.from({ length: section === 0 ? 4 : 3 }, (_, row) => <div className="settings-loading-row" aria-hidden="true" key={row}>
-        <div className="settings-loading-copy">
-          <div className="skeleton skeleton-line" />
-          <div className="skeleton skeleton-line short" />
-        </div>
-        <div className="skeleton settings-loading-control" />
-      </div>)}
-    </SettingsSection>)}
+    <div className="settings-shell__content settings-loading-content">
+      {Array.from({ length: 2 }, (_, section) => <SettingsSection className="settings-loading-section" key={section}>
+        <div className="skeleton settings-loading-heading" aria-hidden="true" />
+        {Array.from({ length: section === 0 ? 4 : 3 }, (_, row) => <div className="settings-loading-row" aria-hidden="true" key={row}>
+          <div className="settings-loading-copy">
+            <div className="skeleton skeleton-line" />
+            <div className="skeleton skeleton-line short" />
+          </div>
+          <div className="skeleton settings-loading-control" />
+        </div>)}
+      </SettingsSection>)}
+    </div>
   </div>;
 }
 
@@ -1333,6 +1346,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [autoFullscreen, setAutoFullscreen] = useState(false);
   const [sbEnabled, setSbEnabled] = useState(false);
   const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
+  const [childWatchingMonitorEnabled, setChildWatchingMonitorEnabled] = useState(true);
   const [childLock, setChildLock] = useState<ChildLockStatus>({ enabled: false, locked: false });
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: DEFAULT_ADMIN_ONLY_AREAS });
   const [unlockPin, setUnlockPin] = useState("");
@@ -1623,6 +1637,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       setScreenshotFilename(r.settings.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
       setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
       setSbEnabled(r.settings.sponsorblock_enabled === "1");
+      setChildWatchingMonitorEnabled(r.settings.child_watching_monitor_enabled !== "0");
       try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
       setChildLock(cl.child_lock);
       setProfilePermissions(permissions.permissions);
@@ -1931,6 +1946,19 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
   const showPinError = () => showToast(t("pinMustBeSixDigits"));
   const isValidPin = (pin: string) => /^\d{6}$/.test(pin);
+
+  const changeChildWatchingMonitor = async (enabled: boolean) => {
+    const previous = childWatchingMonitorEnabled;
+    setChildWatchingMonitorEnabled(enabled);
+    try {
+      await api.updateSettings({ child_watching_monitor_enabled: enabled ? "1" : "0" });
+      emit("child-watching-settings-changed");
+      showToast(t("childWatchingMonitorSaved"));
+    } catch (error) {
+      setChildWatchingMonitorEnabled(previous);
+      showToast(error instanceof Error ? error.message : t("error"));
+    }
+  };
 
   const unlockSettings = async () => {
     if (!isValidPin(unlockPin)) return showPinError();
@@ -2294,6 +2322,20 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           )}
 
           {canManageArea("profiles") && <ProfilesSettings showToast={showToast} isAdmin={isPrimary} canManageAdministrators={canManageAdministrators} adminDelegationAvailable={adminDelegationAvailable} activeAuthMethod={activeAuthMethod} />}
+
+          {canManageArea("profiles") && !isChildProfile && (
+            <SettingsSection title={t("childMonitoringSettingsTitle")}>
+              <SettingRow
+                label={t("childWatchingMonitorEnabled")}
+                description={t("childWatchingMonitorEnabledHint")}
+              >
+                <Switch
+                  checked={childWatchingMonitorEnabled}
+                  onCheckedChange={(enabled) => void changeChildWatchingMonitor(enabled)}
+                />
+              </SettingRow>
+            </SettingsSection>
+          )}
 
           {canManageArea("profiles") && <SettingsSection className="child-lock-panel">
             <div className="child-lock-header">

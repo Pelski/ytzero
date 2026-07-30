@@ -72,6 +72,7 @@ const SETTING_PERMISSION_AREAS: Readonly<Record<string, ProfilePermissionArea>> 
   feed_autoplay_enabled: "playback",
   feed_autoplay_behavior: "playback",
   feed_autoplay_direction: "playback",
+  child_watching_monitor_enabled: "profiles",
 };
 
 export function isProfilePermissionArea(value: unknown): value is ProfilePermissionArea {
