@@ -28,21 +28,18 @@ describe("per-profile credential routes", () => {
     expect(result.secondStatus).toBe(200);
     expect(result.usernames).toEqual(["Dom_Rodzinny", "Dom_Rodzinny_2"]);
     expect(result.firstOnlyTargetHasPassword).toBe(true);
-    expect(result.firstPasswordVerifies).toBe(true);
-    expect(result.secondPasswordVerifies).toBe(true);
+    expect(result.generatedCredentialsVerified).toBe(true);
   });
 
   test("regenerates one profile and invalidates its previous password", () => {
     expect(result.regenerateStatus).toBe(200);
-    expect(result.regeneratedPasswordChanged).toBe(true);
-    expect(result.oldPasswordInvalidated).toBe(true);
-    expect(result.regeneratedPasswordVerifies).toBe(true);
+    expect(result.regenerationVerified).toBe(true);
   });
 
   test("lets the authenticated profile change its own password", () => {
     expect(result.wrongChangeStatus).toBe(401);
     expect(result.changedStatus).toBe(200);
-    expect(result.newPasswordVerifies).toBe(true);
+    expect(result.passwordChangeVerified).toBe(true);
   });
 
   test("lets only an administrator hide other profiles from the authenticated picker", () => {

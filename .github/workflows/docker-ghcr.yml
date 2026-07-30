@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*.*.*"
     # A README, wiki page or issue-workflow change cannot affect the image.
     paths:
       - "app/**"
@@ -11,12 +13,6 @@ on:
       - "Dockerfile"
       - ".dockerignore"
       - ".github/workflows/docker-ghcr.yml"
-  # A release created with GITHUB_TOKEN does not emit a new release workflow
-  # run. workflow_run is therefore the reliable hand-off from release.yml and
-  # also guarantees that changelog.json cannot race the release publication.
-  workflow_run:
-    workflows: ["Publish Release"]
-    types: [completed]
   workflow_dispatch:
 
 env:
@@ -26,7 +22,6 @@ env:
 jobs:
   prepare:
     name: Prepare release metadata and changelog
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.build-version.outputs.version }}
@@ -40,7 +35,6 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Resolve the image version from the checked-out source
         id: build-version
@@ -52,8 +46,8 @@ jobs:
           version="edge"
           is_release="false"
 
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_run" ]]; then
-            version="$(git describe --tags --exact-match --match 'v*.*.*' HEAD)"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
             is_release="true"
           fi
 

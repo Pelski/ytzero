@@ -78,17 +78,24 @@ const changed = await api.request("http://localhost/auth/profile/password", {
 });
 const changedHash = (db.prepare("SELECT password_hash FROM users WHERE id = 1").get() as { password_hash: string }).password_hash;
 
+// Keep temporary passwords entirely inside the harness. Even derived values
+// from credentials must not cross the subprocess boundary through stdout.
+if (!(await Bun.password.verify(firstCredential.password, rowsAfterSecond[0]!.password_hash))) throw new Error("First generated credential did not verify");
+if (!(await Bun.password.verify(secondCredential.password, rowsAfterSecond[1]!.password_hash))) throw new Error("Second generated credential did not verify");
+if (regeneratedCredential.password === firstCredential.password) throw new Error("Credential regeneration reused the previous password");
+if (await Bun.password.verify(firstCredential.password, regeneratedHash)) throw new Error("Credential regeneration did not invalidate the previous password");
+if (!(await Bun.password.verify(regeneratedCredential.password, regeneratedHash))) throw new Error("Regenerated credential did not verify");
+if (!(await Bun.password.verify("new-password-123", changedHash))) throw new Error("Changed credential did not verify");
+
 console.log("RESULT " + JSON.stringify({
   firstStatus: firstResponse.status,
   secondStatus: secondResponse.status,
   regenerateStatus: regenerateResponse.status,
   usernames: rowsAfterSecond.map((row) => row.username),
   firstOnlyTargetHasPassword: Boolean(rowsAfterFirst[0]?.password_hash) && rowsAfterFirst[1]?.password_hash === null,
-  firstPasswordVerifies: await Bun.password.verify(firstCredential.password, rowsAfterSecond[0]!.password_hash),
-  secondPasswordVerifies: await Bun.password.verify(secondCredential.password, rowsAfterSecond[1]!.password_hash),
-  regeneratedPasswordChanged: regeneratedCredential.password !== firstCredential.password,
-  oldPasswordInvalidated: !(await Bun.password.verify(firstCredential.password, regeneratedHash)),
-  regeneratedPasswordVerifies: await Bun.password.verify(regeneratedCredential.password, regeneratedHash),
+  generatedCredentialsVerified: true,
+  regenerationVerified: true,
+  passwordChangeVerified: true,
   visibilityUpdateStatus: visibilityUpdate.status,
   visibilityConfigured,
   sharedPickerProfilesHidden,
@@ -110,6 +117,5 @@ console.log("RESULT " + JSON.stringify({
   revokedIsAdmin: revokedStatusBody.is_admin,
   wrongChangeStatus: wrongChange.status,
   changedStatus: changed.status,
-  newPasswordVerifies: await Bun.password.verify("new-password-123", changedHash),
 }));
 db.close();
