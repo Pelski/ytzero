@@ -239,6 +239,7 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
   const [feedRefreshing, setFeedRefreshing] = useState(false);
   const feedRefreshStartedAtRef = useRef(0);
   const feedRefreshFinishTimerRef = useRef<number | null>(null);
+  const scrollAfterFeedRefreshRef = useRef(false);
 
   useEffect(() => setQ(params.get("q") ?? ""), [params]);
 
@@ -258,6 +259,13 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
       setFeedRefreshing(true);
     });
     const unsubscribeFinished = subscribe("feed-refresh-finished", () => {
+      if (scrollAfterFeedRefreshRef.current) {
+        scrollAfterFeedRefreshRef.current = false;
+        window.scrollTo({
+          top: 0,
+          behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+        });
+      }
       const elapsed = performance.now() - feedRefreshStartedAtRef.current;
       const remaining = Math.max(0, 2000 - elapsed);
       feedRefreshFinishTimerRef.current = window.setTimeout(() => {
@@ -300,17 +308,24 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
         to="/"
         className="topbar-logo"
         onClick={(event) => {
-          if (
-            location.pathname === "/"
-            && event.button === 0
+          const plainLeftClick = event.button === 0
             && !event.metaKey
             && !event.ctrlKey
             && !event.shiftKey
-            && !event.altKey
-          ) {
+            && !event.altKey;
+          if (!plainLeftClick) return;
+
+          if (location.pathname === "/") {
             event.preventDefault();
+            scrollAfterFeedRefreshRef.current = true;
             emit("feed-view-reload-requested");
+            return;
           }
+
+          window.scrollTo({
+            top: 0,
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+          });
         }}
       >
         <span className={`logo-mark${incognito ? " logo-mark--incognito" : ""}`} style={incognito ? undefined : { background: appIconColor }}>

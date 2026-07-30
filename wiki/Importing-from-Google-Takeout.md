@@ -12,7 +12,7 @@ YT Zero has an import wizard that brings your YouTube data over from a [Google T
 1. Drop the whole `.zip` onto the import page — or loose files: `subscriptions.csv`, playlist CSVs, `watch-history.json` or `.html`. You can keep adding files before analyzing.
 2. Click **Analyze files**. YT Zero recognizes the contents (localized exports work too — file names and dates in Polish or German are handled).
 3. Pick what to import: toggle whole sections, deselect individual channels or playlists.
-4. For watch history, choose **Everything** or **From date**. Entries are matched by video, so anything you watched before shows up as watched in YT Zero — including videos that reach your feed later.
+4. For watch history, choose **Everything** or **From date**. Entries are matched by video and marked as watched. They remain available in history and the library, but do not appear in the feed as unwatched videos later.
 
 Note: in **From date** mode, entries older than the cutoff (and entries without a readable date) are skipped entirely. Choose **Everything** if you want your full history marked as watched.
 

@@ -33,6 +33,10 @@ export function feedVisibilityWhere(
     where.push("COALESCE(uv.status, 'inbox') = ?");
     params.push(status);
   }
+  // Watched state is independent from inbox/archive state. Takeout imports and
+  // older clients may mark a video watched without archiving it, but the main
+  // feed is an inbox of things still left to watch.
+  where.push("COALESCE(uv.watched, 0) = 0");
   // Following is the profile-level source of truth. A video may have first
   // entered storage as a temporary Recommendation (`external = 1`), but once
   // its channel is followed it belongs in Main just like an RSS-first upload.

@@ -737,7 +737,6 @@ api.get("/feed/adjacent", async (c) => {
   const comparison = direction === "oldest" ? ">" : "<";
   where.push(`(${sortColumn} ${comparison} ? OR (${sortColumn} = ? AND v.video_id ${comparison} ?))`);
   params.push(anchorTime, anchorTime, anchor.video_id);
-  where.push("COALESCE(uv.watched, 0) = 0");
   // FeedPage lifts meaningful partials into its separate Continue shelf, so
   // the chronological grid's queue must skip them too.
   where.push(`NOT (
@@ -3145,15 +3144,16 @@ async function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[])
 
 // History rows carry the original watch date; undated entries (localized HTML
 // exports) only mark the video as watched instead of faking a timestamp.
-async function importTakeoutHistory(uid: number, entries: TakeoutHistoryEntry[], from: string | null): Promise<{ historyAdded: number; watchedMarked: number }> {
+export async function importTakeoutHistory(uid: number, entries: TakeoutHistoryEntry[], from: string | null): Promise<{ historyAdded: number; watchedMarked: number }> {
   const existing = new Set(
     (await database.prepare("SELECT video_id, watched_at FROM history WHERE user_id = ?").all(uid) as { video_id: string; watched_at: string }[])
       .map((r) => `${r.video_id}@${r.watched_at}`)
   );
   const addHistory = database.prepare("INSERT INTO history (video_id, user_id, watched_at) VALUES (?, ?, ?)");
   const markWatched = database.prepare(
-    `INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
-     ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1`
+    `INSERT INTO user_videos (user_id, video_id, status, watched) VALUES (?, ?, 'archived', 1)
+     ON CONFLICT(user_id, video_id) DO UPDATE SET
+       status = 'archived', watched = 1, bucket = NULL, queued_at = NULL, show_from = NULL`
   );
 
   let historyAdded = 0;
