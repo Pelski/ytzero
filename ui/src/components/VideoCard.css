@@ -157,6 +157,68 @@
   border-color: var(--accent);
 }
 
+.thumb-card-status-badges {
+  align-items: center;
+  bottom: 8px;
+  display: flex;
+  gap: 0;
+  left: 6px;
+  position: absolute;
+  z-index: 5;
+}
+
+.thumb-card-status-badges .dearrow-preview-toggle-wrap {
+  margin-right: 0;
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: static;
+  transition: margin-right .15s ease, max-width .15s ease, opacity .15s ease;
+}
+.video-card:hover .dearrow-preview-toggle-wrap,
+.video-card:focus-within .dearrow-preview-toggle-wrap {
+  margin-right: 5px;
+  max-width: 20px;
+  opacity: 1;
+  overflow: visible;
+  pointer-events: auto;
+}
+.video-card .thumb-card-status-badges .thumb-dl-badge { inset: auto; position: static; }
+
+.dearrow-preview-toggle {
+  align-items: center;
+  backdrop-filter: blur(4px);
+  background: rgba(15, 15, 15, .68);
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 50%;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  height: 20px;
+  justify-content: center;
+  opacity: .78;
+  padding: 0;
+  transition: background .15s ease, opacity .15s ease;
+  width: 20px;
+}
+
+.dearrow-preview-toggle svg { height: 12px; width: 12px; }
+.dearrow-preview-toggle:hover,
+.dearrow-preview-toggle:focus-visible { background: rgba(15, 15, 15, .9); opacity: 1; }
+.dearrow-preview-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.dearrow-preview-toggle.active { background: var(--accent); border-color: var(--accent); color: #0f0f0f; opacity: 1; }
+
+@media (hover: none) {
+  .thumb-card-status-badges .dearrow-preview-toggle-wrap {
+    margin-right: 5px;
+    max-width: 20px;
+    opacity: 1;
+    overflow: visible;
+    pointer-events: auto;
+  }
+}
+
 .swipe-reveal--restored {
   left: 0;
   background: color-mix(in srgb, #52b979 22%, transparent);

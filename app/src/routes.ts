@@ -78,6 +78,7 @@ import {
   proxyHeaderValue,
 } from "./auth";
 import { generateTemporaryPassword, uniqueProfileUsername } from "./profileCredentials";
+import { getDeArrowBranding } from "./dearrow";
 
 export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } }>();
 
@@ -1673,6 +1674,20 @@ api.get("/videos/:id/info", async (c) => {
     log.error("external.video_info_failed", { videoId: c.req.param("id"), error: e instanceof Error ? e.message : String(e) });
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
+});
+
+api.get("/videos/:id/dearrow", async (c) => {
+  const uid = currentUserId(c);
+  const titlesEnabled = getUserSetting(uid, "dearrow_titles_enabled") === "1";
+  const thumbnailsEnabled = getUserSetting(uid, "dearrow_thumbnails_enabled") === "1";
+  if (!titlesEnabled && !thumbnailsEnabled) return c.json({ title: null, thumbnail: null });
+  const videoId = c.req.param("id");
+  if (!validYouTubeVideoId(videoId)) return c.json({ error: "invalid video id" }, 400);
+  const branding = await getDeArrowBranding(videoId);
+  return c.json({
+    title: titlesEnabled ? branding.title : null,
+    thumbnail: thumbnailsEnabled ? branding.thumbnail : null,
+  });
 });
 
 async function refreshVideoChapters(videoId: string) {

@@ -71,6 +71,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **Downloads (yt-dlp)** — an optional plugin that downloads scheduled or fresh videos, plays them in a built-in local player, shows download progress on thumbnails and in a dedicated Downloads tab, and cleans up after itself with retention rules and a storage cap.
 - **Shorts tab & player** — a followed-channels-only vertical Shorts feed with format-native cards and a full-screen swipe player.
 - **SponsorBlock** — optionally skip sponsored segments, intros, outros, and more.
+- **DeArrow** — optionally replace clickbait titles and thumbnails with community-created alternatives from the [DeArrow project](https://dearrow.ajay.app/), while keeping the original library metadata intact.
 - **Playback and display controls** — theater view, captions, quality, display customization, and optional auto-fullscreen when a phone rotates to landscape.
 - **Internationalization** — English, Polish, and German UI.
 
@@ -207,6 +208,8 @@ If you only want automatic redirects, [YTZero Redirect](https://github.com/pekem
 ## Privacy & license
 
 YT Zero does not require a Google account or a YouTube Data API key, and stores app data locally in SQLite. It still connects to YouTube to fetch RSS feeds, metadata, thumbnails, pages, and embedded videos. With the YT-DLP Integration plugin enabled it also downloads video files from YouTube via yt-dlp; those files are stored locally and removed by the plugin's retention rules.
+
+The optional [DeArrow](https://dearrow.ajay.app/) integration fetches community-created replacement titles and thumbnails from DeArrow/SponsorBlock services. It is disabled by default, never overwrites metadata stored in the local library, and can be enabled separately for titles and thumbnails. Replacement-title lookups use a short SHA-256 hash prefix; thumbnail requests include the YouTube video ID. DeArrow/SponsorBlock data is provided under CC BY-NC-SA 4.0.
 
 YouTube is a trademark of Google LLC. This project is not affiliated with, endorsed by, or associated with YouTube or Google LLC.
 

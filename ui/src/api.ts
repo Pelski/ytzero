@@ -57,6 +57,11 @@ export interface Video {
   source_playlist_id?: string | null;
 }
 
+export interface DeArrowBranding {
+  title: string | null;
+  thumbnail: string | null;
+}
+
 export type MembersOnlyVisibility = "default" | "everywhere" | "channel" | "hidden";
 export type ChannelManualStatus = "active" | "paused" | "broken" | "banned" | "deleted";
 
@@ -281,6 +286,8 @@ export interface AppSettings {
   sidebar_nav: string;
   sponsorblock_enabled: string;
   sponsorblock_categories: string;
+  dearrow_titles_enabled: string;
+  dearrow_thumbnails_enabled: string;
   update_check_interval: string;
   feed_autoplay_enabled: string;
   feed_autoplay_behavior: string;
@@ -1324,4 +1331,5 @@ export const api = {
     if (!res.ok) return [];
     return res.json();
   },
+  dearrow: (videoId: string) => http<DeArrowBranding>(`/videos/${encodeURIComponent(videoId)}/dearrow`),
 };

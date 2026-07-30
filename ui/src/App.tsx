@@ -40,6 +40,7 @@ const PLUGIN_ROUTES = ["/recommendations"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
+import { DeArrowProvider } from "./dearrow";
 import Tooltip from "./components/Tooltip";
 import { Badge, Button, Toast } from "./components/ui";
 import { ENHANCE_CONFIGURATION_ELEMENT_ID, serializeEnhanceConfiguration } from "./enhanceBridge";
@@ -677,6 +678,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <AppNameContext.Provider value={appName}>
+    <DeArrowProvider
+      titlesEnabled={appSettings?.dearrow_titles_enabled === "1"}
+      thumbnailsEnabled={appSettings?.dearrow_thumbnails_enabled === "1"}
+    >
     {appSettings && (
       <script id={ENHANCE_CONFIGURATION_ELEMENT_ID} type="application/json">
         {serializeEnhanceConfiguration(appSettings)}
@@ -756,6 +761,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
       {appSettings && appSettings.child_watching_monitor_enabled !== "0" && <ChildNowWatching />}
       {childStatus?.locked && <ChildLockScreen status={childStatus} />}
     </div>
+    </DeArrowProvider>
     </AppNameContext.Provider>
   );
 }

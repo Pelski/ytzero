@@ -8,6 +8,7 @@ import {
   EyeOff,
   Heart,
   Lock,
+  ScanEye,
   Star,
   Trash2,
   Undo2,
@@ -26,6 +27,7 @@ import Tooltip from "./Tooltip";
 import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
 import { Badge } from "./ui";
+import { useDeArrowBranding } from "../dearrow";
 import "./VideoCard.css";
 
 export { BUCKET_ICONS } from "./VideoScheduleActions";
@@ -150,6 +152,11 @@ function VideoCard({
   /** Metadata is still being enriched; blur the thumbnail and show progress. */
   processing?: boolean;
 }) {
+  const deArrowBranding = useDeArrowBranding(video.video_id);
+  const [showOriginalBranding, setShowOriginalBranding] = useState(false);
+  const hasDeArrowBranding = Boolean(deArrowBranding?.title || deArrowBranding?.thumbnail);
+  const displayTitle = showOriginalBranding ? video.title : deArrowBranding?.title || video.title;
+  const displayThumbnail = showOriginalBranding ? video.thumbnail : deArrowBranding?.thumbnail || video.thumbnail;
   const { t, language, locale } = useI18n();
   const navigate = useNavigate();
   const [fading, setFading] = useState(false);
@@ -463,23 +470,23 @@ function VideoCard({
               {selected && <Check size={14} />}
             </button>
           )}
-          <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+          <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
             <Link
               to={videoHref}
               className="thumb-link"
               onClick={playFromLink}
               onDragStart={(e) => e.preventDefault()}
-              aria-label={video.title}
+              aria-label={displayTitle}
             >
               <span
-                className={`video-card-thumbnail-color${loadedThumbnailSrc === video.thumbnail ? " video-card-thumbnail-color--loaded" : ""}`}
+                className={`video-card-thumbnail-color${loadedThumbnailSrc === displayThumbnail ? " video-card-thumbnail-color--loaded" : ""}`}
                 style={thumbnailColorStyle(video.video_id)}
                 onLoadCapture={(event) => {
-                  if ((event.target as HTMLElement).classList.contains("video-thumbnail-image")) setLoadedThumbnailSrc(video.thumbnail);
+                  if ((event.target as HTMLElement).classList.contains("video-thumbnail-image")) setLoadedThumbnailSrc(displayThumbnail);
                 }}
               >
                 <VideoThumbnail
-                  src={img(video.thumbnail)}
+                  src={displayThumbnail}
                   watched={watched}
                   progress={video.status !== "archived" || showWatchProgress
                     ? watchProgress(video.watch_position, video.watch_duration)
@@ -499,8 +506,34 @@ function VideoCard({
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}
-          {downloadStatus === "done" && (
-            <span className="thumb-dl-badge" title={t("downloaded")}><ArrowDownToLine size={11} /></span>
+          {(hasDeArrowBranding || downloadStatus === "done") && (
+            <div className="thumb-card-status-badges">
+              {hasDeArrowBranding && (
+                <Tooltip
+                  text={showOriginalBranding ? t("showDeArrowVersion") : t("showOriginalVersion")}
+                  pos="top"
+                  className="dearrow-preview-toggle-wrap"
+                  portal
+                >
+                  <button
+                    type="button"
+                    className={`dearrow-preview-toggle${showOriginalBranding ? " active" : ""}`}
+                    aria-pressed={showOriginalBranding}
+                    aria-label={showOriginalBranding ? t("showDeArrowVersion") : t("showOriginalVersion")}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setShowOriginalBranding((current) => !current);
+                    }}
+                  >
+                    <ScanEye aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              )}
+              {downloadStatus === "done" && (
+                <span className="thumb-dl-badge" title={t("downloaded")}><ArrowDownToLine size={11} /></span>
+              )}
+            </div>
           )}
           {video.live_status === "live" && (
             <span className="live-badge">
@@ -614,8 +647,8 @@ function VideoCard({
 
         {searchResultLayout ? (
           <div className="card-body">
-            <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
-              <Link to={videoHref} className="v-title" onClick={playFromLink}>{video.title}</Link>
+            <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+              <Link to={videoHref} className="v-title" onClick={playFromLink}>{displayTitle}</Link>
             </Tooltip>
             {(video.views != null || publishedTime) && (
               <div className="v-search-meta">
@@ -651,9 +684,9 @@ function VideoCard({
               </Link>
             )}
             <div className="card-info">
-              <Tooltip text={video.title} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+              <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
                 <Link to={videoHref} className="v-title" onClick={playFromLink}>
-                  {video.title}
+                  {displayTitle}
                 </Link>
               </Tooltip>
               <div className="v-channel-meta">

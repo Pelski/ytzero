@@ -714,6 +714,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   sidebar_nav: "",
   sponsorblock_enabled: "0",
   sponsorblock_categories: '["sponsor"]',
+  // Optional DeArrow presentation layers. Original library metadata is retained.
+  dearrow_titles_enabled: "0",
+  dearrow_thumbnails_enabled: "0",
   update_check_interval: "off",
   // Context-aware continuation through the list that opened the watch page.
   feed_autoplay_enabled: "0",

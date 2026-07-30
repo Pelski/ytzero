@@ -175,6 +175,9 @@ below.
   The visibility of the child-watching shortcut is also a portable per-profile
   presentation preference. It defaults to visible; live child activity remains
   transient and is never included in a backup.
+  DeArrow title and thumbnail enablement are independent portable per-profile
+  presentation settings and both default to disabled. Replacements are fetched
+  on demand; they do not overwrite library metadata or become portable profile data.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The

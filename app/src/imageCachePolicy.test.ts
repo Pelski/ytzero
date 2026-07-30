@@ -5,6 +5,8 @@ describe("image cache policy", () => {
   test("accepts supported YouTube image hosts and rejects lookalikes", () => {
     expect(isAllowedRemoteImageUrl("https://i.ytimg.com/vi/id/hqdefault.jpg")).toBe(true);
     expect(isAllowedRemoteImageUrl("https://yt3.ggpht.com/example=s900")).toBe(true);
+    expect(isAllowedRemoteImageUrl("https://dearrow-thumb.ajay.app/api/v1/getThumbnail?videoID=id&time=10")).toBe(true);
+    expect(isAllowedRemoteImageUrl("https://evil.dearrow-thumb.ajay.app.example/image.jpg")).toBe(false);
     expect(isAllowedRemoteImageUrl("https://evil-ytimg.com/image.jpg")).toBe(false);
     expect(isAllowedRemoteImageUrl("http://i.ytimg.com/vi/id/hqdefault.jpg")).toBe(false);
   });

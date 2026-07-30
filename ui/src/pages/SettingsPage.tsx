@@ -1240,7 +1240,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const section = searchParams.get("section");
   const channelSubTab: "list" | "playlists" | "filters" = section === "filters" || section === "playlists" ? section : "list";
   const tagSubTab: "list" | "rules" = section === "rules" ? "rules" : "list";
-  const displaySubTab: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "sponsorblock" = section === "feed" || section === "navigation" || section === "playback" || section === "subtitles" || section === "screenshots" || section === "sponsorblock" ? section : "appearance";
+  const displaySubTab: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "privacy" = section === "feed" || section === "navigation" || section === "playback" || section === "subtitles" || section === "screenshots" || section === "privacy" ? section : section === "sponsorblock" ? "privacy" : "appearance";
   const advancedSubTab: "external" | "logs" | "changelog" | "dangerous" = section === "external" || section === "logs" || section === "dangerous" ? section : "changelog";
   const setSettingsRoute = (nextTab: Tab, nextSection?: string) => {
     const next = new URLSearchParams();
@@ -1251,7 +1251,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const setTab = (nextTab: Tab) => setSettingsRoute(nextTab);
   const setChannelSubTab = (nextSection: "list" | "playlists" | "filters") => setSettingsRoute("channels", nextSection === "list" ? undefined : nextSection);
   const setTagSubTab = (nextSection: "list" | "rules") => setSettingsRoute("tags", nextSection === "list" ? undefined : nextSection);
-  const setDisplaySubTab = (nextSection: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "sponsorblock") => setSettingsRoute("display", nextSection === "appearance" ? undefined : nextSection);
+  const setDisplaySubTab = (nextSection: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "privacy") => setSettingsRoute("display", nextSection === "appearance" ? undefined : nextSection);
   const setAdvancedSubTab = (nextSection: "external" | "logs" | "changelog" | "dangerous") => setSettingsRoute("advanced", nextSection === "changelog" ? undefined : nextSection);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
@@ -1346,6 +1346,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
   const [autoFullscreen, setAutoFullscreen] = useState(false);
   const [sbEnabled, setSbEnabled] = useState(false);
   const [sbCategories, setSbCategories] = useState<string[]>(["sponsor"]);
+  const [deArrowTitlesEnabled, setDeArrowTitlesEnabled] = useState(false);
+  const [deArrowThumbnailsEnabled, setDeArrowThumbnailsEnabled] = useState(false);
   const [childWatchingMonitorEnabled, setChildWatchingMonitorEnabled] = useState(true);
   const [childLock, setChildLock] = useState<ChildLockStatus>({ enabled: false, locked: false });
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermissions>({ admin_only_areas: DEFAULT_ADMIN_ONLY_AREAS });
@@ -1637,6 +1639,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       setScreenshotFilename(r.settings.player_screenshot_filename || DEFAULT_SCREENSHOT_FILENAME_TEMPLATE);
       setAutoFullscreen(r.settings.auto_fullscreen_landscape === "1");
       setSbEnabled(r.settings.sponsorblock_enabled === "1");
+      setDeArrowTitlesEnabled(r.settings.dearrow_titles_enabled === "1");
+      setDeArrowThumbnailsEnabled(r.settings.dearrow_thumbnails_enabled === "1");
       setChildWatchingMonitorEnabled(r.settings.child_watching_monitor_enabled !== "0");
       try { setSbCategories(JSON.parse(r.settings.sponsorblock_categories || '["sponsor"]')); } catch {}
       setChildLock(cl.child_lock);
@@ -1944,6 +1948,32 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     showToast(t("sponsorblockSaved"));
   };
 
+  const changeDeArrowTitles = async (enabled: boolean) => {
+    const previous = deArrowTitlesEnabled;
+    setDeArrowTitlesEnabled(enabled);
+    try {
+      await api.updateSettings({ dearrow_titles_enabled: enabled ? "1" : "0" });
+      emit("player-settings-changed");
+      showToast(t("dearrowSaved"));
+    } catch (error) {
+      setDeArrowTitlesEnabled(previous);
+      showToast(error instanceof Error ? error.message : t("error"));
+    }
+  };
+
+  const changeDeArrowThumbnails = async (enabled: boolean) => {
+    const previous = deArrowThumbnailsEnabled;
+    setDeArrowThumbnailsEnabled(enabled);
+    try {
+      await api.updateSettings({ dearrow_thumbnails_enabled: enabled ? "1" : "0" });
+      emit("player-settings-changed");
+      showToast(t("dearrowSaved"));
+    } catch (error) {
+      setDeArrowThumbnailsEnabled(previous);
+      showToast(error instanceof Error ? error.message : t("error"));
+    }
+  };
+
   const showPinError = () => showToast(t("pinMustBeSixDigits"));
   const isValidPin = (pin: string) => /^\d{6}$/.test(pin);
 
@@ -2157,7 +2187,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     ...(canManageArea("followed_playlists") ? [{ value: "playlists" as const, label: t("followedPlaylists"), count: followedPlaylists.length }] : []),
     ...(canManageArea("filters") ? [{ value: "filters" as const, label: t("filters"), count: filterRules.length }] : []),
   ];
-  const displaySubTabOptions: { value: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "sponsorblock"; label: string }[] = [
+  const displaySubTabOptions: { value: "appearance" | "feed" | "navigation" | "playback" | "subtitles" | "screenshots" | "privacy"; label: string }[] = [
     ...(canManageArea("appearance") ? [{ value: "appearance" as const, label: t("displayAppearance") }] : []),
     ...(canManageArea("feed") ? [{ value: "feed" as const, label: t("displayFeed") }] : []),
     ...(canManageArea("navigation") ? [{ value: "navigation" as const, label: t("displayNavigation") }] : []),
@@ -2165,7 +2195,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       { value: "playback" as const, label: t("displayPlayback") },
       { value: "subtitles" as const, label: t("subtitles") },
       { value: "screenshots" as const, label: t("playerScreenshots") },
-      { value: "sponsorblock" as const, label: "SponsorBlock" },
+      { value: "privacy" as const, label: t("displayPrivacy") },
     ] : []),
   ];
   const currentPermissionArea = tab === "channels"
@@ -3153,7 +3183,23 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           </SettingsSection>
           }
 
-          {displaySubTab === "sponsorblock" && canManageArea("playback") && <SettingsSection title="SponsorBlock" className="settings-display-group">
+          {displaySubTab === "privacy" && canManageArea("playback") && <>
+          <SettingsSection title="DeArrow" className="settings-display-group">
+          <SettingRow
+            label={t("dearrowTitlesEnabled")}
+            description={t("dearrowTitlesHint")}
+          >
+            <Switch checked={deArrowTitlesEnabled} onCheckedChange={(enabled) => void changeDeArrowTitles(enabled)} />
+          </SettingRow>
+          <SettingRow
+            label={t("dearrowThumbnailsEnabled")}
+            description={<>{t("dearrowThumbnailsHint")} <a href="https://sponsor.ajay.app/" target="_blank" rel="noreferrer">{t("dearrowAttribution")}</a></>}
+          >
+            <Switch checked={deArrowThumbnailsEnabled} onCheckedChange={(enabled) => void changeDeArrowThumbnails(enabled)} />
+          </SettingRow>
+          </SettingsSection>
+
+          <SettingsSection title="SponsorBlock" className="settings-display-group">
           <SettingRow label={t("sponsorblockEnabled")} description={t("sponsorblockHint")}>
             <Switch checked={sbEnabled} onCheckedChange={() => toggleSb()} />
           </SettingRow>
@@ -3174,6 +3220,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
             </div>
           )}
           </SettingsSection>
+          </>
           }
 
           {displaySubTab === "navigation" && canManageArea("navigation") && <SettingsSection title={t("displayNavigation")} className="settings-display-group">
