@@ -1,6 +1,6 @@
 YT Zero is configured through environment variables. All of them are optional and have sensible defaults.
 
-The application timezone is configured inside **Settings → Display → Timezone**
+The application timezone is configured inside **Settings → Appearance → Timezone**
 using an IANA name such as `Europe/London`. It controls dates and times across
 the UI, scheduling, logs, Insights/Pulse, backups, imports, cleanup boundaries,
 and child daily limits. It does not depend on the browser timezone or the
@@ -23,8 +23,12 @@ container's `TZ` environment variable.
 | `ADAPTIVE_REFRESH_MIN_MINUTES` | `10` | Minimum automatic interval for one channel feed. This is the hard cooldown that prevents frequent uploaders from being polled continuously. |
 | `ADAPTIVE_REFRESH_MAX_MINUTES` | `720` | Maximum automatic interval for one channel feed. This guarantees that infrequent channels remain in the refresh rotation. |
 | `ADAPTIVE_REFRESH_UNKNOWN_MINUTES` | `120` | Automatic interval used until a channel has at least three known publication dates. |
+| `ADAPTIVE_REFRESH_INACTIVE_MAX_MINUTES` | `4320` | Maximum adaptive interval for channels without recent uploads (up to three days). |
 | `FULL_SYNC_INTERVAL_MINUTES` | `15` | Interval between full, rotating channel scans. One subscribed channel is scanned per run, using the same process as the manual channel sync button. |
+| `PLAYLIST_SYNC_INTERVAL_MINUTES` | `15` | Interval between followed-playlist refreshes. One playlist is synchronized per run. |
 | `LIVE_INTERVAL_MINUTES` | `3` | Followed-channel live-status check interval. This does not refetch old video metadata. |
+| `AVATAR_REFRESH_INTERVAL_MINUTES` | `60` | Interval for refreshing stale channel avatars. |
+| `AVATAR_REFRESH_BATCH_SIZE` | `4` | Maximum channel avatars refreshed in one maintenance pass. |
 | `DURATION_INTERVAL_MINUTES` | `3` | Interval for the background job that backfills missing video durations. |
 | `DURATION_BATCH_SIZE` | `20` | Videos processed per duration-backfill run. |
 | `IMPORT_ENRICH_INTERVAL_MINUTES` | `2` | Interval for the background job that fills in real metadata for videos brought in by a [Takeout import](Importing-from-Google-Takeout). |
@@ -32,16 +36,17 @@ container's `TZ` environment variable.
 | `VIDEO_MAINTENANCE_MAX_AGE_DAYS` | `90` | Maximum video age considered by automatic Shorts and duration backfills. Older videos are resolved only when accessed or manually synchronized. |
 | `UI_DIST` | `./public` | Built frontend directory served by the backend. |
 | `DOWNLOADS_DIR` | `./data/downloads` | Where the [YT-DLP Integration](YT-DLP-Integration) plugin stores downloaded video files. |
+| `DOWNLOAD_COOKIES_DIR` | `./data/download-cookies` | Machine-local directory for per-profile YouTube cookie files. Keep it private and inside persistent storage. |
 | `YTDLP_PATH` | `yt-dlp` | Path to the yt-dlp binary used by the [YT-DLP Integration](YT-DLP-Integration) plugin. |
+| `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg, used for merged downloads and experimental stream-while-downloading playback. |
 | `YTDLP_AUTO_UPDATE` | _(unset; `1` in Docker)_ | Set to `1` to run `yt-dlp -U` once a day. YouTube regularly stops serving formats to outdated yt-dlp versions, so keeping it current matters. |
 | `APP_URL` | _(derived from request)_ | Public base URL. Used as the OIDC redirect origin and WebAuthn origin when behind a reverse proxy. |
 | `WEBAUTHN_RP_ID` | _(request hostname)_ | Override the WebAuthn Relying Party ID (the registrable domain) when the auto-derived hostname is wrong. |
 | `YTZERO_AUTH_DISABLE` | _(unset)_ | Set to `1` to force the **None** auth method regardless of the saved setting. Emergency unlock if an auth method locks you out — see [Authentication](Authentication#recovery-anti-lockout). |
 | `YTZERO_VERSION` | `dev` | Version reported by `/api/health`. Set by the Docker build and by the native installer; there is no reason to set it by hand. |
-| `DATABASE_URL` | _(unset)_ | PostgreSQL connection URL. When unset, YT Zero uses SQLite at `DB_PATH`. Migrate from Advanced settings before enabling this value. |
+| `DATABASE_URL` | _(unset)_ | PostgreSQL connection URL. When unset, YT Zero uses SQLite at `DB_PATH`. Migrate from Dangerous settings before enabling this value. |
 | `DATABASE_STATE_PATH` | next to the data directory | Machine-local marker used to detect an unexpected engine/location change. It contains fingerprints and migration receipt IDs, never credentials. |
-| `SQLITE_BUSY_TIMEOUT_MS` | `5000` | How long SQLite waits for a writer lock, from `0` to `60000` ms. |
-| `SQLITE_OPTIMIZE_INTERVAL_HOURS` | `24` | Interval for bounded `PRAGMA optimize`, from 1 to 168 hours. |
+| `RESTORE_SESSION_DIR` | `./data/restore-sessions` | Temporary staging directory for validated portable-restore sessions. |
 
 The path defaults above are relative to the source tree, not to the working
 directory: unset, they resolve to a `data/` directory next to `app/`. Docker and
@@ -131,9 +136,9 @@ and mounts:
 ### Moving from SQLite to PostgreSQL
 
 1. Create an empty PostgreSQL database. Do not point YT Zero at it yet.
-2. Open **Settings → Advanced → Database**, paste the PostgreSQL URL, and run the migration. YT Zero pauses new mutations, copies a consistent SQLite snapshot in batches, recreates constraints, and verifies row counts plus primary-key checksums. The source SQLite file is not modified.
+2. Open **Settings → Dangerous → Database**, paste the PostgreSQL URL, and run the migration. YT Zero pauses new mutations, copies a consistent SQLite snapshot in batches, recreates constraints, and verifies row counts plus primary-key checksums. The source SQLite file is not modified.
 3. Set `DATABASE_URL` to the same URL and restart YT Zero.
-4. Return to Advanced settings. The app verifies the migration receipt stored in PostgreSQL before it lets you confirm the new active database.
+4. Return to **Settings → Dangerous → Database**. The app verifies the migration receipt stored in PostgreSQL before it lets you confirm the new active database.
 
 The connection URL is accepted only for the migration request and is not saved in application state or logs. Keep it in your secret-management mechanism. The target must be empty; a partial or existing schema is rejected.
 

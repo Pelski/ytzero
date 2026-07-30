@@ -2,10 +2,10 @@
 
 | Layer | Stack |
 | --- | --- |
-| Backend | Bun, Hono, `bun:sqlite` |
+| Backend | Bun, Hono |
 | Frontend | React, Vite, TypeScript |
-| Storage | SQLite |
-| Runtime | Docker or local Bun |
+| Storage | SQLite by default, PostgreSQL optional |
+| Runtime | Docker/Unraid, native systemd, Proxmox LXC, or local Bun |
 
 ## Repository layout
 
@@ -13,7 +13,8 @@
 .
 ├── app/                 # Bun + Hono backend
 │   └── src/
-│       ├── db.ts        # SQLite schema, migrations, settings
+│       ├── db.ts        # Core schema, migrations, settings
+│       ├── database*.ts # SQLite/PostgreSQL database abstraction
 │       ├── routes.ts    # API routes
 │       ├── auth.ts      # Authentication (sessions, WebAuthn, OIDC, proxy)
 │       ├── refresher.ts # RSS/live/background refresh work
@@ -60,11 +61,11 @@ bun run dev
 
 Video links are rendered in several independent UI surfaces. Whenever thumbnail behavior, video-card overlays, or navigation to `/watch/:id` changes, check all of them:
 
-- shared `VideoCard` grids (`FeedPage`, Discovery, channels, playlists, liked, history, archive and live views),
+- shared `VideoCard` grids (feed, channels, playlists, liked, history, archive, live, and plugin views),
 - YouTube search results in `FeedPage`,
 - **More like this** and playlist items in `WatchPage`,
 - scheduled items in `WatchlistPage`,
-- temporary/external videos in Settings → Advanced,
+- temporary/external videos in **Settings → External videos**,
 - the latest-video thumbnail beside subscriptions in the sidebar (`App.tsx`).
 
 Every static video destination must be a real `<Link>` or `<a href>` rather than a clickable `div`, image, or `navigate()` handler. Verify right-click, middle-click, and Ctrl/Cmd+click. Overlay containers such as `VideoCard` thumbnail actions must use `pointer-events: none` outside their visible, interactive controls so they do not create invisible dead zones over the underlying link.

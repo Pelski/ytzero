@@ -10,9 +10,10 @@ YT Zero should support two different backup stories and name them clearly:
 1. **Portable backup** in the UI — selective, versioned, safe to inspect and
    restore into another installation. The downloaded file is a ZIP archive
    named `ytzero-backup-YYYY-MM-DD.zip`.
-2. **Exact instance backup** — stop YT Zero and copy the `data/` directory. This
-   remains the disaster-recovery path for the database, passkeys, download
-   cookies, cached images, and downloaded media exactly as stored on disk.
+2. **Exact instance backup** — stop YT Zero and copy the `data/` directory. With
+   SQLite this captures the database, passkeys, download cookies, cached images,
+   and downloaded media exactly as stored on disk. PostgreSQL deployments must
+   additionally back up the external database with operator-provided tools.
 
 A single JSON file is not the right container for the portable backup. JSON is
 the right representation for its manifest and small sections, while large
@@ -27,8 +28,8 @@ Discovery preference (`blocked_terms`) and derived terms (`last_terms`).
 
 ## Product surface
 
-Add an admin-only `/restore` destination named **Backup and restore**, linked
-from Settings → Advanced. It contains two tabs or top-level sections:
+The admin-only `/restore` destination is named **Backup and restore** and is
+linked from **Settings → Dangerous**. It contains two top-level operations:
 
 - **Export backup** — choose a preset, profiles, and data categories, then
   download the archive.

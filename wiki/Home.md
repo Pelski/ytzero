@@ -1,6 +1,6 @@
 A self-hosted YouTube subscriptions reader with no Google account, no API key, and no recommendation algorithm.
 
-YT Zero reads public YouTube RSS feeds, stores videos locally in SQLite, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos from the channels you already care about.
+YT Zero reads public YouTube RSS feeds, stores videos in your own SQLite or PostgreSQL database, and gives you a quiet inbox for filtering, scheduling, watching, archiving, and organizing videos from the channels you already care about.
 
 ![YT Zero main feed](https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/feed.png)
 
@@ -9,6 +9,7 @@ YT Zero reads public YouTube RSS feeds, stores videos locally in SQLite, and giv
 - **[Installation](Installation)** — run with Docker or locally with Bun.
 - **[Configuration](Configuration)** — environment variables and Docker Compose settings.
 - **[Features](Features)** — everything the app does, with screens.
+- **[Settings](Settings)** — the current settings layout, sections, and access rules.
 
 ## Using the app
 

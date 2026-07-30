@@ -1,6 +1,8 @@
 The **YT-DLP Integration** plugin downloads videos to local files with [yt-dlp](https://github.com/yt-dlp/yt-dlp) and plays them back in YT Zero's own player instead of the embedded YouTube iframe. Downloads are shared by every profile — one file serves the whole household — and an automatic retention system keeps disk usage under control.
 
-The plugin is **disabled by default**. Enable it in **Settings → Plugins → YT-DLP Integration**.
+The plugin is **disabled by default**. An administrator enables it under
+**Settings → Plugins**. Each profile then decides whether manual and automatic
+downloads are allowed for that profile under **Downloads → Configuration**.
 
 ## Requirements
 
@@ -13,6 +15,10 @@ The plugin is **disabled by default**. Enable it in **Settings → Plugins → Y
 - **Download queue** — one download at a time, with priorities: videos a viewer is actively waiting for first, then manual requests, then scheduled videos, then fresh uploads. A priority download preempts the running job; the preempted download resumes later from its partial file.
 - **Downloads tab** — a sidebar view with the active queue (collapsible), finished files, storage usage, per-item retry / pin / delete, and live progress. Removing an item from the queue rejects it permanently — automatic policies will not re-download it (a manual download request still can).
 - **Thumbnail indicators** — a thin blue bar on top of a video's thumbnail shows download progress (dimmed while queued); downloaded videos get a small badge. The bar can be turned off (see settings below).
+- **Automatic rules** — build profile-owned rules from all subscriptions or selected channels and followed playlists, required and excluded phrases, duration, content type, and a starting time range. A real preview shows how many items match before activation.
+- **Playlist downloads** — queue every available video from a channel or personal playlist in one confirmed action.
+- **Files and metadata** — choose a filename template and optionally save thumbnails, embedded metadata, `info.json`, NFO files, and selected subtitle languages.
+- **Restricted content** — each profile can upload or paste its own Netscape-format `cookies.txt` for age-restricted or members-only videos. Cookie files are machine-local secrets and are never included in portable backups.
 - **Smart retention** — files are removed after a configurable number of days, optionally sooner once watched, and the oldest unprotected files are evicted when the storage cap is exceeded. Pinned downloads, liked videos (optional), and videos still scheduled by an unwatched profile are never auto-removed.
 - **Child profiles** — a child profile can be restricted to downloaded files only; see [Child Lock](Child-Lock#child-profiles).
 
@@ -26,40 +32,66 @@ The **Opening a video** setting decides what happens when you open a video that 
 
 Choosing to wait queues the download with top priority: it preempts the currently running download, which resumes afterwards.
 
-## Settings reference
+## Configuration
 
-All plugin settings are app-wide (one downloads directory serves every profile) and live in **Settings → Plugins → YT-DLP Integration → Configure**.
+Open **Downloads → Configuration**. Most behavior is per profile, while options
+marked **Administrator** affect the one physical download store shared by the
+whole instance.
 
-### Downloading
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| **Video quality** | 1080p | Maximum resolution to download (best / 1440p / 1080p / 720p / 480p). Prefers h264+AAC so the resulting MP4 plays natively in every browser. |
-| **Opening a video** | Play from YouTube | Behavior for videos that are not downloaded yet — see above. |
-| **Progress bar on thumbnails** | on | Shows the thin download-progress bar on top of video thumbnails; turn off to hide it app-wide. |
-| **Download scheduled videos** | on | Videos placed on a watch-later bucket by any profile are fetched automatically (only items scheduled within the last 30 days, so enabling the plugin doesn't crawl years of backlog). |
-| **Download new uploads** | off | Fresh videos from followed channels are fetched as they appear. |
-| **New upload window (hours)** | 48 | Only uploads younger than this are auto-downloaded from the feed. |
-| **Include Shorts** | off | Also auto-download Shorts from the feed. Explicitly scheduled Shorts download regardless. |
-
-### Retention & storage
+### Playback and quality
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| **Keep files for (days)** | 14 | Downloads are removed this many days after they finished. |
-| **Remove after watching** | on | Once watched, the file is removed after the grace period below. |
-| **Watched grace period (hours)** | 24 | How long a watched file sticks around before removal. |
-| **Protect liked videos** | on | Liked videos are never auto-removed by retention or the storage cap. |
-| **Storage cap (GB)** | 25 | Above this, the oldest unprotected downloads are removed first. |
+| **Allow downloads for this profile** | off | Enables manual downloads, scheduled-video downloads, and this profile's automation rules. |
+| **Video quality** | 1080p | Maximum resolution: best available, 1440p, 1080p, 720p, or 480p. Compatible H.264/AAC formats are preferred. |
+| **Opening a video** | Play from YouTube | Chooses YouTube immediately, asks each time, or waits for a local download. |
+| **Progress bar on thumbnails** | on | Shows queue and download progress on video cards. |
+| **Download scheduled videos** | on | Automatically downloads videos placed in a watch-later bucket by this profile. |
 
-Pinned downloads (the pin button in the Downloads tab) are exempt from all automatic cleanup.
+### Files, storage, and access
 
-**Reset plugin** removes every downloaded file, clears the queue and history, and restores default settings.
+The filename template defaults to `{playlist}/{id}`. Available tokens include
+`{channel}`, `{title}`, `{id}`, `{date}`, `{year}`, `{month}`, `{day}`,
+`{channel_id}`, and `{playlist}`; `/` creates subdirectories. Administrators can
+also enable thumbnail files, embedded metadata, `info.json`, NFO, and subtitle
+sidecars. Subtitle language and automatic-caption choices are per profile.
+
+Retention defaults to 14 days, watched files receive a 24-hour grace period,
+liked videos are protected, and the shared storage cap defaults to 25 GB.
+Pinned downloads are always exempt from automatic cleanup. YouTube cookies are
+stored separately for each profile and may be uploaded, pasted, replaced, or
+removed from the same page.
+
+### Automatic download rules
+
+Open **Downloads → Automatic downloads** and create a rule. A rule can use all
+subscriptions with channel exceptions, or selected channels and followed
+playlists. It can match required phrases in the title, description, or both;
+exclude phrases; include Shorts or members-only videos; enforce a minimum
+duration; and start with only future videos, a recent lookback window, or all
+known videos.
+
+Rules are combined with OR: a video enters the queue when any active rule
+matches. Exclusions apply only inside their own rule. Test mode saves a rule
+without downloading, and the live preview uses the same matcher as the queue.
+Activating a rule with a large initial result requires confirmation.
+
+### Experimental streaming
+
+**Stream while downloading** is off by default. It starts an HLS stream while
+yt-dlp and ffmpeg continue saving the normal local copy. Seeking beyond the
+downloaded region waits for the stream to catch up. It requires ffmpeg, uses
+H.264, and is currently limited to roughly 1080p; keep it disabled when
+reliability matters more than immediate playback.
+
+**Reset plugin** removes the active profile's download ownership, rules, and
+plugin settings. Shared files survive while another profile still owns them;
+files with no remaining owner are removed. Treat it as destructive.
 
 ## How it works
 
-- Downloads run on the server with `yt-dlp -S res:<height>,vcodec:h264,acodec:m4a --merge-output-format mp4`, one at a time, with automatic retries (3 attempts with backoff) and crash recovery on restart.
-- Files are stored as `<video_id>.mp4` in `DOWNLOADS_DIR` and streamed to the player with HTTP Range support, so seeking never re-downloads.
+- Downloads run on the server one at a time with automatic retries (3 attempts with backoff) and crash recovery on restart. Waiting viewers, manual requests, automation, and scheduled items receive different queue priorities.
+- Paths are rendered from the configured filename template inside `DOWNLOADS_DIR`; the video ID is added when necessary to keep names unique and cleanup-safe. Files use HTTP Range playback, so seeking does not restart the transfer.
 - An item removed from the queue or the Downloads tab leaves a tombstone: automatic policies treat it as rejected and never bring it back. A manual download request clears the tombstone.
 - The image cache already stores thumbnails locally, so a downloaded video plays fully offline.
 
@@ -68,5 +100,7 @@ Pinned downloads (the pin button in the Downloads tab) are exempt from all autom
 | Variable | Default | Description |
 | --- | --- | --- |
 | `DOWNLOADS_DIR` | `./data/downloads` (`/data/downloads` in Docker) | Where downloaded files are stored. |
+| `DOWNLOAD_COOKIES_DIR` | `./data/download-cookies` (`/data/download-cookies` in Docker) | Private per-profile cookie files. |
 | `YTDLP_PATH` | `yt-dlp` | Path to the yt-dlp binary. |
+| `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg for merged downloads and experimental streaming. |
 | `YTDLP_AUTO_UPDATE` | unset (`1` in Docker) | Set to `1` to run `yt-dlp -U` daily. |

@@ -5,6 +5,7 @@
 - [Configuration](Configuration)
 
 **Using the app**
+- [Settings](Settings)
 - [Features](Features)
 - [Importing from Google Takeout](Importing-from-Google-Takeout)
 - [Importing Subscriptions](Importing-Subscriptions)

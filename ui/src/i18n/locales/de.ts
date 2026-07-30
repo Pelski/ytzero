@@ -911,7 +911,7 @@ export const de: Locale = {
     profilePermissionNavigation: "Navigation",
     profilePermissionNavigationHint: "Sichtbarkeit von Shorts und Top-Kanälen sowie Seitenleistenlayout.",
     profilePermissionPlayback: "Wiedergabe",
-    profilePermissionPlaybackHint: "Player, Untertitel, Autoplay, Screenshots und SponsorBlock.",
+    profilePermissionPlaybackHint: "Player, Untertitel, Autoplay, Screenshots, SponsorBlock und DeArrow.",
     profilePermissionPlugins: "Plugins",
     profilePermissionPluginsHint: "Plugins aktivieren und konfigurieren.",
     profilePermissionProfiles: "Profile",

@@ -913,7 +913,7 @@ export const pl: Locale = {
     profilePermissionNavigation: "Nawigacja",
     profilePermissionNavigationHint: "Pozwala zmieniać zawartość feedu i układ menu bocznego.",
     profilePermissionPlayback: "Odtwarzanie",
-    profilePermissionPlaybackHint: "Pozwala zmieniać odtwarzacz, napisy, kontynuację list i SponsorBlock.",
+    profilePermissionPlaybackHint: "Pozwala zmieniać odtwarzacz, napisy, kontynuację list, SponsorBlock i DeArrow.",
     profilePermissionPlugins: "Wtyczki",
     profilePermissionPluginsHint: "Pozwala włączać i konfigurować pluginy.",
     profilePermissionProfiles: "Profile",

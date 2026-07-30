@@ -52,10 +52,19 @@ After activation everyone signs in with the shared credentials, then uses the pr
 Each profile has its own credentials. Switching profile means signing out and signing back in as the other profile.
 
 1. Select **Login per profile**.
-2. In the profile table, give each profile a **username** and **password**.
-   - At minimum, the primary profile must have a username **and** password before you can activate.
-   - Passkeys can be added by each profile from their own session after activation.
-3. **Activate**.
+2. Generate credentials for the primary profile and save the one-time temporary password.
+3. Generate credentials separately for every other profile that needs to sign in.
+4. **Activate**.
+
+Usernames are derived from profile names: spaces become `_`, unsupported
+characters are removed, and case-insensitive collisions receive a numeric
+suffix. Generating credentials again immediately invalidates the previous
+password. Temporary passwords are shown once and stored only as hashes.
+
+After signing in, a profile changes only its own password under **Settings →
+Profiles** and must provide the current password. A newly created profile
+receives one-time temporary credentials in the creation result while this login
+method is active. Passkeys can be added by each profile from its own session.
 
 In the profile menu, choosing a different profile prompts you to sign out first.
 

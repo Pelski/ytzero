@@ -912,7 +912,7 @@ export const en = {
     profilePermissionNavigation: "Navigation",
     profilePermissionNavigationHint: "Visibility of Shorts and top channels, plus sidebar layout.",
     profilePermissionPlayback: "Playback",
-    profilePermissionPlaybackHint: "Player, captions, autoplay, screenshots, and SponsorBlock.",
+    profilePermissionPlaybackHint: "Player, captions, autoplay, screenshots, SponsorBlock, and DeArrow.",
     profilePermissionPlugins: "Plugins",
     profilePermissionPluginsHint: "Enabling and configuring plugins.",
     profilePermissionProfiles: "Profiles",

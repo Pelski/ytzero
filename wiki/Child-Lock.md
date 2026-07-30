@@ -5,17 +5,18 @@ YT Zero has two parental-control layers that work together:
 
 ## Child lock (settings PIN)
 
-You can enable **Child lock** in **Settings → Profiles** and set a 6-digit PIN. When it is enabled, protected settings are locked until the PIN is entered. While settings are unlocked, a red banner above the settings tabs provides a quick **Lock settings now** action.
+You can enable **Child lock** in **Settings → Profiles** and set a 6-digit PIN. When it is enabled, protected settings are locked until the PIN is entered. While settings are unlocked, a red banner above the settings panel provides a quick **Lock settings now** action.
 
 This is useful for children when you want YouTube access limited to selected channels only. You still manage the setup yourself: add only the channels you want available, keep filters and followed channels configured correctly, and make sure the app is the YouTube surface the child actually uses.
 
 ### What the settings PIN protects
 
-When child lock is closed, it continues to protect channel management, filters, display settings, plugins, advanced tools, profiles, and authentication.
+When Child Lock is closed, its PIN gate protects channel management, followed playlists, imports, appearance, feed, navigation, playback, plugins, and profiles. Authentication and system administration remain restricted by account role rather than delegated through the PIN.
 
-Two areas deliberately remain personal and editable without the household PIN:
+Personal organization remains editable without the household PIN by default:
 
 - **Tags and tag rules**
+- **Feed filters**
 - **Local playlists and playlist rules**
 
 Each profile owns its own tags and playlists, so children can organize their library without unlocking administrative settings. A child may add a channel only while settings are unlocked with the child lock PIN. Subscription imports remain unavailable to child profiles.
@@ -25,12 +26,12 @@ Each profile owns its own tags and playlists, so children can organize their lib
 Any non-primary profile can be marked as a **child profile** in **Settings → Profiles** (only the [primary profile](Profiles#the-primary-profile) can toggle this). A child profile gets its own set of restrictions, all managed by the primary profile:
 
 - **Daily watch-time limit** — minutes of actual playback per day, counted server-side. When the time runs out, the screen locks.
-- **Subscribed content only** (default on) — hides YouTube search results and Discovery, and blocks watching videos outside the local library. All of this is enforced by the server, not just hidden in the UI.
+- **Subscribed content only** (default on) — hides YouTube search and optional discovery surfaces, and blocks watching videos outside the local library. All of this is enforced by the server, not just hidden in the UI.
 - **Hide Shorts** — removes the Shorts tab from the profile.
 - **Disable live streams** — removes the Live tab, filters live and Upcoming entries from the feed, and blocks opening them directly by URL.
 - **Downloaded videos only** — the child can only play videos that the [YT-DLP Integration](YT-DLP-Integration) plugin has downloaded to disk. Videos without a local file show a "ask a parent to download it" panel instead of the YouTube player, and the child cannot manage downloads themselves.
 
-Child profiles also get a reduced Settings view. They can access Channels, Tags & Rules, and Playlists, but do not see Display, Plugins, Advanced, Profiles, or Authentication. Protected channel changes still require the child lock PIN; tags and playlists remain available as described above.
+Child profiles get a permission-filtered Settings view. With the defaults they can organize tags, rules, filters, and personal playlists, while shared sections stay administrator-only. Protected changes still require the Child Lock session as well as sufficient profile permissions; entering the PIN does not turn a profile into an administrator.
 
 On the watch page, YT Zero hides its own **YouTube** link for child profiles. The embedded YouTube player is cross-origin and may still contain YouTube-provided links; reliably blocking those requires device-, browser-, or network-level domain controls.
 
@@ -65,7 +66,7 @@ Adult profiles have a small floating panel in the lower-left corner. It starts c
 - **Stop watching now** immediately locks that child profile
 - locked profiles can be unlocked directly from the panel
 
-The panel is not shown while a child profile is active.
+The panel is not shown while a child profile is active. It is enabled by default, and each adult profile can hide the shortcut under **Settings → Profiles → Child activity** without disabling monitoring for other adults.
 
 ## Child lock vs. authentication
 
