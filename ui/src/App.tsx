@@ -237,6 +237,8 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
   const [q, setQ] = useState(params.get("q") ?? "");
   const [solid, setSolid] = useState(window.scrollY > 8);
   const [feedRefreshing, setFeedRefreshing] = useState(false);
+  const feedRefreshStartedAtRef = useRef(0);
+  const feedRefreshFinishTimerRef = useRef<number | null>(null);
 
   useEffect(() => setQ(params.get("q") ?? ""), [params]);
 
@@ -247,11 +249,28 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
   }, []);
 
   useEffect(() => {
-    const unsubscribeStarted = subscribe("feed-refresh-started", () => setFeedRefreshing(true));
-    const unsubscribeFinished = subscribe("feed-refresh-finished", () => setFeedRefreshing(false));
+    const unsubscribeStarted = subscribe("feed-refresh-started", () => {
+      if (feedRefreshFinishTimerRef.current !== null) {
+        window.clearTimeout(feedRefreshFinishTimerRef.current);
+        feedRefreshFinishTimerRef.current = null;
+      }
+      feedRefreshStartedAtRef.current = performance.now();
+      setFeedRefreshing(true);
+    });
+    const unsubscribeFinished = subscribe("feed-refresh-finished", () => {
+      const elapsed = performance.now() - feedRefreshStartedAtRef.current;
+      const remaining = Math.max(0, 2000 - elapsed);
+      feedRefreshFinishTimerRef.current = window.setTimeout(() => {
+        setFeedRefreshing(false);
+        feedRefreshFinishTimerRef.current = null;
+      }, remaining);
+    });
     return () => {
       unsubscribeStarted();
       unsubscribeFinished();
+      if (feedRefreshFinishTimerRef.current !== null) {
+        window.clearTimeout(feedRefreshFinishTimerRef.current);
+      }
     };
   }, []);
 
@@ -290,18 +309,17 @@ function TopBar({ appName, appIconColor, isAdmin, isChildProfile, profilePermiss
             && !event.altKey
           ) {
             event.preventDefault();
-            emit("feed-refresh-requested");
+            emit("feed-view-reload-requested");
           }
         }}
       >
         <span className={`logo-mark${incognito ? " logo-mark--incognito" : ""}`} style={incognito ? undefined : { background: appIconColor }}>
-          {feedRefreshing
-            ? <RefreshCw className="topbar-logo-refresh-icon" />
-            : incognito ? <SpyLogo /> : <Play fill="currentColor" />}
+          <span className="topbar-logo-default-icon">{incognito ? <SpyLogo /> : <Play fill="currentColor" />}</span>
+          <RefreshCw className="topbar-logo-refresh-icon" aria-hidden="true" />
         </span>
         <span className="logo-text">{appName}</span>
       </Link>
-      {feedRefreshing && <span className="topbar-refresh-progress" aria-hidden="true" />}
+      <span className="topbar-refresh-progress" aria-hidden="true" />
       <form className="search-wrap" onSubmit={submit}>
         <input
           placeholder={t("searchPlaceholder")}

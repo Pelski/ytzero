@@ -217,17 +217,14 @@ export default function FeedPage({
     load().catch(console.error);
   }, [load]);
 
-  const loadTags = useCallback(() => {
-    api.tags().then((r) => setTags(r.tags)).catch(console.error);
-  }, []);
+  const loadTags = useCallback(() =>
+    api.tags().then((r) => setTags(r.tags)).catch(console.error), []);
 
-  const loadQueued = useCallback(() => {
-    api.watchlist().then((r) => setQueued(r.videos)).catch(console.error);
-  }, []);
+  const loadQueued = useCallback(() =>
+    api.watchlist().then((r) => setQueued(r.videos)).catch(console.error), []);
 
-  const loadInProgress = useCallback(() => {
-    api.inProgress().then((r) => setInProgress(r.videos.filter((video) => video.is_short === 0))).catch(console.error);
-  }, []);
+  const loadInProgress = useCallback(() =>
+    api.inProgress().then((r) => setInProgress(r.videos.filter((video) => video.is_short === 0))).catch(console.error), []);
 
   useEffect(() => {
     loadTags();
@@ -237,7 +234,7 @@ export default function FeedPage({
 
   const loadSubscriptionState = useCallback(() => {
     setSubscriptionStateLoading(true);
-    api.channels().then((r) => {
+    return api.channels().then((r) => {
       setHasSubscriptions(r.channels.some((channel) => channel.followed !== 0));
       setInstanceHasData(r.instance_has_data);
       setSubscriptionStateLoading(false);
@@ -249,9 +246,8 @@ export default function FeedPage({
     return subscribe("channels-changed", loadSubscriptionState);
   }, [loadSubscriptionState]);
 
-  const loadTopChannelsSetting = useCallback(() => {
-    api.settings().then((r) => setShowTopChannels(r.settings.show_top_channels !== "0")).catch(() => {});
-  }, []);
+  const loadTopChannelsSetting = useCallback(() =>
+    api.settings().then((r) => setShowTopChannels(r.settings.show_top_channels !== "0")).catch(() => {}), []);
 
   useEffect(() => { loadTopChannelsSetting(); }, [loadTopChannelsSetting]);
 
@@ -324,7 +320,30 @@ export default function FeedPage({
     }
   }, [load, showToast, t]);
 
-  useEffect(() => subscribe("feed-refresh-requested", () => { void refresh(); }), [refresh]);
+  const reloadView = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    emit("feed-refresh-started");
+    setLoading(true);
+    setPage(0);
+    try {
+      await Promise.all([
+        load(0),
+        loadTags(),
+        loadQueued(),
+        loadInProgress(),
+        loadSubscriptionState(),
+        loadTopChannelsSetting(),
+      ]);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      refreshingRef.current = false;
+      emit("feed-refresh-finished");
+    }
+  }, [load, loadTags, loadQueued, loadInProgress, loadSubscriptionState, loadTopChannelsSetting]);
+
+  useEffect(() => subscribe("feed-view-reload-requested", () => { void reloadView(); }), [reloadView]);
 
   const reload = () => {
     setLoading(true);
