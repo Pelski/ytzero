@@ -727,7 +727,8 @@
 .share-btn-wrap {
   position: relative;
 }
-.share-menu { left: auto; min-width: 330px; padding: 12px; right: 0; }
+.watch-share-popover { box-sizing: border-box; width: min(350px, calc(100vw - 24px)); }
+.share-menu { left: auto; min-width: 0; padding: 12px; right: 0; }
 .share-menu-title {
   color: var(--text-2);
   font-size: 11px;
@@ -736,6 +737,9 @@
   padding: 0 0 8px;
   text-transform: uppercase;
 }
+.watch-share-destinations.ui-menu { min-width: 0; margin: 0 0 10px; padding: 0 0 10px; border-bottom: 1px solid color-mix(in srgb, var(--text) 9%, transparent); }
+.watch-share-social.ui-menu__item { padding: 8px 6px; }
+.watch-share-social.ui-menu__item > svg { width: 15px; height: 15px; color: var(--text-3); }
 .share-link-label { color: var(--text-2); display: block; font-size: 12px; font-weight: 600; margin: 6px 0; }
 .share-link-field { display: flex; }
 .share-link-field input {
@@ -1423,11 +1427,15 @@ body.cinema .content {
 }
 .sp-close:hover { background: rgba(255,255,255,0.18); }
 
-.sp-like {
+.sp-actions {
   position: absolute;
   top: calc(62px + var(--safe-top));
   right: calc(16px + var(--safe-right));
   z-index: 20;
+  display: grid;
+  gap: 8px;
+}
+.sp-action {
   background: rgba(0,0,0,0.55);
   border: none;
   color: #fff;
@@ -1438,10 +1446,15 @@ body.cinema .content {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
-.sp-like:hover { background: rgba(255,255,255,0.18); }
+.sp-action:hover { background: rgba(255,255,255,0.18); transform: scale(1.06); }
+.sp-action:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .sp-like--active { color: #ff4d6a; }
+@media (prefers-reduced-motion: reduce) {
+  .sp-action { transition: none; }
+  .sp-action:hover { transform: none; }
+}
 
 /* The 3-slot ring; each slide is translated within this container */
 .sp-track {

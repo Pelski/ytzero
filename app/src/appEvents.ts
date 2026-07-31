@@ -1,4 +1,4 @@
-export type AppEventTopic = "child-status" | "child-watching" | "child-requests" | "downloads" | "live" | "notifications";
+export type AppEventTopic = "child-status" | "child-watching" | "child-requests" | "downloads" | "live" | "notifications" | "social";
 export type AppEvent = { topic: AppEventTopic; data?: Record<string, unknown> };
 
 export function createAppEventBus() {

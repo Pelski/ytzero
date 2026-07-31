@@ -68,6 +68,7 @@ const KNOWN_INTEGER_COLUMNS = new Set([
   "enabled", "followed", "include_in_feed", "filter_only", "watched", "liked", "external", "pinned",
   "hide_members_only_from_feed", "hide_members_only_on_channel", "auto_download_min_duration_override",
   "feed_refresh_failures", "count", "n",
+  "profile_id", "post_author_user_id", "like_count", "comments_count",
 ]);
 
 function normalizeIntegerColumns<T>(rows: T, columns: readonly any[] | undefined): T {

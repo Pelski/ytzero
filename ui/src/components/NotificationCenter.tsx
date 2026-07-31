@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { AlertTriangle, Bell, ListVideo, Sparkles } from "lucide-react";
+import { AlertTriangle, Bell, ListVideo, MessageCircle, Sparkles, UsersRound } from "lucide-react";
 import { api, type AppNotification } from "../api";
 import { subscribe } from "../events";
 import { useI18n } from "../i18n";
@@ -48,7 +48,10 @@ export default function NotificationCenter() {
       await api.readNotification(notification.id).catch(load);
     }
     setOpen(false);
-    if (notification.target) navigate(notification.target);
+    const socialPostTarget = notification.kind.startsWith("social_") && notification.payload.postId
+      ? `/social/${encodeURIComponent(notification.payload.postId)}`
+      : notification.target;
+    if (socialPostTarget) navigate(socialPostTarget);
   };
 
   const readAll = async () => {
@@ -77,21 +80,34 @@ export default function NotificationCenter() {
             {notifications.map((notification) => {
               const playlistVideo = notification.kind === "playlist_video";
               const downloadFailed = notification.kind === "download_failed";
-              const media = downloadFailed
+              const social = notification.kind.startsWith("social_");
+              const media = social && notification.payload.actor
+                ? notification.payload.actor.avatar
+                  ? <img className="profile-notification-avatar" src={notification.payload.actor.avatar} alt="" decoding="async" />
+                  : <span className="profile-notification-avatar profile-notification-avatar--fallback" style={{ background: notification.payload.actor.avatar_color }}>{notification.payload.actor.name.trim()[0]?.toUpperCase() ?? "?"}</span>
+                : downloadFailed
                 ? <span className="profile-notification-icon profile-notification-icon--danger"><AlertTriangle /></span>
                 : playlistVideo
                   ? notification.payload.channelThumbnail
                     ? <img className="profile-notification-avatar" src={img(notification.payload.channelThumbnail)} alt="" />
                     : <span className="profile-notification-icon"><ListVideo /></span>
+                  : social ? <span className="profile-notification-icon">{notification.kind === "social_post" ? <UsersRound /> : <MessageCircle />}</span>
                   : <span className="profile-notification-icon"><Sparkles /></span>;
-              const title = downloadFailed
+              const socialActor = notification.payload.actor?.name ?? t("socialNotificationSomeone");
+              const title = social
+                ? t(notification.kind === "social_post" ? "socialNotificationNewPost" : notification.kind === "social_comment" ? "socialNotificationComment" : notification.kind === "social_mention" ? "socialNotificationMention" : notification.kind === "social_comment_like" ? "socialNotificationCommentLike" : "socialNotificationReaction", { profile: socialActor })
+                : downloadFailed
                 ? notification.payload.videoTitle || t("downloadFailedNotificationTitle")
                 : playlistVideo ? notification.payload.videoTitle || t("playlistVideoNotificationTitle") : t("updateNotificationTitle");
-              const description = downloadFailed
+              const description = social
+                ? notification.payload.commentBody || notification.payload.postBody
+                  ? <span className="profile-notification-comment-quote">“{notification.payload.commentBody || notification.payload.postBody}”</span>
+                  : t("socialNotificationOpen")
+                : downloadFailed
                 ? t("downloadFailedNotificationDescription")
                 : playlistVideo ? t("playlistVideoNotificationDescription", { playlist: notification.payload.playlistTitle || "" }) : t("updateNotificationDescription", { version: notification.payload.version ?? "" });
               return <ListButton
-                  className={`profile-notification profile-notification--${downloadFailed ? "download-failed" : playlistVideo ? "playlist" : "update"}${notification.read_at ? " is-read" : " is-unread"}`}
+                  className={`profile-notification profile-notification--${social ? "social" : downloadFailed ? "download-failed" : playlistVideo ? "playlist" : "update"}${notification.read_at ? " is-read" : " is-unread"}`}
                   key={notification.id}
                   onClick={() => void select(notification)}
                   media={media}

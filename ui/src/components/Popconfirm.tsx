@@ -7,12 +7,14 @@ export default function Popconfirm({
   onConfirm,
   confirmLabel,
   confirmVariant = "danger",
+  triggerClassName,
   children,
 }: {
   message: string;
   onConfirm: () => void;
   confirmLabel?: string;
   confirmVariant?: ButtonVariant;
+  triggerClassName?: string;
   children: ReactElement;
 }) {
   const { t } = useI18n();
@@ -24,6 +26,7 @@ export default function Popconfirm({
       onOpenChange={setOpen}
       align="center"
       className="popconfirm-popover"
+      triggerClassName={triggerClassName}
       trigger={children}
     >
       <div className="popconfirm-msg">{message}</div>

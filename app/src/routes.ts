@@ -22,7 +22,7 @@ import {
 import { getCachedImage } from "./imgcache";
 import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
-import { existsSync, mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { backfillImportedVideos, channelRefreshDiagnostics, importPlaylistVideos, refreshAll, refreshChannel, refreshLiveStatus, syncChannel, syncChannelMissingMetadata, syncChannelPlaylists, syncPlaylist } from "./refresher";
 import { IMPORTED_CHANNEL_ID, isRelevantEntryName, isZip, parseTakeoutFiles, unzipEntries, type TakeoutBundle, type TakeoutHistoryEntry, type TakeoutPlaylist } from "./takeout";
@@ -35,7 +35,7 @@ import { isValidTimeZone, zonedDayHour } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { COMMIT, VERSION } from "./version";
 import { checkLatestRelease } from "./updates";
-import { DOWNLOADS_ADMIN_SETTING_KEYS, discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginEnabled, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
+import { DOWNLOADS_ADMIN_SETTING_KEYS, discoveryRecommendations, dismissDiscoveryRecommendation, getPluginSettings, listPlugins, pluginAdminSettingKeys, pluginEnabled, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow, resetPluginState, setPluginEnabled, setPluginSettings } from "./plugins";
 import { activeDownloadProgress, cancelAllPendingDownloads, cancelAutoDownloadIfUnwanted, downloadCookiesConfigured, downloadStats, downloadStatusSummary, enqueueDownload, enqueuePlaylistDownloads, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "./downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "./downloadRules";
 import { fetchVideoComments, validYouTubeVideoId, VideoCommentsError } from "./youtubeComments";
@@ -79,6 +79,25 @@ import {
 } from "./auth";
 import { generateTemporaryPassword, uniqueProfileUsername } from "./profileCredentials";
 import { getDeArrowBranding } from "./dearrow";
+import {
+  createSocialComment,
+  createSocialPost,
+  deleteSocialComment,
+  deleteSocialPost,
+  listSocialComments,
+  listSocialPosts,
+  mentionableSocialProfiles,
+  recentSocialEmojis,
+  setSocialEmojiSkinTone,
+  setSocialCommentLike,
+  setSocialReaction,
+  SocialError,
+  socialPost,
+  socialEmojiSkinTone,
+  updateSocialComment,
+  updateSocialPost,
+} from "./social";
+import { commitStagedProfileAvatar, optimizeProfileAvatar, PROFILE_AVATAR_DIR, profileAvatarFileName, removeStoredProfileAvatar, stageProfileAvatarBytes } from "./profileAvatars";
 
 export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } }>();
 
@@ -1055,6 +1074,9 @@ api.put("/plugins/:id/settings", async (c) => {
   try {
     const uid = currentUserId(c);
     const body = await c.req.json();
+    if (!isAdmin(c) && body && typeof body === "object" && Object.keys(body).some((key) => pluginAdminSettingKeys(c.req.param("id")).has(key))) {
+      return c.json({ error: "administrator setting" }, 403);
+    }
     if (c.req.param("id") === "downloads") {
       if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
       if (!isAdmin(c) && body && typeof body === "object" && Object.keys(body).some((key) => DOWNLOADS_ADMIN_SETTING_KEYS.has(key))) {
@@ -1070,10 +1092,166 @@ api.put("/plugins/:id/settings", async (c) => {
 api.post("/plugins/:id/reset", async (c) => {
   try {
     const uid = currentUserId(c);
+    if (c.req.param("id") === "social" && !isAdmin(c)) return c.json({ error: "admin only" }, 403);
     if (c.req.param("id") === "downloads" && await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
     return c.json(await resetPluginState(uid, c.req.param("id"), getUserSetting(uid, "language")));
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
+  }
+});
+
+// ---------- Social ----------
+
+function socialFailure(c: any, error: unknown) {
+  if (error instanceof SocialError) return c.json({ error: error.message, code: error.code }, error.status);
+  throw error;
+}
+
+api.get("/social/mentionable-profiles", async (c) => {
+  try {
+    return c.json({ profiles: await mentionableSocialProfiles(currentUserId(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.get("/social/reactions/recent", async (c) => {
+  try {
+    const userId = currentUserId(c);
+    const [emojis, skinTone] = await Promise.all([recentSocialEmojis(userId), socialEmojiSkinTone(userId)]);
+    return c.json({ emojis, skinTone });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.put("/social/reactions/skin-tone", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json({ skinTone: await setSocialEmojiSkinTone(currentUserId(c), body.skinTone) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.get("/social/posts", async (c) => {
+  try {
+    return c.json(await listSocialPosts(
+      currentUserId(c),
+      c.req.query("cursor"),
+      Number(c.req.query("limit") ?? 20),
+      isAdmin(c),
+    ));
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.get("/social/posts/:id", async (c) => {
+  try {
+    return c.json({ post: await socialPost(currentUserId(c), c.req.param("id"), isAdmin(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.post("/social/posts", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json({ post: await createSocialPost(currentUserId(c), body, isAdmin(c)) }, 201);
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.patch("/social/posts/:id", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json({ post: await updateSocialPost(currentUserId(c), c.req.param("id"), body.body, isAdmin(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.delete("/social/posts/:id", async (c) => {
+  try {
+    await deleteSocialPost(currentUserId(c), c.req.param("id"), isAdmin(c));
+    return c.json({ ok: true });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.put("/social/posts/:id/reactions/:reaction", async (c) => {
+  try {
+    return c.json({ post: await setSocialReaction(currentUserId(c), c.req.param("id"), c.req.param("reaction"), true, isAdmin(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.delete("/social/posts/:id/reactions/:reaction", async (c) => {
+  try {
+    return c.json({ post: await setSocialReaction(currentUserId(c), c.req.param("id"), c.req.param("reaction"), false, isAdmin(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.get("/social/posts/:id/comments", async (c) => {
+  try {
+    return c.json(await listSocialComments(
+      currentUserId(c),
+      c.req.param("id"),
+      c.req.query("cursor"),
+      Number(c.req.query("limit") ?? 40),
+      isAdmin(c),
+    ));
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.post("/social/posts/:id/comments", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json({ comment: await createSocialComment(currentUserId(c), c.req.param("id"), body.body, isAdmin(c)) }, 201);
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.patch("/social/comments/:id", async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    return c.json({ comment: await updateSocialComment(currentUserId(c), c.req.param("id"), body.body, isAdmin(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.delete("/social/comments/:id", async (c) => {
+  try {
+    await deleteSocialComment(currentUserId(c), c.req.param("id"), isAdmin(c));
+    return c.json({ ok: true });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.put("/social/comments/:id/like", async (c) => {
+  try {
+    return c.json({ comment: await setSocialCommentLike(currentUserId(c), c.req.param("id"), true, isAdmin(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
+  }
+});
+
+api.delete("/social/comments/:id/like", async (c) => {
+  try {
+    return c.json({ comment: await setSocialCommentLike(currentUserId(c), c.req.param("id"), false, isAdmin(c)) });
+  } catch (error) {
+    return socialFailure(c, error);
   }
 });
 
@@ -1583,6 +1761,7 @@ api.delete("/external", async (c) => {
     WHERE channel_id IN (SELECT channel_id FROM channels WHERE external = 1)
       AND video_id NOT IN (SELECT video_id FROM user_videos WHERE status = 'queued' OR liked = 1)
       AND video_id NOT IN (SELECT video_id FROM user_playlist_videos)
+      AND video_id NOT IN (SELECT video_id FROM social_posts)
   `).run();
   await database.prepare(`
     DELETE FROM channels
@@ -1595,6 +1774,9 @@ api.delete("/external", async (c) => {
 api.delete("/external/:id", async (c) => {
   if (!isAdmin(c)) return c.json({ error: "admin only" }, 403);
   const id = c.req.param("id");
+  if (await database.prepare("SELECT 1 FROM social_posts WHERE video_id=? LIMIT 1").get(id)) {
+    return c.json({ error: "video is shared in Social", code: "social_video_in_use" }, 409);
+  }
   const res = await database.prepare(`
     DELETE FROM videos
     WHERE video_id = ?
@@ -3569,7 +3751,7 @@ api.put("/settings", async (c) => {
 
 // ---------- profiles (multi-user) ----------
 
-const AVATAR_DIR = process.env.AVATAR_DIR ?? resolve(import.meta.dir, "../../data/avatars");
+const AVATAR_DIR = PROFILE_AVATAR_DIR;
 mkdirSync(AVATAR_DIR, { recursive: true });
 
 interface UserRow {
@@ -3817,6 +3999,7 @@ api.delete("/profiles/:id", async (c) => {
   for (const download of ownedDownloads) await removeDownload(id, download.video_id);
   removeDownloadCookies(id);
   await database.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all remaining per-user state
+  removeStoredProfileAvatar(user.avatar);
   if (user.is_child) {
     publishAppEvent("child-status");
     publishAppEvent("child-watching");
@@ -3839,11 +4022,22 @@ api.post("/profiles/:id/avatar", async (c) => {
   const file = body.file;
   if (!(file instanceof File)) return c.json({ error: "file required" }, 400);
   if (file.size > 5 * 1024 * 1024) return c.json({ error: "file too large" }, 400);
-  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-  const fileName = `${id}.${ext}`;
-  await Bun.write(resolve(AVATAR_DIR, fileName), file);
-  // Store filename+mtime token so the client URL busts cache on change.
-  await database.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(`${fileName}:${Date.now()}`, id);
+  const previous = await database.prepare("SELECT avatar FROM users WHERE id = ?").get(id) as { avatar: string };
+  let optimized: Uint8Array;
+  try {
+    optimized = await optimizeProfileAvatar(await file.arrayBuffer());
+  } catch {
+    return c.json({ error: "invalid image" }, 400);
+  }
+  const staged = await stageProfileAvatarBytes(id, optimized);
+  try {
+    commitStagedProfileAvatar(staged.stage, staged.target);
+    await database.prepare("UPDATE users SET avatar = ? WHERE id = ?").run(staged.token, id);
+    removeStoredProfileAvatar(previous.avatar, staged.fileName);
+  } catch (error) {
+    rmSync(staged.stage, { force: true });
+    throw error;
+  }
   const row = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
   return c.json({ profile: await serializeProfile(row, currentUserId(c)) });
 });
@@ -3868,6 +4062,7 @@ api.delete("/profiles/:id/avatar", async (c) => {
   if (!row) return c.json({ error: "not found" }, 404);
   if (!canManageProfile(c, id)) return c.json({ error: "not allowed" }, 403);
   await database.prepare("UPDATE users SET avatar = '' WHERE id = ?").run(id);
+  removeStoredProfileAvatar(row.avatar);
   const updated = await database.prepare("SELECT * FROM users WHERE id = ?").get(id) as UserRow;
   return c.json({ profile: await serializeProfile(updated, currentUserId(c)) });
 });
@@ -3876,9 +4071,15 @@ api.get("/profiles/:id/avatar", async (c) => {
   const id = Number(c.req.param("id"));
   const row = await database.prepare("SELECT avatar FROM users WHERE id = ?").get(id) as { avatar: string } | null;
   if (!row?.avatar) return c.json({ error: "not found" }, 404);
-  const fileName = row.avatar.split(":")[0];
+  const fileName = profileAvatarFileName(row.avatar);
+  if (!fileName) return c.json({ error: "not found" }, 404);
   const file = Bun.file(resolve(AVATAR_DIR, fileName));
-  return c.body(file.stream(), 200, { "Content-Type": file.type || "image/jpeg", "Cache-Control": "max-age=31536000" });
+  if (!await file.exists()) return c.json({ error: "not found" }, 404);
+  return c.body(file.stream(), 200, {
+    "Content-Type": file.type || "image/webp",
+    "Content-Length": String(file.size),
+    "Cache-Control": "private, max-age=31536000, immutable",
+  });
 });
 
 api.post("/profiles/switch", async (c) => {

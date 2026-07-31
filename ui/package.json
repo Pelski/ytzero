@@ -16,6 +16,7 @@
     "@simplewebauthn/browser": "^13.3.0",
     "@use-gesture/react": "^10.3.1",
     "canvas-confetti": "^1.9.4",
+    "emoji-picker-react": "^4.19.1",
     "hls.js": "^1.6.16",
     "html2canvas": "^1.4.1",
     "lucide-react": "^1.18.0",

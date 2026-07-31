@@ -180,6 +180,9 @@ export function formatViewsCount(views: number | null, language: Language): stri
 export function formatTimeAgo(iso: string | null, language: Language): string {
   if (!iso) return "";
   const diffMs = Date.now() - parseAppTimestamp(iso).getTime();
+  if (Math.abs(diffMs) < 60_000) {
+    return locales[language].messages.notificationJustNow.toLocaleLowerCase(LOCALE_TAGS[language]);
+  }
   const min = Math.floor(diffMs / 60_000);
   const h = Math.floor(min / 60);
   const d = Math.floor(h / 24);

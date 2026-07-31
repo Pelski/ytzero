@@ -1,6 +1,7 @@
 import type { I18nKey } from "./i18n";
 import { decodeApiTitles } from "./htmlEntities";
 import { apiFetch } from "./apiTransport";
+import type { EmojiSkinTone } from "./emojiSkinTone";
 
 // YouTube-supported playback rates, shared by the settings, watch and channel UIs.
 export const PLAYBACK_SPEEDS = ["0.25", "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
@@ -311,6 +312,11 @@ export interface AppNotification {
     channelThumbnail?: string;
     error?: string;
     attempts?: number;
+    actor?: SocialProfileRef;
+    postId?: string;
+    commentId?: string;
+    commentBody?: string;
+    postBody?: string;
   };
   target: string;
   read_at: string | null;
@@ -368,6 +374,8 @@ export interface PluginSettingDef {
   step?: number;
   options?: { value: string; label: string }[];
   defaultValue: PluginSettingValue;
+  scope?: "user" | "global";
+  adminOnly?: boolean;
 }
 
 export interface PluginTermState {
@@ -379,6 +387,50 @@ export interface PluginSettingsResponse {
   definitions: PluginSettingDef[];
   settings: Record<string, PluginSettingValue>;
   terms?: PluginTermState;
+}
+
+export interface SocialProfileRef {
+  id: number;
+  name: string;
+  username: string;
+  avatar: string;
+  avatar_color: string;
+}
+
+export interface SocialMention {
+  profile: SocialProfileRef;
+  token: string;
+}
+
+export interface SocialComment {
+  id: string;
+  post_id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  author: SocialProfileRef;
+  mentions: SocialMention[];
+  like_count: number;
+  liked_by_me: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+}
+
+export interface SocialPost {
+  id: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+  author: SocialProfileRef;
+  video: Video;
+  comments_count: number;
+  comment_preview: SocialComment[];
+  reactions: Record<string, number>;
+  reaction_profiles: Record<string, SocialProfileRef[]>;
+  my_reactions: string[];
+  mentions: SocialMention[];
+  can_edit: boolean;
+  can_delete: boolean;
 }
 
 export interface VideoSubtitle {
@@ -1035,6 +1087,35 @@ export const api = {
     http<PluginSettingsResponse>(`/plugins/${id}/settings`, { method: "PUT", body: JSON.stringify(patch) }),
   resetPlugin: (id: string) =>
     http<PluginSettingsResponse>(`/plugins/${id}/reset`, { method: "POST", body: "{}" }),
+  socialProfiles: () => http<{ profiles: SocialProfileRef[] }>("/social/mentionable-profiles"),
+  socialRecentEmojis: () => http<{ emojis: string[]; skinTone: EmojiSkinTone }>("/social/reactions/recent"),
+  setSocialEmojiSkinTone: (skinTone: EmojiSkinTone) =>
+    http<{ skinTone: EmojiSkinTone }>("/social/reactions/skin-tone", { method: "PUT", body: JSON.stringify({ skinTone }) }),
+  socialPosts: (cursor?: string | null, limit = 20) => {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (cursor) qs.set("cursor", cursor);
+    return http<{ posts: SocialPost[]; next_cursor: string | null }>(`/social/posts?${qs}`);
+  },
+  socialPost: (id: string) => http<{ post: SocialPost }>(`/social/posts/${id}`),
+  createSocialPost: (video_id: string, body: string) =>
+    http<{ post: SocialPost }>("/social/posts", { method: "POST", body: JSON.stringify({ video_id, body }) }),
+  updateSocialPost: (id: string, body: string) =>
+    http<{ post: SocialPost }>(`/social/posts/${id}`, { method: "PATCH", body: JSON.stringify({ body }) }),
+  deleteSocialPost: (id: string) => http<{ ok: true }>(`/social/posts/${id}`, { method: "DELETE" }),
+  setSocialReaction: (postId: string, reaction: string, selected: boolean) =>
+    http<{ post: SocialPost }>(`/social/posts/${postId}/reactions/${encodeURIComponent(reaction)}`, { method: selected ? "PUT" : "DELETE", body: selected ? "{}" : undefined }),
+  socialComments: (postId: string, cursor?: string | null, limit = 40) => {
+    const qs = new URLSearchParams({ limit: String(limit) });
+    if (cursor) qs.set("cursor", cursor);
+    return http<{ comments: SocialComment[]; next_cursor: string | null }>(`/social/posts/${postId}/comments?${qs}`);
+  },
+  createSocialComment: (postId: string, body: string) =>
+    http<{ comment: SocialComment }>(`/social/posts/${postId}/comments`, { method: "POST", body: JSON.stringify({ body }) }),
+  updateSocialComment: (id: string, body: string) =>
+    http<{ comment: SocialComment }>(`/social/comments/${id}`, { method: "PATCH", body: JSON.stringify({ body }) }),
+  deleteSocialComment: (id: string) => http<{ ok: true }>(`/social/comments/${id}`, { method: "DELETE" }),
+  setSocialCommentLike: (id: string, liked: boolean) =>
+    http<{ comment: SocialComment }>(`/social/comments/${id}/like`, { method: liked ? "PUT" : "DELETE", body: liked ? "{}" : undefined }),
   downloadCookies: () => http<{ configured: boolean }>("/downloads/cookies"),
   uploadDownloadCookies: (file: File) => {
     const fd = new FormData();

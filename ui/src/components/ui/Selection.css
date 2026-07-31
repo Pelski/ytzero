@@ -14,6 +14,9 @@
 .ui-tabs__tab:hover, .ui-chip:hover { background: var(--chip-hover); }
 .ui-tabs__tab--active, .ui-chip--active { background: var(--text); color: var(--bg); }
 .ui-tabs__tab.ui-tabs__tab--active:hover, .ui-chip.ui-chip--active:hover { background: color-mix(in srgb, var(--text) 92%, var(--chip-hover)); color: var(--bg); }
+.ui-chip:disabled { cursor: default; opacity: .5; }
+.ui-chip:disabled:hover { background: var(--chip); }
+.ui-chip.ui-chip--active:disabled:hover { background: var(--text); color: var(--bg); }
 .ui-tabs__count { background: rgba(127,127,127,.18); border-radius: 999px; color: var(--text-2); font-size: 11px; padding: 1px 6px; }
 .ui-tabs__tab--active .ui-tabs__count { background: rgba(255,255,255,.2); color: inherit; }
 .ui-tabs--settings, .ui-tabs--subtle { border-bottom: 1px solid var(--surface-2); gap: 2px; }

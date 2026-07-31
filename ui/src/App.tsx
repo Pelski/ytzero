@@ -28,6 +28,7 @@ import LikedPage from "./pages/LikedPage";
 import InsightsPage from "./pages/InsightsPage";
 import CleanupPage from "./pages/CleanupPage";
 import RestorePage from "./pages/RestorePage";
+import SocialPage from "./pages/SocialPage";
 import { PlaylistIcon, PlaylistIconPicker } from "./components/PlaylistIcon";
 import ProfileMenu from "./components/ProfileMenu";
 import { useI18n } from "./i18n";
@@ -35,8 +36,6 @@ import { applyVideoCardSize } from "./videoCardSize";
 import { AppNameContext } from "./useDocumentTitle";
 import "./AppShell.css";
 
-// Routes owned exclusively by plugins — visible only while enabled.
-const PLUGIN_ROUTES = ["/recommendations"];
 import { applyWatchedStyle, parseWatchedStyle } from "./watchedStyle";
 import { VideoThumbnail, watchProgress } from "./components/VideoThumbnail";
 import ChildNowWatching from "./components/ChildNowWatching";
@@ -408,6 +407,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const [enabledPluginRoutes, setEnabledPluginRoutes] = useState<Set<string> | null>(null);
+  const [knownPluginRoutes, setKnownPluginRoutes] = useState<Set<string>>(new Set());
   const [showHidden, setShowHidden] = useState(false);
   const [childStatus, setChildStatus] = useState<ChildStatus | null>(null);
   const [incognito, setIncognito] = useState(isIncognitoMode);
@@ -535,6 +535,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   const loadPlugins = useCallback(() => {
     api.plugins()
       .then((r) => {
+        setKnownPluginRoutes(new Set(r.plugins.map((p) => p.route)));
         setEnabledPluginRoutes(new Set(r.plugins.filter((p) => p.enabled).map((p) => p.route)));
         // Thumbnail download-progress bars are toggled by a plugin setting;
         // a root attribute lets CSS hide them without prop-drilling.
@@ -542,7 +543,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
           .then((config) => { document.documentElement.dataset.dlThumbProgress = config.enabled ? String(config.settings.thumb_progress ?? 1) : "0"; })
           .catch(() => { document.documentElement.dataset.dlThumbProgress = "0"; });
       })
-      .catch(() => setEnabledPluginRoutes(new Set()))
+      .catch(() => {
+        setKnownPluginRoutes(new Set(["/recommendations", "/social"]));
+        setEnabledPluginRoutes(new Set());
+      })
       .finally(() => setPluginsReady(true));
   }, []);
 
@@ -550,10 +554,10 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   useEffect(() => subscribe("plugins-changed", loadPlugins), [loadPlugins]);
   useEffect(() => {
     if (!enabledPluginRoutes) return;
-    if (PLUGIN_ROUTES.includes(location.pathname) && !enabledPluginRoutes.has(location.pathname)) {
+    if (knownPluginRoutes.has(location.pathname) && !enabledPluginRoutes.has(location.pathname)) {
       navigate("/", { replace: true });
     }
-  }, [enabledPluginRoutes, location.pathname, navigate]);
+  }, [enabledPluginRoutes, knownPluginRoutes, location.pathname, navigate]);
 
   // Re-skin the tab favicon live (the OS-cached PWA icon only refreshes on reinstall).
   useEffect(() => {
@@ -645,7 +649,7 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
   }
 
   const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(navConfig);
-  const pluginRouteVisible = (to: string) => !PLUGIN_ROUTES.includes(to) || enabledPluginRoutes?.has(to);
+  const pluginRouteVisible = (to: string) => !knownPluginRoutes.has(to) || enabledPluginRoutes?.has(to);
   const childRouteVisible = (to: string) =>
     !(childStatus?.hide_shorts && to === "/shorts")
     && !(childStatus?.hide_live && to === "/live")
@@ -746,6 +750,12 @@ function AppShell({ isAdmin }: { isAdmin: boolean }) {
               <Route path="/search" element={<SearchPage onPlay={play} hideExternalSearch={childStatus?.local_only ?? false} />} />
               <Route path="/recommendations" element={enabledPluginRoutes?.has("/recommendations")
                 ? <RecommendationsPage onPlay={play} loadRecommendations={api.recommendations} />
+                : <Navigate to="/" replace />} />
+              <Route path="/social" element={enabledPluginRoutes?.has("/social")
+                ? <SocialPage onPlay={play} showToast={showToast} />
+                : <Navigate to="/" replace />} />
+              <Route path="/social/:postUuid" element={enabledPluginRoutes?.has("/social")
+                ? <SocialPage onPlay={play} showToast={showToast} />
                 : <Navigate to="/" replace />} />
               <Route path="/discovery" element={<Navigate to="/recommendations" replace />} />
               <Route path="/shorts" element={<ShortsPage />} />

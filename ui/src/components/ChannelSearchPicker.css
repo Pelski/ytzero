@@ -16,7 +16,7 @@
 .channel-search-picker-input input:focus-visible { outline: none; }
 .channel-search-picker-loading { width: 14px; height: 14px; border: 2px solid var(--surface-3); border-top-color: var(--accent); border-radius: 50%; animation: ui-spin .7s linear infinite; }
 .channel-search-modal-backdrop { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; background: rgba(0, 0, 0, .62); backdrop-filter: blur(4px); }
-.channel-search-modal { width: min(640px, 100%); max-height: min(680px, calc(100vh - 40px)); overflow: auto; padding: 20px; border: 1px solid var(--surface-3); border-radius: 16px; background: var(--surface); box-shadow: 0 24px 60px rgba(0, 0, 0, .48); }
+.channel-search-modal { width: min(640px, 100%); max-height: min(680px, calc(100vh - 40px)); overflow: auto; padding: 20px; border: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 24px 60px rgba(0, 0, 0, .48); }
 .channel-search-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .channel-search-modal-header h2 { margin: 0; font-size: 18px; }
 .channel-search-modal-header p { margin: 4px 0 0; color: var(--text-2); font-size: 13px; }

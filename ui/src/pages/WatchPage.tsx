@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import "./WatchPage.css";
-import { emit, emitToast } from "../events";
+import { emit, emitToast, subscribe } from "../events";
 import { scheduleSettingWrite } from "../settingsWriteQueue";
 import { queueProgressWrite } from "../progressWriteQueue";
 import { isIncognitoMode } from "../incognitoMode";
@@ -15,6 +15,7 @@ import {
   Camera,
   Check,
   ChevronLeft,
+  ChevronRight,
   Clock,
   Clapperboard,
   Copy,
@@ -35,6 +36,7 @@ import {
   ThumbsUp,
   Trash2,
   Undo2,
+  UsersRound,
   Volume1,
   Volume2,
   VolumeX,
@@ -63,6 +65,7 @@ import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } fro
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
 import VideoComments from "../components/VideoComments";
+import SocialShareDialog from "../components/social/SocialShareDialog";
 import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
 
 type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
@@ -221,13 +224,21 @@ export default function WatchPage() {
   const [copyKey, setCopyKey] = useState(0);
   const [scheduleToast, setScheduleToast] = useState<{ id: number; message: string; variant: "default" | "danger"; anchor: "desktop" | "overflow" } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [socialShareOpen, setSocialShareOpen] = useState(false);
   const [shareWithTimestamp, setShareWithTimestamp] = useState(false);
+  const [socialEnabled, setSocialEnabled] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   // Withheld until settings load: for a profile that turned suggestions off,
   // rendering them first and pulling them away is worse than a brief gap.
   const showRelated = settings ? settings.watch_show_related !== "0" : false;
   const showComments = settings?.watch_show_comments === "1";
   const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
+
+  useEffect(() => {
+    const loadSocial = () => api.plugins().then(({ plugins }) => setSocialEnabled(Boolean(plugins.find((plugin) => plugin.id === "social")?.enabled))).catch(() => setSocialEnabled(false));
+    void loadSocial();
+    return subscribe("plugins-changed", loadSocial);
+  }, []);
   const [playbackPolicy, setPlaybackPolicy] = useState<{
     ready: boolean;
     downloadsEnabled: boolean;
@@ -1869,6 +1880,14 @@ export default function WatchPage() {
               >
                 <div className="share-menu">
                   <div className="share-menu-title">{t("share")}</div>
+                  {socialEnabled && video && <Menu className="watch-share-destinations">
+                    <MenuItem
+                      className="watch-share-social"
+                      icon={<UsersRound />}
+                      suffix={<ChevronRight aria-hidden="true" />}
+                      onClick={() => { setShareOpen(false); setSocialShareOpen(true); }}
+                    >{t("socialShareInSocial")}</MenuItem>
+                  </Menu>}
                   <label className="share-link-label">{settings?.app_name || "YT Zero"}</label>
                   <div className="share-link-field">
                     <input readOnly value={shareLink("webpage") ?? ""} aria-label={settings?.app_name || "YT Zero"} />
@@ -2259,6 +2278,12 @@ export default function WatchPage() {
         ))}
         </>}
       </aside>
+      {video && <SocialShareDialog
+        open={socialShareOpen}
+        video={video}
+        onOpenChange={setSocialShareOpen}
+        onResult={(success) => emitToast(t(success ? "socialShareSuccess" : "socialActionError"), success ? "success" : "danger")}
+      />}
     </div>
   );
 }

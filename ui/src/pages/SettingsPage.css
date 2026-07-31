@@ -178,7 +178,7 @@
   height: min(820px, 90vh);
   max-height: min(820px, 90vh);
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 0;
   border-radius: 22px;
   background: #171717;
   box-shadow: 0 32px 100px rgba(0, 0, 0, 0.62);
@@ -415,7 +415,7 @@
   align-items: center;
   gap: 5px;
 }
-.plugin-term-chip:hover {
+.plugin-term-chip:hover:not(:disabled) {
   background: rgba(62, 166, 255, 0.14);
   color: #9ed5f5;
 }
@@ -424,7 +424,7 @@
   color: #d67b84;
   text-decoration: line-through;
 }
-.plugin-term-chip.blocked:hover {
+.plugin-term-chip.blocked:hover:not(:disabled) {
   background: rgba(242, 41, 58, 0.18);
   color: #f09aa2;
 }

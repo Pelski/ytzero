@@ -26,10 +26,11 @@ const LABELS: Record<string, string> = {
   "profile.history": "Watch history",
   "profile.discovery-feedback": "Discovery feedback",
   "profile.analytics": "Insights and Pulse history",
+  "plugin.social.activity": "Social posts, comments and reactions",
   "library.referenced-videos": "Required referenced-video index",
 };
 const LABELS_PL: Record<string, string> = {
-  "instance.settings": "Wygląd i ustawienia instancji", "instance.plugins": "Włączone wtyczki i ich przenośne ustawienia", "instance.channels": "Wspólne nazwy kanałów i reguły pobierania", "profiles.index": "Profile i awatary", "profile.avatar": "Awatary profili", "profile.settings": "Preferencje profili", "profile.subscriptions": "Subskrypcje i ustawienia kanałów", "profile.followed-playlists": "Obserwowane playlisty YouTube", "profile.tags": "Tagi i przypisania", "profile.rules": "Reguły tagowania i filtrowania", "profile.playlists": "Osobiste playlisty i reguły", "profile.video-state": "Kolejka, archiwum, polubienia i postęp", "profile.history": "Historia oglądania", "profile.discovery-feedback": "Opinie dla Odkrywania", "profile.analytics": "Historia Statystyk i Pulsu", "library.referenced-videos": "Wymagany indeks filmów",
+  "instance.settings": "Wygląd i ustawienia instancji", "instance.plugins": "Włączone wtyczki i ich przenośne ustawienia", "instance.channels": "Wspólne nazwy kanałów i reguły pobierania", "profiles.index": "Profile i awatary", "profile.avatar": "Awatary profili", "profile.settings": "Preferencje profili", "profile.subscriptions": "Subskrypcje i ustawienia kanałów", "profile.followed-playlists": "Obserwowane playlisty YouTube", "profile.tags": "Tagi i przypisania", "profile.rules": "Reguły tagowania i filtrowania", "profile.playlists": "Osobiste playlisty i reguły", "profile.video-state": "Kolejka, archiwum, polubienia i postęp", "profile.history": "Historia oglądania", "profile.discovery-feedback": "Opinie dla Odkrywania", "profile.analytics": "Historia Statystyk i Pulsu", "plugin.social.activity": "Posty, komentarze i reakcje Social", "library.referenced-videos": "Wymagany indeks filmów",
 };
 
 function size(bytes: number) {

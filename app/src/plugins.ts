@@ -10,6 +10,7 @@ import { storedUtcTimestampMs, zonedDayHour } from "./timeZone";
 import { listDownloadRules, restoreDownloadRules } from "./downloadRules";
 import { effectiveVideoTagsCte } from "./insightTags";
 import { followedExists, followedPlaylistExists } from "./feedQueryFragments";
+import { normalizeSocialEmojiSkinTone, normalizeSocialReaction } from "./social";
 import {
   diversifyRecommendations,
   isEligibleRecommendation,
@@ -54,6 +55,8 @@ export interface PluginSettingDef {
   step?: number;
   options?: PluginSettingOption[];
   defaultValue: number | string;
+  scope?: "user" | "global";
+  adminOnly?: boolean;
 }
 
 export type PluginSettingValue = number | string;
@@ -69,6 +72,68 @@ type PluginSettingSource = Omit<PluginSettingDef, "label" | "description" | "typ
   type?: PluginSettingType;
   options?: { value: string; label: LocalizedText }[];
 };
+
+const SOCIAL_SETTINGS: PluginSettingSource[] = [
+  {
+    key: "comments_enabled",
+    type: "toggle",
+    scope: "global",
+    adminOnly: true,
+    label: { en: "Comments", pl: "Komentarze", de: "Kommentare" },
+    description: { en: "Profiles can discuss videos shared in Social.", pl: "Profile mogą rozmawiać o filmach udostępnionych w Social.", de: "Profile können in Social geteilte Videos kommentieren." },
+    defaultValue: 1,
+  },
+  {
+    key: "reactions_enabled",
+    type: "toggle",
+    scope: "global",
+    adminOnly: true,
+    label: { en: "Emoji reactions", pl: "Reakcje emoji", de: "Emoji-Reaktionen" },
+    description: { en: "Each profile can select several different reactions on one post.", pl: "Każdy profil może wybrać kilka różnych reakcji na jeden post.", de: "Jedes Profil kann mehrere verschiedene Reaktionen auf einen Beitrag auswählen." },
+    defaultValue: 1,
+  },
+  {
+    key: "allow_child_profiles",
+    type: "toggle",
+    scope: "global",
+    adminOnly: true,
+    label: { en: "Child profiles", pl: "Profile dziecięce", de: "Kinderprofile" },
+    description: { en: "Allow child profiles to open Social, publish, react and comment.", pl: "Pozwól profilom dziecięcym otwierać Social, publikować, reagować i komentować.", de: "Erlaube Kinderprofilen Social zu öffnen, zu posten, zu reagieren und zu kommentieren." },
+    defaultValue: 0,
+  },
+  {
+    key: "notify_new_posts",
+    type: "toggle",
+    scope: "user",
+    label: { en: "New posts", pl: "Nowe posty", de: "Neue Beiträge" },
+    description: { en: "Notify me when another profile shares a video.", pl: "Powiadamiaj, gdy inny profil udostępni film.", de: "Benachrichtige mich, wenn ein anderes Profil ein Video teilt." },
+    defaultValue: 1,
+  },
+  {
+    key: "notify_comments",
+    type: "toggle",
+    scope: "user",
+    label: { en: "Comments on my posts", pl: "Komentarze do moich postów", de: "Kommentare zu meinen Beiträgen" },
+    description: { en: "Notify me about new comments on videos I shared.", pl: "Powiadamiaj o nowych komentarzach pod udostępnionymi przeze mnie filmami.", de: "Benachrichtige mich über neue Kommentare zu meinen geteilten Videos." },
+    defaultValue: 1,
+  },
+  {
+    key: "notify_reactions",
+    type: "toggle",
+    scope: "user",
+    label: { en: "Reactions and comment likes", pl: "Reakcje i polubienia komentarzy", de: "Reaktionen und Kommentar-Likes" },
+    description: { en: "Notify me about the first reaction from a profile and likes on my comments.", pl: "Powiadamiaj o pierwszej reakcji profilu i polubieniach moich komentarzy.", de: "Benachrichtige mich über die erste Reaktion eines Profils und Likes auf meine Kommentare." },
+    defaultValue: 0,
+  },
+  {
+    key: "notify_mentions",
+    type: "toggle",
+    scope: "user",
+    label: { en: "@mentions", pl: "Oznaczenia @profil", de: "@Erwähnungen" },
+    description: { en: "Notify me when another profile mentions me in a post or comment.", pl: "Powiadamiaj, gdy inny profil oznaczy mnie w poście lub komentarzu.", de: "Benachrichtige mich, wenn ein anderes Profil mich in einem Beitrag oder Kommentar erwähnt." },
+    defaultValue: 1,
+  },
+];
 
 const DISCOVERY_SETTINGS: PluginSettingSource[] = [
   { key: "total_limit", label: { en: "Number of suggestions", pl: "Liczba propozycji", de: "Anzahl der Vorschläge" }, description: { en: "How many videos Recommendations should prepare at once.", pl: "Ile filmów Rekomendacje mają przygotować naraz.", de: "Wie viele Videos Empfehlungen auf einmal vorbereiten soll." }, min: 8, max: 80, step: 1, defaultValue: 32 },
@@ -303,6 +368,16 @@ export const PLUGINS: PluginManifest[] = [
     permissions: ["read:library", "network:video-download", "storage:local-files"],
     settingsScope: "user",
   },
+  {
+    id: "social",
+    name: "Social",
+    version: "0.1.0",
+    description: "A local social space where profiles share videos, react and comment together.",
+    route: "/social",
+    icon: "UsersRound",
+    permissions: ["read:profiles", "read:library", "write:social"],
+    settingsScope: "user",
+  },
 ];
 
 const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: LocalizedText; permissions: Record<string, LocalizedText> }> = {
@@ -331,12 +406,32 @@ const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: LocalizedT
       "storage:local-files": { en: "stores video files on disk", pl: "zapisuje pliki wideo na dysku", de: "speichert Videodateien auf der Festplatte" },
     },
   },
+  social: {
+    name: { en: "Social", pl: "Social", de: "Social" },
+    description: {
+      en: "A local space where profiles share videos, use emoji reactions, mention each other and comment together.",
+      pl: "Lokalne miejsce, w którym profile udostępniają filmy, reagują emoji, oznaczają się i wspólnie komentują.",
+      de: "Ein lokaler Bereich, in dem Profile Videos teilen, mit Emojis reagieren, sich erwähnen und gemeinsam kommentieren.",
+    },
+    permissions: {
+      "read:profiles": { en: "shows participating profile names and avatars", pl: "pokazuje nazwy i avatary uczestniczących profili", de: "zeigt Namen und Avatare teilnehmender Profile" },
+      "read:library": { en: "reads videos from the local library", pl: "czyta filmy z lokalnej biblioteki", de: "liest Videos aus der lokalen Bibliothek" },
+      "write:social": { en: "stores posts, reactions, mentions and comments locally", pl: "zapisuje lokalnie posty, reakcje, oznaczenia i komentarze", de: "speichert Beiträge, Reaktionen, Erwähnungen und Kommentare lokal" },
+    },
+  },
 };
 
 for (const plugin of PLUGINS) {
   await database.prepare("INSERT OR IGNORE INTO plugins (id, enabled, version) VALUES (?, ?, ?)")
     .run(plugin.id, 0, plugin.version);
   await database.prepare("UPDATE plugins SET version = ? WHERE id = ?").run(plugin.version, plugin.id);
+}
+
+// Social reactions are now arbitrary emoji; the former global allow-list is
+// obsolete and must not silently return through an old installation backup.
+if (getSetting("plugin_social_enabled_reactions") != null) {
+  await database.prepare("DELETE FROM settings WHERE key='plugin_social_enabled_reactions'").run();
+  await reloadSettingCache();
 }
 
 // Seamless migration from the former instance-wide downloads configuration.
@@ -448,7 +543,17 @@ export async function setPluginEnabled(id: string, enabled: boolean) {
 function settingDefs(pluginId: string): PluginSettingSource[] {
   if (pluginId === "discovery") return DISCOVERY_SETTINGS;
   if (pluginId === "downloads") return DOWNLOADS_SETTINGS;
+  if (pluginId === "social") return SOCIAL_SETTINGS;
   return [];
+}
+
+function settingScope(pluginId: string, manifest: PluginManifest, def: PluginSettingSource): "user" | "global" {
+  if (pluginId === "downloads" && DOWNLOADS_ADMIN_SETTING_KEYS.has(def.key)) return "global";
+  return def.scope ?? manifest.settingsScope ?? "user";
+}
+
+export function pluginAdminSettingKeys(pluginId: string): Set<string> {
+  return new Set(settingDefs(pluginId).filter((def) => def.adminOnly || (pluginId === "downloads" && DOWNLOADS_ADMIN_SETTING_KEYS.has(def.key))).map((def) => def.key));
 }
 
 // Coerce a stored/incoming raw value to something valid for the definition;
@@ -481,22 +586,13 @@ export async function getPluginSettings(uid: number, pluginId: string, language?
   if (!manifest) throw new Error("plugin not found");
   const defs = settingDefs(pluginId);
   const values = new Map<string, string>();
-  if (manifest.settingsScope === "global") {
-    for (const def of defs) {
-      const raw = getSetting(`plugin_${pluginId}_${def.key}`);
-      if (raw != null) values.set(def.key, raw);
-    }
-  } else {
-    const rows = await database.prepare("SELECT key, value FROM plugin_settings WHERE plugin_id = ? AND user_id = ?")
-      .all(pluginId, uid) as { key: string; value: string }[];
-    for (const row of rows) values.set(row.key, row.value);
-    if (pluginId === "downloads") {
-      for (const def of defs) {
-        if (!DOWNLOADS_ADMIN_SETTING_KEYS.has(def.key)) continue;
-        const raw = getSetting(`plugin_downloads_${def.key}`);
-        if (raw != null) values.set(def.key, raw);
-      }
-    }
+  const rows = await database.prepare("SELECT key, value FROM plugin_settings WHERE plugin_id = ? AND user_id = ?")
+    .all(pluginId, uid) as { key: string; value: string }[];
+  for (const row of rows) values.set(row.key, row.value);
+  for (const def of defs) {
+    if (settingScope(pluginId, manifest, def) !== "global") continue;
+    const raw = getSetting(`plugin_${pluginId}_${def.key}`);
+    if (raw != null) values.set(def.key, raw);
   }
   const settings: Record<string, PluginSettingValue> = {};
   for (const def of defs) {
@@ -519,8 +615,7 @@ export async function setPluginSettings(uid: number, pluginId: string, patch: Re
       const def = byKey.get(key);
       if (!def) continue;
       const normalized = normalizeSettingValue(value == null ? null : String(value), def);
-      const globalDownloadSetting = pluginId === "downloads" && DOWNLOADS_ADMIN_SETTING_KEYS.has(key);
-      if (manifest.settingsScope === "global" || globalDownloadSetting) {
+      if (settingScope(pluginId, manifest, def) === "global") {
         await database.prepare(
           "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value"
         ).run(`plugin_${pluginId}_${key}`, String(normalized));
@@ -535,7 +630,10 @@ export async function setPluginSettings(uid: number, pluginId: string, patch: Re
   // Global plugin values are read through db.ts' synchronous settings cache.
   // Keep it aligned with the transaction before building the response; without
   // this, the UI receives the previous values and appears to undo the change.
-  if (manifest.settingsScope === "global" || (pluginId === "downloads" && Object.keys(patch).some((key) => DOWNLOADS_ADMIN_SETTING_KEYS.has(key)))) await reloadSettingCache();
+  if (Object.keys(patch).some((key) => {
+    const def = byKey.get(key);
+    return def ? settingScope(pluginId, manifest, def) === "global" : false;
+  })) await reloadSettingCache();
   if (pluginId === "discovery" && "blockedTerms" in patch) {
     await setDiscoveryBlockedTerms(uid, patch.blockedTerms);
   }
@@ -558,6 +656,60 @@ export interface PortablePluginBackupAdapter {
 }
 
 export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
+  {
+    id: "social",
+    scope: "instance",
+    schemaVersion: 2,
+    async export(userId) {
+      const settings = (await getPluginSettings(userId, "social")).settings;
+      return { settings: Object.fromEntries(Object.entries(settings).filter(([key]) => ["comments_enabled", "reactions_enabled", "allow_child_profiles"].includes(key))) };
+    },
+    async restore(userId, value) {
+      const input = value && typeof value === "object" ? value as any : {};
+      const settings = Object.fromEntries(Object.entries(input.settings ?? {}).filter(([key]) => ["comments_enabled", "reactions_enabled", "allow_child_profiles"].includes(key)));
+      await setPluginSettings(userId, "social", settings);
+    },
+  },
+  {
+    id: "social",
+    scope: "profile",
+    schemaVersion: 3,
+    async export(userId) {
+      const settings = (await getPluginSettings(userId, "social")).settings;
+      const recentEmojis = (await database.prepare("SELECT reaction_key FROM social_recent_emojis WHERE user_id=? ORDER BY used_at DESC,reaction_key LIMIT 6")
+        .all(userId) as Array<{ reaction_key: string }>).map((row) => row.reaction_key);
+      const skinToneRow = await database.prepare("SELECT value FROM plugin_state WHERE plugin_id='social' AND user_id=? AND key='emoji_skin_tone'")
+        .get(userId) as { value: string } | null;
+      let skinTone = "neutral";
+      try { skinTone = normalizeSocialEmojiSkinTone(skinToneRow?.value); } catch {}
+      return { settings: Object.fromEntries(Object.entries(settings).filter(([key]) => ["notify_new_posts", "notify_comments", "notify_reactions", "notify_mentions"].includes(key))), recentEmojis, skinTone };
+    },
+    async restore(userId, value) {
+      const input = value && typeof value === "object" ? value as any : {};
+      const settings = Object.fromEntries(Object.entries(input.settings ?? {}).filter(([key]) => ["notify_new_posts", "notify_comments", "notify_reactions", "notify_mentions"].includes(key)));
+      await setPluginSettings(userId, "social", settings);
+      if (Array.isArray(input.recentEmojis)) {
+        const recentEmojis = [...new Set(input.recentEmojis.flatMap((value: unknown) => {
+          try { return [normalizeSocialReaction(value)]; } catch { return []; }
+        }))].slice(0, 6);
+        await database.transaction(async () => {
+          await database.prepare("DELETE FROM social_recent_emojis WHERE user_id=?").run(userId);
+          const now = Date.now();
+          for (const [index, emoji] of recentEmojis.entries()) {
+            await database.prepare("INSERT INTO social_recent_emojis(user_id,reaction_key,used_at) VALUES(?,?,?)").run(userId, emoji, now - index);
+          }
+        })();
+      }
+      if (Object.hasOwn(input, "skinTone")) {
+        let skinTone: string | null = null;
+        try { skinTone = normalizeSocialEmojiSkinTone(input.skinTone); } catch {}
+        if (skinTone) await database.prepare(`
+          INSERT INTO plugin_state(plugin_id,user_id,key,value,updated_at) VALUES('social',?,'emoji_skin_tone',?,CURRENT_TIMESTAMP)
+          ON CONFLICT(plugin_id,user_id,key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at
+        `).run(userId, skinTone);
+      }
+    },
+  },
   {
     id: "discovery",
     scope: "profile",
@@ -603,6 +755,18 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
 
 export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
   if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
+  if (pluginId === "social") {
+    await database.transaction(async () => {
+      await database.prepare("DELETE FROM social_posts").run();
+      await database.prepare("DELETE FROM social_recent_emojis").run();
+      await database.prepare("DELETE FROM plugin_state WHERE plugin_id='social'").run();
+      await database.prepare("DELETE FROM plugin_settings WHERE plugin_id='social'").run();
+      await database.prepare("DELETE FROM settings WHERE key LIKE 'plugin_social_%'").run();
+      await database.prepare("DELETE FROM notifications WHERE kind LIKE 'social_%'").run();
+    })();
+    await reloadSettingCache();
+    return getPluginSettings(uid, pluginId, language);
+  }
   if (pluginId === "downloads") {
     await resetDownloadsState(uid);
     await reloadSettingCache();
@@ -632,6 +796,7 @@ export async function resetPluginState(uid: number, pluginId: string, language?:
           )
           AND NOT EXISTS (SELECT 1 FROM user_playlist_videos upv WHERE upv.video_id = videos.video_id)
           AND NOT EXISTS (SELECT 1 FROM history h WHERE h.video_id = videos.video_id)
+          AND NOT EXISTS (SELECT 1 FROM social_posts sp WHERE sp.video_id = videos.video_id)
       `).run(uid);
       await database.prepare("DELETE FROM discovery_recommendations WHERE user_id = ?").run(uid);
       await database.prepare("DELETE FROM recommendation_feedback WHERE user_id = ?").run(uid);

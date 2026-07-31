@@ -11,6 +11,7 @@ import { COMMIT, VERSION } from "./version";
 import { createAppIconPng, createAppIconSvg } from "./app-icon";
 import { createAppManifest } from "./app-manifest";
 import { collectDiagnosticSnapshot } from "./diagnostics";
+import { migrateLegacyProfileAvatars } from "./profileAvatars";
 
 const app = new Hono();
 // Serve the built UI (ui/dist is copied to ./public in the Docker image,
@@ -80,6 +81,8 @@ app.get("/changelog.json", async (c) => {
 app.use("/*", serveStatic({ root: uiDir }));
 app.get("*", serveStatic({ path: `${uiDir}/index.html` }));
 
+await migrateLegacyProfileAvatars()
+  .catch((error) => log.warn("profile.avatar_migration_failed", { error: error instanceof Error ? error.message : String(error) }));
 startScheduler();
 await startDownloader();
 if (databaseConfig.engine === "sqlite") startSQLiteMaintenance(db);

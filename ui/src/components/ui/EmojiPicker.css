@@ -1,0 +1,19 @@
+.ui-emoji-picker-popover { box-sizing: border-box; width: min(368px, calc(100vw - 16px)); max-height: calc(100vh - 16px); padding: 8px; overflow: auto; }
+.ui-emoji-picker { display: grid; gap: 8px; }
+.ui-emoji-picker__anchor { flex: 0 0 auto; }
+.ui-emoji-picker__recent { display: grid; gap: 6px; padding: 2px 4px 4px; }
+.ui-emoji-picker__recent > strong { color: var(--text-2); font-size: 11px; font-weight: 650; }
+.ui-emoji-picker__recent-grid { display: grid; grid-template-columns: repeat(6, 34px); gap: 2px; }
+.ui-emoji-picker__recent-grid button { display: grid; width: 34px; height: 34px; padding: 0; border: 1px solid transparent; border-radius: 7px; background: transparent; font: inherit; font-size: 18px; cursor: pointer; place-items: center; }
+.ui-emoji-picker__recent-grid button:hover { background: var(--surface-3); }
+.ui-emoji-picker__recent-grid button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ui-emoji-picker__recent-grid button.is-selected { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+.ui-emoji-picker__catalog.EmojiPickerReact { --epr-bg-color: var(--surface-2); --epr-dark-bg-color: var(--surface-2); --epr-dark-category-label-bg-color: var(--surface-2); --epr-dark-search-input-bg-color: var(--surface); --epr-dark-search-input-bg-color-active: var(--surface); --epr-dark-hover-bg-color: var(--surface-3); --epr-dark-focus-bg-color: var(--surface-3); --epr-highlight-color: var(--accent); --epr-dark-highlight-color: var(--accent); --epr-dark-text-color: var(--text); --epr-search-input-text-color: var(--text); --epr-search-input-placeholder-color: var(--text-3); --epr-category-label-height: 24px; --epr-category-navigation-button-size: 24px; --epr-header-padding: 8px 10px 6px; border-color: var(--surface-3); border-radius: 10px; font-family: inherit; }
+.ui-emoji-picker__catalog.EmojiPickerReact .epr-cat-btn:focus::before { content: none; }
+.ui-emoji-picker__catalog.EmojiPickerReact .epr-emoji-category-label { color: var(--text-3); font-size: 10.5px; font-weight: 650; letter-spacing: .02em; text-transform: none; }
+.ui-emoji-picker__loading { display: grid; min-height: 330px; border: 1px solid var(--surface-3); border-radius: 10px; color: var(--text-3); font-size: 12px; place-items: center; }
+
+@media (max-width: 420px) {
+  .ui-emoji-picker-popover { width: calc(100vw - 16px); }
+  .ui-emoji-picker__catalog.EmojiPickerReact { height: min(310px, 56vh) !important; }
+}

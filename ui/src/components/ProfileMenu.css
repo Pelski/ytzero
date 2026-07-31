@@ -31,7 +31,7 @@
   display: flex; align-items: center; justify-content: center; z-index: 200; padding: 20px;
 }
 .profile-pin-modal {
-  position: relative; background: var(--surface); border: 1px solid var(--surface-3);
+  position: relative; background: var(--surface); border: 0;
   border-radius: 16px; padding: 28px 28px 24px; width: 320px; max-width: 100%;
   display: flex; flex-direction: column; align-items: center; gap: 10px;
 }

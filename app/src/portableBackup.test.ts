@@ -1,18 +1,24 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import sharp from "sharp";
 
 const root = mkdtempSync(resolve(tmpdir(), "ytzero-portable-backup-"));
+const avatarDir = resolve(root, "avatars");
 process.env.DB_PATH = resolve(root, "db", "source.db");
 process.env.RESTORE_SESSION_DIR = resolve(root, "sessions");
-process.env.AVATAR_DIR = resolve(root, "avatars");
+process.env.AVATAR_DIR = avatarDir;
 
 const backup = await import("./portableBackup");
 const permissions = await import("./profilePermissions");
 const { db, setSetting, setUserSetting, getSetting, getUserSetting } = await import("./db");
 
-beforeAll(() => {
+beforeAll(async () => {
+  mkdirSync(avatarDir, { recursive: true });
+  const avatar = await sharp({ create: { width: 900, height: 500, channels: 4, background: { r: 36, g: 118, b: 210, alpha: 1 } } }).png().toBuffer();
+  writeFileSync(resolve(avatarDir, "1.png"), avatar);
+  db.prepare("UPDATE users SET avatar='1.png:legacy-token' WHERE id=1").run();
   db.prepare("INSERT INTO channels(channel_id,title,url) VALUES(?,?,?)").run("UCportable", "Portable channel", "https://youtube.com/channel/UCportable");
   db.prepare("INSERT INTO user_channels(user_id,channel_id,followed) VALUES(1,'UCportable',1)").run();
   db.prepare("INSERT INTO videos(video_id,channel_id,title,external) VALUES('portable001','UCportable','Portable video',1)").run();
@@ -89,6 +95,16 @@ describe("portable backup classification and restore", () => {
     const ruleUuid = crypto.randomUUID();
     db.prepare(`INSERT INTO download_rules(portable_uuid,user_id,name,source_mode,channel_ids_json,include_keywords_json,exclude_keywords_json,backfill_mode)
       VALUES(?, 1, 'Portable downloads', 'selected', '["UCportable"]', '["episode"]', '["trailer"]', 'all')`).run(ruleUuid);
+    const socialPostId = "64f616b4-fda8-4f31-a9da-5646bbf2a311";
+    const socialCommentId = "15142485-66a7-4700-871f-173fd9be74d0";
+    db.prepare("INSERT INTO social_posts(id,author_user_id,video_id,body) VALUES(?,1,'portable001','Sprawdź @Default')").run(socialPostId);
+    db.prepare("INSERT INTO social_comments(id,post_id,author_user_id,body) VALUES(?,?,1,'Dobry film')").run(socialCommentId, socialPostId);
+    db.prepare("INSERT INTO social_reactions(post_id,user_id,reaction_key) VALUES(?,1,'🤯')").run(socialPostId);
+    db.prepare("INSERT INTO social_reactions(post_id,user_id,reaction_key) VALUES(?,1,'👨‍👩‍👧‍👦')").run(socialPostId);
+    db.prepare("INSERT INTO social_recent_emojis(user_id,reaction_key,used_at) VALUES(1,'👨‍👩‍👧‍👦',2),(1,'🤯',1)").run();
+    db.prepare("INSERT INTO plugin_state(plugin_id,user_id,key,value) VALUES('social',1,'emoji_skin_tone','1f3fd')").run();
+    db.prepare("INSERT INTO social_comment_likes(comment_id,user_id) VALUES(?,1)").run(socialCommentId);
+    db.prepare("INSERT INTO social_post_mentions(post_id,mentioned_user_id,token) VALUES(?,1,'@Default')").run(socialPostId);
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
@@ -104,6 +120,9 @@ describe("portable backup classification and restore", () => {
     setSetting("profile_admin_only_areas", "[]");
     setSetting("timezone", "UTC");
     db.prepare("DELETE FROM download_rules WHERE portable_uuid=?").run(ruleUuid);
+    db.prepare("DELETE FROM social_posts WHERE id=?").run(socialPostId);
+    db.prepare("DELETE FROM social_recent_emojis WHERE user_id=1").run();
+    db.prepare("DELETE FROM plugin_state WHERE plugin_id='social' AND user_id=1 AND key='emoji_skin_tone'").run();
     const analyzed = await backup.analyzePortableBackup(1, zip);
     expect((db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n).toBe(before);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
@@ -127,5 +146,17 @@ describe("portable backup classification and restore", () => {
     expect(getSetting("timezone")).toBe("Europe/London");
     expect(db.prepare("SELECT name, include_keywords_json, exclude_keywords_json FROM download_rules WHERE portable_uuid=?").get(ruleUuid)).toEqual({ name: "Portable downloads", include_keywords_json: '["episode"]', exclude_keywords_json: '["trailer"]' });
     expect((db.prepare("SELECT COUNT(*) AS n FROM download_rules WHERE portable_uuid=?").get(ruleUuid) as { n: number }).n).toBe(1);
+    expect(db.prepare("SELECT body,video_id FROM social_posts WHERE id=?").get(socialPostId)).toEqual({ body: "Sprawdź @Default", video_id: "portable001" });
+    expect((db.prepare("SELECT COUNT(*) AS n FROM social_comments WHERE id=?").get(socialCommentId) as { n: number }).n).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM social_reactions WHERE post_id=?").get(socialPostId) as { n: number }).n).toBe(2);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM social_comment_likes WHERE comment_id=?").get(socialCommentId) as { n: number }).n).toBe(1);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM social_post_mentions WHERE post_id=?").get(socialPostId) as { n: number }).n).toBe(1);
+    expect((db.prepare("SELECT reaction_key FROM social_recent_emojis WHERE user_id=1 ORDER BY used_at DESC").all() as Array<{ reaction_key: string }>).map((row) => row.reaction_key)).toEqual(["👨‍👩‍👧‍👦", "🤯"]);
+    expect((db.prepare("SELECT value FROM plugin_state WHERE plugin_id='social' AND user_id=1 AND key='emoji_skin_tone'").get() as { value: string }).value).toBe("1f3fd");
+    const restoredAvatar = (db.prepare("SELECT avatar FROM users WHERE id=1").get() as { avatar: string }).avatar;
+    expect(restoredAvatar).toContain("1.webp:optimized-webp-v1:");
+    expect(existsSync(resolve(avatarDir, "1.png"))).toBe(false);
+    const restoredMetadata = await sharp(resolve(avatarDir, "1.webp")).metadata();
+    expect({ format: restoredMetadata.format, width: restoredMetadata.width, height: restoredMetadata.height }).toEqual({ format: "webp", width: 256, height: 256 });
   });
 });

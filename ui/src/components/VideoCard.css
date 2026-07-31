@@ -10,6 +10,8 @@
 .video-card .thumb-wrap {
   --actions-proximity: 0;
   border-radius: var(--radius);
+  container-name: video-thumbnail;
+  container-type: inline-size;
   cursor: pointer;
   overflow: hidden;
   position: relative;
@@ -270,4 +272,42 @@
 
 .video-card .v-time-item svg {
   flex: 0 0 auto;
+}
+
+/* Reusable horizontal card layout used by search results and other row-based surfaces. */
+.video-card.video-card--search-result {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  min-width: 0;
+  transition: opacity .26s ease, transform .26s ease;
+}
+.video-card.video-card--search-result .thumb-wrap { width: 240px; flex: 0 0 240px; align-self: flex-start; }
+.video-card.video-card--search-result .card-body { display: flex; flex: 1; flex-direction: column; gap: 0; padding: 0; }
+.video-card.video-card--search-result .v-title { margin: 0; }
+.v-search-meta { margin-top: 3px; color: var(--text-2); font-size: 12px; }
+.v-search-channel { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+.v-search-channel .card-avatar-link { margin: 0; }
+.v-search-channel .card-ch-avatar { width: 24px; height: 24px; }
+.v-search-channel .v-channel::after { display: none; }
+
+@media (max-width: 560px) {
+  .video-card.video-card--search-result { flex-direction: column; gap: 0; }
+  .video-card.video-card--search-result .thumb-wrap { width: 100%; flex-basis: auto; }
+  .video-card.video-card--search-result .card-body { padding: 10px 2px 0; }
+}
+
+/* Keep the full scheduling control, but scale it only when the thumbnail itself
+   is narrow (horizontal cards, compact grids), not merely on a small viewport. */
+@container video-thumbnail (max-width: 220px) {
+  .thumb-wrap .thumb-actions { top: 6px; right: 6px; gap: 2px; }
+  .thumb-wrap .thumb-actions-row--schedule { gap: 3px; padding: 4px; }
+  .thumb-wrap .schedule-action-group { gap: 2px; }
+  .thumb-wrap .schedule-action-label { font-size: 9px; }
+  .thumb-wrap .schedule-action-segment .action-btn { width: 25px; height: 25px; }
+  .thumb-wrap .schedule-action-group--single .action-btn { width: 44px; }
+  .thumb-wrap .schedule-action-segment .action-btn svg { width: 14px; height: 14px; }
+  .thumb-wrap .thumb-actions-row.secondary { gap: 3px; padding: 3px; }
+  .thumb-wrap .thumb-actions-row.secondary .action-btn { width: 26px; height: 26px; }
+  .thumb-wrap .thumb-actions-row.secondary .action-btn svg { width: 14px; height: 14px; }
 }

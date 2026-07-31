@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Heart, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Heart, Share2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { useI18n } from "../i18n";
@@ -48,6 +48,9 @@ export default function ShortsPlayer({
   onLoadMore,
   onWatched,
   onLiked,
+  socialEnabled,
+  sharing,
+  onShare,
 }: {
   videos: Video[];
   initialIndex: number;
@@ -56,6 +59,9 @@ export default function ShortsPlayer({
   onLoadMore: () => void;
   onWatched: (videoId: string) => void;
   onLiked: (videoId: string, liked: boolean) => void;
+  socialEnabled: boolean;
+  sharing: boolean;
+  onShare: (video: Video) => void;
 }) {
   const { t } = useI18n();
   // Stable refs for callbacks & videos to avoid stale closures
@@ -249,6 +255,7 @@ export default function ShortsPlayer({
   // Keyboard controls
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (sharing) return;
       if ((e.target as HTMLElement)?.tagName === "INPUT") return;
       switch (e.key) {
         case "Escape": onCloseRef.current(); break;
@@ -265,7 +272,7 @@ export default function ShortsPlayer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [navigate]);
+  }, [navigate, sharing]);
 
   const video = videos[vidIdx];
   const canPrev = vidIdx > 0;
@@ -288,13 +295,18 @@ export default function ShortsPlayer({
   return (
     <div className="sp-overlay">
       <button className="sp-close" onClick={onClose} aria-label="Zamknij"><X size={22} /></button>
-      <button
-        className={`sp-like${isLiked ? " sp-like--active" : ""}`}
-        onClick={toggleLike}
-        aria-label={isLiked ? t("unlike") : t("like")}
-      >
-        <Heart size={22} fill={isLiked ? "currentColor" : "none"} />
-      </button>
+      <div className="sp-actions">
+        <button
+          className={`sp-action sp-like${isLiked ? " sp-like--active" : ""}`}
+          onClick={toggleLike}
+          aria-label={isLiked ? t("unlike") : t("like")}
+        >
+          <Heart size={22} fill={isLiked ? "currentColor" : "none"} />
+        </button>
+        {socialEnabled && video && <button className="sp-action sp-share" onClick={() => onShare(video)} aria-label={t("socialShareInSocial")}>
+          <Share2 size={21} />
+        </button>}
+      </div>
 
       {/* Ring of 3 slides */}
       <div className="sp-track">

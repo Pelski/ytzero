@@ -23,7 +23,6 @@ import { api, type Video } from "../api";
 import { emit } from "../events";
 import { formatTimeAgo, useI18n } from "../i18n";
 import { img } from "../img";
-import Tooltip from "./Tooltip";
 import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
 import { Badge } from "./ui";
@@ -124,6 +123,8 @@ function VideoCard({
   selected = false,
   onSelectToggle,
   readOnly = false,
+  allowReject = true,
+  allowMarkWatched = true,
   entering = false,
   showFoundTime = false,
   processing = video.published_at == null || video.published_at === "",
@@ -145,6 +146,10 @@ function VideoCard({
   onSelectToggle?: (videoId: string) => void;
   /** Preview mode (e.g. cleanup's "what stays" column): no swipe, no hover actions, still clickable to open. */
   readOnly?: boolean;
+  /** Keep the archive/reject action and its left-swipe gesture available. */
+  allowReject?: boolean;
+  /** Keep watched/unwatched actions and the right-swipe gesture available. */
+  allowMarkWatched?: boolean;
   /** Briefly animate a card that has just moved into this grid. */
   entering?: boolean;
   /** Main-feed arrival view: show both YouTube publication and first-seen times. */
@@ -240,22 +245,23 @@ function VideoCard({
   const bind = useDrag(
     ({ active, movement: [mx], tap, cancel, last }) => {
       if (tap || video.status === "archived") return;
+      const allowedMovement = (mx < 0 && !allowReject) || (mx > 0 && !allowMarkWatched) ? 0 : mx;
 
       if (active) {
         setSwiping(true);
-        if (Math.abs(mx) > 8) blockClickAfterDragRef.current = true;
-        const clamped = Math.sign(mx) * Math.min(Math.abs(mx), SWIPE_MAX_DRAG);
+        if (Math.abs(allowedMovement) > 8) blockClickAfterDragRef.current = true;
+        const clamped = Math.sign(allowedMovement) * Math.min(Math.abs(allowedMovement), SWIPE_MAX_DRAG);
         setSwipeX(clamped);
         // trigger early when well past threshold
-        if (Math.abs(mx) > SWIPE_THRESHOLD * 1.8) {
+        if (Math.abs(allowedMovement) > SWIPE_THRESHOLD * 1.8) {
           cancel();
-          commitSwipe(mx);
+          commitSwipe(allowedMovement);
         }
       }
 
       if (last) {
         setSwiping(false);
-        commitSwipe(mx);
+        commitSwipe(allowedMovement);
       }
     },
     {
@@ -263,13 +269,19 @@ function VideoCard({
       filterTaps: true,
       from: [0, 0],
       pointer: { capture: true },
-      enabled: !selectable && !readOnly,
+      enabled: !selectable && !readOnly && (allowReject || allowMarkWatched),
     }
   );
 
   const commitSwipe = (mx: number) => {
     if (Math.abs(mx) >= SWIPE_THRESHOLD) {
       const dir = mx < 0 ? "left" : "right";
+      if ((dir === "left" && !allowReject) || (dir === "right" && !allowMarkWatched)) {
+        setCommittedDir(null);
+        setCommittedFeedback(null);
+        setSwipeX(0);
+        return;
+      }
       const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
       const exitX = (dir === "left" ? -1 : 1) * (cardWidth + SWIPE_EXIT_GUTTER);
       setSwiping(false);
@@ -447,11 +459,11 @@ function VideoCard({
         }}
       >
         {video.members_only === 1 && (
-          <Tooltip text={t("membersOnly")} pos="right" delay={300} className={`members-only-marker${isLiked && video.is_short === 1 ? " members-only-marker--stacked" : ""}`}>
+          <span className={`members-only-marker${isLiked && video.is_short === 1 ? " members-only-marker--stacked" : ""}`}>
             <span className="members-only-marker__icon" aria-label={t("membersOnly")}>
               <Star size={15} fill="currentColor" />
             </span>
-          </Tooltip>
+          </span>
         )}
         <div
           className={`thumb-wrap${actionsOpen ? " controls-near" : ""}${processing ? " thumb-wrap--processing" : ""}`}
@@ -470,14 +482,13 @@ function VideoCard({
               {selected && <Check size={14} />}
             </button>
           )}
-          <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
-            <Link
-              to={videoHref}
-              className="thumb-link"
-              onClick={playFromLink}
-              onDragStart={(e) => e.preventDefault()}
-              aria-label={displayTitle}
-            >
+          <Link
+            to={videoHref}
+            className="thumb-link"
+            onClick={playFromLink}
+            onDragStart={(e) => e.preventDefault()}
+            aria-label={displayTitle}
+          >
               <span
                 className={`video-card-thumbnail-color${loadedThumbnailSrc === displayThumbnail ? " video-card-thumbnail-color--loaded" : ""}`}
                 style={thumbnailColorStyle(video.video_id)}
@@ -500,8 +511,7 @@ function VideoCard({
                   )}
                 </VideoThumbnail>
               </span>
-            </Link>
-          </Tooltip>
+          </Link>
           {processing && <span className="video-card-processing" role="status" aria-label={t("processing")}><span className="video-card-processing__spinner" /></span>}
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
@@ -509,12 +519,7 @@ function VideoCard({
           {(hasDeArrowBranding || downloadStatus === "done") && (
             <div className="thumb-card-status-badges">
               {hasDeArrowBranding && (
-                <Tooltip
-                  text={showOriginalBranding ? t("showDeArrowVersion") : t("showOriginalVersion")}
-                  pos="top"
-                  className="dearrow-preview-toggle-wrap"
-                  portal
-                >
+                <span className="dearrow-preview-toggle-wrap">
                   <button
                     type="button"
                     className={`dearrow-preview-toggle${showOriginalBranding ? " active" : ""}`}
@@ -528,10 +533,10 @@ function VideoCard({
                   >
                     <ScanEye aria-hidden="true" />
                   </button>
-                </Tooltip>
+                </span>
               )}
               {downloadStatus === "done" && (
-                <span className="thumb-dl-badge" title={t("downloaded")}><ArrowDownToLine size={11} /></span>
+                <span className="thumb-dl-badge" role="img" aria-label={t("downloaded")}><ArrowDownToLine size={11} aria-hidden="true" /></span>
               )}
             </div>
           )}
@@ -548,7 +553,7 @@ function VideoCard({
           )}
           {video.is_private !== 1 && video.is_short === 1 && video.live_status === "none" && <span className="short-badge">{t("shortBadge")}</span>}
           {(downloadStatus === "downloading" || downloadStatus === "queued") && (
-            <div className="dl-progress-top" title={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}>
+            <div className="dl-progress-top" role="status" aria-label={downloadStatus === "queued" ? t("downloadQueued") : t("downloading")}>
               <div
                 className={`dl-progress-top-fill${downloadStatus === "queued" ? " queued" : ""}`}
                 style={downloadStatus === "downloading"
@@ -585,59 +590,43 @@ function VideoCard({
               />
               <div className="thumb-actions-row secondary">
                 {video.is_private !== 1 && canDownloadLocally && video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading") && (
-                  <Tooltip text={t("cancelDownload")}>
-                    <button className="action-btn" onClick={cancelLocalDownload}>
+                  <button className="action-btn" aria-label={t("cancelDownload")} onClick={cancelLocalDownload}>
                       <X />
-                    </button>
-                  </Tooltip>
+                  </button>
                 )}
                 {video.is_private !== 1 && canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
-                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")}>
-                    <button className="action-btn" onClick={requestLocalDownload}>
+                  <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")} onClick={requestLocalDownload}>
                       <ArrowDownToLine />
-                    </button>
-                  </Tooltip>
+                  </button>
                 )}
-                {video.status !== "archived" && (
-                  <Tooltip text={t("reject")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
+                {allowReject && video.status !== "archived" && (
+                  <button className="action-btn" aria-label={t("reject")} onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
                       <Archive />
-                    </button>
-                  </Tooltip>
+                  </button>
                 )}
-                {watched ? (
-                  <Tooltip text={t("markUnwatched")}>
-                    <button className="action-btn" onClick={(e) => act(e, markUnwatched, "unwatched")}>
+                {allowMarkWatched && watched ? (
+                  <button className="action-btn" aria-label={t("markUnwatched")} onClick={(e) => act(e, markUnwatched, "unwatched")}>
                       <EyeOff />
-                    </button>
-                  </Tooltip>
-                ) : video.status !== "archived" ? (
-                  <Tooltip text={t("markWatched")}>
-                    <button className="action-btn" onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
+                  </button>
+                ) : allowMarkWatched && video.status !== "archived" ? (
+                  <button className="action-btn" aria-label={t("markWatched")} onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
                       <Eye />
-                    </button>
-                  </Tooltip>
+                  </button>
                 ) : null}
                 {showRestore && (
-                  <Tooltip text={t("restore")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => api.restore(video.video_id), "restored")}>
+                  <button className="action-btn" aria-label={t("restore")} onClick={(e) => act(e, () => api.restore(video.video_id), "restored")}>
                       <Undo2 />
-                    </button>
-                  </Tooltip>
+                  </button>
                 )}
                 {onRemoveFromPlaylist && (
-                  <Tooltip text={t("removeFromPlaylist")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => onRemoveFromPlaylist(video.video_id))}>
+                  <button className="action-btn" aria-label={t("removeFromPlaylist")} onClick={(e) => act(e, () => onRemoveFromPlaylist(video.video_id))}>
                       <Trash2 />
-                    </button>
-                  </Tooltip>
+                  </button>
                 )}
                 {onRemoveFromHistory && video.history_id != null && (
-                  <Tooltip text={t("removeFromHistory")}>
-                    <button className="action-btn" onClick={(e) => act(e, () => onRemoveFromHistory(video.history_id!), "removed")}>
+                  <button className="action-btn" aria-label={t("removeFromHistory")} onClick={(e) => act(e, () => onRemoveFromHistory(video.history_id!), "removed")}>
                       <Trash2 />
-                    </button>
-                  </Tooltip>
+                  </button>
                 )}
               </div>
             </div>
@@ -647,9 +636,7 @@ function VideoCard({
 
         {searchResultLayout ? (
           <div className="card-body">
-            <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
-              <Link to={videoHref} className="v-title" onClick={playFromLink}>{displayTitle}</Link>
-            </Tooltip>
+            <Link to={videoHref} className="v-title" onClick={playFromLink}>{displayTitle}</Link>
             {(video.views != null || publishedTime) && (
               <div className="v-search-meta">
                 {video.views != null && `${video.views.toLocaleString(locale)} ${t("views")}`}
@@ -684,11 +671,9 @@ function VideoCard({
               </Link>
             )}
             <div className="card-info">
-              <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
-                <Link to={videoHref} className="v-title" onClick={playFromLink}>
-                  {displayTitle}
-                </Link>
-              </Tooltip>
+              <Link to={videoHref} className="v-title" onClick={playFromLink}>
+                {displayTitle}
+              </Link>
               <div className="v-channel-meta">
                 <Link to={`/channel/${video.channel_id}`} className={`v-channel${publishedTime ? "" : " no-date"}`}>
                   {video.channel_title}
@@ -697,19 +682,15 @@ function VideoCard({
                 {showFoundTime && foundTime && (
                   <span className="v-time v-time--arrival">
                     {publishedTime && (
-                      <Tooltip text={t("uploadedTime", { time: publishedTime })} pos="top">
-                        <span className="v-time-item" aria-label={t("uploadedTime", { time: publishedTime })}>
-                          <Upload size={13} aria-hidden="true" />
-                          <span>{publishedTime}</span>
-                        </span>
-                      </Tooltip>
-                    )}
-                    <Tooltip text={t("foundTime", { time: foundTime })} pos="top">
-                      <span className="v-time-item" aria-label={t("foundTime", { time: foundTime })}>
-                        <Eye size={13} aria-hidden="true" />
-                        <span>{foundTime}</span>
+                      <span className="v-time-item" aria-label={t("uploadedTime", { time: publishedTime })}>
+                        <Upload size={13} aria-hidden="true" />
+                        <span>{publishedTime}</span>
                       </span>
-                    </Tooltip>
+                    )}
+                    <span className="v-time-item" aria-label={t("foundTime", { time: foundTime })}>
+                      <Eye size={13} aria-hidden="true" />
+                      <span>{foundTime}</span>
+                    </span>
                   </span>
                 )}
               </div>

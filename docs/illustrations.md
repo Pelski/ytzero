@@ -38,6 +38,7 @@ stays deliberately quiet.
 | `/subscriptions` (unfiltered) | `noSubscriptions` | Primary destination |
 | `/recommendations` (no picks) | `noDiscovery` | Primary destination |
 | `/insights` (no data, no error) | `noInsights` | Primary destination |
+| `/social` | `socialEmpty` | Primary destination, no shared conversations yet |
 
 ### Deliberately **not** illustrated
 

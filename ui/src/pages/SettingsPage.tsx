@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, Wrench, X, Zap } from "lucide-react";
+import { AlertTriangle, ArchiveRestore, ArrowRight, Camera, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, KeyRound, ListMinus, LoaderCircle, ListMusic, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildConfig, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import { ProfileAvatar } from "../components/ProfileMenu";
 import AuthSettings from "../components/AuthSettings";
@@ -359,11 +359,12 @@ function RuleRow({ rule, tags, onSave, onRemove }: { rule: Rule; tags: Tag[]; on
 }
 
 /** Chip multiselect for plugin settings storing a comma-separated value list. */
-function PluginMultiselect({ value, options, searchPlaceholder, onChange }: {
+function PluginMultiselect({ value, options, searchPlaceholder, onChange, disabled = false }: {
   value: string;
   options: { value: string; label: string }[];
   searchPlaceholder: string;
   onChange: (next: string) => void;
+  disabled?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const selected = useMemo(
@@ -386,6 +387,7 @@ function PluginMultiselect({ value, options, searchPlaceholder, onChange }: {
         className="plugin-text-input"
         placeholder={searchPlaceholder}
         value={query}
+        disabled={disabled}
         onChange={(e) => setQuery(e.target.value)}
       />
       <div className="plugin-multiselect-chips">
@@ -394,6 +396,7 @@ function PluginMultiselect({ value, options, searchPlaceholder, onChange }: {
             key={option.value}
             type="button"
             active={selected.has(option.value)}
+            disabled={disabled}
             className={`plugin-term-chip${selected.has(option.value) ? " selected" : ""}`}
             onClick={(e) => { e.preventDefault(); toggle(option.value); }}
           >
@@ -3244,9 +3247,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
           <SidebarNavEditor
             value={navConfig}
             onChange={persistNavConfig}
-            excludedKeys={plugins.some((plugin) => plugin.id === "discovery" && !plugin.enabled)
-              ? new Set(["/recommendations"])
-              : undefined}
+            excludedKeys={new Set(plugins.filter((plugin) => !plugin.enabled).map((plugin) => plugin.route))}
           />
           </SettingsSection>
           }
@@ -3316,7 +3317,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 <div className="plugin-modal" role="dialog" aria-modal="true" aria-labelledby="plugin-settings-title" onMouseDown={(e) => e.stopPropagation()}>
                   <div className="plugin-modal-hero">
                     <div className="plugin-modal-icon" aria-hidden="true">
-                      {plugin.icon === "Sparkles" ? <Sparkles /> : plugin.icon === "Download" ? <Download /> : <Plug />}
+                      {plugin.icon === "Sparkles" ? <Sparkles /> : plugin.icon === "Download" ? <Download /> : plugin.icon === "UsersRound" ? <UsersRound /> : <Plug />}
                     </div>
                     <div className="plugin-modal-identity">
                       <div className="plugin-modal-eyebrow">{t("pluginDetailsLabel")}</div>
@@ -3345,6 +3346,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                       <span>{t("pluginConfigurationTitle")}</span>
                       <span>{config.definitions.length}</span>
                     </div>
+                    {plugin.id === "social" && <Alert variant="info" title={t("socialSettingsHowTitle")}>{t("socialSettingsHowHint")}</Alert>}
                     {sections.map((section) => (
                       <section className="plugin-config-section" key={section.id}>
                         <div className="plugin-config-section-head">
@@ -3361,18 +3363,20 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                                   <span className="switch-sub">{def.description}</span>
                                 </div>
                                 {def.type === "toggle" ? (
-                                  <Switch checked={Number(value) === 1} onCheckedChange={(next) => updatePluginSetting(plugin.id, def.key, next ? 1 : 0)} />
+                                  <Switch disabled={Boolean(def.adminOnly && !isPrimary)} checked={Number(value) === 1} onCheckedChange={(next) => updatePluginSetting(plugin.id, def.key, next ? 1 : 0)} />
                                 ) : def.type === "multiselect" ? (
                                   <PluginMultiselect
                                     value={String(value)}
                                     options={def.options ?? []}
                                     searchPlaceholder={t("searchLanguagePlaceholder")}
+                                    disabled={Boolean(def.adminOnly && !isPrimary)}
                                     onChange={(next) => updatePluginSetting(plugin.id, def.key, next)}
                                   />
                                 ) : def.type === "text" ? (
                                   <Input
                                     type="text"
                                     className="plugin-text-input"
+                                    disabled={Boolean(def.adminOnly && !isPrimary)}
                                     defaultValue={String(value)}
                                     // Commit on blur/Enter so typing doesn't fire a request per keystroke.
                                     onBlur={(e) => {
@@ -3388,12 +3392,13 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                                     label={def.label}
                                     value={String(value)}
                                     options={def.options?.map((option) => ({ value: option.value, label: option.label })) ?? []}
+                                    disabled={Boolean(def.adminOnly && !isPrimary)}
                                     onChange={(next) => updatePluginSetting(plugin.id, def.key, next)}
                                   />
                                 ) : (
                                   <div className="plugin-slider-control">
-                                    <Slider min={def.min ?? 0} max={def.max ?? 100} step={def.step} value={Number(value)} onChange={(next) => updatePluginSetting(plugin.id, def.key, next)} />
-                                    <Input type="number" min={def.min} max={def.max} step={def.step} value={Number(value)} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
+                                    <Slider disabled={Boolean(def.adminOnly && !isPrimary)} min={def.min ?? 0} max={def.max ?? 100} step={def.step} value={Number(value)} onChange={(next) => updatePluginSetting(plugin.id, def.key, next)} />
+                                    <Input disabled={Boolean(def.adminOnly && !isPrimary)} type="number" min={def.min} max={def.max} step={def.step} value={Number(value)} onChange={(e) => updatePluginSetting(plugin.id, def.key, Number(e.target.value))} />
                                   </div>
                                 )}
                               </div>
@@ -3453,9 +3458,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                   <div className="plugin-modal-footer">
                     <div>
                       <strong>{t("pluginResetTitle")}</strong>
-                      <span>{t("pluginResetHint")}</span>
+                      <span>{t(plugin.id === "social" ? "socialResetHint" : "pluginResetHint")}</span>
                     </div>
-                    <Popconfirm message={t("pluginResetConfirm")} onConfirm={() => resetPlugin(plugin.id)}>
+                    <Popconfirm message={t(plugin.id === "social" ? "socialResetConfirm" : "pluginResetConfirm")} onConfirm={() => resetPlugin(plugin.id)}>
                       <Button variant="danger" className="plugin-reset-btn" disabled={resettingPluginId === plugin.id}>
                         {resettingPluginId === plugin.id ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}
                         {t("pluginResetAction")}

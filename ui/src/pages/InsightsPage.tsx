@@ -34,7 +34,7 @@ function TimeAxis({ max, locale }: { max: number; locale: string }) {
 
 function ProfileAvatar({ profile, small = false }: { profile: InsightProfileRef; small?: boolean }) {
   return profile.avatar ? (
-    <img className={`insights-avatar${small ? " is-small" : ""}`} src={profile.avatar} alt="" />
+    <img className={`insights-avatar${small ? " is-small" : ""}`} src={profile.avatar} alt="" decoding="async" />
   ) : (
     <span className={`insights-avatar insights-avatar-fallback${small ? " is-small" : ""}`} style={{ background: profile.avatar_color }}>
       {profile.name.slice(0, 1).toUpperCase()}

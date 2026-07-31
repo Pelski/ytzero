@@ -4,7 +4,7 @@ import { cx } from "./utils";
 import { isInPopoverBranch, PopoverBranchContext } from "./PopoverTree";
 import "./FloatingPopover.css";
 
-export function FloatingPopover({ trigger, children, open, onOpenChange, align = "start", className, gap = 8 }: { trigger: ReactElement; children: ReactNode; open: boolean; onOpenChange: (open: boolean) => void; align?: "start" | "center" | "end"; className?: string; gap?: number }) {
+export function FloatingPopover({ trigger, children, open, onOpenChange, align = "start", className, triggerClassName, gap = 8, toggleOnTriggerClick = true }: { trigger: ReactElement; children: ReactNode; open: boolean; onOpenChange: (open: boolean) => void; align?: "start" | "center" | "end"; className?: string; triggerClassName?: string; gap?: number; /** Inputs can control visibility from their value without clicks toggling the surface. */ toggleOnTriggerClick?: boolean }) {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const parentBranch = useContext(PopoverBranchContext);
@@ -29,6 +29,12 @@ export function FloatingPopover({ trigger, children, open, onOpenChange, align =
   };
 
   useLayoutEffect(position, [open, present, align, gap]);
+  useEffect(() => {
+    if (!open || !contentRef.current || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(position);
+    observer.observe(contentRef.current);
+    return () => observer.disconnect();
+  }, [open]);
   useEffect(() => {
     if (open) {
       setPresent(true);
@@ -55,7 +61,7 @@ export function FloatingPopover({ trigger, children, open, onOpenChange, align =
 
   const triggerElement = isValidElement(trigger) ? cloneElement(trigger as ReactElement<Record<string, unknown>>, { "aria-expanded": open }) : createElement("span", null, trigger);
   return <PopoverBranchContext.Provider value={branch}>
-    <span className="ui-floating-popover__trigger" ref={triggerRef} data-popover-branch={branch.join(" ")} onClick={() => onOpenChange(!open)}>{triggerElement}</span>
+    <span className={cx("ui-floating-popover__trigger", triggerClassName)} ref={triggerRef} data-popover-branch={branch.join(" ")} onClick={() => { if (toggleOnTriggerClick) onOpenChange(!open); }}>{triggerElement}</span>
     {present && createPortal(<div ref={contentRef} data-popover-branch={branch.join(" ")} className={cx("ui-floating-popover__content", className)} style={style} data-state={closing ? "closed" : "open"} onMouseDown={(event) => event.stopPropagation()}>{children}</div>, document.body)}
   </PopoverBranchContext.Provider>;
 }

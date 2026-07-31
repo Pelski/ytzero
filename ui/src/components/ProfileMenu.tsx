@@ -22,7 +22,7 @@ export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "
       className="profile-avatar"
       style={{ width: size, height: size, background: profile.avatar ? undefined : profile.avatar_color, fontSize: Math.round(size * 0.44) }}
     >
-      {profile.avatar ? <img src={profile.avatar} alt="" /> : initial}
+      {profile.avatar ? <img src={profile.avatar} alt="" decoding="async" /> : initial}
     </span>
   );
 }

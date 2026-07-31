@@ -1,0 +1,9 @@
+.social-share-dialog { width: min(540px, calc(100vw - 24px)); }
+.social-share-dialog__author { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 13.5px; font-weight: 650; }
+.social-share-dialog__video { padding: 0 10px; border: 1px solid var(--surface-3); border-radius: 10px; background: var(--bg); }
+.social-share-dialog__video .ui-list-row { padding-block: 9px; }
+.social-share-dialog__video .sidebar-sub-thumb { width: 86px; height: auto; aspect-ratio: 16 / 9; opacity: 1; }
+
+@media (max-width: 480px) {
+  .social-share-dialog__video .sidebar-sub-thumb { width: 72px; }
+}

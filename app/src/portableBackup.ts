@@ -12,6 +12,8 @@ import { DEFAULT_TIME_ZONE, isValidTimeZone } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { parseManualRefreshSchedule } from "./channelRefreshSchedule";
 import { listDownloadRules } from "./downloadRules";
+import { normalizeSocialReaction } from "./social";
+import { optimizeProfileAvatar, optimizedProfileAvatarToken, removeStoredProfileAvatar } from "./profileAvatars";
 
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -59,6 +61,7 @@ export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "profile.history", schemaVersion: 1, scope: "profile", sensitivity: "personal", dependencies: ["profiles.index", "library.referenced-videos"], category: "personal", path: profilePath("history.jsonl") },
   { id: "profile.discovery-feedback", schemaVersion: 1, scope: "profile", sensitivity: "personal", dependencies: ["profiles.index", "library.referenced-videos"], category: "discovery", optional: true, path: profilePath("analytics/discovery-feedback.jsonl") },
   { id: "profile.analytics", schemaVersion: 1, scope: "profile", sensitivity: "personal", dependencies: ["profiles.index", "library.referenced-videos"], category: "analytics", optional: true, path: profilePath("analytics/events.jsonl") },
+  { id: "plugin.social.activity", schemaVersion: 1, scope: "instance", sensitivity: "personal", dependencies: ["profiles.index", "library.referenced-videos"], category: "social", optional: true, path: () => "plugins/social/activity.json" },
   { id: "library.referenced-videos", schemaVersion: 1, scope: "instance", sensitivity: "personal", dependencies: ["instance.channels"], category: "dependency", path: () => "library/referenced-videos.jsonl" },
 ] as const;
 
@@ -136,6 +139,7 @@ async function referencedVideoIds(userIds: number[], selected: Set<string>): Pro
     if (selected.has("profile.video-state")) await add("SELECT video_id FROM user_videos WHERE user_id=?", uid);
     if (selected.has("profile.history")) await add("SELECT video_id FROM history WHERE user_id=?", uid);
     if (selected.has("profile.discovery-feedback")) await add("SELECT video_id FROM recommendation_feedback WHERE user_id=?", uid);
+    if (selected.has("plugin.social.activity")) await add("SELECT video_id FROM social_posts WHERE author_user_id=?", uid);
     if (selected.has("profile.analytics")) {
       for (const table of ["watch_time_log", "scheduling_event_log", "sponsorblock_skip_log"]) await add(`SELECT video_id FROM ${table} WHERE user_id=?`, uid);
     }
@@ -143,7 +147,7 @@ async function referencedVideoIds(userIds: number[], selected: Set<string>): Pro
   return ids;
 }
 
-async function sectionData(id: string, profile: any | null, referenced: Set<string>): Promise<unknown | unknown[]> {
+async function sectionData(id: string, profile: any | null, referenced: Set<string>, exportProfiles: any[] = []): Promise<unknown | unknown[]> {
   const uid = profile?.id;
   switch (id) {
     case "instance.settings": {
@@ -194,6 +198,24 @@ async function sectionData(id: string, profile: any | null, referenced: Set<stri
       ...(await database.prepare("SELECT tag_name, tag_color, day, hour, seconds FROM watch_tag_time_log WHERE user_id=?").all(uid) as any[]).map((r) => ({ type: "tag-time", ...r })),
       ...(await database.prepare("SELECT event_id, video_id, segment_uuid, category, skipped_seconds, day, created_at FROM sponsorblock_skip_log WHERE user_id=?").all(uid) as any[]).map((r) => ({ type: "sponsorblock", ...r })),
     ];
+    case "plugin.social.activity": {
+      const userIds = exportProfiles.map((item) => item.id as number);
+      if (!userIds.length) return { posts: [], comments: [], reactions: [], commentLikes: [], postMentions: [], commentMentions: [] };
+      const userPlaceholders = userIds.map(() => "?").join(",");
+      const posts = await database.prepare(`SELECT sp.id,sp.video_id,sp.body,sp.created_at,sp.updated_at,u.portable_uuid AS authorProfileId FROM social_posts sp JOIN users u ON u.id=sp.author_user_id WHERE sp.author_user_id IN (${userPlaceholders})`).all(...userIds) as any[];
+      const postIds = posts.map((item) => item.id as string);
+      if (!postIds.length) return { posts, comments: [], reactions: [], commentLikes: [], postMentions: [], commentMentions: [] };
+      const postPlaceholders = postIds.map(() => "?").join(",");
+      const comments = await database.prepare(`SELECT sc.id,sc.post_id,sc.body,sc.created_at,sc.updated_at,u.portable_uuid AS authorProfileId FROM social_comments sc JOIN users u ON u.id=sc.author_user_id WHERE sc.post_id IN (${postPlaceholders}) AND sc.author_user_id IN (${userPlaceholders})`).all(...postIds, ...userIds) as any[];
+      const reactions = await database.prepare(`SELECT sr.post_id,sr.reaction_key,sr.created_at,u.portable_uuid AS profileId FROM social_reactions sr JOIN users u ON u.id=sr.user_id WHERE sr.post_id IN (${postPlaceholders}) AND sr.user_id IN (${userPlaceholders})`).all(...postIds, ...userIds) as any[];
+      const postMentions = await database.prepare(`SELECT sm.post_id,sm.token,u.portable_uuid AS mentionedProfileId FROM social_post_mentions sm JOIN users u ON u.id=sm.mentioned_user_id WHERE sm.post_id IN (${postPlaceholders}) AND sm.mentioned_user_id IN (${userPlaceholders})`).all(...postIds, ...userIds) as any[];
+      const commentIds = comments.map((item) => item.id as string);
+      if (!commentIds.length) return { posts, comments, reactions, commentLikes: [], postMentions, commentMentions: [] };
+      const commentPlaceholders = commentIds.map(() => "?").join(",");
+      const commentLikes = await database.prepare(`SELECT sl.comment_id,sl.created_at,u.portable_uuid AS profileId FROM social_comment_likes sl JOIN users u ON u.id=sl.user_id WHERE sl.comment_id IN (${commentPlaceholders}) AND sl.user_id IN (${userPlaceholders})`).all(...commentIds, ...userIds) as any[];
+      const commentMentions = await database.prepare(`SELECT sm.comment_id,sm.token,u.portable_uuid AS mentionedProfileId FROM social_comment_mentions sm JOIN users u ON u.id=sm.mentioned_user_id WHERE sm.comment_id IN (${commentPlaceholders}) AND sm.mentioned_user_id IN (${userPlaceholders})`).all(...commentIds, ...userIds) as any[];
+      return { posts, comments, reactions, commentLikes, postMentions, commentMentions };
+    }
     default: throw new Error(`unsupported section ${id}`);
   }
 }
@@ -221,7 +243,7 @@ export async function createPortableBackup(input: { preset?: string; profiles?: 
     if (definition.id === "profile.avatar") continue;
     const targets = definition.scope === "profile" ? profiles : [null];
     for (const profile of targets) {
-      let value = await sectionData(definition.id, profile, referenced);
+      let value = await sectionData(definition.id, profile, referenced, profiles);
       if (definition.id === "profiles.index") value = profiles.map((row) => ({ id: row.portable_uuid, name: row.name, color: row.avatar_color, order: row.sort_order, isChild: Boolean(row.is_child), avatar: row.avatar ? `assets/avatars/${row.portable_uuid}.${basename(row.avatar.split(":")[0]).split(".").pop()}` : null }));
       const values = Array.isArray(value) ? value : null;
       const bytes = definition.path(profile?.portable_uuid).endsWith(".jsonl") ? jsonl(values ?? [value]) : json(value);
@@ -371,7 +393,7 @@ async function saveMapping(sourceInstallationId: string, type: string, uuid: str
 
 export async function commitPortableRestore(adminId: number, id: string, revision: number) {
   const state = loadSession(id, adminId); if (!state.plan || state.planRevision !== revision) throw new Error("restore plan changed; review it again"); const releaseMaintenance = await acquireMaintenance("portable restore");
-  const safetyDir = resolve(dirname(DB_PATH), "backups"); mkdirSync(safetyDir, { recursive: true }); const stamp = new Date().toISOString().replace(/[:.]/g, "-"); const snapshot = database.engine === "sqlite" ? resolve(safetyDir, `pre-restore-${stamp}.db`) : "postgresql-transaction"; const avatarStages: { from: string; to: string }[] = [];
+  const safetyDir = resolve(dirname(DB_PATH), "backups"); mkdirSync(safetyDir, { recursive: true }); const stamp = new Date().toISOString().replace(/[:.]/g, "-"); const snapshot = database.engine === "sqlite" ? resolve(safetyDir, `pre-restore-${stamp}.db`) : "postgresql-transaction"; const avatarStages: { from: string; to: string; previous: string; nextFileName: string }[] = [];
   try {
     if (database.engine === "sqlite") { await database.exec("PRAGMA wal_checkpoint(FULL)"); copyFileSync(DB_PATH, snapshot); }
     const { entries, data } = decodedSections(state), selected = new Set(state.plan.sections), counts = { created: 0, updated: 0, skipped: 0, warnings: [...state.warnings] as string[] }, profileIds = new Map<string, number>();
@@ -413,7 +435,47 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
         if (selected.has("profile.history")) { if (state.plan!.strategy === "replace") await database.prepare("DELETE FROM history WHERE user_id=?").run(uid); for (const row of get("profile.history")??[]) if (await database.prepare("SELECT 1 FROM videos WHERE video_id=?").get(row.video_id) && !await database.prepare("SELECT 1 FROM history WHERE user_id=? AND video_id=? AND watched_at=?").get(uid,row.video_id,row.watched_at)) await database.prepare("INSERT INTO history(user_id,video_id,watched_at) VALUES(?,?,?)").run(uid,row.video_id,row.watched_at); }
         if (selected.has("profile.discovery-feedback")) { if (state.plan!.strategy === "replace") await database.prepare("DELETE FROM recommendation_feedback WHERE user_id=?").run(uid); for (const row of get("profile.discovery-feedback")??[]) await database.prepare("INSERT INTO recommendation_feedback(user_id,video_id,action,created_at) VALUES(?,?,?,?) ON CONFLICT(user_id,video_id) DO UPDATE SET action=excluded.action,created_at=excluded.created_at").run(uid,row.video_id,row.action,row.created_at); }
         if (selected.has("profile.analytics")) { if (state.plan!.strategy === "replace") for (const table of ["watch_time_log","scheduling_event_log","watch_tag_time_log","sponsorblock_skip_log"]) await database.prepare(`DELETE FROM ${table} WHERE user_id=?`).run(uid); for (const row of get("profile.analytics")??[]) { if(row.type==="watch-time") await database.prepare("INSERT INTO watch_time_log(user_id,video_id,day,hour,seconds) VALUES(?,?,?,?,?) ON CONFLICT(user_id,video_id,day,hour) DO UPDATE SET seconds=max(seconds,excluded.seconds)").run(uid,row.video_id,row.day,row.hour,row.seconds); else if(row.type==="scheduling" && !await database.prepare("SELECT 1 FROM scheduling_event_log WHERE user_id=? AND video_id=? AND created_at=?").get(uid,row.video_id,row.created_at)) await database.prepare("INSERT INTO scheduling_event_log(user_id,video_id,channel_id,bucket,source,tags_json,local_day,local_hour,created_at) VALUES(?,?,?,?,?,?,?,?,?)").run(uid,row.video_id,row.channel_id,row.bucket,row.source,row.tags_json,row.local_day,row.local_hour,row.created_at); else if(row.type==="tag-time") { const tagId=(await database.prepare("SELECT id FROM tags WHERE user_id=? AND name=? COLLATE NOCASE").get(uid,row.tag_name) as any)?.id??stableNegativeId(`${state.manifest.sourceInstallationId}:${row.tag_name}`); await database.prepare("INSERT INTO watch_tag_time_log(user_id,tag_id,tag_name,tag_color,day,hour,seconds) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id,tag_id,day,hour) DO UPDATE SET seconds=max(seconds,excluded.seconds)").run(uid,tagId,row.tag_name,row.tag_color,row.day,row.hour,row.seconds); } else if(row.type==="sponsorblock") await database.prepare("INSERT OR IGNORE INTO sponsorblock_skip_log(event_id,user_id,video_id,segment_uuid,category,skipped_seconds,day,created_at) VALUES(?,?,?,?,?,?,?,?)").run(row.event_id,uid,row.video_id,row.segment_uuid,row.category,row.skipped_seconds,row.day,row.created_at); } }
-        const sourceProfile = (data.get("profiles.index:")??[]).find((p:any)=>p.id===profile.id); if (selected.has("profile.avatar") && sourceProfile?.avatar && entries.has(sourceProfile.avatar)) { const ext=sourceProfile.avatar.split(".").pop(); const stage=resolve(sessionPaths(id).dir,`avatar-${uid}.${ext}.stage`), target=resolve(AVATAR_DIR,`${uid}.${ext}`); writeFileSync(stage,entries.get(sourceProfile.avatar)!); await database.prepare("UPDATE users SET avatar=? WHERE id=?").run(`${uid}.${ext}:${Date.now()}`,uid); avatarStages.push({from:stage,to:target}); }
+        const sourceProfile = (data.get("profiles.index:")??[]).find((p:any)=>p.id===profile.id); if (selected.has("profile.avatar") && sourceProfile?.avatar && entries.has(sourceProfile.avatar)) { const nextFileName=`${uid}.webp`, stage=resolve(sessionPaths(id).dir,`avatar-${uid}.webp.stage`), target=resolve(AVATAR_DIR,nextFileName), previous=((await database.prepare("SELECT avatar FROM users WHERE id=?").get(uid) as { avatar: string } | null)?.avatar ?? ""); writeFileSync(stage,await optimizeProfileAvatar(entries.get(sourceProfile.avatar)!)); await database.prepare("UPDATE users SET avatar=? WHERE id=?").run(optimizedProfileAvatarToken(uid),uid); avatarStages.push({from:stage,to:target,previous,nextFileName}); }
+      }
+      if (selected.has("plugin.social.activity")) {
+        const doc = data.get("plugin.social.activity:") ?? {};
+        const mappedUserIds = [...profileIds.values()];
+        if (state.plan!.strategy === "replace" && mappedUserIds.length) {
+          const placeholders = mappedUserIds.map(() => "?").join(",");
+          await database.prepare(`DELETE FROM social_comment_likes WHERE user_id IN (${placeholders})`).run(...mappedUserIds);
+          await database.prepare(`DELETE FROM social_reactions WHERE user_id IN (${placeholders})`).run(...mappedUserIds);
+          await database.prepare(`DELETE FROM social_comments WHERE author_user_id IN (${placeholders})`).run(...mappedUserIds);
+          await database.prepare(`DELETE FROM social_posts WHERE author_user_id IN (${placeholders})`).run(...mappedUserIds);
+        }
+        const validId = (value: unknown) => typeof value === "string" && UUID.test(value);
+        for (const row of doc.posts ?? []) {
+          const authorId = profileIds.get(row.authorProfileId);
+          if (!authorId || !validId(row.id) || typeof row.video_id !== "string" || !await database.prepare("SELECT 1 FROM videos WHERE video_id=?").get(row.video_id)) { counts.skipped++; continue; }
+          await database.prepare("INSERT OR IGNORE INTO social_posts(id,author_user_id,video_id,body,created_at,updated_at) VALUES(?,?,?,?,?,?)").run(row.id,authorId,row.video_id,String(row.body??"").slice(0,1000),row.created_at??new Date().toISOString(),row.updated_at??row.created_at??new Date().toISOString());
+        }
+        for (const row of doc.comments ?? []) {
+          const authorId = profileIds.get(row.authorProfileId);
+          if (!authorId || !validId(row.id) || !validId(row.post_id) || !await database.prepare("SELECT 1 FROM social_posts WHERE id=?").get(row.post_id)) { counts.skipped++; continue; }
+          await database.prepare("INSERT OR IGNORE INTO social_comments(id,post_id,author_user_id,body,created_at,updated_at) VALUES(?,?,?,?,?,?)").run(row.id,row.post_id,authorId,String(row.body??"").slice(0,2000),row.created_at??new Date().toISOString(),row.updated_at??row.created_at??new Date().toISOString());
+        }
+        for (const row of doc.reactions ?? []) {
+          const userId = profileIds.get(row.profileId);
+          let reaction: string | null = null;
+          try { reaction = normalizeSocialReaction(row.reaction_key); } catch {}
+          if (userId && reaction && validId(row.post_id) && await database.prepare("SELECT 1 FROM social_posts WHERE id=?").get(row.post_id)) await database.prepare("INSERT OR IGNORE INTO social_reactions(post_id,user_id,reaction_key,created_at) VALUES(?,?,?,?)").run(row.post_id,userId,reaction,row.created_at??new Date().toISOString());
+        }
+        for (const row of doc.commentLikes ?? []) {
+          const userId = profileIds.get(row.profileId);
+          if (userId && validId(row.comment_id) && await database.prepare("SELECT 1 FROM social_comments WHERE id=?").get(row.comment_id)) await database.prepare("INSERT OR IGNORE INTO social_comment_likes(comment_id,user_id,created_at) VALUES(?,?,?)").run(row.comment_id,userId,row.created_at??new Date().toISOString());
+        }
+        for (const row of doc.postMentions ?? []) {
+          const mentionedId = profileIds.get(row.mentionedProfileId);
+          if (mentionedId && validId(row.post_id) && await database.prepare("SELECT 1 FROM social_posts WHERE id=?").get(row.post_id)) await database.prepare("INSERT OR IGNORE INTO social_post_mentions(post_id,mentioned_user_id,token) VALUES(?,?,?)").run(row.post_id,mentionedId,String(row.token??"").slice(0,81));
+        }
+        for (const row of doc.commentMentions ?? []) {
+          const mentionedId = profileIds.get(row.mentionedProfileId);
+          if (mentionedId && validId(row.comment_id) && await database.prepare("SELECT 1 FROM social_comments WHERE id=?").get(row.comment_id)) await database.prepare("INSERT OR IGNORE INTO social_comment_mentions(comment_id,mentioned_user_id,token) VALUES(?,?,?)").run(row.comment_id,mentionedId,String(row.token??"").slice(0,81));
+        }
       }
     }); await tx();
     await reloadSettingCache();
@@ -422,7 +484,7 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
       const now = new Date();
       for (const bucket of SCHEDULE_BUCKETS) await database.prepare("UPDATE user_videos SET show_from=? WHERE status='queued' AND bucket=?").run(computeShowFrom(bucket, now, timeZone), bucket);
     }
-    mkdirSync(AVATAR_DIR,{recursive:true}); for(const file of avatarStages) renameSync(file.from,file.to); rmSync(sessionPaths(id).dir,{recursive:true,force:true}); return { ok:true, snapshot, counts };
+    mkdirSync(AVATAR_DIR,{recursive:true}); for(const file of avatarStages) { renameSync(file.from,file.to); removeStoredProfileAvatar(file.previous,file.nextFileName,AVATAR_DIR); } rmSync(sessionPaths(id).dir,{recursive:true,force:true}); return { ok:true, snapshot, counts };
   } catch (error) {
     for (const file of avatarStages) try { rmSync(file.from, { force: true }); } catch {}
     // Plugin adapters can refresh the synchronous settings cache from inside

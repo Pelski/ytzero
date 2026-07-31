@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Heart, Play, Shuffle, Zap } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
-import { subscribe } from "../events";
+import { emitToast, subscribe } from "../events";
 import { api, type Tag, type Video } from "../api";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
@@ -11,6 +11,7 @@ import { Button, Chip, EmptyState } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import ShortsPlayer from "../components/ShortsPlayer";
 import { ShortsGridSkeleton } from "../components/LoadingState";
+import SocialShareDialog from "../components/social/SocialShareDialog";
 
 export default function ShortsPage() {
   const { t } = useI18n();
@@ -32,6 +33,8 @@ export default function ShortsPage() {
   const [playerIdx, setPlayerIdx] = useState<number | null>(null);
   const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [likedIds, setLikedIds] = useState<Map<string, boolean>>(new Map());
+  const [socialEnabled, setSocialEnabled] = useState(false);
+  const [socialShareVideo, setSocialShareVideo] = useState<Video | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const hasMoreRef = useRef(true);
   const loadingMoreRef = useRef(false);
@@ -67,6 +70,11 @@ export default function ShortsPage() {
 
   useEffect(loadTags, [loadTags]);
   useEffect(() => subscribe("tags-changed", loadTags), [loadTags]);
+  useEffect(() => {
+    const loadSocial = () => api.plugins().then(({ plugins }) => setSocialEnabled(Boolean(plugins.find((plugin) => plugin.id === "social")?.enabled))).catch(() => setSocialEnabled(false));
+    void loadSocial();
+    return subscribe("plugins-changed", loadSocial);
+  }, []);
 
   useEffect(() => {
     const el = loadMoreRef.current;
@@ -231,8 +239,18 @@ export default function ShortsPage() {
           onLoadMore={loadMore}
           onWatched={handleWatched}
           onLiked={handleLiked}
+          socialEnabled={socialEnabled}
+          sharing={Boolean(socialShareVideo)}
+          onShare={setSocialShareVideo}
         />
       )}
+
+      {socialShareVideo && <SocialShareDialog
+        open
+        video={socialShareVideo}
+        onOpenChange={(open) => { if (!open) setSocialShareVideo(null); }}
+        onResult={(success) => emitToast(t(success ? "socialShareSuccess" : "socialActionError"), success ? "success" : "danger")}
+      />}
 
       <div className="shorts-hero">
         <Button variant="primary" leadingIcon={<Play size={15} />} onClick={playFromStart} disabled={videos.length === 0}>{t("shortsPlayAll")}</Button>

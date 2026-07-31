@@ -342,6 +342,78 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at);
 
+-- ---------- Social plugin ----------
+-- Social content is shared between profiles in this installation. UUID text
+-- keys are stable portable identities; local profile ids remain internal.
+CREATE TABLE IF NOT EXISTS social_posts (
+  id             TEXT PRIMARY KEY,
+  author_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  video_id       TEXT NOT NULL REFERENCES videos(video_id) ON DELETE RESTRICT,
+  body           TEXT NOT NULL DEFAULT '',
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_social_posts_created ON social_posts(created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_social_posts_author ON social_posts(author_user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS social_comments (
+  id             TEXT PRIMARY KEY,
+  post_id        TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+  author_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  body           TEXT NOT NULL,
+  created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_social_comments_post_created ON social_comments(post_id, created_at ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_social_comments_author ON social_comments(author_user_id, created_at DESC);
+
+-- A profile may select multiple distinct reactions on one post, but each
+-- reaction key can occur only once for that profile/post pair.
+CREATE TABLE IF NOT EXISTS social_reactions (
+  post_id      TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reaction_key TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (post_id, user_id, reaction_key)
+);
+CREATE INDEX IF NOT EXISTS idx_social_reactions_post ON social_reactions(post_id, reaction_key);
+
+-- Bounded, profile-owned picker shortcuts. This remains independent from
+-- current post reactions so removing a reaction does not erase recent usage.
+CREATE TABLE IF NOT EXISTS social_recent_emojis (
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reaction_key TEXT NOT NULL,
+  used_at      INTEGER NOT NULL,
+  PRIMARY KEY (user_id, reaction_key)
+);
+CREATE INDEX IF NOT EXISTS idx_social_recent_emojis_user ON social_recent_emojis(user_id, used_at DESC);
+
+CREATE TABLE IF NOT EXISTS social_comment_likes (
+  comment_id TEXT NOT NULL REFERENCES social_comments(id) ON DELETE CASCADE,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (comment_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_social_comment_likes_comment ON social_comment_likes(comment_id);
+
+-- Mention relations preserve identity across profile renames. The raw token is
+-- retained so old text still renders exactly as authored.
+CREATE TABLE IF NOT EXISTS social_post_mentions (
+  post_id            TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+  mentioned_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token              TEXT NOT NULL,
+  PRIMARY KEY (post_id, mentioned_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_social_post_mentions_user ON social_post_mentions(mentioned_user_id, post_id);
+
+CREATE TABLE IF NOT EXISTS social_comment_mentions (
+  comment_id          TEXT NOT NULL REFERENCES social_comments(id) ON DELETE CASCADE,
+  mentioned_user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token               TEXT NOT NULL,
+  PRIMARY KEY (comment_id, mentioned_user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_social_comment_mentions_user ON social_comment_mentions(mentioned_user_id, comment_id);
+
 -- ---------- Watch-time log & child profiles ----------
 -- Seconds of actual playback for every profile, per video / local day / hour.
 -- Feeds the child-profile daily limits and the (future) stats pages: channel
@@ -989,6 +1061,66 @@ if (databaseConfig.engine === "postgres") {
   // Existing PostgreSQL installations predate delegated profile admins. This
   // authorization flag is intentionally migrated in place and is not portable.
   await database.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER NOT NULL DEFAULT 0");
+  // Social was added after the first PostgreSQL migration path shipped. Keep
+  // existing PostgreSQL installations additive and equivalent to the
+  // canonical SQLite bootstrap without requiring a destructive remigration.
+  await database.exec(`
+    CREATE TABLE IF NOT EXISTS social_posts (
+      id TEXT PRIMARY KEY,
+      author_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      video_id TEXT NOT NULL REFERENCES videos(video_id) ON DELETE RESTRICT,
+      body TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+      updated_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_posts_created ON social_posts(created_at DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_social_posts_author ON social_posts(author_user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS social_comments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+      author_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+      updated_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS')
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_comments_post ON social_comments(post_id, created_at, id);
+    CREATE INDEX IF NOT EXISTS idx_social_comments_author ON social_comments(author_user_id, created_at DESC);
+    CREATE TABLE IF NOT EXISTS social_reactions (
+      post_id TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reaction_key TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+      PRIMARY KEY (post_id, user_id, reaction_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_reactions_post ON social_reactions(post_id, reaction_key);
+    CREATE TABLE IF NOT EXISTS social_recent_emojis (
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      reaction_key TEXT NOT NULL,
+      used_at BIGINT NOT NULL,
+      PRIMARY KEY (user_id, reaction_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_recent_emojis_user ON social_recent_emojis(user_id, used_at DESC);
+    CREATE TABLE IF NOT EXISTS social_comment_likes (
+      comment_id TEXT NOT NULL REFERENCES social_comments(id) ON DELETE CASCADE,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'),
+      PRIMARY KEY (comment_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS social_post_mentions (
+      post_id TEXT NOT NULL REFERENCES social_posts(id) ON DELETE CASCADE,
+      mentioned_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL,
+      PRIMARY KEY (post_id, mentioned_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_post_mentions_user ON social_post_mentions(mentioned_user_id, post_id);
+    CREATE TABLE IF NOT EXISTS social_comment_mentions (
+      comment_id TEXT NOT NULL REFERENCES social_comments(id) ON DELETE CASCADE,
+      mentioned_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      token TEXT NOT NULL,
+      PRIMARY KEY (comment_id, mentioned_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_social_comment_mentions_user ON social_comment_mentions(mentioned_user_id, comment_id);
+  `);
   runtimeSettingsReady = true;
   await reloadSettingCache();
 } else {

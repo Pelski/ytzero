@@ -17,7 +17,8 @@ export type EmptyArtScene =
   | "playlistEmpty"
   | "noSubscriptions"
   | "noDiscovery"
-  | "noInsights";
+  | "noInsights"
+  | "socialEmpty";
 
 /** Badge glyphs, authored around the fixed badge centre (110, 58). */
 const GLYPH: Record<EmptyArtScene, string> = {
@@ -34,6 +35,7 @@ const GLYPH: Record<EmptyArtScene, string> = {
   noSubscriptions: "M110 56 a4.2 4.2 0 1 0 0-8.4 a4.2 4.2 0 0 0 0 8.4 M101.5 66.5 a8.5 8.5 0 0 1 17 0",
   noDiscovery: "M110 48.5 L112.9 55.1 L119.5 58 L112.9 60.9 L110 67.5 L107.1 60.9 L100.5 58 L107.1 55.1 Z",
   noInsights: "M103 64.5 V57 M110 64.5 V50 M117 64.5 V60",
+  socialEmpty: "M102 51.5 H118 V61 H111 L106 65 V61 H102 Z",
 };
 
 /** A video card drifting out of frame — the content that is no longer waiting. */
@@ -145,6 +147,15 @@ function Subject({ scene }: { scene: EmptyArtScene }) {
         <rect className="empty-art__base" x="101" y="94" width="18" height="38" rx="4" />
         <rect className="empty-art__base" x="130" y="116" width="18" height="16" rx="4" />
       </>;
+    case "socialEmpty":
+      return <>
+        <rect className="empty-art__base" x="52" y="96" width="116" height="38" rx="9" />
+        <rect className="empty-art__base" x="64" y="105" width="40" height="20" rx="5" opacity=".6" />
+        <path className="empty-art__line" d="M79 110 L89 115 L79 120 Z" />
+        <path className="empty-art__line" d="M116 108 H154 M116 119 H141" opacity=".65" />
+        <path className="empty-art__base" d="M121 83 H163 A7 7 0 0 1 170 90 V103 A7 7 0 0 1 163 110 H145 L136 117 V110 H121 A7 7 0 0 1 114 103 V90 A7 7 0 0 1 121 83 Z" />
+        <path className="empty-art__line" d="M126 94 H158 M126 101 H149" opacity=".65" />
+      </>;
   }
 }
 
@@ -218,6 +229,12 @@ function Atmosphere({ scene, cardId }: { scene: EmptyArtScene; cardId: string })
       return <>
         <Sparkle x={34} y={68} size={7} opacity={0.3} />
         <Sparkle x={188} y={72} size={6} opacity={0.22} />
+      </>;
+    case "socialEmpty":
+      return <>
+        <Card id={cardId} x={46} y={30} w={42} h={26} r={7} rotate={-10} opacity={0.3} play />
+        <Sparkle x={32} y={72} size={7} opacity={0.3} />
+        <Sparkle x={190} y={68} size={6} opacity={0.24} />
       </>;
   }
 }

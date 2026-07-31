@@ -103,6 +103,7 @@ profiles/<profile-uuid>/history.jsonl
 profiles/<profile-uuid>/analytics/*.jsonl
 plugins/<plugin-id>/global.json
 plugins/<plugin-id>/profiles/<profile-uuid>.json
+plugins/social/activity.json
 library/channels.jsonl
 library/referenced-videos.jsonl
 assets/avatars/<profile-uuid>.<ext>
@@ -193,6 +194,16 @@ below.
 - `plugins`: enabled state for known plugins.
 - `plugin_settings` and global `plugin_<id>_*` settings: only through each
   plugin's backup adapter and normal value validation.
+  Social's instance adapter schema v2 stores its feature toggles and child
+  access policy. The removed reaction allow-list is ignored when restoring v1;
+  chosen emoji belong to the Social activity section instead.
+  Social's profile adapter schema v3 also stores a bounded, ordered list of up
+  to 6 recently used emoji and the selected emoji skin tone. Both are portable
+  per-profile picker preferences, contain no post or profile identifiers, and
+  are validated on restore. The recent list replaces the target profile's
+  previous list; a v2 backup has no skin-tone field and therefore leaves the
+  target profile's current preference unchanged (new profiles default to the
+  neutral tone).
 - `users`: display name, color, avatar reference, order, and child/adult role.
   Exclude usernames, hashes, OIDC subjects, proxy mappings, and PIN hashes.
 - `user_channels`: subscriptions and portable per-channel playback/caption/
@@ -208,7 +219,11 @@ below.
   excluded keywords are configuration; rule previews and queue decisions are
   transient. Merge restore updates matching UUIDs idempotently within the
   mapped profile.
-- profile avatars after MIME, size, and image validation.
+- profile avatars after MIME, size, and image validation. Uploaded and restored
+  raster images are normalized to a metadata-free 256×256 WebP asset; this is
+  an implementation detail of the existing `profile.avatar` schema v1 section.
+  Older PNG/JPEG/WebP archives remain accepted and are normalized during
+  restore, while export continues to carry the current binary asset unchanged.
 - stable `portable_uuid` values on profiles, tags, and personal playlists are
   object identity metadata and travel only through their owning domain section.
 
@@ -217,6 +232,16 @@ below.
 - `user_videos`: queue/archive state, bucket, show time, progress, watched, and
   liked state.
 - `history`.
+- Social activity is portable personal state in the optional, versioned
+  `plugin.social.activity` domain section. It contains stable post and comment
+  UUIDs, shared video identifiers, plain-text bodies, arbitrary single-grapheme
+  emoji reactions, local comment likes, and resolved profile mentions. Actors and mentioned profiles
+  are referenced by portable profile UUID, never local integer IDs. Export is
+  limited to selected profiles and posts authored by them; restore is ordered
+  (posts, comments, reactions/likes, mentions), idempotent, and skips records
+  whose mapped profile or referenced video is unavailable. Merge preserves
+  existing activity, while replace removes Social activity owned by mapped
+  profiles before restoring it.
 - `recommendation_feedback` if Discovery preferences are selected.
 - `watch_time_log`, `scheduling_event_log`, `watch_tag_time_log`, and
   `sponsorblock_skip_log` if Insights/Pulse history is selected.
@@ -230,7 +255,7 @@ below.
   records described above
 - `discovery_recommendations`
 - derived Discovery `last_terms`
-- `update_check_state`, `notifications`, `bulk_undo`
+- `update_check_state`, `notifications` (including derived Social alerts), `bulk_undo`
 - adaptive feed scheduler attempt timestamps, detected cadence, and failure
   counters on `channels` (operator-defined publication weekdays and refresh
   time are portable configuration instead)

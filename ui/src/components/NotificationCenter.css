@@ -18,12 +18,14 @@
 .profile-notification-icon--danger { background: color-mix(in srgb, var(--live) 14%, var(--surface-2)); color: #ff8992; }
 .profile-notification--download-failed.is-unread::before { background: var(--live); }
 .profile-notification-avatar { object-fit: cover; }
+.profile-notification-avatar--fallback { display: grid; place-items: center; color: var(--text); font-size: 14px; font-weight: 700; }
 .profile-notification-thumbnail { aspect-ratio: 16 / 9; border-radius: 7px; display: block; height: auto; object-fit: cover; width: clamp(56px, 18vw, 76px); }
 .profile-notification .ui-list-row__media { grid-column: 2; }
 .profile-notification .ui-list-row__content { display: flex; flex-direction: column; gap: 2px; grid-column: 3; }
 .profile-notification .ui-list-row__meta { align-self: center; grid-column: 4; }
 .profile-notification .ui-list-row__title { display: -webkit-box; font-size: 13px; line-height: 1.3; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .profile-notification .ui-list-row__description { font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-notification-comment-quote { display: -webkit-box; font-style: italic; line-height: 1.35; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .profile-notification time { color: var(--text-3); font-size: 10.5px; line-height: 1.2; }
 .profile-notifications-empty { color: var(--text-3); font-size: 13px; padding: 22px 12px; text-align: center; }
 .profile-notifications-read-all { background: transparent; border: 0; border-radius: 8px; color: var(--accent); cursor: pointer; font-size: 11.5px; margin-top: 5px; padding: 6px 8px; text-align: center; width: 100%; }
