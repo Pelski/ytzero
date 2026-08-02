@@ -11,4 +11,5 @@
 .ui-input-group > .ui-input { border-radius: 0; flex: 1; }
 .ui-input-group > :first-child { border-radius: 8px 0 0 8px; }
 .ui-input-group > :last-child { border-radius: 0 8px 8px 0; }
+.ui-input-group > :only-child { border-radius: 8px; }
 .ui-input-group__affix { align-items: center; background: var(--surface-2); border: 1px solid var(--surface-3); color: var(--text-2); display: flex; font-size: 12px; padding: 0 10px; }

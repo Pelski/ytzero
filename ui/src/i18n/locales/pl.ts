@@ -1,6 +1,5 @@
 import type { Locale } from "../types";
 import { plural } from "../format";
-
 const videoForms = { one: "film", few: "filmy", many: "filmów", other: "filmów" };
 
 export const pl: Locale = {
@@ -183,6 +182,7 @@ export const pl: Locale = {
     playlistName: "Nazwa playlisty",
     create: "Utwórz",
     search: "Szukaj",
+    settingsSearchNoResults: "Brak pasujących ustawień",
     searchPlaceholder: "Szukaj...",
     clear: "Wyczyść",
     clearFilters: "Wyczyść filtry",
@@ -288,7 +288,7 @@ export const pl: Locale = {
     downloadCookiesRemove: "Usuń cookies",
     downloadCookiesStatusError: "Nie udało się sprawdzić stanu cookies",
     uploading: "Wgrywanie…",
-    enableDownloadsPlugin: "Włącz pobieranie filmów w Konfiguracji",
+    enableDownloadsFeature: "Włącz pobieranie filmów w Konfiguracji",
     customNameOptional: "Własna nazwa (opcjonalnie)",
     renameChannel: "Zmień nazwę kanału",
     revertToOriginalName: "Przywróć oryginalną nazwę",

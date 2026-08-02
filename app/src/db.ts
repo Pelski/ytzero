@@ -171,14 +171,14 @@ try { db.exec("ALTER TABLE channels ADD COLUMN custom_title TEXT"); } catch {}
 // Global downloads serve every profile, so the per-channel automatic-download
 // threshold lives on the shared channel rather than a profile association.
 try { db.exec("ALTER TABLE channels ADD COLUMN auto_download_min_duration INTEGER NOT NULL DEFAULT 0"); } catch {}
-// NULL inherits the downloads plugin's global threshold; 0 is an explicit
+// NULL inherits the downloads feature's global threshold; 0 is an explicit
 // per-channel opt-out. Preserve any non-zero threshold saved before overrides
 // were introduced, while allowing channels at the old default (0) to inherit.
 try {
   db.exec("ALTER TABLE channels ADD COLUMN auto_download_min_duration_override INTEGER");
   db.exec("UPDATE channels SET auto_download_min_duration_override = auto_download_min_duration WHERE auto_download_min_duration > 0");
 } catch {}
-// Relative output path (no extension) rendered from the downloads plugin's
+// Relative output path (no extension) rendered from the downloads feature's
 // filename template; sidecar files (nfo/thumbnail/subs) share this base.
 try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}
 // Snapshot of the playlist name only for downloads explicitly queued from a
@@ -516,7 +516,6 @@ if (!getSetting("installation_id")) setSetting("installation_id", crypto.randomU
 // after statistics are introduced (covered by sqliteMaintenance tests).
 applySQLiteMigrations(db);
 optimizeSQLite(db, true);
-
 // The synchronous SQLite bootstrap above remains the canonical local schema
 // builder. Runtime reads, however, must come from the selected engine. A
 // migrated PostgreSQL database already contains these tables and values.
@@ -538,6 +537,7 @@ if (databaseConfig.engine === "postgres") {
   // Existing PostgreSQL installations predate delegated profile admins. This
   // authorization flag is intentionally migrated in place and is not portable.
   await database.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER NOT NULL DEFAULT 0");
+  await database.exec("CREATE TABLE IF NOT EXISTS download_settings (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key))");
   // Social was added after the first PostgreSQL migration path shipped. Keep
   // existing PostgreSQL installations additive and equivalent to the
   // canonical SQLite bootstrap without requiring a destructive remigration.

@@ -14,19 +14,14 @@ const pluginSettings = pluginId ? await json(`/plugins/${pluginId}/settings`) : 
 const channels = await json("/channels");
 const recentChannels = await json("/channels/recent");
 const downloads = await json("/downloads");
-const updateDownloadSettingsResponse = await api.request("http://localhost/plugins/downloads/settings", {
+const updateDownloadSettingsResponse = await api.request("http://localhost/downloads/config", {
   method: "PUT",
   headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
-  body: JSON.stringify({ max_storage_gb: 17 }),
+  body: JSON.stringify({ settings: { max_storage_gb: 17 } }),
 });
 const updatedDownloadSettings = await updateDownloadSettingsResponse.json() as any;
-const reloadedDownloadSettings = await json("/plugins/downloads/settings");
-const resetDownloadSettingsResponse = await api.request("http://localhost/plugins/downloads/reset", {
-  method: "POST",
-  headers: { Cookie: "ytzero_profile=1" },
-});
-const resetDownloadSettings = await resetDownloadSettingsResponse.json() as any;
-const reloadedResetDownloadSettings = await json("/plugins/downloads/settings");
+const reloadedDownloadSettings = await json("/downloads/config");
+const legacyDownloadPluginRoute = await json("/plugins/downloads/settings");
 const updateSettingsResponse = await api.request("http://localhost/settings", {
   method: "PUT",
   headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
@@ -50,9 +45,7 @@ console.log("RESULT " + JSON.stringify({
   updateDownloadSettingsStatus: updateDownloadSettingsResponse.status,
   updatedDownloadSetting: updatedDownloadSettings.settings?.max_storage_gb,
   reloadedDownloadSetting: reloadedDownloadSettings.body.settings?.max_storage_gb,
-  resetDownloadSettingsStatus: resetDownloadSettingsResponse.status,
-  resetDownloadSetting: resetDownloadSettings.settings?.max_storage_gb,
-  reloadedResetDownloadSetting: reloadedResetDownloadSettings.body.settings?.max_storage_gb,
+  legacyDownloadPluginRouteStatus: legacyDownloadPluginRoute.status,
   updateSettingsStatus: updateSettingsResponse.status,
   reloadedUserSetting: reloadedSettings.body.settings?.show_shorts,
   reloadedFeedSort: reloadedSettings.body.settings?.feed_sort,

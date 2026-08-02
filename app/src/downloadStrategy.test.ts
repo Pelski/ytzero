@@ -12,6 +12,13 @@ describe("download strategy", () => {
     expect(downloadFormat("best")).toBe("bestvideo+bestaudio/bestvideo*/best");
   });
 
+  test("uses only H.264 and AAC and caps old-device downloads at 1080p", () => {
+    expect(downloadFormat("best", true)).toBe(
+      "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[acodec^=mp4a]/best[ext=mp4][vcodec^=avc1][acodec^=mp4a][height<=1080]",
+    );
+    expect(downloadFormat("720", true)).toContain("[height<=720]");
+  });
+
   test("tries public extraction before configured cookies", () => {
     expect(downloadCookieAttempts(true)).toEqual([false, true]);
     expect(downloadCookieAttempts(false)).toEqual([false]);

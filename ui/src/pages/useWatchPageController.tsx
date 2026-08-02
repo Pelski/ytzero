@@ -125,14 +125,14 @@ export function useWatchPageController() {
     downloadsEnabled: boolean;
     isChildProfile: boolean;
     childDownloadsOnly: boolean;
-    pluginWatchMode: WatchSourceMode;
+    downloadWatchMode: WatchSourceMode;
     experimentalStreaming: boolean;
   }>({
     ready: false,
     downloadsEnabled: false,
     isChildProfile: false,
     childDownloadsOnly: false,
-    pluginWatchMode: "youtube",
+    downloadWatchMode: "youtube",
     experimentalStreaming: false,
   });
   const {
@@ -140,7 +140,7 @@ export function useWatchPageController() {
     downloadsEnabled,
     isChildProfile,
     childDownloadsOnly,
-    pluginWatchMode,
+    downloadWatchMode,
     experimentalStreaming,
   } = playbackPolicy;
   const [descOpen, setDescOpen] = useState(false);
@@ -252,10 +252,10 @@ export function useWatchPageController() {
         .split(",")
         .map((code) => code.trim())
         .filter(Boolean);
-      let pluginWatchMode: WatchSourceMode = "youtube";
+      let downloadWatchMode: WatchSourceMode = "youtube";
       if (downloadsEnabled) {
         const configuredMode = downloadConfig?.settings.watch_source_mode;
-        if (configuredMode === "ask" || configuredMode === "download") pluginWatchMode = configuredMode;
+        if (configuredMode === "ask" || configuredMode === "download") downloadWatchMode = configuredMode;
       }
       const experimentalStreaming = downloadsEnabled && Number(downloadConfig?.settings.experimental_streaming) === 1;
       if (cancelled) return;
@@ -265,7 +265,7 @@ export function useWatchPageController() {
         downloadsEnabled,
         isChildProfile: childStatus?.is_child ?? false,
         childDownloadsOnly: !!(childStatus?.is_child && childStatus.downloads_only),
-        pluginWatchMode,
+        downloadWatchMode,
         experimentalStreaming,
       });
     })();
@@ -275,7 +275,7 @@ export function useWatchPageController() {
   const downloadStatus = video?.download_status ?? null;
   // Which surface fills the player area. Children never get a choice: with
   // downloads_only they are locked to local files, otherwise plain YouTube.
-  const watchMode = downloadsEnabled && !isChildProfile ? pluginWatchMode : "youtube";
+  const watchMode = downloadsEnabled && !isChildProfile ? downloadWatchMode : "youtube";
   const streamingEnabled = experimentalStreaming && !isChildProfile && !skipStreaming;
   const playerKind = resolvePlayerKind({
     hasVideo: !!video,

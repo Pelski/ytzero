@@ -34,6 +34,7 @@ import {
   type DiscoveryRecommendation,
   type DownloadAutomationOptions,
   type DownloadConfigResponse,
+  type DownloadSettingValue,
   type DownloadRule,
   type DownloadRuleInput,
   type DownloadRulePreview,
@@ -80,7 +81,6 @@ import {
   type VideoSubtitle,
 } from "./apiTypes";
 export * from "./apiTypes";
-
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly code?: string, public readonly detail?: string) {
     super(message);
@@ -219,7 +219,7 @@ export const api = {
   cancelDownloadQueue: () => http<{ ok: true; cancelled: number }>("/downloads/queue", { method: "DELETE" }),
   downloadSummary: () => http<DownloadSummary>("/downloads/summary"),
   downloadConfig: () => http<DownloadConfigResponse>("/downloads/config"),
-  updateDownloadConfig: (patch: { enabled?: boolean; settings?: Record<string, PluginSettingValue> }) =>
+  updateDownloadConfig: (patch: { enabled?: boolean; settings?: Record<string, DownloadSettingValue> }) =>
     http<DownloadConfigResponse>("/downloads/config", { method: "PUT", body: JSON.stringify(patch) }),
   downloadRules: () => http<{ rules: DownloadRule[]; can_manage: boolean }>("/downloads/automation"),
   downloadAutomationOptions: () => http<DownloadAutomationOptions>("/downloads/automation/options"),

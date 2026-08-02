@@ -20,6 +20,35 @@ process.env.AVATAR_DIR = avatarDir;
 const backup = await import("./portableBackup");
 const permissions = await import("./profilePermissions");
 const { db, setSetting, setUserSetting, getSetting, getUserSetting } = await import("./db");
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+
+async function asLegacyDownloadsPluginArchive(bytes: Uint8Array): Promise<Uint8Array> {
+  const entries = backup.readPortableZip(bytes);
+  const manifest = JSON.parse(decoder.decode(entries.get("manifest.json")!));
+  const profileDownloads = manifest.sections.find((section: any) => section.id === "profile.downloads");
+  const profileSettings = manifest.sections.find((section: any) => section.id === "profile.settings" && section.profileId === profileDownloads.profileId);
+  const instancePlugins = manifest.sections.find((section: any) => section.id === "instance.plugins");
+  const downloads = JSON.parse(decoder.decode(entries.get(profileDownloads.path)!));
+  const settings = JSON.parse(decoder.decode(entries.get(profileSettings.path)!));
+  settings.plugins ??= {};
+  settings.plugins.downloads = { schemaVersion: 4, payload: { settings: downloads.settings, rules: downloads.rules, playlists: downloads.playlists } };
+  entries.set(profileSettings.path, encoder.encode(`${JSON.stringify(settings, null, 2)}\n`));
+  const plugins = decoder.decode(entries.get(instancePlugins.path)!).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  plugins.push({ id: "downloads", enabled: downloads.enabled, schemaVersion: 4 });
+  entries.set(instancePlugins.path, encoder.encode(`${plugins.map((plugin) => JSON.stringify(plugin)).join("\n")}\n`));
+  for (const section of manifest.sections.filter((section: any) => section.id === "profile.downloads" || section.id === "instance.downloads")) entries.delete(section.path);
+  manifest.sections = manifest.sections.filter((section: any) => section.id !== "profile.downloads" && section.id !== "instance.downloads");
+  for (const section of [profileSettings, instancePlugins]) {
+    const content = entries.get(section.path)!;
+    section.bytes = content.byteLength;
+    const digestInput = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer;
+    const digest = await crypto.subtle.digest("SHA-256", digestInput);
+    section.sha256 = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  entries.set("manifest.json", encoder.encode(`${JSON.stringify(manifest, null, 2)}\n`));
+  return backup.createZip([...entries].map(([name, content]) => ({ name, bytes: content })));
+}
 
 beforeAll(async () => {
   mkdirSync(avatarDir, { recursive: true });
@@ -86,6 +115,21 @@ describe("portable backup classification and restore", () => {
     expect(serialized).not.toContain("download_cookie");
   });
 
+  test("restores downloads settings from backups created before downloads became a core feature", async () => {
+    const options = await backup.backupOptions();
+    const profile = options.profiles[0];
+    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
+    const current = await backup.createPortableBackup({ preset: "configuration", profiles: [profile.id] });
+    const legacy = await asLegacyDownloadsPluginArchive(current);
+    db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key IN ('enabled','compatible_format')").run();
+    const analyzed = await backup.analyzePortableBackup(1, legacy);
+    const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
+    const plan = await backup.planPortableRestore(1, analyzed.sessionId, { mappings, sections: analyzed.manifest.sections.map((section) => section.id), strategy: "merge" });
+    await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
+    expect(db.prepare("SELECT key,value FROM download_settings WHERE user_id=1 AND key IN ('enabled','compatible_format') ORDER BY key").all())
+      .toEqual([{ key: "compatible_format", value: "1" }, { key: "enabled", value: "1" }]);
+  });
+
   test("analyze is read-only and repeated merge restore is idempotent", async () => {
     const options = await backup.backupOptions();
     const profile = options.profiles[0];
@@ -97,6 +141,8 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_titles_enabled", "1");
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
+    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
+    await setSetting("downloads_output_template", "portable/{id}");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
     setSetting("timezone", "Europe/London");
     const ruleUuid = crypto.randomUUID();
@@ -109,7 +155,7 @@ describe("portable backup classification and restore", () => {
     db.prepare("INSERT INTO social_reactions(post_id,user_id,reaction_key) VALUES(?,1,'🤯')").run(socialPostId);
     db.prepare("INSERT INTO social_reactions(post_id,user_id,reaction_key) VALUES(?,1,'👨‍👩‍👧‍👦')").run(socialPostId);
     db.prepare("INSERT INTO social_recent_emojis(user_id,reaction_key,used_at) VALUES(1,'👨‍👩‍👧‍👦',2),(1,'🤯',1)").run();
-    db.prepare("INSERT INTO plugin_state(plugin_id,user_id,key,value) VALUES('social',1,'emoji_skin_tone','1f3fd')").run();
+    db.prepare("INSERT INTO plugin_state(plugin_id,user_id,key,value) VALUES('social',1,'emoji_skin_tone','1f3fd') ON CONFLICT(plugin_id,user_id,key) DO UPDATE SET value=excluded.value").run();
     db.prepare("INSERT INTO social_comment_likes(comment_id,user_id) VALUES(?,1)").run(socialCommentId);
     db.prepare("INSERT INTO social_post_mentions(post_id,mentioned_user_id,token) VALUES(?,1,'@Default')").run(socialPostId);
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
@@ -124,6 +170,9 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_titles_enabled", "0");
     setUserSetting(1, "dearrow_thumbnails_enabled", "0");
     setUserSetting(1, "child_watching_monitor_enabled", "1");
+    db.prepare("DELETE FROM download_settings WHERE user_id=1 AND key='compatible_format'").run();
+    db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key='enabled'").run();
+    await setSetting("downloads_output_template", "changed/{id}");
     setSetting("profile_admin_only_areas", "[]");
     setSetting("timezone", "UTC");
     db.prepare("DELETE FROM download_rules WHERE portable_uuid=?").run(ruleUuid);
@@ -148,6 +197,9 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "dearrow_titles_enabled")).toBe("1");
     expect(getUserSetting(1, "dearrow_thumbnails_enabled")).toBe("1");
     expect(getUserSetting(1, "child_watching_monitor_enabled")).toBe("0");
+    expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='compatible_format'").get() as { value: string }).value).toBe("1");
+    expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='enabled'").get() as { value: string }).value).toBe("1");
+    expect(getSetting("downloads_output_template")).toBe("portable/{id}");
     expect((db.prepare("SELECT value FROM settings WHERE key='profile_admin_only_areas'").get() as { value: string }).value)
       .toBe(permissions.serializeAdminOnlyAreas(["channels", "followed_playlists", "imports", "plugins"]));
     expect(getSetting("timezone")).toBe("Europe/London");

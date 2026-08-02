@@ -33,7 +33,8 @@ import { registerFeedRoutes } from "./routes/feedRoutes";
 import { registerLibraryRoutes } from "./routes/libraryRoutes";
 import { registerChildRoutes } from "./routes/childRoutes";
 import { registerInsightRoutes } from "./routes/insightRoutes";
-import { profileDownloadsEnabled, registerDownloadRoutes } from "./routes/downloadRoutes";
+import { registerDownloadRoutes } from "./routes/downloadRoutes";
+import { migrateDownloadsFromPlugin, profileDownloadsEnabled } from "./downloadConfig";
 import { registerChannelPlaylistRoutes } from "./routes/channelPlaylistRoutes";
 import { playlistChannelSyncIsDisabled, registerChannelRoutes } from "./routes/channelRoutes";
 import { registerVideoActionRoutes } from "./routes/videoActionRoutes";
@@ -45,9 +46,8 @@ import {
   type VideoRow,
 } from "./videoRoutesSupport";
 export { importTakeoutHistory } from "./routes/importRoutes";
-
+await migrateDownloadsFromPlugin();
 export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } }>();
-
 api.onError((err, c) => {
   log.error("api.unhandled_error", { path: c.req.path, method: c.req.method, error: err.message });
   return c.json({ error: err.message }, 500);

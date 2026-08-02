@@ -5,7 +5,7 @@ import { isChildUser } from "../childTime";
 import { log } from "../logger";
 import { syncPlaylist } from "../refresher";
 import { videoSelect, type VideoRow } from "../videoRoutesSupport";
-import { profileDownloadsEnabled } from "./downloadRoutes";
+import { profileDownloadsEnabled } from "../downloadConfig";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -75,7 +75,7 @@ api.get("/channel-playlists/:id/videos", async (c) => {
 api.post("/channel-playlists/:id/download", async (c) => {
   const uid = currentUserId(c);
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
+  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
   const playlist = await database.prepare("SELECT title FROM channel_playlists WHERE playlist_id = ?").get(c.req.param("id")) as { title: string } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
   const videoIds = (await database.prepare(`
@@ -171,4 +171,3 @@ api.get("/followed-playlists/updates", async (c) => {
 });
 
 }
-

@@ -1,6 +1,7 @@
 import { database } from "./database";
 import { getSetting, reloadSettingCache } from "./db";
 import { shouldAutoDownloadVideo } from "./downloadContentPolicy";
+import { dlSettings } from "./downloadConfig";
 
 export type DownloadRuleSourceMode = "subscriptions" | "selected";
 export type DownloadRuleKeywordMode = "any" | "all";
@@ -285,8 +286,7 @@ export async function automaticDownloadCandidates(limit = 50): Promise<{ video_i
   const seen = new Set<string>();
   const result: { video_id: string; rule_id: number; user_id: number }[] = [];
   for (const { user_id } of rows) {
-    const setting = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='download_shorts'").get(user_id) as { value: string } | null;
-    const includeShorts = setting?.value === "1";
+    const includeShorts = (await dlSettings(user_id)).download_shorts === 1;
     for (const rule of (await listDownloadRules(user_id)).filter((entry) => entry.enabled)) {
       const preview = await previewDownloadRule(user_id, rule, limit, true);
       for (const video of preview.sample) {
@@ -306,8 +306,9 @@ export async function automaticDownloadCandidates(limit = 50): Promise<{ video_i
 export async function migrateLegacyDownloadAutomation(): Promise<void> {
   if (getSetting("download_rules_migrated") === "1") return;
   const primary = (await database.prepare("SELECT id FROM users ORDER BY id LIMIT 1").get() as { id: number }).id;
+  const legacySettings = await dlSettings(primary);
   const existing = (await database.prepare("SELECT COUNT(*) AS n FROM download_rules").get() as { n: number }).n;
-  if (existing === 0 && getSetting("plugin_downloads_download_feed") === "1") {
+  if (existing === 0 && legacySettings.download_feed === 1) {
     const overrides = await database.prepare("SELECT channel_id, auto_download_min_duration_override AS seconds FROM channels WHERE auto_download_min_duration_override IS NOT NULL").all() as { channel_id: string; seconds: number }[];
     await createDownloadRule(primary, {
       name: "All subscriptions",
@@ -321,11 +322,11 @@ export async function migrateLegacyDownloadAutomation(): Promise<void> {
       exclude_keywords: [],
       keyword_mode: "any",
       match_field: "title",
-      include_shorts: getSetting("plugin_downloads_download_shorts") === "1",
+      include_shorts: legacySettings.download_shorts === 1,
       include_members_only: false,
-      min_duration_seconds: Math.max(0, Number(getSetting("plugin_downloads_feed_min_duration_minutes") ?? 0) * 60),
+      min_duration_seconds: Math.max(0, legacySettings.feed_min_duration_minutes * 60),
       backfill_mode: "recent",
-      lookback_hours: Math.max(1, Number(getSetting("plugin_downloads_feed_max_age_hours") ?? 48)),
+      lookback_hours: Math.max(1, legacySettings.feed_max_age_hours),
     });
     const byMinimum = new Map<number, string[]>();
     for (const row of overrides) {
@@ -346,11 +347,11 @@ export async function migrateLegacyDownloadAutomation(): Promise<void> {
         exclude_keywords: [],
         keyword_mode: "any",
         match_field: "title",
-        include_shorts: getSetting("plugin_downloads_download_shorts") === "1",
+        include_shorts: legacySettings.download_shorts === 1,
         include_members_only: false,
         min_duration_seconds: seconds,
         backfill_mode: "recent",
-        lookback_hours: Math.max(1, Number(getSetting("plugin_downloads_feed_max_age_hours") ?? 48)),
+        lookback_hours: Math.max(1, legacySettings.feed_max_age_hours),
       });
     }
   }

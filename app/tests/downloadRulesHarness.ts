@@ -1,4 +1,4 @@
-const { db, setSetting } = await import("../src/db");
+const { db } = await import("../src/db");
 const { automaticDownloadCandidates, createDownloadRule, listDownloadRules, migrateLegacyDownloadAutomation, previewDownloadRule, updateDownloadRule } = await import("../src/downloadRules");
 
 db.prepare("INSERT INTO channels(channel_id,title,url) VALUES(?,?,?)").run("UC-rule", "Rule Channel", "");
@@ -42,8 +42,7 @@ const updated = await updateDownloadRule(1, created.id, { include_members_only: 
 const updatedPreview = await previewDownloadRule(1, updated!);
 await updateDownloadRule(1, created.id, { include_shorts: true });
 const candidatesWithoutShorts = await automaticDownloadCandidates();
-db.prepare("INSERT OR IGNORE INTO plugins(id,enabled,version) VALUES('downloads',0,'test')").run();
-db.prepare("INSERT INTO plugin_settings(plugin_id,user_id,key,value) VALUES('downloads',1,'download_shorts','1')").run();
+db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'download_shorts','1') ON CONFLICT(user_id,key) DO UPDATE SET value='1'").run();
 const candidatesWithShorts = await automaticDownloadCandidates();
 const rules = await listDownloadRules(1);
 let invalidRuleError = "";
@@ -53,8 +52,7 @@ const subscriptionExceptions = await previewDownloadRule(1, { ...input, source_m
 db.prepare("DELETE FROM download_rules").run();
 db.prepare("UPDATE channels SET auto_download_min_duration_override=300 WHERE channel_id='UC-rule'").run();
 db.prepare("UPDATE channels SET auto_download_min_duration_override=0 WHERE channel_id='UC-other'").run();
-setSetting("plugin_downloads_download_feed", "1");
-setSetting("plugin_downloads_feed_max_age_hours", "72");
+db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'download_feed','1'),(1,'feed_max_age_hours','72') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
 await migrateLegacyDownloadAutomation();
 const legacyRules = await listDownloadRules(1);
 

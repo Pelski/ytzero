@@ -32,6 +32,7 @@ import { scheduleSettingWrite } from "../settingsWriteQueue";
 import ProfilesSettings, { ProfilePasswordSettings } from "../components/settings/ProfileSettings";
 import { ChannelOwnership, FilterRuleGroups, PlaylistSettingsItem, PluginMultiselect, RuleRow, SidebarNavEditor, TagRow } from "../components/settings/SettingsEditors";
 import { ChangelogNote, LogLine, SettingsLoadingState } from "../components/settings/SettingsSupport";
+import { SettingsSearch } from "../components/settings/SettingsSearch";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -95,6 +96,7 @@ function isFeedMaxAgeUnit(value: unknown): value is FeedMaxAgeUnit {
 }
 
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
+  const [pluginSearchTarget, setPluginSearchTarget] = useState<string | null>(null);
   const controller = useSettingsPageController({ showToast });
   const {
     activeAuthMethod,
@@ -324,9 +326,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     <>
       <PageHeader
         title={t("settingsTitle")}
-        actions={canManageArea("imports") ? <>
-          <ButtonLink to="/import" leadingIcon={<FolderUp size={16} />}>{t("importDataButton")}</ButtonLink>
-        </> : undefined}
+        actions={<><SettingsSearch groups={settingsNavGroups} pluginSettings={pluginSettings} plugins={plugins} t={t} onNavigate={setSettingsView} onOpenPlugin={(pluginId, settingKey) => { setPluginSettingsModalId(pluginId); setPluginSearchTarget(settingKey ?? null); }} />{canManageArea("imports") && <ButtonLink to="/import" leadingIcon={<FolderUp size={16} />}>{t("importDataButton")}</ButtonLink>}</>}
       />
 
       {childLock.enabled && !childLock.locked && !isPrimary && (
@@ -869,7 +869,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 </div>
                 <div className="plugin-settings-actions">
                   {pluginSettings[plugin.id]?.definitions.length > 0 && (
-                    <Button className="plugin-configure-btn" onClick={() => setPluginSettingsModalId(plugin.id)}>
+                    <Button className="plugin-configure-btn" onClick={() => { setPluginSearchTarget(null); setPluginSettingsModalId(plugin.id); }}>
                       <Wrench size={15} />
                       {t("configure")}
                     </Button>
@@ -954,7 +954,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                           {section.definitions.map((def) => {
                             const value = config.settings[def.key] ?? def.defaultValue;
                             return (
-                              <div key={def.key} className={`plugin-slider-row${def.type === "multiselect" ? " plugin-slider-row--stacked" : ""}`}>
+                              <div ref={pluginSearchTarget === def.key ? (node) => { if (node) { node.scrollIntoView({ block: "center" }); window.setTimeout(() => setPluginSearchTarget(null), 1400); } } : undefined} key={def.key} className={`plugin-slider-row${def.type === "multiselect" ? " plugin-slider-row--stacked" : ""}${pluginSearchTarget === def.key ? " plugin-slider-row--search-target" : ""}`}>
                                 <div className="plugin-slider-copy">
                                   <span className="switch-label">{def.label}</span>
                                   <span className="switch-sub">{def.description}</span>

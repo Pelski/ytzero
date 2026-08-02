@@ -3,11 +3,16 @@
  * format. Keeping the height cap on every branch prevents a fallback from
  * silently exceeding the quality selected by the user.
  */
-export function downloadFormat(quality: string): string {
+export function downloadFormat(quality: string, compatible = false): string {
   const parsedHeight = quality === "best" ? null : Number(quality);
   const height = parsedHeight != null && Number.isFinite(parsedHeight) && parsedHeight > 0
     ? Math.floor(parsedHeight)
     : null;
+  if (compatible) {
+    const compatibilityHeight = Math.min(height ?? 1080, 1080);
+    const compatibilityCap = `[height<=${compatibilityHeight}]`;
+    return `bestvideo[vcodec^=avc1]${compatibilityCap}+bestaudio[acodec^=mp4a]/best[ext=mp4][vcodec^=avc1][acodec^=mp4a]${compatibilityCap}`;
+  }
   const cap = height ? `[height<=${height}]` : "";
   return `bestvideo${cap}+bestaudio/bestvideo*${cap}/best${cap}`;
 }

@@ -63,9 +63,12 @@ describe("legacy downloads migration", () => {
   });
 
   test("copies old profile preferences while retaining administrator storage settings", () => {
-    expect(result.qualities).toEqual([{ user_id: 1, value: "720" }, { user_id: 2, value: "720" }]);
+    expect(result.qualities).toEqual([{ user_id: 1, value: "720" }, { user_id: 2, value: "480" }]);
     expect(result.retentions).toEqual([{ user_id: 1, value: "21" }, { user_id: 2, value: "21" }]);
+    expect(result.enabled).toEqual([{ user_id: 1, value: "1" }, { user_id: 2, value: "0" }]);
     expect(result.outputTemplate).toEqual({ value: "legacy/{id}" });
+    expect(result.legacyRows).toEqual({ n: 0 });
+    expect(result.legacyPlugin).toBeNull();
     expect(result.cookiesConfigured).toEqual([true, true]);
     expect(result.legacyCookiesRemain).toBe(false);
   });

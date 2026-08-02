@@ -1,6 +1,5 @@
 import type { Locale } from "../types";
 import { plural } from "../format";
-
 export const de: Locale = {
   messages: {
     navToday: "Start",
@@ -181,6 +180,7 @@ export const de: Locale = {
     playlistName: "Playlist-Name",
     create: "Erstellen",
     search: "Suche",
+    settingsSearchNoResults: "Keine passenden Einstellungen",
     searchPlaceholder: "Suchen...",
     clear: "Löschen",
     clearFilters: "Filter zurücksetzen",
@@ -286,7 +286,7 @@ export const de: Locale = {
     downloadCookiesRemove: "Cookies entfernen",
     downloadCookiesStatusError: "Cookie-Status konnte nicht geprüft werden",
     uploading: "Wird hochgeladen…",
-    enableDownloadsPlugin: "Aktiviere Video-Downloads in der Konfiguration",
+    enableDownloadsFeature: "Aktiviere Video-Downloads in der Konfiguration",
     customNameOptional: "Eigener Name (optional)",
     renameChannel: "Kanal umbenennen",
     revertToOriginalName: "Originalnamen wiederherstellen",

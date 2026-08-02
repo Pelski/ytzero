@@ -20,6 +20,7 @@ import {
   downloadCookiesFile,
   invalidateYtdlpStatus,
   migrateLegacyDownloadCookies,
+  profileDownloadsEnabled,
   ytdlpSelfUpdate,
   ytdlpStatus,
   type DlSettings,
@@ -497,7 +498,7 @@ export async function resetDownloadsState(userId: number) {
   const rows = await database.prepare("SELECT video_id FROM download_owners WHERE user_id=?").all(userId) as { video_id: string }[];
   for (const { video_id } of rows) await removeDownload(userId, video_id);
   await database.prepare("DELETE FROM download_rules WHERE user_id=?").run(userId);
-  await database.prepare("DELETE FROM plugin_settings WHERE plugin_id='downloads' AND user_id=?").run(userId);
+  await database.prepare("DELETE FROM download_settings WHERE user_id=?").run(userId);
   publishAppEvent("downloads", { reset: true, userId });
 }
 
@@ -539,9 +540,8 @@ async function autoEnqueue() {
 
   const users = await database.prepare("SELECT id FROM users").all() as { id: number }[];
   for (const user of users) {
-    const enabled = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='profile_enabled'").get(user.id) as { value: string } | null;
     const settings = await dlSettings(user.id);
-    if (enabled?.value === "0" || settings.download_scheduled !== 1) continue;
+    if (!await profileDownloadsEnabled(user.id) || settings.download_scheduled !== 1) continue;
     // Anything any profile put on a watch-later bucket and hasn't watched yet.
     // 30-day window keeps a fresh plugin enable from crawling years of
     // long-forgotten watch-later backlog.
@@ -563,8 +563,7 @@ async function autoEnqueue() {
   }
 
   for (const candidate of await automaticDownloadCandidates(50)) {
-    const enabled = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='profile_enabled'").get(candidate.user_id) as { value: string } | null;
-    if (enabled?.value === "0") continue;
+    if (!await profileDownloadsEnabled(candidate.user_id)) continue;
     await enqueueDownload(candidate.user_id, candidate.video_id, "feed", false, false, { automationRuleId: candidate.rule_id });
   }
 }
@@ -805,7 +804,7 @@ async function writeNfoFile(videoId: string, base: string) {
 }
 
 async function runDownload(userId: number, videoId: string, s: DlSettings) {
-  const format = downloadFormat(String(s.quality));
+  const format = downloadFormat(String(s.quality), s.compatible_format === 1);
   const base = await renderOutputTemplate(videoId, String(s.output_template));
   mkdirSync(dirname(join(DOWNLOADS_DIR, base)), { recursive: true });
   const baseArgs = [
@@ -830,7 +829,7 @@ async function runDownload(userId: number, videoId: string, s: DlSettings) {
   await database.prepare("UPDATE downloads SET status = 'downloading', quality = ?, output_base = ?, error = NULL, attempts = attempts + 1, started_at = datetime('now') WHERE video_id = ?")
     .run(s.quality, base, videoId);
   notifyDownloadChanged(videoId);
-  log.info("downloads.start", { videoId, quality: s.quality, base });
+  log.info("downloads.start", { videoId, quality: s.quality, compatibleFormat: s.compatible_format === 1, base });
 
   const cookieAttempts = downloadCookieAttempts(downloadCookiesConfigured(userId));
   let job: ActiveDownload | null = null;

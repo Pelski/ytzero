@@ -4,8 +4,8 @@ import { publishAppEvent } from "../appEvents";
 import { database } from "../database";
 import { getUserSetting } from "../db";
 import { childLocalOnly, isChildUser } from "../childTime";
-import { DOWNLOADS_ADMIN_SETTING_KEYS, getPluginSettings, pluginEnabled, setPluginEnabled, setPluginSettings } from "../plugins";
-import { activeDownloadProgress, cancelAllPendingDownloads, downloadCookiesConfigured, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, removeDownloadCookies, saveDownloadCookies, setDownloadPinned, srtToVtt, ytdlpStatus } from "../downloader";
+import { DOWNLOADS_ADMIN_SETTING_KEYS, downloadCookiesConfigured, downloadSettings, profileDownloadsEnabled, removeDownloadCookies, saveDownloadCookies, setDownloadSettings, setProfileDownloadsEnabled } from "../downloadConfig";
+import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "../downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "../downloadRules";
 import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
 
@@ -14,18 +14,6 @@ type Api = Hono<ApiEnvironment>;
 type ApiContext = Context<ApiEnvironment>;
 
 const videoExistsStmt = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
-
-export async function profileDownloadsEnabled(userId: number) {
-  const row = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='profile_enabled'").get(userId) as { value: string } | null;
-  return pluginEnabled("downloads") && row?.value !== "0";
-}
-
-async function setProfileDownloadsEnabled(userId: number, enabled: boolean) {
-  await database.prepare(`
-    INSERT INTO plugin_settings(plugin_id,user_id,key,value) VALUES('downloads',?,'profile_enabled',?)
-    ON CONFLICT(plugin_id,user_id,key) DO UPDATE SET value=excluded.value
-  `).run(userId, enabled ? "1" : "0");
-}
 
 export function registerDownloadRoutes(
   api: Api,
@@ -36,37 +24,7 @@ export function registerDownloadRoutes(
 ): void {
   const { currentUserId, isAdmin } = access;
 
-// Legacy plugin URLs remain available for older clients. The current UI uses
-// the dedicated downloads configuration endpoints below.
-// yt-dlp accepts a Netscape-format cookie jar. Keep the secret in a private
-// server-side file rather than the settings table, which is returned to UI.
-api.get("/plugins/downloads/cookies", async (c) => {
-  const uid = currentUserId(c);
-  return await isChildUser(uid) ? c.json({ error: "not allowed" }, 403) : c.json({ configured: downloadCookiesConfigured(uid) });
-});
-
-api.post("/plugins/downloads/cookies", async (c) => {
-  const uid = currentUserId(c);
-  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-  try {
-    const form = await c.req.formData();
-    const file = form.get("file");
-    if (!(file instanceof File)) return c.json({ error: "cookies.txt file required" }, 400);
-    saveDownloadCookies(uid, await file.text());
-    return c.json({ configured: true });
-  } catch (error) {
-    return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
-  }
-});
-
-api.delete("/plugins/downloads/cookies", async (c) => {
-  const uid = currentUserId(c);
-  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-  removeDownloadCookies(uid);
-  return c.json({ configured: false });
-});
-
-// ---------- downloads plugin ----------
+// ---------- downloads configuration ----------
 
 api.get("/downloads/config", async (c) => {
   const uid = currentUserId(c);
@@ -75,8 +33,7 @@ api.get("/downloads/config", async (c) => {
     can_manage_admin_settings: isAdmin(c),
     admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS],
     enabled: await profileDownloadsEnabled(uid),
-    plugin_available: pluginEnabled("downloads"),
-    ...(await getPluginSettings(uid, "downloads", getUserSetting(uid, "language"))),
+    ...(await downloadSettings(uid, getUserSetting(uid, "language"))),
     cookies_configured: downloadCookiesConfigured(uid),
   });
 });
@@ -86,21 +43,17 @@ api.put("/downloads/config", async (c) => {
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const body = await c.req.json<{ enabled?: boolean; settings?: Record<string, unknown> }>();
   if (typeof body.enabled === "boolean") {
-    if (body.enabled && !pluginEnabled("downloads")) {
-      if (!isAdmin(c)) return c.json({ error: "downloads are disabled by administrator" }, 403);
-      await setPluginEnabled("downloads", true);
-    }
     await setProfileDownloadsEnabled(uid, body.enabled);
   }
   if (!isAdmin(c) && body.settings && Object.keys(body.settings).some((key) => DOWNLOADS_ADMIN_SETTING_KEYS.has(key))) {
     return c.json({ error: "administrator setting" }, 403);
   }
   const settings = body.settings && typeof body.settings === "object"
-    ? await setPluginSettings(uid, "downloads", body.settings, getUserSetting(uid, "language"))
-    : await getPluginSettings(uid, "downloads", getUserSetting(uid, "language"));
+    ? await setDownloadSettings(uid, body.settings, getUserSetting(uid, "language"))
+    : await downloadSettings(uid, getUserSetting(uid, "language"));
   const enabled = await profileDownloadsEnabled(uid);
   publishAppEvent("downloads", { enabled, config: true, userId: uid });
-  return c.json({ can_manage: true, can_manage_admin_settings: isAdmin(c), admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS], enabled, plugin_available: pluginEnabled("downloads"), ...settings, cookies_configured: downloadCookiesConfigured(uid) });
+  return c.json({ can_manage: true, can_manage_admin_settings: isAdmin(c), admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS], enabled, ...settings, cookies_configured: downloadCookiesConfigured(uid) });
 });
 
 api.get("/downloads/automation", async (c) => {
@@ -227,7 +180,7 @@ api.delete("/downloads/queue", async (c) => {
 api.post("/videos/:id/download", async (c) => {
   if (await isChildUser(currentUserId(c))) return c.json({ error: "not allowed" }, 403);
   const uid = currentUserId(c);
-  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
+  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
   const id = c.req.param("id");
   const video = await database.prepare("SELECT live_status, is_private FROM videos WHERE video_id = ?").get(id) as { live_status: string; is_private: number } | null;
   if (!video) return c.json({ error: "not found" }, 404);
@@ -369,7 +322,7 @@ api.get("/videos/:id/subtitles/:lang", async (c) => {
 api.post("/videos/:id/subtitles", async (c) => {
   const uid = currentUserId(c);
   if (childLocalOnly(uid)) return c.json({ error: "restricted" }, 403);
-  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
+  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
   const id = c.req.param("id");
   if (!await getDownload(uid, id)) return c.json({ error: "not downloaded" }, 404);
   const { lang } = await c.req.json().catch(() => ({}));

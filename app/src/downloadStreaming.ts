@@ -7,7 +7,7 @@ import type { DlSettings } from "./downloader";
 interface DownloadStreamingDependencies {
   DOWNLOADS_DIR: string;
   YTDLP: string;
-  dlEnabled: () => Promise<boolean>;
+  dlEnabled: (userId?: number) => Promise<boolean>;
   dlSettings: (userId?: number) => Promise<DlSettings>;
   downloadCookiesConfigured: (userId: number) => boolean;
   downloadCookiesFile: (userId: number) => string;
@@ -71,7 +71,7 @@ const hlsSessions = new Map<string, HlsSession>();
 let hlsSweeper: ReturnType<typeof setInterval> | null = null;
 
 async function liveStreamEnabled(userId?: number): Promise<boolean> {
-  return await dlEnabled() && (await dlSettings(userId)).experimental_streaming === 1;
+  return await dlEnabled(userId) && (await dlSettings(userId)).experimental_streaming === 1;
 }
 
 function isSegmentName(name: string): boolean {
@@ -296,4 +296,3 @@ function resetHlsScratch() {
     resetHlsScratch,
   };
 }
-

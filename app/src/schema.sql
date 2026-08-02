@@ -66,7 +66,6 @@ CREATE TABLE IF NOT EXISTS auto_tag_rules (
   -- title | description | both
   field      TEXT NOT NULL DEFAULT 'title'
 );
-
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
@@ -95,7 +94,8 @@ CREATE TABLE IF NOT EXISTS plugin_state (
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (plugin_id, user_id, key)
 );
-
+-- Domain-owned configuration for the built-in downloads feature.
+CREATE TABLE IF NOT EXISTS download_settings (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key));
 -- Local copies fetched with yt-dlp. The physical file remains shared, while
 -- download_owners below controls which profiles may see and manage it.
 CREATE TABLE IF NOT EXISTS downloads (

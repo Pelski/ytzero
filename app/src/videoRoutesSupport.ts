@@ -50,7 +50,7 @@ export async function attachWatchedState<T>(uid: number, items: T[], videoId: (i
 export async function attachTags(uid: number, videos: VideoRow[], profileDownloadsEnabled: (userId: number) => Promise<boolean>) {
   if (videos.length === 0) return [];
   // downloads_allowed: the profile may use downloads at all (not a child);
-  // downloads_enabled additionally requires the plugin to be turned on. The UI
+  // downloads_enabled additionally requires the feature to be turned on. The UI
   // shows the download action for allowed-but-disabled and links to settings.
   const downloadsAllowed = !await isChildUser(uid);
   const downloadsEnabled = downloadsAllowed && await profileDownloadsEnabled(uid);

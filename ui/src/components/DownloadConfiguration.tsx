@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, FolderUp, Info, Trash2 } from "lucide-react";
-import { api, type DownloadConfigResponse, type PluginSettingDef, type PluginSettingValue } from "../api";
+import { api, type DownloadConfigResponse, type DownloadSettingDef, type DownloadSettingValue } from "../api";
 import { useI18n } from "../i18n";
 import { Alert, Badge, Button, FileDropzone, Input, MultiSelectMenu, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Textarea } from "./ui";
 import "./DownloadConfiguration.css";
 
 const SECTION_KEYS = {
-  behavior: ["quality", "watch_source_mode", "thumb_progress", "download_scheduled", "download_shorts"],
+  behavior: ["quality", "compatible_format", "watch_source_mode", "thumb_progress", "download_scheduled", "download_shorts"],
   files: ["output_template", "write_thumbnail", "embed_metadata", "write_info_json", "write_nfo", "write_subs", "write_auto_subs", "sub_langs"],
   storage: ["retention_days", "delete_watched", "delete_watched_hours", "keep_liked", "max_storage_gb"],
   advanced: ["experimental_streaming"],
@@ -26,7 +26,7 @@ export default function DownloadConfiguration() {
   useEffect(() => { void load(); }, [load]);
 
   const defs = useMemo(() => new Map(config?.definitions.map((definition) => [definition.key, definition]) ?? []), [config]);
-  const update = async (key: string, value: PluginSettingValue) => {
+  const update = async (key: string, value: DownloadSettingValue) => {
     if (!config) return;
     setConfig({ ...config, settings: { ...config.settings, [key]: value } });
     try { setConfig(await api.updateDownloadConfig({ settings: { [key]: value } })); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); load(); }
@@ -37,7 +37,7 @@ export default function DownloadConfiguration() {
     try { setConfig(await api.updateDownloadConfig({ enabled })); } catch { load(); }
   };
 
-  const renderControl = (definition: PluginSettingDef) => {
+  const renderControl = (definition: DownloadSettingDef) => {
     const value = config?.settings[definition.key] ?? definition.defaultValue;
     if (definition.type === "toggle") return <Switch ariaLabel={definition.label} checked={Number(value) === 1} onCheckedChange={(next) => void update(definition.key, next ? 1 : 0)} />;
     if (definition.type === "select") return <SelectMenu label={definition.label} value={String(value)} options={definition.options?.map((option) => ({ value: option.value, label: option.label })) ?? []} onChange={(next) => void update(definition.key, next)} />;
@@ -71,7 +71,7 @@ export default function DownloadConfiguration() {
   return <div className="dl-config">
     {error && <Alert variant="danger">{error}</Alert>}
     <SettingsSection title={tx("Video downloads", "Pobieranie filmów", "Video-Downloads")} description={tx("Keep video copies on the server so their availability does not depend on external providers.", "Zapisuje kopie filmów na serwerze, aby były dostępne niezależnie od YouTube.", "Speichere Videokopien auf dem Server, damit ihre Verfügbarkeit nicht von externen Anbietern abhängt.")}>
-      <SettingRow label={tx("Allow downloads for this profile", "Pobieranie na tym profilu", "Downloads für dieses Profil erlauben")} description={tx("Controls manual and automatic downloads only for the active profile.", "Włącza ręczne i automatyczne pobieranie tylko dla aktywnego profilu.", "Steuert manuelle und automatische Downloads nur für das aktive Profil.")}><Switch ariaLabel={tx("Allow downloads for this profile", "Pobieranie na tym profilu", "Downloads für dieses Profil erlauben")} disabled={!config.can_manage || (!config.plugin_available && !config.can_manage_admin_settings)} checked={config.enabled} onCheckedChange={(next) => void setEnabled(next)} /></SettingRow>
+      <SettingRow label={tx("Allow downloads for this profile", "Pobieranie na tym profilu", "Downloads für dieses Profil erlauben")} description={tx("Controls manual and automatic downloads only for the active profile.", "Włącza ręczne i automatyczne pobieranie tylko dla aktywnego profilu.", "Steuert manuelle und automatische Downloads nur für dieses Profil.")}><Switch ariaLabel={tx("Allow downloads for this profile", "Pobieranie na tym profilu", "Downloads für dieses Profil erlauben")} disabled={!config.can_manage} checked={config.enabled} onCheckedChange={(next) => void setEnabled(next)} /></SettingRow>
     </SettingsSection>
     {!config.can_manage_admin_settings && <Alert className="dl-config-admin-info" variant="info">{tx("Settings marked Administrator affect shared files and can only be changed by an administrator.", "Opcje oznaczone jako Administrator wpływają na wspólne pliki i może je zmieniać tylko administrator.", "Als Administrator markierte Einstellungen betreffen gemeinsame Dateien und können nur von Administratoren geändert werden.")}</Alert>}
     <fieldset className="dl-config-managed" disabled={!config.can_manage}>

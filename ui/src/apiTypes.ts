@@ -360,22 +360,18 @@ export interface PluginManifest {
   enabled: boolean;
 }
 
-export type PluginSettingValue = number | string;
-
-export interface PluginSettingDef {
+export type SettingValue = number | string;
+export interface SettingDefinition {
   key: string;
   label: string;
   description: string;
   type: "slider" | "select" | "toggle" | "text" | "multiselect";
-  min?: number;
-  max?: number;
-  step?: number;
+  min?: number; max?: number; step?: number;
   options?: { value: string; label: string }[];
-  defaultValue: PluginSettingValue;
-  scope?: "user" | "global";
-  adminOnly?: boolean;
+  defaultValue: SettingValue;
 }
-
+export type PluginSettingValue = SettingValue;
+export type PluginSettingDef = SettingDefinition & { scope?: "user" | "global"; adminOnly?: boolean };
 export interface PluginTermState {
   lastTerms: string[];
   blockedTerms: string[];
@@ -386,7 +382,8 @@ export interface PluginSettingsResponse {
   settings: Record<string, PluginSettingValue>;
   terms?: PluginTermState;
 }
-
+export type DownloadSettingValue = SettingValue;
+export type DownloadSettingDef = SettingDefinition;
 export interface SocialProfileRef {
   id: number;
   name: string;
@@ -526,12 +523,13 @@ export interface DownloadAutomationOptions {
   playlists: Array<{ playlist_id: string; title: string; thumbnail: string; channel_title: string }>;
 }
 
-export interface DownloadConfigResponse extends PluginSettingsResponse {
+export interface DownloadConfigResponse {
+  definitions: DownloadSettingDef[];
+  settings: Record<string, DownloadSettingValue>;
   can_manage: boolean;
   can_manage_admin_settings: boolean;
   admin_setting_keys: string[];
   enabled: boolean;
-  plugin_available: boolean;
   cookies_configured: boolean;
 }
 
@@ -987,5 +985,3 @@ export interface DatabaseStatus {
   previousEngine: "sqlite" | "postgres";
   pendingReceiptId: string | null;
 }
-
-

@@ -101,7 +101,7 @@ export function registerUserPlaylistRoutes(
   api.post("/playlists/:id/download", async (c) => {
     const uid = currentUserId(c);
     if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-    if (!await profileDownloadsEnabled(uid)) return c.json({ error: "plugin disabled" }, 409);
+    if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
     const playlist = await database.prepare("SELECT name FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { name: string } | null;
     if (!playlist) return c.json({ error: "not found" }, 404);
     const videoIds = (await database.prepare(`

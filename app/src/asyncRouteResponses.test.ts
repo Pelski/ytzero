@@ -52,16 +52,14 @@ describe("async database route response shapes", () => {
     expect(result.downloadStatsIsObject).toBe(true);
   });
 
-  test("returns and reloads the newly saved global plugin value", () => {
+  test("returns and reloads the newly saved global downloads value", () => {
     expect(result.updateDownloadSettingsStatus).toBe(200);
     expect(result.updatedDownloadSetting).toBe(17);
     expect(result.reloadedDownloadSetting).toBe(17);
   });
 
-  test("profile reset preserves administrator-owned storage settings", () => {
-    expect(result.resetDownloadSettingsStatus).toBe(200);
-    expect(result.resetDownloadSetting).toBe(17);
-    expect(result.reloadedResetDownloadSetting).toBe(17);
+  test("does not expose downloads through plugin routes", () => {
+    expect(result.legacyDownloadPluginRouteStatus).toBe(404);
   });
 
   test("reloads committed profile and global settings after a write", () => {

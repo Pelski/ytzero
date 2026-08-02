@@ -15,16 +15,14 @@ import { parseManualRefreshSchedule } from "./channelRefreshSchedule";
 import { listDownloadRules } from "./downloadRules";
 import { normalizeSocialReaction } from "./social";
 import { optimizeProfileAvatar, optimizedProfileAvatarToken, removeStoredProfileAvatar } from "./profileAvatars";
-
+import { DOWNLOAD_BACKUP_SCHEMA_VERSION, exportDownloadInstanceSettings, exportDownloadPreferences, restoreDownloadInstanceSettings, restoreDownloadPreferences } from "./downloadBackup";
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_TTL_MS = 30 * 60_000;
-
 const SESSION_DIR = process.env.RESTORE_SESSION_DIR ?? resolve(import.meta.dir, "../../data/restore-sessions");
 const AVATAR_DIR = process.env.AVATAR_DIR ?? resolve(import.meta.dir, "../../data/avatars");
 const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
 mkdirSync(SESSION_DIR, { recursive: true });
-
 export type BackupScope = "instance" | "profile";
 export type BackupSensitivity = "normal" | "personal" | "secret";
 export interface BackupSectionDefinition {
@@ -37,15 +35,16 @@ export interface BackupSectionDefinition {
   optional?: boolean;
   path(profileUuid?: string): string;
 }
-
 const profilePath = (name: string) => (uuid = "") => `profiles/${uuid}/${name}`;
 export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "instance.settings", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/settings.json" },
   { id: "instance.plugins", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/plugins.jsonl" },
+  { id: "instance.downloads", schemaVersion: DOWNLOAD_BACKUP_SCHEMA_VERSION, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/downloads.json" },
   { id: "instance.channels", schemaVersion: 4, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
   { id: "profiles.index", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "profiles", path: () => "profiles/index.json" },
   { id: "profile.avatar", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "profiles", optional: true, path: (uuid = "") => `assets/avatars/${uuid}` },
   { id: "profile.settings", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
+  { id: "profile.downloads", schemaVersion: DOWNLOAD_BACKUP_SCHEMA_VERSION, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "configuration", path: profilePath("downloads.json") },
   { id: "profile.subscriptions", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("subscriptions.jsonl") },
   { id: "profile.followed-playlists", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("followed-playlists.jsonl") },
   { id: "profile.tags", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "library.referenced-videos"], category: "organization", path: profilePath("tags.jsonl") },
@@ -58,26 +57,22 @@ export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "plugin.social.activity", schemaVersion: 1, scope: "instance", sensitivity: "personal", dependencies: ["profiles.index", "library.referenced-videos"], category: "social", optional: true, path: () => "plugins/social/activity.json" },
   { id: "library.referenced-videos", schemaVersion: 1, scope: "instance", sensitivity: "personal", dependencies: ["instance.channels"], category: "dependency", path: () => "library/referenced-videos.jsonl" },
 ] as const;
-
 export const BACKUP_PRESETS: Record<string, string[]> = {
-  configuration: ["instance.settings", "instance.plugins", "profile.settings"],
-  setup: ["instance.settings", "instance.plugins", "profiles.index", "profile.avatar", "profile.settings", "profile.subscriptions", "profile.followed-playlists", "profile.tags", "profile.rules", "profile.playlists", "instance.channels", "library.referenced-videos"],
+  configuration: ["instance.settings", "instance.plugins", "instance.downloads", "profile.settings", "profile.downloads"],
+  setup: ["instance.settings", "instance.plugins", "instance.downloads", "profiles.index", "profile.avatar", "profile.settings", "profile.downloads", "profile.subscriptions", "profile.followed-playlists", "profile.tags", "profile.rules", "profile.playlists", "instance.channels", "library.referenced-videos"],
   full: BACKUP_SECTIONS.filter((section) => section.sensitivity !== "secret").map((section) => section.id),
 };
-
 const SECTION_BY_ID = new Map(BACKUP_SECTIONS.map((section) => [section.id, section]));
 const SAFE_GLOBAL_SETTINGS = new Set(["app_name", "app_icon_color", "profile_admin_only_areas", "timezone"]);
 const SECRET_SETTING_KEYS = new Set([...GLOBAL_SETTING_KEYS].filter((key) => key.startsWith("auth_") || key.includes("hash") || key.includes("secret")));
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 function portableGlobalSettingValue(key: string, value: unknown): string {
   if (key === "profile_admin_only_areas") return serializeAdminOnlyAreas(parseAdminOnlyAreas(String(value)));
   if (key === "timezone") return isValidTimeZone(value) ? value : DEFAULT_TIME_ZONE;
   return String(value);
 }
-
 export interface BackupManifestSection {
   id: string;
   schemaVersion: number;
@@ -151,6 +146,7 @@ async function sectionData(id: string, profile: any | null, referenced: Set<stri
       const adapter = PLUGIN_BACKUP_ADAPTERS.find((item) => item.id === plugin.id && item.scope === "instance");
       return { id: plugin.id, enabled: Boolean((await database.prepare("SELECT enabled FROM plugins WHERE id=?").get(plugin.id) as any)?.enabled), payload: adapter ? await adapter.export(uid ?? 0) : undefined, schemaVersion: adapter?.schemaVersion };
     }));
+    case "instance.downloads": return await exportDownloadInstanceSettings();
     case "profiles.index": return (await portableProfiles([])).filter((row) => !profile || row.id === uid).map((row) => ({ id: row.portable_uuid, name: row.name, color: row.avatar_color, order: row.sort_order, isChild: Boolean(row.is_child), avatar: row.avatar ? `assets/avatars/${row.portable_uuid}.${basename(row.avatar.split(":")[0]).split(".").pop()}` : null }));
     case "instance.channels": {
       const channelIds = new Set<string>();
@@ -173,6 +169,7 @@ async function sectionData(id: string, profile: any | null, referenced: Set<stri
       for (const adapter of PLUGIN_BACKUP_ADAPTERS.filter((item) => item.scope === "profile")) plugins[adapter.id] = { schemaVersion: adapter.schemaVersion, payload: await adapter.export(uid) };
       return { settings, plugins };
     }
+    case "profile.downloads": return await exportDownloadPreferences(uid);
     case "profile.subscriptions": return await database.prepare(`SELECT uc.channel_id, uc.followed, uc.playback_speed, uc.caption_mode, uc.caption_language, uc.hide_members_only_from_feed, uc.hide_members_only_on_channel, uc.members_only_visibility, uc.added_at FROM user_channels uc WHERE uc.user_id=?`).all(uid);
     case "profile.followed-playlists": return await database.prepare(`SELECT fp.playlist_id, fp.followed_at, fp.feed_from, fp.include_in_feed, cp.channel_id, cp.title, cp.thumbnail, cp.video_count FROM user_followed_playlists fp JOIN channel_playlists cp ON cp.playlist_id=fp.playlist_id WHERE fp.user_id=?`).all(uid);
     case "profile.tags": return Promise.all((await database.prepare("SELECT id, portable_uuid, name, color, filter_only FROM tags WHERE user_id=?").all(uid) as any[]).map(async (tag) => ({ uuid: tag.portable_uuid, name: tag.name, color: tag.color, filterOnly: Boolean(tag.filter_only), channels: (await database.prepare("SELECT channel_id FROM channel_tags WHERE tag_id=?").all(tag.id) as any[]).map((r) => r.channel_id), videos: (await database.prepare("SELECT video_id FROM video_tags WHERE tag_id=? AND source='manual'").all(tag.id) as any[]).map((r) => r.video_id) })));
@@ -331,6 +328,7 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
   try {
     if (database.engine === "sqlite") { await database.exec("PRAGMA wal_checkpoint(FULL)"); copyFileSync(DB_PATH, snapshot); }
     const { entries, data } = decodedSections(state), selected = new Set(state.plan.sections), counts = { created: 0, updated: 0, skipped: 0, warnings: [...state.warnings] as string[] }, profileIds = new Map<string, number>();
+    const legacyDownloadsEnabled = (data.get("instance.plugins:") ?? []).find((row: any) => row?.id === "downloads")?.enabled;
     const tx = database.transaction(async () => {
       const profilesIndex = data.get("profiles.index:") ?? state.manifest.profiles;
       const needsProfiles = selected.has("profiles.index") || [...selected].some((sectionId) => SECTION_BY_ID.get(sectionId)?.scope === "profile");
@@ -343,6 +341,7 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
         await saveMapping(state.manifest.sourceInstallationId, "profile", source.id, uid); profileIds.set(source.id, uid);
       }
       if (selected.has("instance.settings")) { const doc = data.get("instance.settings:"); for (const [key, value] of Object.entries(doc?.settings ?? {})) if (SAFE_GLOBAL_SETTINGS.has(key) && !SECRET_SETTING_KEYS.has(key)) await database.prepare("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(key, portableGlobalSettingValue(key, value)); }
+      if (selected.has("instance.downloads")) await restoreDownloadInstanceSettings(data.get("instance.downloads:"));
       if (selected.has("instance.channels")) for (const row of data.get("instance.channels:") ?? []) {
         await ensureChannel(row);
         await database.prepare("UPDATE channels SET custom_title=?, auto_download_min_duration_override=? WHERE channel_id=?")
@@ -355,10 +354,11 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
         if (isChannelManualStatus(row.manual_status)) await database.prepare("UPDATE channels SET manual_status=?, manual_status_updated_at=datetime('now') WHERE channel_id=?").run(row.manual_status,row.channel_id);
       }
       if (selected.has("library.referenced-videos")) for (const row of data.get("library.referenced-videos:") ?? []) await ensureVideo(row);
-      if (selected.has("instance.plugins")) for (const row of data.get("instance.plugins:") ?? []) { if (!PLUGINS.some((p) => p.id === row.id)) { counts.warnings.push(`Plugin ${row.id} is unavailable`); continue; } await setPluginEnabled(row.id, Boolean(row.enabled)); const adapter=PLUGIN_BACKUP_ADAPTERS.find((item)=>item.id===row.id&&item.scope==="instance"); if(adapter&&row.payload) await adapter.restore(adminId,row.payload); }
+      if (selected.has("instance.plugins")) for (const row of data.get("instance.plugins:") ?? []) { if (row.id === "downloads") continue; if (!PLUGINS.some((p) => p.id === row.id)) { counts.warnings.push(`Plugin ${row.id} is unavailable`); continue; } await setPluginEnabled(row.id, Boolean(row.enabled)); const adapter=PLUGIN_BACKUP_ADAPTERS.find((item)=>item.id===row.id&&item.scope==="instance"); if(adapter&&row.payload) await adapter.restore(adminId,row.payload); }
       for (const profile of state.manifest.profiles) {
         const uid = profileIds.get(profile.id); if (!uid) continue; const get = (section: string) => data.get(`${section}:${profile.id}`);
-        if (selected.has("profile.settings")) { const doc = get("profile.settings") ?? {}; if (state.plan!.strategy === "replace") await database.prepare(`DELETE FROM user_settings WHERE user_id=? AND key IN (${USER_SETTING_KEYS.map(() => "?").join(",")})`).run(uid, ...USER_SETTING_KEYS); for (const [key, value] of Object.entries(doc.settings ?? {})) if (USER_SETTING_KEYS.includes(key) && key in SETTING_DEFAULTS) await database.prepare("INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run(uid, key, String(value)); for (const [pluginId, wrapped] of Object.entries(doc.plugins ?? {})) { const adapter=PLUGIN_BACKUP_ADAPTERS.find((item)=>item.id===pluginId&&item.scope==="profile"); if(adapter) await adapter.restore(uid,(wrapped as any)?.payload); else counts.warnings.push(`Plugin ${pluginId} is unavailable`); } }
+        if (selected.has("profile.settings")) { const doc = get("profile.settings") ?? {}; if (state.plan!.strategy === "replace") await database.prepare(`DELETE FROM user_settings WHERE user_id=? AND key IN (${USER_SETTING_KEYS.map(() => "?").join(",")})`).run(uid, ...USER_SETTING_KEYS); for (const [key, value] of Object.entries(doc.settings ?? {})) if (USER_SETTING_KEYS.includes(key) && key in SETTING_DEFAULTS) await database.prepare("INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run(uid, key, String(value)); for (const [pluginId, wrapped] of Object.entries(doc.plugins ?? {})) { if (pluginId === "downloads") { if (state.plan!.strategy === "replace") { await database.prepare("DELETE FROM download_settings WHERE user_id=?").run(uid); await database.prepare("DELETE FROM download_rules WHERE user_id=?").run(uid); } await restoreDownloadPreferences(uid,(wrapped as any)?.payload,typeof legacyDownloadsEnabled === "boolean" ? legacyDownloadsEnabled : undefined); continue; } const adapter=PLUGIN_BACKUP_ADAPTERS.find((item)=>item.id===pluginId&&item.scope==="profile"); if(adapter) await adapter.restore(uid,(wrapped as any)?.payload); else counts.warnings.push(`Plugin ${pluginId} is unavailable`); } }
+        if (selected.has("profile.downloads")) { if (state.plan!.strategy === "replace") { await database.prepare("DELETE FROM download_settings WHERE user_id=?").run(uid); await database.prepare("DELETE FROM download_rules WHERE user_id=?").run(uid); } await restoreDownloadPreferences(uid,get("profile.downloads")); }
         if (selected.has("profile.subscriptions")) { if (state.plan!.strategy === "replace") await database.prepare("DELETE FROM user_channels WHERE user_id=?").run(uid); for (const row of get("profile.subscriptions") ?? []) { await ensureChannel({ channel_id: row.channel_id }); await database.prepare("INSERT INTO user_channels(user_id,channel_id,followed,playback_speed,caption_mode,caption_language,hide_members_only_from_feed,hide_members_only_on_channel,members_only_visibility,added_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id,channel_id) DO UPDATE SET followed=excluded.followed,playback_speed=excluded.playback_speed,caption_mode=excluded.caption_mode,caption_language=excluded.caption_language,hide_members_only_from_feed=excluded.hide_members_only_from_feed,hide_members_only_on_channel=excluded.hide_members_only_on_channel,members_only_visibility=excluded.members_only_visibility").run(uid,row.channel_id,row.followed?1:0,row.playback_speed??null,row.caption_mode??null,row.caption_language??null,row.hide_members_only_from_feed??null,row.hide_members_only_on_channel??null,row.members_only_visibility??"default",row.added_at??new Date().toISOString()); if (row.followed) await database.prepare("UPDATE channels SET external=0 WHERE channel_id=?").run(row.channel_id); } }
         if (selected.has("profile.followed-playlists")) { if (state.plan!.strategy === "replace") await database.prepare("DELETE FROM user_followed_playlists WHERE user_id=?").run(uid); for (const row of get("profile.followed-playlists") ?? []) { await ensureChannel({ channel_id: row.channel_id }); await database.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail,video_count) VALUES(?,?,?,?,?) ON CONFLICT(playlist_id) DO UPDATE SET title=excluded.title").run(row.playlist_id,row.channel_id,row.title??"",row.thumbnail??"",row.video_count??""); await database.prepare("INSERT INTO user_followed_playlists(user_id,playlist_id,followed_at,feed_from,include_in_feed) VALUES(?,?,?,?,?) ON CONFLICT(user_id,playlist_id) DO UPDATE SET feed_from=excluded.feed_from,include_in_feed=excluded.include_in_feed").run(uid,row.playlist_id,row.followed_at,row.feed_from,row.include_in_feed?1:0); } }
         const tagIds = new Map<string, number>();

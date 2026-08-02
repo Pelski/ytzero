@@ -1,6 +1,6 @@
 // Subtitle languages YouTube serves captions in (yt-dlp --sub-langs codes),
 // UI copy of app/src/subtitleLanguages.ts — keep the two lists in sync.
-// labelled with their native names. Shared by the downloads plugin settings
+// labelled with their native names. Shared by the downloads settings
 // (multiselect options) and the on-demand subtitle endpoints.
 export interface SubtitleLanguage {
   code: string;

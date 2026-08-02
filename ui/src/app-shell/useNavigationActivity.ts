@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { api, type DownloadSummary } from "../api";
 import { getNewCompletedDownloads, observeDownloadSummary } from "../downloadActivity";
-import { subscribe } from "../events";
 import { subscribeServerEvent } from "../serverEvents";
 
 const EMPTY_DOWNLOAD_SUMMARY: DownloadSummary = {
@@ -42,7 +41,6 @@ export function useNavigationActivity() {
     loadDownloadSummary();
     return subscribeServerEvent("downloads", loadDownloadSummary);
   }, [loadDownloadSummary]);
-  useEffect(() => subscribe("plugins-changed", loadDownloadSummary), [loadDownloadSummary]);
   useEffect(() => {
     downloadsPageActiveRef.current = location.pathname === "/downloads";
     if (!downloadsPageActiveRef.current) return;

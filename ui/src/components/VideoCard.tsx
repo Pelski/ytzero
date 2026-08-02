@@ -597,8 +597,8 @@ function VideoCard({
                   </button>
                 )}
                 {video.is_private !== 1 && canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
-                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")}>
-                    <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")} onClick={requestLocalDownload}>
+                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")}>
+                    <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")} onClick={requestLocalDownload}>
                       <ArrowDownToLine />
                     </button>
                   </Tooltip>

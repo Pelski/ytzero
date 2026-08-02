@@ -1,5 +1,4 @@
 import { plural } from "../format";
-
 // English is the source of truth for the set of message keys.
 // `pl` and `de` are type-checked against the keys defined here.
 export const en = {
@@ -182,6 +181,7 @@ export const en = {
     playlistName: "Playlist name",
     create: "Create",
     search: "Search",
+    settingsSearchNoResults: "No matching settings",
     searchPlaceholder: "Search...",
     clear: "Clear",
     clearFilters: "Clear filters",
@@ -287,7 +287,7 @@ export const en = {
     downloadCookiesRemove: "Remove cookies",
     downloadCookiesStatusError: "Could not check cookie status",
     uploading: "Uploading…",
-    enableDownloadsPlugin: "Enable video downloads in Configuration",
+    enableDownloadsFeature: "Enable video downloads in Configuration",
     customNameOptional: "Custom name (optional)",
     renameChannel: "Rename channel",
     revertToOriginalName: "Revert to original name",

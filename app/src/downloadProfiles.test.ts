@@ -35,6 +35,8 @@ describe("profile-scoped downloads", () => {
     expect(result.secondaryRuleCount).toBe(1);
     expect(result.secondaryQualityStatus).toBe(200);
     expect(result.secondaryQuality).toBe("720");
+    expect(result.secondaryCompatibleFormat).toBe(1);
+    expect(result.primaryCompatibleFormat).toBe(0);
     expect(result.secondaryRetention).toBe(30);
     expect(result.primaryRetention).toBe(14);
     expect(result.secondaryAdminSettingStatus).toBe(403);

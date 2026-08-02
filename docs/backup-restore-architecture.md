@@ -97,6 +97,7 @@ instance/settings.json
 instance/channels.jsonl
 profiles/index.json
 profiles/<profile-uuid>/settings.json
+profiles/<profile-uuid>/downloads.json
 profiles/<profile-uuid>/subscriptions.jsonl
 profiles/<profile-uuid>/followed-playlists.jsonl
 profiles/<profile-uuid>/tags.jsonl
@@ -198,9 +199,24 @@ below.
 - `plugins`: enabled state for known plugins.
 - `plugin_settings` and global `plugin_<id>_*` settings: only through each
   plugin's backup adapter and normal value validation.
+- `download_settings`: portable configuration owned by the built-in downloads
+  feature, serialized through the versioned `profile.downloads` section rather
+  than through plugin adapters. The profile's enabled state, automation rules,
+  and non-secret per-profile preferences are included. Administrator-owned
+  shared settings use domain keys named `downloads_*` and are serialized once
+  through `instance.downloads`. Download cookies, downloaded media, queue
+  progress, and physical file paths remain excluded.
   Downloads' per-profile **Include Shorts** preference is portable
   configuration. It controls automatic feed and Watch later downloads; manual
   downloads remain an explicit, separate action.
+  The downloads domain section includes the per-profile older-device
+  compatibility preference as portable configuration. It affects only future
+  files, selecting H.264 video and AAC
+  audio in an MP4 container; downloaded media itself remains machine-bound and
+  excluded from portable backups.
+  Restore remains compatible with archives that stored this payload as the
+  former `plugins.downloads` profile adapter (schema v4) and used the downloads
+  row in `instance.plugins` as its enabled flag.
   Social's instance adapter schema v2 stores its feature toggles and child
   access policy. The removed reaction allow-list is ignored when restoring v1;
   chosen emoji belong to the Social activity section instead.
