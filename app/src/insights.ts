@@ -108,7 +108,7 @@ export async function buildHouseholdInsights(days: number, profileId: number | n
   `).get(...previousParams) as { seconds: number };
 
   const tagRows = await database.prepare(`${effectiveVideoTagsCte}
-    SELECT w.user_id, lower(evt.name) AS key, evt.name, evt.color,
+    SELECT w.user_id, lower(evt.name) AS key, MIN(evt.name) AS name, MIN(evt.color) AS color,
            SUM(w.seconds) AS seconds, COUNT(DISTINCT w.video_id) AS video_count
     FROM watch_time_log w
     JOIN effective_video_tags evt ON evt.video_id = w.video_id AND evt.user_id = w.user_id
@@ -117,7 +117,7 @@ export async function buildHouseholdInsights(days: number, profileId: number | n
   `).all(...params) as TagRow[];
 
   const tagHourRows = await database.prepare(`${effectiveVideoTagsCte}
-    SELECT w.user_id, lower(evt.name) AS key, evt.name, w.hour,
+    SELECT w.user_id, lower(evt.name) AS key, MIN(evt.name) AS name, w.hour,
            SUM(w.seconds) AS seconds
     FROM watch_time_log w
     JOIN effective_video_tags evt ON evt.video_id = w.video_id AND evt.user_id = w.user_id
@@ -126,7 +126,7 @@ export async function buildHouseholdInsights(days: number, profileId: number | n
   `).all(...params) as TagHourRow[];
 
   const tagDayRows = await database.prepare(`${effectiveVideoTagsCte}
-    SELECT lower(evt.name) AS key, evt.name, evt.color, w.day,
+    SELECT lower(evt.name) AS key, MIN(evt.name) AS name, MIN(evt.color) AS color, w.day,
            SUM(w.seconds) AS seconds
     FROM watch_time_log w
     JOIN effective_video_tags evt ON evt.video_id = w.video_id AND evt.user_id = w.user_id

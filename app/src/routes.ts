@@ -2296,18 +2296,22 @@ api.get("/history", async (c) => {
   const pageSize = 60;
   const rows = await database
     .prepare(
-      `SELECT MAX(h.id) AS history_id, MAX(h.watched_at) AS watched_at,
+      `WITH latest_history AS (
+         SELECT video_id, MAX(id) AS history_id, MAX(watched_at) AS watched_at
+         FROM history
+         WHERE user_id = ?
+         GROUP BY video_id
+       )
+       SELECT h.history_id, h.watched_at,
               v.video_id, v.channel_id, v.title, v.description, v.duration,
               v.thumbnail, v.published_at, v.published_at_approximate, v.members_only,
               v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket,
               uv.watch_position, uv.watch_duration, uv.watched,
               COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail
-       FROM history h JOIN videos v ON v.video_id = h.video_id
+       FROM latest_history h JOIN videos v ON v.video_id = h.video_id
        JOIN channels c ON c.channel_id = v.channel_id
        LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
-       WHERE h.user_id = ?
-       GROUP BY v.video_id
-       ORDER BY MAX(h.watched_at) DESC, MAX(h.id) DESC LIMIT ? OFFSET ?`
+       ORDER BY h.watched_at DESC, h.history_id DESC LIMIT ? OFFSET ?`
     )
     .all(uid, uid, pageSize + 1, page * pageSize) as (VideoRow & { history_id: number; watched_at: string })[];
   const hasMore = rows.length > pageSize;
@@ -2557,9 +2561,9 @@ api.get("/channels/:id/about", async (c) => {
   // UI has loaded (NULL is_short counts as a regular video, matching the UI).
   const row = await database.prepare(`
     SELECT
-      COALESCE(SUM(published_at IS NOT NULL AND published_at != '' AND COALESCE(is_short, 0) = 0), 0) AS videos,
-      COALESCE(SUM(published_at IS NOT NULL AND published_at != '' AND is_short = 1), 0) AS shorts,
-      COALESCE(SUM(published_at IS NULL OR published_at = ''), 0) AS processing
+      COALESCE(SUM(CASE WHEN published_at IS NOT NULL AND published_at != '' AND COALESCE(is_short, 0) = 0 THEN 1 ELSE 0 END), 0) AS videos,
+      COALESCE(SUM(CASE WHEN published_at IS NOT NULL AND published_at != '' AND is_short = 1 THEN 1 ELSE 0 END), 0) AS shorts,
+      COALESCE(SUM(CASE WHEN published_at IS NULL OR published_at = '' THEN 1 ELSE 0 END), 0) AS processing
     FROM videos WHERE channel_id = ?
   `).get(channelId) as { videos: number; shorts: number; processing: number };
   const counts = row;
@@ -2840,15 +2844,15 @@ api.get("/channels/top", async (c) => {
   const rows = await database.prepare(`
     SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail, c.subscriber_count,
            COUNT(h.id) AS watch_count,
-           CAST(EXISTS(
+           CASE WHEN EXISTS(
              SELECT 1 FROM videos v WHERE v.channel_id = c.channel_id AND v.live_status = 'live'
-           ) AS INTEGER) AS is_live
+           ) THEN 1 ELSE 0 END AS is_live
     FROM channels c
     JOIN user_channels uc ON uc.channel_id = c.channel_id AND uc.user_id = ${uid} AND uc.followed = 1
     JOIN videos vv ON vv.channel_id = c.channel_id
     JOIN history h ON h.video_id = vv.video_id AND h.user_id = ${uid}
     WHERE c.external = 0
-    GROUP BY c.channel_id
+    GROUP BY c.channel_id, c.custom_title, c.title, c.thumbnail, c.subscriber_count
     ORDER BY is_live DESC, watch_count DESC
     LIMIT 30
   `).all() as any[];
@@ -3095,7 +3099,7 @@ api.get("/playlists", async (c) => {
        FROM user_playlists p
        LEFT JOIN user_playlist_videos pv ON pv.playlist_id = p.id
        WHERE p.user_id = ?
-       GROUP BY p.id
+       GROUP BY p.id, p.name, p.icon, p.sort_order, p.created_at
        ORDER BY p.sort_order ASC, p.name COLLATE NOCASE`
     )
     .all(...(videoId ? [videoId] : []), uid);
@@ -3143,7 +3147,7 @@ api.get("/playlists/:id", async (c) => {
        FROM user_playlists p
        LEFT JOIN user_playlist_videos pv ON pv.playlist_id = p.id
        WHERE p.id = ? AND p.user_id = ?
-       GROUP BY p.id`
+       GROUP BY p.id, p.name, p.icon, p.sort_order, p.created_at`
     )
     .get(id, uid) as any;
   if (!playlist) return c.json({ error: "not found" }, 404);

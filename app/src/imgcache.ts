@@ -28,7 +28,11 @@ CREATE TABLE IF NOT EXISTS image_cache (
   last_error_at INTEGER NOT NULL DEFAULT 0
 );
 `);
-try { await database.exec("ALTER TABLE image_cache ADD COLUMN last_error_at INTEGER NOT NULL DEFAULT 0"); } catch {}
+if (database.engine === "postgres") {
+  await database.exec("ALTER TABLE image_cache ADD COLUMN IF NOT EXISTS last_error_at INTEGER NOT NULL DEFAULT 0");
+} else {
+  try { await database.exec("ALTER TABLE image_cache ADD COLUMN last_error_at INTEGER NOT NULL DEFAULT 0"); } catch {}
+}
 
 interface Row {
   url: string;

@@ -84,14 +84,14 @@ export async function resolveChannelId(input: string): Promise<{ channelId: stri
     url = `https://www.youtube.com/${url.replace(/^\/+/, "")}`;
   }
   const res = await fetch(url, { headers: FETCH_HEADERS, redirect: "follow" });
-  if (!res.ok) throw new Error(`Nie udało się pobrać strony kanału (${res.status})`);
+  if (!res.ok) throw new Error(`Failed to fetch channel page (${res.status})`);
   const html = await res.text();
   // The canonical link is authoritative; "channelId" occurrences in page data
   // can belong to recommended channels.
   const idMatch =
     html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[\w-]{22})"/) ??
     html.match(/"channelId":"(UC[\w-]{22})"/);
-  if (!idMatch) throw new Error("Nie znaleziono channel ID na stronie");
+  if (!idMatch) throw new Error("No channel ID found on page");
   const titleMatch = html.match(/<meta property="og:title" content="([^"]*)"/);
   const thumbMatch = html.match(/<meta property="og:image" content="([^"]*)"/);
   return {

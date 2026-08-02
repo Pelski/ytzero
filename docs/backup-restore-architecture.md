@@ -194,6 +194,9 @@ below.
 - `plugins`: enabled state for known plugins.
 - `plugin_settings` and global `plugin_<id>_*` settings: only through each
   plugin's backup adapter and normal value validation.
+  Downloads' per-profile **Include Shorts** preference is portable
+  configuration. It controls automatic feed and Watch later downloads; manual
+  downloads remain an explicit, separate action.
   Social's instance adapter schema v2 stores its feature toggles and child
   access policy. The removed reaction allow-list is ignored when restoring v1;
   chosen emoji belong to the Social activity section instead.

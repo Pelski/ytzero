@@ -281,7 +281,7 @@ const DOWNLOADS_SETTINGS: PluginSettingSource[] = [
     key: "download_shorts",
     type: "toggle",
     label: { en: "Include Shorts", pl: "Pobieraj Shorts", de: "Shorts einschließen" },
-    description: { en: "Also auto-download Shorts from the feed. Scheduled Shorts download regardless.", pl: "Pobieraj też Shorts z feedu. Zaplanowane Shorts pobierają się niezależnie od tego.", de: "Auch Shorts aus dem Feed laden. Geplante Shorts werden unabhängig davon geladen." },
+    description: { en: "Allow automatic downloads of Shorts, including videos in Watch later. Manual downloads are unaffected.", pl: "Zezwalaj na automatyczne pobieranie Shorts, także filmów z „Do obejrzenia”. Ręczne pobieranie pozostaje bez zmian.", de: "Automatische Downloads von Shorts erlauben, auch aus Später ansehen. Manuelle Downloads bleiben unverändert." },
     defaultValue: DL_DEFAULTS.download_shorts,
   },
   {

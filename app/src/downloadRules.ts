@@ -1,5 +1,6 @@
 import { database } from "./database";
 import { getSetting, reloadSettingCache } from "./db";
+import { shouldAutoDownloadVideo } from "./downloadContentPolicy";
 
 export type DownloadRuleSourceMode = "subscriptions" | "selected";
 export type DownloadRuleKeywordMode = "any" | "all";
@@ -284,9 +285,13 @@ export async function automaticDownloadCandidates(limit = 50): Promise<{ video_i
   const seen = new Set<string>();
   const result: { video_id: string; rule_id: number; user_id: number }[] = [];
   for (const { user_id } of rows) {
+    const setting = await database.prepare("SELECT value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=? AND key='download_shorts'").get(user_id) as { value: string } | null;
+    const includeShorts = setting?.value === "1";
     for (const rule of (await listDownloadRules(user_id)).filter((entry) => entry.enabled)) {
       const preview = await previewDownloadRule(user_id, rule, limit, true);
       for (const video of preview.sample) {
+        const row = await database.prepare("SELECT is_short FROM videos WHERE video_id=?").get(video.video_id) as { is_short: number | null } | null;
+        if (!shouldAutoDownloadVideo(row?.is_short ?? null, includeShorts)) continue;
         const key = `${user_id}:${video.video_id}`;
         if (video.download_status != null || seen.has(key)) continue;
         seen.add(key);

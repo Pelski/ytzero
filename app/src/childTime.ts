@@ -70,7 +70,7 @@ export async function recordWatchTick(userId: number, videoId: string) {
   await database.prepare(
     `INSERT INTO watch_time_log (user_id, video_id, day, hour, seconds)
      VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(user_id, video_id, day, hour) DO UPDATE SET seconds = seconds + excluded.seconds`
+     ON CONFLICT(user_id, video_id, day, hour) DO UPDATE SET seconds = watch_time_log.seconds + excluded.seconds`
   ).run(userId, videoId, local.day, local.hour, delta);
   await recordWatchTagSignals(userId, videoId, delta, local);
 }

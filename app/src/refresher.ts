@@ -26,8 +26,8 @@ const upsertVideo = database.prepare(`
     thumbnail = CASE WHEN TRIM(excluded.thumbnail) != '' THEN excluded.thumbnail ELSE videos.thumbnail END,
     published_at = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN excluded.published_at ELSE videos.published_at END,
     published_at_approximate = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN 0 ELSE videos.published_at_approximate END,
-    views = COALESCE(excluded.views, views),
-    likes = COALESCE(excluded.likes, likes),
+    views = COALESCE(excluded.views, videos.views),
+    likes = COALESCE(excluded.likes, videos.likes),
     is_private = 0
 `);
 
@@ -683,8 +683,8 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
         ELSE videos.published_at_approximate
       END,
       members_only = excluded.members_only,
-      views = COALESCE(excluded.views, views),
-      duration = COALESCE(excluded.duration, duration),
+      views = COALESCE(excluded.views, videos.views),
+      duration = COALESCE(excluded.duration, videos.duration),
       is_private = 0
   `);
   const markArchivedStream = database.prepare(

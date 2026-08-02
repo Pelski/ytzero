@@ -40,6 +40,11 @@ const created = await createDownloadRule(1, input);
 const candidates = await automaticDownloadCandidates();
 const updated = await updateDownloadRule(1, created.id, { include_members_only: true });
 const updatedPreview = await previewDownloadRule(1, updated!);
+await updateDownloadRule(1, created.id, { include_shorts: true });
+const candidatesWithoutShorts = await automaticDownloadCandidates();
+db.prepare("INSERT OR IGNORE INTO plugins(id,enabled,version) VALUES('downloads',0,'test')").run();
+db.prepare("INSERT INTO plugin_settings(plugin_id,user_id,key,value) VALUES('downloads',1,'download_shorts','1')").run();
+const candidatesWithShorts = await automaticDownloadCandidates();
 const rules = await listDownloadRules(1);
 let invalidRuleError = "";
 try { await createDownloadRule(1, { name: "Invalid", source_mode: "selected" }); }
@@ -53,5 +58,5 @@ setSetting("plugin_downloads_feed_max_age_hours", "72");
 await migrateLegacyDownloadAutomation();
 const legacyRules = await listDownloadRules(1);
 
-console.log("RESULT " + JSON.stringify({ preview, created, candidates, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
+console.log("RESULT " + JSON.stringify({ preview, created, candidates, candidatesWithoutShorts, candidatesWithShorts, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
 db.close();

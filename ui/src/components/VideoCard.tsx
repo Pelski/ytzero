@@ -23,6 +23,7 @@ import { api, type Video } from "../api";
 import { emit } from "../events";
 import { formatTimeAgo, useI18n } from "../i18n";
 import { img } from "../img";
+import Tooltip from "./Tooltip";
 import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
 import { Badge } from "./ui";
@@ -636,7 +637,9 @@ function VideoCard({
 
         {searchResultLayout ? (
           <div className="card-body">
-            <Link to={videoHref} className="v-title" onClick={playFromLink}>{displayTitle}</Link>
+            <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+              <Link to={videoHref} className="v-title" onClick={playFromLink}>{displayTitle}</Link>
+            </Tooltip>
             {(video.views != null || publishedTime) && (
               <div className="v-search-meta">
                 {video.views != null && `${video.views.toLocaleString(locale)} ${t("views")}`}
@@ -671,9 +674,11 @@ function VideoCard({
               </Link>
             )}
             <div className="card-info">
-              <Link to={videoHref} className="v-title" onClick={playFromLink}>
-                {displayTitle}
-              </Link>
+              <Tooltip text={displayTitle} pos="top" delay={450} className="tooltip-wrap--block tooltip-wrap--title tooltip-wrap--card-title">
+                <Link to={videoHref} className="v-title" onClick={playFromLink}>
+                  {displayTitle}
+                </Link>
+              </Tooltip>
               <div className="v-channel-meta">
                 <Link to={`/channel/${video.channel_id}`} className={`v-channel${publishedTime ? "" : " no-date"}`}>
                   {video.channel_title}

@@ -6,7 +6,7 @@ import { Alert, Badge, Button, FileDropzone, Input, MultiSelectMenu, SelectMenu,
 import "./DownloadConfiguration.css";
 
 const SECTION_KEYS = {
-  behavior: ["quality", "watch_source_mode", "thumb_progress", "download_scheduled"],
+  behavior: ["quality", "watch_source_mode", "thumb_progress", "download_scheduled", "download_shorts"],
   files: ["output_template", "write_thumbnail", "embed_metadata", "write_info_json", "write_nfo", "write_subs", "write_auto_subs", "sub_langs"],
   storage: ["retention_days", "delete_watched", "delete_watched_hours", "keep_liked", "max_storage_gb"],
   advanced: ["experimental_streaming"],
