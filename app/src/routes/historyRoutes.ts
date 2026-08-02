@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import { database } from "../database";
 import { isChildUser } from "../childTime";
 import { refreshDiscoveryInBackground } from "../plugins";
+import type { VideoRow } from "../videoRoutesSupport";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -11,7 +12,7 @@ export function registerHistoryRoutes(
   api: Api,
   access: {
     currentUserId: (context: ApiContext) => number;
-    attachTags: (userId: number, videos: any[]) => Promise<any[]>;
+    attachTags: (userId: number, videos: VideoRow[]) => Promise<Array<VideoRow & Record<string, unknown>>>;
   },
 ): void {
   const { currentUserId, attachTags } = access;
@@ -40,7 +41,7 @@ export function registerHistoryRoutes(
          LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
          ORDER BY h.watched_at DESC, h.history_id DESC LIMIT ? OFFSET ?`,
       )
-      .all(uid, uid, pageSize + 1, page * pageSize) as any[];
+      .all(uid, uid, pageSize + 1, page * pageSize) as (VideoRow & { history_id: number; watched_at: string })[];
     const hasMore = rows.length > pageSize;
     return c.json({ videos: await attachTags(uid, rows.slice(0, pageSize)), page, has_more: hasMore });
   });

@@ -4,6 +4,7 @@ import { join, relative } from "node:path";
 const root = new URL("..", import.meta.url).pathname;
 const globalCss = join(root, "src/styles.css");
 const forbiddenGlobal = /\.(?:watch|settings|video|profile|dropdown|ui)-[\w-]+|\.(?:layout|sidebar|topbar)\b/;
+const appSourcePath = join(root, "src/App.tsx");
 
 async function cssFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir);
@@ -24,9 +25,13 @@ async function sourceFiles(dir: string): Promise<string[]> {
 }
 
 const globalSource = await readFile(globalCss, "utf8");
+const appSource = await readFile(appSourcePath, "utf8");
 const failures: string[] = [];
 if (globalSource.split("\n").length > 250) failures.push("src/styles.css exceeds 250 lines");
 if (forbiddenGlobal.test(globalSource)) failures.push("src/styles.css contains a component or page selector");
+if (/lazy\(\(\) => import\("\.\/pages\//.test(appSource)) {
+  failures.push("route-level lazy loading is unsafe until shared component selectors are removed from page stylesheets");
+}
 
 const files = await cssFiles(join(root, "src"));
 const seenKeyframes = new Map<string, string>();

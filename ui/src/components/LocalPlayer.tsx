@@ -1,6 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import Hls from "hls.js";
 import { Camera, Clapperboard, LoaderCircle, Maximize, Minimize, MonitorPlay, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
 import type { SponsorSegment, VideoChapter, VideoSubtitle } from "../api";
 import { api, SB_CATEGORIES } from "../api";
@@ -313,41 +312,42 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     if (!live) return;
     const v = videoRef.current;
     if (!v) return;
-    // Native HLS (Safari): point the element straight at the playlist.
-    if (!Hls.isSupported() && v.canPlayType("application/vnd.apple.mpegurl")) {
-      v.src = src;
-      const onLoaded = () => tryStreamAutoplay();
-      v.addEventListener("loadedmetadata", onLoaded, { once: true });
-      return () => v.removeEventListener("loadedmetadata", onLoaded);
-    }
-    if (!Hls.isSupported()) { onError?.(); return; }
-    // liveDurationInfinity keeps MediaSource duration at Infinity while the
-    // playlist grows, so the element never fires a premature "ended" at the
-    // first-loaded edge (which would auto-advance us out of the player). The
-    // real total length is supplied via durationSeconds for the scrub bar.
-    const hls = new Hls({
-      enableWorker: true,
-      lowLatencyMode: false,
-      // Static VOD playlist: hls.js knows the real duration and seeks anywhere;
-      // the backend transcodes the requested segment on demand. Keep the
-      // read-ahead modest so hls.js doesn't request far beyond the region.
-      maxBufferLength: 30,
-      backBufferLength: 60,
-    });
-    hls.loadSource(src);
-    hls.attachMedia(v);
-    // Start playback once the manifest is ready (autoplay attribute alone is
-    // unreliable with MSE). EVENT playlists start at position 0 by default.
-    hls.on(Hls.Events.MANIFEST_PARSED, () => tryStreamAutoplay());
-    hls.on(Hls.Events.ERROR, (_evt, data) => {
-      if (!data.fatal) return;
-      // A growing playlist momentarily 404s between segment writes; recover
-      // network/media errors in place instead of tearing the player down.
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-      else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-      else { hls.destroy(); onError?.(); }
-    });
-    return () => { hls.destroy(); };
+    let cancelled = false;
+    let detach = () => {};
+
+    void import("hls.js").then(({ default: Hls }) => {
+      if (cancelled) return;
+      // Native HLS (Safari): point the element straight at the playlist.
+      if (!Hls.isSupported() && v.canPlayType("application/vnd.apple.mpegurl")) {
+        v.src = src;
+        const onLoaded = () => tryStreamAutoplay();
+        v.addEventListener("loadedmetadata", onLoaded, { once: true });
+        detach = () => v.removeEventListener("loadedmetadata", onLoaded);
+        return;
+      }
+      if (!Hls.isSupported()) { onError?.(); return; }
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        maxBufferLength: 30,
+        backBufferLength: 60,
+      });
+      hls.loadSource(src);
+      hls.attachMedia(v);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => tryStreamAutoplay());
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data.fatal) return;
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
+        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
+        else { hls.destroy(); onError?.(); }
+      });
+      detach = () => hls.destroy();
+    }).catch(() => onError?.());
+
+    return () => {
+      cancelled = true;
+      detach();
+    };
   }, [live, src, onError, tryStreamAutoplay]);
 
   useEffect(() => {

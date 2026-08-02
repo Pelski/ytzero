@@ -8,8 +8,8 @@
     "dev": "vite",
     "check:css": "bun scripts/check-css-ownership.ts",
     "generate:changelog": "bun scripts/generate-changelog.ts",
-    "build:prepared": "bun run check:css && vite build",
-    "build": "bun run check:css && bun run generate:changelog && vite build",
+    "build:prepared": "bun run check:css && vite build && bun scripts/check-bundle-size.ts",
+    "build": "bun run check:css && bun run generate:changelog && vite build && bun scripts/check-bundle-size.ts",
     "test": "bun test",
     "typecheck": "bun x tsc --noEmit",
     "preview": "vite preview"

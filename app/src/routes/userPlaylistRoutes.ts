@@ -8,6 +8,7 @@ import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "../
 import { videoPlaylistsForUser } from "../channelPlaylists";
 import { fetchPlaylistVideos } from "../youtube";
 import { importPlaylistVideos } from "../refresher";
+import type { VideoRow } from "../videoRoutesSupport";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -18,8 +19,8 @@ export function registerUserPlaylistRoutes(
   access: {
     currentUserId: (context: ApiContext) => number;
     videoSelect: (userId: number) => string;
-    attachTags: (userId: number, videos: any[]) => Promise<any[]>;
-    attachWatchedState: (userId: number, videos: any[], videoId: (video: any) => string | null | undefined) => Promise<any[]>;
+    attachTags: (userId: number, videos: VideoRow[]) => Promise<Array<VideoRow & Record<string, unknown>>>;
+    attachWatchedState: typeof import("../videoRoutesSupport").attachWatchedState;
     profileDownloadsEnabled: (userId: number) => Promise<boolean>;
   },
 ): void {
@@ -93,7 +94,7 @@ export function registerUserPlaylistRoutes(
        JOIN user_playlist_videos upv ON upv.video_id = v.video_id
        WHERE upv.playlist_id = ?
        ORDER BY upv.added_at DESC`,
-    ).all(id) as any[];
+    ).all(id) as VideoRow[];
     return c.json({ playlist, videos: await attachTags(uid, rows) });
   });
 
