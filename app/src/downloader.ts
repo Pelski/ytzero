@@ -25,6 +25,7 @@ const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_MIN = 30;
 const CLEANUP_INTERVAL_MS = 10 * 60_000;
 const TICK_INTERVAL_MS = 30_000;
+const DOWNLOAD_MANIFEST_SUFFIX = ".ytz.json";
 
 // ---------- settings ----------
 
@@ -253,6 +254,10 @@ async function filesFor(videoId: string): Promise<string[]> {
   const files = new Set<string>(filesForBase(videoId)); // legacy flat {id}.* layout
   const base = await outputBaseFor(videoId);
   if (base && base !== videoId) for (const f of filesForBase(base)) files.add(f);
+  for (const baseDir of new Set([dirname(videoId), ...(base ? [dirname(base)] : [])])) {
+    const manifest = join(DOWNLOADS_DIR, baseDir, `${videoId}${DOWNLOAD_MANIFEST_SUFFIX}`);
+    if (existsSync(manifest)) files.add(manifest);
+  }
   return [...files];
 }
 
@@ -277,6 +282,75 @@ function pruneEmptyDirs(base: string | null) {
     }
     dir = dirname(dir);
   }
+}
+
+interface DownloadManifest {
+  schemaVersion: 1;
+  videoId: string;
+  /** Relative to the manifest. Never an absolute host path. */
+  file: string;
+  sizeBytes: number;
+  downloadedAt: string;
+}
+
+function isSafeRelativePath(value: unknown): value is string {
+  if (typeof value !== "string" || !value || value.length > 1_024) return false;
+  if (value.includes("\\") || value.startsWith("/") || value.split("/").some((part) => !part || part === "." || part === "..")) return false;
+  return true;
+}
+
+function manifestPathFor(videoId: string, filePath: string): string {
+  return join(dirname(filePath), `${videoId}${DOWNLOAD_MANIFEST_SUFFIX}`);
+}
+
+function writeDownloadManifest(videoId: string, filePath: string, sizeBytes: number) {
+  const manifest: DownloadManifest = {
+    schemaVersion: 1,
+    videoId,
+    file: basename(filePath),
+    sizeBytes,
+    downloadedAt: new Date().toISOString(),
+  };
+  const path = manifestPathFor(videoId, filePath);
+  const temporaryPath = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, `${JSON.stringify(manifest)}\n`);
+  renameSync(temporaryPath, path);
+}
+
+/**
+ * Reconnect files moved with their small recovery manifest before cleanup can
+ * classify their former database paths as missing. Manifests without a known
+ * download are still returned as protected, so an unfamiliar file is never
+ * deleted merely because it lives under DOWNLOADS_DIR.
+ */
+async function recoverManifestDownloads(): Promise<{ recovered: number; recoveredVideoIds: Set<string>; protectedFiles: Set<string> }> {
+  const root = resolve(DOWNLOADS_DIR);
+  const protectedFiles = new Set<string>();
+  const recoveredVideoIds = new Set<string>();
+  let recovered = 0;
+  for (const manifestPath of walkFiles(DOWNLOADS_DIR).filter((path) => path.endsWith(DOWNLOAD_MANIFEST_SUFFIX))) {
+    protectedFiles.add(manifestPath);
+    let value: Partial<DownloadManifest>;
+    try { value = JSON.parse(await Bun.file(manifestPath).text()); } catch { continue; }
+    if (value.schemaVersion !== 1 || typeof value.videoId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.videoId) || !isSafeRelativePath(value.file)) continue;
+    const filePath = resolve(dirname(manifestPath), value.file);
+    if (!filePath.startsWith(`${root}/`) || !existsSync(filePath)) continue;
+    let size: number;
+    try { size = statSync(filePath).size; } catch { continue; }
+    protectedFiles.add(filePath);
+    const result = await database.prepare(`
+      UPDATE downloads
+      SET status='done', path=?, size_bytes=?, error=NULL, finished_at=COALESCE(finished_at, datetime('now'))
+      WHERE video_id=? AND status IN ('done', 'deleted')
+    `).run(filePath, size, value.videoId);
+    if (result.changes > 0) {
+      recovered++;
+      recoveredVideoIds.add(value.videoId);
+      notifyDownloadChanged(value.videoId);
+      log.info("downloads.recovered_from_manifest", { videoId: value.videoId, path: filePath });
+    }
+  }
+  return { recovered, recoveredVideoIds, protectedFiles };
 }
 
 // ---------- subtitles ----------
@@ -686,6 +760,8 @@ async function tombstone(videoId: string) {
 }
 
 async function cleanup(s: DlSettings) {
+  const manifestRecovery = await recoverManifestDownloads();
+  if (manifestRecovery.recovered > 0) publishAppEvent("downloads", { recovered: manifestRecovery.recovered });
   // 1–2. Retention and watched cleanup are profile policies. Remove only that
   // profile's ownership; removeDownload tombstones the physical file only when
   // no other profile still owns it.
@@ -702,6 +778,7 @@ async function cleanup(s: DlSettings) {
   const now = Date.now();
   const settingsByUser = new Map<number, DlSettings>();
   for (const owner of owners) {
+    if (manifestRecovery.recoveredVideoIds.has(owner.video_id)) continue;
     let profileSettings = settingsByUser.get(owner.user_id);
     if (!profileSettings) {
       profileSettings = await dlSettings(owner.user_id);
@@ -730,6 +807,7 @@ async function cleanup(s: DlSettings) {
     `).all() as { video_id: string; size_bytes: number | null }[];
     for (const row of candidates) {
       if (total <= cap) break;
+      if (manifestRecovery.recoveredVideoIds.has(row.video_id)) continue;
       if (await physicalDownloadProtected(row.video_id)) continue;
       await tombstone(row.video_id);
       total -= row.size_bytes ?? 0;
@@ -755,6 +833,7 @@ async function cleanup(s: DlSettings) {
     if (row.output_base) liveBases.add(row.output_base);
   }
   for (const full of walkFiles(DOWNLOADS_DIR)) {
+    if (manifestRecovery.protectedFiles.has(full)) continue;
     const rel = full.slice(resolve(DOWNLOADS_DIR).length + 1);
     let stem = rel;
     let owned = false;
@@ -968,6 +1047,9 @@ async function runDownload(userId: number, videoId: string, s: DlSettings) {
     const path = files.sort((a, b) => statSync(b).size - statSync(a).size)[0];
     if (path) {
       const size = statSync(path).size;
+      try { writeDownloadManifest(videoId, path, size); } catch (e) {
+        log.warn("downloads.manifest_failed", { videoId, error: e instanceof Error ? e.message : String(e) });
+      }
       if (s.write_nfo === 1) {
         try { await writeNfoFile(videoId, base); } catch (e) {
           log.warn("downloads.nfo_failed", { videoId, error: e instanceof Error ? e.message : String(e) });

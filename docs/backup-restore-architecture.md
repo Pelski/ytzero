@@ -82,6 +82,10 @@ watch history requires a minimal referenced-video index.
 Downloaded media is never silently included. It can be many gigabytes and is
 not portable across arbitrary download directory layouts. The UI should link
 to the exact-instance `data/` backup documentation when the user needs it.
+The small `.ytz.json` recovery sidecars stored beside downloaded
+media are machine-bound download-library metadata: they are excluded together
+with downloaded media from portable backups, but enable safe reconnection after
+the entire download directory is moved.
 
 ## Archive format
 
