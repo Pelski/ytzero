@@ -189,7 +189,7 @@ export default function DownloadAutomation() {
           onChange={(backfill_mode) => setDraft({ ...draft, backfill_mode })}
           columns={3}
           options={[
-            { value: "future", label: tx("From now on", "Od teraz", "Ab jetzt"), description: tx("Only videos discovered after saving.", "Tylko materiały odkryte po zapisaniu.", "Nur nach dem Speichern entdeckte Videos.") },
+            { value: "future", label: tx("From now on", "Od teraz", "Ab jetzt"), description: tx("Only videos uploaded after saving.", "Tylko materiały opublikowane po zapisaniu.", "Nur nach dem Speichern veröffentlichte Videos.") },
             { value: "recent", label: tx("Recent and future", "Ostatnie i przyszłe", "Letzte und zukünftige"), description: tx("Also include a configurable recent period.", "Uwzględnij też wybrany okres wstecz.", "Zusätzlich einen wählbaren Zeitraum einbeziehen.") },
             { value: "all", label: tx("All known and future", "Wszystkie znane i przyszłe", "Alle bekannten und zukünftigen"), description: tx("May queue the entire known library.", "Może zakolejkować całą znaną bibliotekę.", "Kann die gesamte bekannte Bibliothek einreihen.") },
           ]}

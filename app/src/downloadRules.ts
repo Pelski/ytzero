@@ -230,7 +230,13 @@ export async function previewDownloadRule(userId: number, value: Partial<Downloa
   if (!sourceWhere.length) return { matches: 0, ready: 0, existing: 0, sample: [] as DownloadRulePreviewVideo[], limited: false };
 
   const timeWhere = rule.backfill_mode === "future"
-    ? "AND v.created_at >= ?"
+    ? `AND replace(substr(v.published_at, 1, 19), 'T', ' ') >= replace(substr(?, 1, 19), 'T', ' ')
+       AND NOT EXISTS (
+         SELECT 1 FROM user_channels future_follow
+         WHERE future_follow.user_id=? AND future_follow.channel_id=v.channel_id
+           AND future_follow.followed=1
+           AND replace(substr(v.published_at, 1, 19), 'T', ' ') < replace(substr(future_follow.added_at, 1, 19), 'T', ' ')
+       )`
     : rule.backfill_mode === "recent"
       ? "AND v.published_at >= datetime('now', ?)"
       : "";
@@ -238,7 +244,7 @@ export async function previewDownloadRule(userId: number, value: Partial<Downloa
     const createdAt = typeof (value as Partial<DownloadRule>).created_at === "string"
       ? (value as Partial<DownloadRule>).created_at!
       : new Date().toISOString().slice(0, 19).replace("T", " ");
-    params.push(createdAt);
+    params.push(createdAt, userId);
   } else if (rule.backfill_mode === "recent") params.push(`-${rule.lookback_hours} hours`);
 
   const rows = await database.prepare(`

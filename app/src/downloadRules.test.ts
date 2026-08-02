@@ -35,6 +35,15 @@ describe("download automation rules", () => {
     expect(result.preview.sample.map((video: any) => video.video_id)).not.toContain("rule-imported");
   });
 
+  test("from now on uses upload and subscription time for every source mode", () => {
+    for (const preview of [result.futurePreview, result.futureSelectedPreview]) {
+      const ids = preview.sample.map((video: any) => video.video_id);
+      expect(ids).toContain("rule-new-upload");
+      expect(ids).not.toContain("rule-old-upload-newly-discovered");
+      expect(ids).not.toContain("rule-before-subscription");
+    }
+  });
+
   test("uses the same result to feed automatic queue candidates", () => {
     expect(result.candidates).toEqual([{ video_id: "rule-main", rule_id: result.created.id, user_id: 1 }]);
   });

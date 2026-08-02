@@ -12,11 +12,18 @@ insertVideo.run("rule-other", "UC-other", "Gameplay episode", "clean", "", 0, 0)
 insertVideo.run("rule-watched", "UC-rule", "Gameplay watched", "clean", "", 0, 0);
 insertVideo.run("rule-archived", "UC-rule", "Gameplay archived", "clean", "", 0, 0);
 insertVideo.run("rule-imported", "UC-rule", "Gameplay imported", "clean", "", 0, 0);
+insertVideo.run("rule-old-upload-newly-discovered", "UC-rule", "Future-scope back catalog", "clean", "", 0, 0);
+insertVideo.run("rule-before-subscription", "UC-rule", "Future-scope before subscription", "clean", "", 0, 0);
+insertVideo.run("rule-new-upload", "UC-rule", "Future-scope fresh upload", "clean", "", 0, 0);
+db.prepare("UPDATE videos SET published_at=datetime('now','-30 days'), created_at=datetime('now') WHERE video_id='rule-old-upload-newly-discovered'").run();
+db.prepare("UPDATE videos SET published_at=datetime('now','-90 minutes'), created_at=datetime('now') WHERE video_id='rule-before-subscription'").run();
+db.prepare("UPDATE videos SET published_at=datetime('now','-30 minutes'), created_at=datetime('now') WHERE video_id='rule-new-upload'").run();
 db.prepare("UPDATE videos SET external=1 WHERE video_id='rule-imported'").run();
 db.prepare("INSERT INTO user_videos(user_id,video_id,status,watched) VALUES(1,'rule-watched','inbox',1)").run();
 db.prepare("INSERT INTO user_videos(user_id,video_id,status) VALUES(1,'rule-archived','archived')").run();
 db.prepare("INSERT INTO user_channels(user_id,channel_id,followed) VALUES(1,'UC-rule',1)").run();
 db.prepare("INSERT INTO user_channels(user_id,channel_id,followed) VALUES(1,'UC-other',1)").run();
+db.prepare("UPDATE user_channels SET added_at=datetime('now','-1 hour') WHERE user_id=1 AND channel_id='UC-rule'").run();
 
 const input = {
   name: "Gameplay, no trailers",
@@ -36,6 +43,20 @@ const input = {
 };
 
 const preview = await previewDownloadRule(1, input);
+const futurePreview = await previewDownloadRule(1, {
+  ...input,
+  source_mode: "subscriptions",
+  channel_ids: [],
+  include_keywords: ["future-scope"],
+  backfill_mode: "future",
+  created_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString().slice(0, 19).replace("T", " "),
+} as typeof input & { created_at: string });
+const futureSelectedPreview = await previewDownloadRule(1, {
+  ...input,
+  include_keywords: ["future-scope"],
+  backfill_mode: "future",
+  created_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString().slice(0, 19).replace("T", " "),
+} as typeof input & { created_at: string });
 const created = await createDownloadRule(1, input);
 const candidates = await automaticDownloadCandidates();
 const updated = await updateDownloadRule(1, created.id, { include_members_only: true });
@@ -56,5 +77,5 @@ db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'download_
 await migrateLegacyDownloadAutomation();
 const legacyRules = await listDownloadRules(1);
 
-console.log("RESULT " + JSON.stringify({ preview, created, candidates, candidatesWithoutShorts, candidatesWithShorts, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
+console.log("RESULT " + JSON.stringify({ preview, futurePreview, futureSelectedPreview, created, candidates, candidatesWithoutShorts, candidatesWithShorts, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
 db.close();
