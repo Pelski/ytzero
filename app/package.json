@@ -15,7 +15,7 @@
     "hono": "^4.6.0",
     "innertube.js": "^1.1.5",
     "openid-client": "^6.8.4",
-    "sharp": "^0.34.3"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@types/bun": "^1.1.10",
