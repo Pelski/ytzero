@@ -68,13 +68,13 @@ import VideoComments from "../components/VideoComments";
 import SocialShareDialog from "../components/social/SocialShareDialog";
 import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
 import WatchDescription from "../components/watch/WatchDescription";
+import WatchPlaylistPanel from "../components/watch/WatchPlaylistPanel";
 import { colonDurationToSeconds, formatWatchTime, loadYouTubeApi, restoreSidebarVisibility } from "./watchRuntime";
 import { useWatchPageController } from "./useWatchPageController";
 type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
-
 
 export default function WatchPage() {
   const controller = useWatchPageController();
@@ -905,39 +905,14 @@ export default function WatchPage() {
       </div>
       <aside>
         {playlistId && playlistVideos.length > 0 && (
-          <div className="watch-playlist-panel">
-            <div className="watch-playlist-head">
-              <span className="watch-playlist-title">{t("playlist")}</span>
-              <span className="watch-playlist-count">
-                {playlistIndex >= 0 ? playlistIndex + 1 : 1} / {playlistVideos.length}
-              </span>
-            </div>
-            <div className="playlist-items" ref={playlistItemsRef}>
-              {playlistVideos.map((v, i) => (
-                <Link
-                  ref={v.videoId === id ? activePlaylistItemRef : undefined}
-                  key={v.videoId}
-                  to={`/watch/${v.videoId}/playlist/${playlistId}`}
-                  className={`playlist-item${v.videoId === id ? " active" : ""}`}
-                  title={v.title}
-                >
-                  <span className="playlist-item-num">{i + 1}</span>
-                  <VideoThumbnail src={img(v.thumbnail)} watched={v.watched === 1} progress={watchProgress(v.watch_position, v.watch_duration)} variant="playlist" loading="lazy">
-                    {v.duration && <span className="playlist-item-dur">{v.duration}</span>}
-                    {v.videoId === id && (
-                      <span className="playlist-item-playing">
-                        <Play size={12} fill="currentColor" />
-                      </span>
-                    )}
-                  </VideoThumbnail>
-                  <div className="playlist-item-info">
-                    <div className="playlist-item-title">{v.title}</div>
-                    {v.channelTitle && <div className="playlist-item-ch">{v.channelTitle}</div>}
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
+          <WatchPlaylistPanel
+            activeItemRef={activePlaylistItemRef}
+            currentVideoId={id}
+            itemsRef={playlistItemsRef}
+            playlistId={playlistId}
+            playlistIndex={playlistIndex}
+            videos={playlistVideos}
+          />
         )}
         {showRelated && <>
         <h2 className="related-title">{t("moreLikeThis")}</h2>

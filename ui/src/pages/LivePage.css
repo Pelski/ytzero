@@ -53,31 +53,4 @@
   font-weight: 700;
   letter-spacing: 0.35px;
 }
-
-.live-page .video-card { position: relative; }
-.video-card .members-only-marker {
-  position: absolute;
-  top: 6px;
-  left: 6px;
-  z-index: 7;
-}
-.members-only-marker__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 27px;
-  height: 27px;
-  border-radius: 50%;
-  background: #f5c542;
-  color: #3c2900;
-  box-shadow: 0 2px 9px rgba(0, 0, 0, 0.72), 0 0 14px rgba(245, 197, 66, 0.48);
-}
-.members-only-marker__icon svg { stroke-width: 2.2; }
-.video-card .members-only-marker--stacked { top: 37px; }
-.short-card-members-only {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 5;
-}
-.short-card-members-only--stacked { top: 38px; }
+.live-upcoming-header { margin-top: 32px; }

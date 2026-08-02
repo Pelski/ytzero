@@ -4,6 +4,7 @@ import { emit } from "../../events";
 import { formatAgeUnit, LANGUAGES, languageName } from "../../i18n";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE } from "../../playerScreenshot";
 import { scheduleSettingWrite } from "../../settingsWriteQueue";
+import "./SettingsDisplayView.css";
 import { WATCHED_STYLES } from "../../watchedStyle";
 import { useSettingsPageController } from "../../pages/useSettingsPageController";
 import Popconfirm from "../Popconfirm";

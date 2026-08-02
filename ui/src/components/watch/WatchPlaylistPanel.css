@@ -1,0 +1,94 @@
+.watch-playlist-panel {
+  overflow: hidden;
+  margin-bottom: 20px;
+  border: 1px solid var(--surface-2);
+  border-radius: 12px;
+}
+.watch-playlist-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--surface-2);
+  background: var(--surface);
+}
+.watch-playlist-title { font-size: 14px; font-weight: 700; }
+.watch-playlist-count { flex-shrink: 0; color: var(--text-2); font-size: 12px; }
+.watch-playlist-panel .playlist-items {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 460px;
+}
+.watch-playlist-panel .playlist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid var(--surface-2);
+  background: none;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.watch-playlist-panel .playlist-item:hover,
+.watch-playlist-panel .playlist-item.active { background: var(--surface-2); }
+.watch-playlist-panel .playlist-item:last-child { border-bottom: none; }
+.watch-playlist-panel .playlist-item-num {
+  width: 20px;
+  flex-shrink: 0;
+  padding-top: 2px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.watch-playlist-panel .playlist-item-thumb,
+.watch-playlist-membership-row .playlist-item-thumb {
+  width: 100px;
+  flex-shrink: 0;
+  border-radius: 4px;
+}
+.watch-playlist-panel .playlist-item-thumb img,
+.watch-playlist-membership-row .playlist-item-thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+.watch-playlist-panel .playlist-item-dur {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+}
+.watch-playlist-panel .playlist-item-playing {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+}
+.watch-playlist-panel .playlist-item-info { flex: 1; min-width: 0; }
+.watch-playlist-panel .playlist-item-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.watch-playlist-panel .playlist-item-ch { margin-top: 3px; color: var(--text-2); font-size: 11.5px; }
+

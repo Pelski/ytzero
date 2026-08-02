@@ -8,6 +8,7 @@ import { Button, EmptyState, PageHeader, SectionHeader } from "../components/ui"
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { appDayKey, calendarDayDifference, formatCalendarDay } from "../dateTime";
 import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
+import "./HistoryPage.css";
 
 export default function HistoryPage({ onPlay, allowHistoryDeletion }: { onPlay: PlayVideo; allowHistoryDeletion: boolean }) {
   const { t, locale, timeZone } = useI18n();

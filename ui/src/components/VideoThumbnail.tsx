@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import type { ReactNode } from "react";
 import { img } from "../img";
+import "./VideoThumbnail.css";
 
 export type VideoThumbnailVariant =
   | "card"

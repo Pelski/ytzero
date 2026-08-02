@@ -5,14 +5,12 @@ const assetsDirectory = resolve(import.meta.dir, "../dist/assets");
 const assets = await readdir(assetsDirectory);
 
 const budgets: Array<{ pattern: RegExp; maximumBytes: number; label: string }> = [
-  // Route-level splitting is intentionally disabled until shared component
-  // styles have been moved out of page stylesheets. Splitting the routes first
-  // changes CSS availability and breaks cards on the feed even though the
-  // TypeScript build succeeds. HLS and the emoji catalogue remain safely lazy.
-  { pattern: /^index-.*\.js$/, maximumBytes: 1_050_000, label: "initial JavaScript" },
+  { pattern: /^index-.*\.js$/, maximumBytes: 550_000, label: "initial JavaScript" },
+  { pattern: /^SettingsPage-.*\.js$/, maximumBytes: 150_000, label: "settings route" },
+  { pattern: /^WatchPage-.*\.js$/, maximumBytes: 150_000, label: "watch route" },
   { pattern: /^hls-.*\.js$/, maximumBytes: 550_000, label: "lazy HLS runtime" },
   { pattern: /^EmojiCatalog-.*\.js$/, maximumBytes: 330_000, label: "lazy emoji catalog" },
-  { pattern: /^index-.*\.css$/, maximumBytes: 280_000, label: "initial CSS" },
+  { pattern: /^index-.*\.css$/, maximumBytes: 100_000, label: "initial CSS" },
 ];
 
 const failures: string[] = [];

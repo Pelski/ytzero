@@ -4,6 +4,7 @@ import type { VideoCreator } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
 import { FloatingPopover } from "./ui";
+import "./VideoCreators.css";
 
 function separator(index: number, length: number, language: "en" | "pl" | "de") {
   if (index === 0) return "";

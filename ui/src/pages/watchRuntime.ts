@@ -42,3 +42,17 @@ export function formatWatchTime(seconds: number): string {
   if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
   return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
 }
+
+type ShareTimestampCandidate = number | null | undefined | (() => unknown);
+
+export function resolveShareTimestamp(...candidates: ShareTimestampCandidate[]): number {
+  for (const candidate of candidates) {
+    try {
+      const value = typeof candidate === "function" ? Number(candidate()) : candidate;
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.floor(value);
+    } catch {
+      // An unavailable player source should not prevent using the next fallback.
+    }
+  }
+  return 0;
+}

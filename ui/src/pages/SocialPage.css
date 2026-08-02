@@ -162,9 +162,6 @@
 .social-video-results .ui-list { width: 100%; }
 .social-selected-video { padding: 0 10px; border: 1px solid var(--surface-3); border-radius: 10px; background: var(--bg); }
 .social-selected-video .ui-list-row__meta { color: var(--accent); }
-.social-mention-input { display: flex; width: 100%; }
-.social-mention-input > .ui-textarea { box-sizing: border-box; width: 100%; }
-.social-mention-input__popover { box-sizing: border-box; width: min(360px, calc(100vw - 32px)); }
 .social-post__menu-popconfirm { display: flex; width: 100%; }
 .social-post__menu-popconfirm > .ui-menu__item { width: 100%; }
 

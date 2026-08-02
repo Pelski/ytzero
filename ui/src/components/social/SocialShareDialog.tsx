@@ -63,6 +63,9 @@ export default function SocialShareDialog({ open, video, onOpenChange, onResult 
   >
     <Stack gap={4}>
       {activeProfile && <div className="social-share-dialog__author"><ProfileAvatar profile={activeProfile} size={38} /><span>{activeProfile.name}</span></div>}
+      <Field label={t("socialMentionProfiles")} className="social-share-dialog__message">
+        <ProfileMentionInput value={body} onChange={setBody} profiles={profiles} placeholder={t("socialPostPlaceholder")} disabled={publishing} maxLength={1_000} />
+      </Field>
       <List divided={false} className="social-share-dialog__video">
         <ListRow
           media={<VideoThumbnail src={img(video.thumbnail)} watched={Boolean(video.watched)} variant="sidebar" />}
@@ -70,9 +73,6 @@ export default function SocialShareDialog({ open, video, onOpenChange, onResult 
           description={video.channel_title}
         />
       </List>
-      <Field label={t("socialMentionProfiles")}>
-        <ProfileMentionInput value={body} onChange={setBody} profiles={profiles} placeholder={t("socialPostPlaceholder")} disabled={publishing} maxLength={1_000} />
-      </Field>
     </Stack>
   </Dialog>;
 }

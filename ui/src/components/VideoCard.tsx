@@ -28,6 +28,7 @@ import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
 import { Badge } from "./ui";
 import { useDeArrowBranding } from "../dearrow";
+import "./VideoGrid.css";
 import "./VideoCard.css";
 
 export { BUCKET_ICONS } from "./VideoScheduleActions";
@@ -596,23 +597,31 @@ function VideoCard({
                   </button>
                 )}
                 {video.is_private !== 1 && canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
-                  <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")} onClick={requestLocalDownload}>
+                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")}>
+                    <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsPlugin")} onClick={requestLocalDownload}>
                       <ArrowDownToLine />
-                  </button>
+                    </button>
+                  </Tooltip>
                 )}
                 {allowReject && video.status !== "archived" && (
-                  <button className="action-btn" aria-label={t("reject")} onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
+                  <Tooltip text={t("reject")}>
+                    <button className="action-btn" aria-label={t("reject")} onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
                       <Archive />
-                  </button>
+                    </button>
+                  </Tooltip>
                 )}
                 {allowMarkWatched && watched ? (
-                  <button className="action-btn" aria-label={t("markUnwatched")} onClick={(e) => act(e, markUnwatched, "unwatched")}>
-                      <EyeOff />
-                  </button>
+                  <Tooltip text={t("markUnwatched")}>
+                    <button className="action-btn" aria-label={t("markUnwatched")} onClick={(e) => act(e, markUnwatched, "unwatched")}>
+                        <EyeOff />
+                    </button>
+                  </Tooltip>
                 ) : allowMarkWatched && video.status !== "archived" ? (
-                  <button className="action-btn" aria-label={t("markWatched")} onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
+                  <Tooltip text={t("markWatched")}>
+                    <button className="action-btn" aria-label={t("markWatched")} onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
                       <Eye />
-                  </button>
+                    </button>
+                  </Tooltip>
                 ) : null}
                 {showRestore && (
                   <button className="action-btn" aria-label={t("restore")} onClick={(e) => act(e, () => api.restore(video.video_id), "restored")}>

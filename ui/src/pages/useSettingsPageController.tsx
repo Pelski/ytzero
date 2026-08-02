@@ -746,7 +746,6 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     setVideoCardSize(next);
     persistVideoCardSize(next);
     applyVideoCardSize(next);
-    emit("video-card-size-changed");
   };
 
   // Reorder/hide is interactive (drag fires many updates) — reflect locally at

@@ -1,0 +1,24 @@
+/* popconfirm */
+.popconfirm-popover {
+  position: fixed;
+  z-index: 9999;
+  background: var(--surface-2);
+  border: 1px solid var(--surface-3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(220px, calc(100vw - 16px));
+}
+.popconfirm-msg {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.popconfirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}

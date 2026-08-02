@@ -1045,9 +1045,6 @@ tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 @media (max-width: 640px) {
   .ui-setting-row { flex-wrap: nowrap; }
   .ui-setting-row__copy { flex: 0 1 auto; }
-  .sb-category-grid { gap: 2px 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .sb-category-row, .sb-category-name { min-width: 0; }
-  .sb-category-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @media (max-width: 640px) {
   .ui-page-header { align-items: stretch; flex-direction: column; gap: 10px; }

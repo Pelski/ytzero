@@ -235,7 +235,6 @@ export default function ProfileMenu({ isAdmin, isChildProfile, profilePermission
           {canManageArea("appearance") && <SteppedSlider value={cardSize} steps={cardSizeSteps} ariaLabel={t("videoCardSize")} onChange={(next) => {
             setCardSize(next);
             persistVideoCardSize(next);
-            emit("video-card-size-changed");
           }} />}
           {location.pathname === "/" && (
             <>

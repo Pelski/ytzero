@@ -1,0 +1,8 @@
+.video-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--video-card-min, 248px), 1fr));
+  gap: 22px 12px;
+}
+.video-grid--sm,
+.video-grid--md,
+.video-grid--lg { grid-template-columns: repeat(auto-fill, minmax(var(--video-card-min, 248px), 1fr)); }

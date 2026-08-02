@@ -23,7 +23,6 @@
 .tooltip-wrap--delayed .tooltip-tip { transition-delay: 0ms; }
 .tooltip-wrap--delayed:hover .tooltip-tip { transition-delay: var(--tooltip-delay); }
 .tooltip-wrap--title .tooltip-tip { box-sizing: border-box; max-width: 100%; white-space: normal; width: max-content; }
-.video-card { container-type: inline-size; }
 .tooltip-wrap--card-title .tooltip-tip { max-width: calc(100cqw - 20px); }
 .tooltip-wrap--left .tooltip-tip  { right: calc(100% + 7px); top: 50%; transform: translateY(-50%) translateX(3px); }
 .tooltip-wrap--right .tooltip-tip { left: calc(100% + 7px);  top: 50%; transform: translateY(-50%) translateX(-3px); }

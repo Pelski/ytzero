@@ -1,0 +1,319 @@
+/* ── Local player (downloaded files) ─────────────────────────────────── */
+.lp-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+/* The child video's own cursor (pointer) would win over the root's, so hide
+   the cursor on every descendant while the controls are faded out. */
+.lp-root.lp-hide-cursor,
+.lp-root.lp-hide-cursor * { cursor: none; }
+.lp-video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  cursor: pointer;
+}
+/* Blurred still of the video shown behind the spinner while it buffers. */
+.lp-loading-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(18px) brightness(0.55);
+  transform: scale(1.1); /* hide the blur's soft edges */
+  pointer-events: none;
+  z-index: 0;
+}
+.lp-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.9);
+  pointer-events: none;
+  z-index: 1;
+}
+.lp-big-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 68px;
+  height: 68px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.lp-big-play:hover { background: rgba(0, 0, 0, 0.85); transform: translate(-50%, -50%) scale(1.06); }
+.lp-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 26px 12px 8px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.4) 60%, transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.lp-controls.visible { opacity: 1; pointer-events: auto; }
+
+/* ---------- local player subtitles ---------- */
+.lp-subtitles {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  max-width: 86%;
+  text-align: center;
+  pointer-events: none;
+  z-index: 3;
+  transition: bottom 0.2s ease;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.lp-subtitles.raised { bottom: 13%; }
+.lp-subtitles span {
+  background: var(--lp-sub-bg, rgba(0, 0, 0, 0.75));
+  padding: 3px 10px;
+  border-radius: 5px;
+  line-height: 1.35;
+  width: fit-content;
+}
+
+.lp-sub-menu-wrap { position: relative; display: flex; }
+.lp-sub-menu {
+  position: fixed;
+  right: auto;
+  bottom: auto;
+  width: 230px;
+  background: rgba(22, 22, 27, 0.98);
+  border: none;
+  border-radius: 14px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 6;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.58);
+  max-height: 300px;
+}
+.lp-sub-toggle { display: flex; align-items: center; justify-content: space-between; padding: 5px 5px 9px; border-bottom: 1px solid rgba(255, 255, 255, 0.09); color: var(--text-2); font-size: 12px; }
+.lp-sub-toggle .switch { transform: scale(.8); transform-origin: right center; }
+.lp-sub-menu-list-wrap { --ui-scroll-area-background: rgba(22, 22, 27, 0.98); flex: 1; }
+.lp-sub-menu-list { height: 100%; min-height: 0; padding-top: 4px; }
+.lp-sub-menu-list button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.lp-sub-menu-list button:hover { background: rgba(255, 255, 255, 0.09); }
+.lp-sub-menu-list button.is-selected { color: var(--accent); font-weight: 500; background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.lp-sub-menu-list button:disabled { opacity: 0.55; cursor: default; }
+.lp-sub-error { font-size: 11px; color: #ff7d7d; }
+.lp-sub-option-status { display: inline-flex; align-items: center; justify-content: flex-end; min-width: 14px; }
+
+.lp-bar {
+  position: relative;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+/* Experimental play-while-downloading stream: a badge in the top-left corner. */
+.lp-live-corner {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.lp-live-corner.visible { opacity: 1; }
+/* Centred "leave the experimental stream" button in the control bar. */
+.lp-exit-stream {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.lp-exit-stream:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.6); }
+@media (max-width: 640px) {
+  .lp-exit-stream {
+    width: 34px;
+    height: 34px;
+    justify-content: center;
+    padding: 0;
+    border-radius: 6px;
+  }
+  .lp-exit-stream span { display: none; }
+}
+.lp-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.6);
+  animation: lp-live-pulse 1.6s ease-out infinite;
+}
+@keyframes lp-live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0.55); }
+  70% { box-shadow: 0 0 0 7px rgba(255, 77, 79, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 77, 79, 0); }
+}
+.lp-bar-track {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+  transition: height 0.12s ease;
+}
+.lp-bar:hover .lp-bar-track { height: 5px; }
+.lp-bar-buffered {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(255, 255, 255, 0.35);
+}
+.lp-bar-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  opacity: 0.75;
+}
+.lp-bar-played {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--live);
+}
+.lp-bar-chapter {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(0, 0, 0, 0.7);
+}
+.lp-bar-knob {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--live);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.12s ease;
+  pointer-events: none;
+}
+.lp-bar:hover .lp-bar-knob { transform: translate(-50%, -50%) scale(1); }
+.lp-bar-tooltip {
+  position: absolute;
+  bottom: 22px;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  font-size: 11.5px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  white-space: nowrap;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.lp-tooltip-chapter {
+  font-weight: 500;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lp-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+.lp-btn {
+  width: 38px;
+  height: 34px;
+  border: none;
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  opacity: 0.92;
+}
+.lp-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.14); }
+.lp-btn.active { opacity: 1; background: rgba(255, 255, 255, 0.2); }
+.lp-btn:disabled { cursor: default; opacity: 0.38; }
+.lp-volume { display: flex; align-items: center; }
+.lp-volume input[type="range"] {
+  width: 0;
+  opacity: 0;
+  transition: width 0.18s ease, opacity 0.18s ease;
+  accent-color: #fff;
+  cursor: pointer;
+}
+.lp-volume:hover input[type="range"],
+.lp-volume input[type="range"]:focus-visible { width: 64px; opacity: 1; }
+.lp-time {
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.95);
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}
+.lp-spacer { flex: 1; }
+.lp-root:fullscreen { width: 100vw; height: 100vh; }
+@media (max-width: 480px) {
+  .lp-buttons { gap: 1px; }
+  .lp-btn { width: 34px; }
+  .lp-time { display: none; }
+}

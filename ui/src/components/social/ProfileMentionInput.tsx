@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import type { SocialProfileRef } from "../../api";
 import { ProfileAvatar } from "../ProfileMenu";
 import { FloatingPopover, List, ListButton, Textarea } from "../ui";
+import "./ProfileMentionInput.css";
 
 const ACTIVE_MENTION = /(^|\s)@([\p{L}\p{N}_]*)$/u;
 

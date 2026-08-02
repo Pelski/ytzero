@@ -12,9 +12,6 @@
 .bucket-title .count { color: var(--text-3); font-weight: 500; font-size: 13px; }
 
 .scheduled-list {
-  /* Follows the global video-card size slider, but 4x gentler: at the
-     slider minimum (180px) the thumb is the classic 88px. */
-  --scheduled-thumb-w: calc(88px + (var(--video-card-min, 248px) - 180px) / 4);
   border-top: 1px solid var(--surface-2);
 }
 .scheduled-item {

@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 const root = new URL("..", import.meta.url).pathname;
 const globalCss = join(root, "src/styles.css");
 const forbiddenGlobal = /\.(?:watch|settings|video|profile|dropdown|ui)-[\w-]+|\.(?:layout|sidebar|topbar)\b/;
-const appSourcePath = join(root, "src/App.tsx");
+const forbiddenDirectPageSelector = /^(?:button\.)?\.(?:video-card|swipe-wrap|swipe-reveal|card-avatar-link|card-ch-avatar|card-info|channel-link|thumb-actions|schedule-action|action-btn|short-badge|progress-bar|watched-thumbnail|watched-progress-bar|watched-check-badge|duration-badge|members-only-marker|short-card-members-only)(?:$|[\s,:.#>+~\[])/m;
 
 async function cssFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir);
@@ -25,13 +25,9 @@ async function sourceFiles(dir: string): Promise<string[]> {
 }
 
 const globalSource = await readFile(globalCss, "utf8");
-const appSource = await readFile(appSourcePath, "utf8");
 const failures: string[] = [];
 if (globalSource.split("\n").length > 250) failures.push("src/styles.css exceeds 250 lines");
 if (forbiddenGlobal.test(globalSource)) failures.push("src/styles.css contains a component or page selector");
-if (/lazy\(\(\) => import\("\.\/pages\//.test(appSource)) {
-  failures.push("route-level lazy loading is unsafe until shared component selectors are removed from page stylesheets");
-}
 
 const files = await cssFiles(join(root, "src"));
 const seenKeyframes = new Map<string, string>();
@@ -75,6 +71,9 @@ for (const file of files) {
     failures.push(`obsolete aggregate stylesheet: ${relative(root, file)}`);
   }
   const source = await readFile(file, "utf8");
+  if (relative(root, file).startsWith("src/pages/") && forbiddenDirectPageSelector.test(source)) {
+    failures.push(`${relative(root, file)} owns an unscoped shared component selector`);
+  }
   for (const match of source.matchAll(/@keyframes\s+([\w-]+)/g)) {
     const previous = seenKeyframes.get(match[1]);
     if (previous) failures.push(`duplicate @keyframes ${match[1]}: ${relative(root, previous)} and ${relative(root, file)}`);

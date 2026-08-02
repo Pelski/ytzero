@@ -1,14 +1,3 @@
-/* ---------- video grid & cards (YouTube-style: borderless) ---------- */
-.video-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--video-card-min, 248px), 1fr));
-  gap: 22px 12px;
-}
-.video-grid--sm,
-.video-grid--md,
-.video-grid--lg { grid-template-columns: repeat(auto-fill, minmax(var(--video-card-min, 248px), 1fr)); }
-.history-day-section + .history-day-section { margin-top: 32px; }
-
 /* ---------- channel avatar row (feed) ---------- */
 .channel-avatar-section {
   margin-bottom: 16px;

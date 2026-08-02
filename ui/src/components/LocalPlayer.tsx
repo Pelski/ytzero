@@ -7,6 +7,7 @@ import { subtitleLanguageLabel } from "../subtitleLanguages";
 import { useI18n } from "../i18n";
 import SubtitlePicker from "./SubtitlePicker";
 import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../playerScreenshot";
+import "./LocalPlayer.css";
 
 const VOLUME_KEY = "localPlayerVolume";
 const MUTED_KEY = "localPlayerMuted";

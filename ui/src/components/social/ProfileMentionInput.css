@@ -1,0 +1,3 @@
+.social-mention-input { display: flex; width: 100%; }
+.social-mention-input > .ui-textarea { box-sizing: border-box; width: 100%; }
+.social-mention-input__popover { box-sizing: border-box; width: min(360px, calc(100vw - 32px)); }

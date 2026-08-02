@@ -1,0 +1,94 @@
+/* watch progress bar on thumbnail */
+.progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.progress-bar-fill { height: 100%; min-width: 2px; border-radius: 0 0 0 var(--radius); background: var(--live); }
+
+/* Shared thumbnail state; the profile setting on <html> decides which visual
+   layers are visible in every surface that renders a video destination. */
+.watched-thumbnail {
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+.watched-progress-bar {
+  display: none;
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 0 0 var(--radius) var(--radius);
+  pointer-events: none;
+}
+.watched-progress-bar .progress-bar-fill { display: block; }
+.watched-check-badge {
+  display: none;
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  width: 23px;
+  height: 23px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(20, 20, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.watched-thumbnail--has-progress .watched-progress-bar {
+  display: block;
+}
+:root[data-watched-style="dimmed"] .watched-thumbnail--watched .watched-thumbnail-image {
+  filter: grayscale(0.45) brightness(0.58) saturate(0.32);
+  opacity: 0.82;
+}
+:root[data-watched-style="badge_dimmed"] .watched-thumbnail--watched .watched-thumbnail-image {
+  filter: brightness(0.62) saturate(0.72);
+}
+:root[data-watched-style="grayscale"] .watched-thumbnail--watched .watched-thumbnail-image {
+  filter: grayscale(1) brightness(0.68);
+}
+:root[data-watched-style="badge_dimmed"] .watched-thumbnail--watched .watched-check-badge {
+  display: flex;
+}
+.sidebar-sub-video .watched-progress-bar,
+.external-thumb-link .watched-progress-bar { height: 2px; }
+.sidebar-sub-video .watched-check-badge,
+.external-thumb-link .watched-check-badge {
+  left: 3px;
+  bottom: 3px;
+  width: 14px;
+  height: 14px;
+}
+.sidebar-sub-video .watched-check-badge svg,
+.external-thumb-link .watched-check-badge svg { width: 9px; height: 9px; }
+.playlist-item-thumb .watched-check-badge {
+  left: 4px;
+  bottom: 4px;
+  width: 18px;
+  height: 18px;
+}
+.playlist-item-thumb .watched-check-badge svg { width: 10px; height: 10px; }
+
+.duration-badge {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.2px;
+}

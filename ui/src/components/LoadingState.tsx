@@ -1,31 +1,64 @@
+import { useEffect, useState } from "react";
 import { useI18n } from "../i18n";
 import "./LoadingState.css";
+import "./VideoGrid.css";
+
+function useDelayedVisibility(delay: number) {
+  const [visible, setVisible] = useState(delay <= 0);
+
+  useEffect(() => {
+    if (delay <= 0) {
+      setVisible(true);
+      return;
+    }
+    setVisible(false);
+    const timer = window.setTimeout(() => setVisible(true), delay);
+    return () => window.clearTimeout(timer);
+  }, [delay]);
+
+  return visible;
+}
+
+export function DelayedPageSkeleton({ delay = 200 }: { delay?: number }) {
+  const visible = useDelayedVisibility(delay);
+  return visible ? <PageSkeleton /> : null;
+}
 
 export function VideoGridSkeleton({
   count = 8,
   gridSize,
+  delay = 200,
 }: {
   count?: number;
   gridSize?: "sm" | "md" | "lg";
+  delay?: number;
 }) {
   const { t } = useI18n();
+  const visible = useDelayedVisibility(delay);
+  if (!visible) return null;
   return (
     <div
       className={`video-grid${gridSize ? ` video-grid--${gridSize}` : ""} skeleton-grid`}
       aria-label={t("loading")}
     >
       {Array.from({ length: count }, (_, i) => (
-        <div className="video-card skeleton-card" aria-hidden="true" key={i}>
-          <div className="skeleton skeleton-thumb" />
-          <div className="card-body">
+        <article className="skeleton-video-card" aria-hidden="true" key={i}>
+          <div className="skeleton skeleton-thumb">
+            <span className="skeleton-duration" />
+          </div>
+          <div className="skeleton-video-card-body">
             <div className="skeleton skeleton-avatar" />
-            <div className="card-info">
+            <div className="skeleton-video-card-info">
               <div className="skeleton skeleton-line skeleton-line-title" />
               <div className="skeleton skeleton-line skeleton-line-title short" />
-              <div className="skeleton skeleton-line skeleton-line-meta" />
+              <div className="skeleton-video-card-meta">
+                <div className="skeleton skeleton-line skeleton-line-channel" />
+                <span className="skeleton-meta-dot" />
+                <div className="skeleton skeleton-line skeleton-line-time" />
+              </div>
             </div>
           </div>
-        </div>
+        </article>
       ))}
     </div>
   );
@@ -62,10 +95,11 @@ export function TableSkeleton({ rows = 6, columns = 3 }: { rows?: number; column
 }
 
 export function PageSkeleton() {
+  const { t } = useI18n();
   return (
-    <div className="page-skeleton" aria-hidden="true">
-      <div className="skeleton skeleton-heading" />
-      <VideoGridSkeleton count={8} />
+    <div className="page-skeleton" role="status" aria-label={t("loading")}>
+      <div className="skeleton skeleton-heading" aria-hidden="true" />
+      <VideoGridSkeleton count={8} delay={0} />
     </div>
   );
 }

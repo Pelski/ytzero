@@ -68,7 +68,7 @@ import VideoComments from "../components/VideoComments";
 import SocialShareDialog from "../components/social/SocialShareDialog";
 import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
 import WatchDescription from "../components/watch/WatchDescription";
-import { colonDurationToSeconds, formatWatchTime, loadYouTubeApi, restoreSidebarVisibility } from "./watchRuntime";
+import { colonDurationToSeconds, formatWatchTime, loadYouTubeApi, resolveShareTimestamp, restoreSidebarVisibility } from "./watchRuntime";
 
 type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
@@ -1262,7 +1262,7 @@ export function useWatchPageController() {
     if (!video) return;
     let seconds = 0;
     if (shareWithTimestamp) {
-      try { seconds = Math.max(0, Math.floor(Number(playerRef.current?.getCurrentTime?.()) || 0)); } catch {}
+      seconds = resolveShareTimestamp(enhancePlayerStateRef.current?.state.currentTime, () => playerRef.current?.getCurrentTime?.(), streamPositionRef.current, progressRef.current?.position);
     }
     return destination === "webpage"
       ? `${window.location.origin}/watch/${video.video_id}${seconds ? `?t=${seconds}` : ""}`
@@ -1499,4 +1499,3 @@ export function useWatchPageController() {
     ytWrapRef,
   };
 }
-

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { colonDurationToSeconds, formatWatchTime } from "./watchRuntime";
+import { colonDurationToSeconds, formatWatchTime, resolveShareTimestamp } from "./watchRuntime";
 
 describe("watch runtime formatting", () => {
   test("parses YouTube-style clock durations", () => {
@@ -16,5 +16,11 @@ describe("watch runtime formatting", () => {
   test("formats chapter and segment timestamps", () => {
     expect(formatWatchTime(904.9)).toBe("15:04");
     expect(formatWatchTime(3723)).toBe("1:02:03");
+  });
+
+  test("resolves a share timestamp from the first usable player source", () => {
+    expect(resolveShareTimestamp(undefined, () => 0, 83.9, 40)).toBe(83);
+    expect(resolveShareTimestamp(() => { throw new Error("player unavailable"); }, 42.8)).toBe(42);
+    expect(resolveShareTimestamp(Number.NaN, -4, undefined)).toBe(0);
   });
 });

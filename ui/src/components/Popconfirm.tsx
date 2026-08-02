@@ -1,6 +1,7 @@
 import { useState, type ReactElement } from "react";
 import { useI18n } from "../i18n";
 import { Button, FloatingPopover, type ButtonVariant } from "./ui";
+import "./Popconfirm.css";
 
 export default function Popconfirm({
   message,
