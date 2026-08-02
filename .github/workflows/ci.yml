@@ -1,8 +1,10 @@
-name: Validate a Working Branch
+name: Validate
 
-# Ręczny build dla branchy roboczych — sprawdza, czy typy się zgadzają
-# i czy UI się buduje. Na main tego nie odpalamy (tam działa docker-ghcr).
 on:
+  pull_request:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -12,7 +14,6 @@ jobs:
   build:
     name: Validate the application and web client
     runs-on: ubuntu-latest
-    if: github.ref != 'refs/heads/main'
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -28,13 +29,29 @@ jobs:
         working-directory: ui
         run: bun install --frozen-lockfile
 
+      - name: Prevent large files from growing
+        run: bun run check:large-files
+
       - name: Check server types
         working-directory: app
-        run: bun x tsc --noEmit
+        run: bun run typecheck
 
       - name: Check web client types
         working-directory: ui
-        run: bun x tsc --noEmit
+        run: bun run typecheck
+
+      - name: Test the server
+        working-directory: app
+        run: bun run test
+
+      - name: Test the server in randomized order
+        working-directory: app
+        run: bun run test:random
+
+      - name: Test the web client
+        working-directory: ui
+        run: bun run test
 
       - name: Build the web client
-        run: bun run build
+        working-directory: ui
+        run: bun run build:prepared

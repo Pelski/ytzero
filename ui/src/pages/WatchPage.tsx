@@ -67,134 +67,14 @@ import { subscribeServerEvent } from "../serverEvents";
 import VideoComments from "../components/VideoComments";
 import SocialShareDialog from "../components/social/SocialShareDialog";
 import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
+import WatchDescription from "../components/watch/WatchDescription";
+import { colonDurationToSeconds, formatWatchTime, loadYouTubeApi, restoreSidebarVisibility } from "./watchRuntime";
 
 type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
-let ytApiReady: Promise<void> | null = null;
-function loadYouTubeApi(): Promise<void> {
-  if (!ytApiReady) {
-    ytApiReady = new Promise<void>((resolve) => {
-      const w = window as any;
-      if (w.YT?.Player) { resolve(); return; }
-      const prev = w.onYouTubeIframeAPIReady;
-      w.onYouTubeIframeAPIReady = () => { prev?.(); resolve(); };
-      if (!document.querySelector('script[src*="iframe_api"]')) {
-        const s = document.createElement("script");
-        s.src = "https://www.youtube.com/iframe_api";
-        document.head.appendChild(s);
-      }
-    });
-  }
-  return ytApiReady;
-}
-
 const CINEMA_MODE_KEY = "watchCinemaMode";
-const SIDEBAR_KEY = "sidebar_open";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
 
-// "15:04" / "1:02:03" -> seconds. Used to give the streaming player the full
-// video length (hls.js only knows the downloaded-so-far portion).
-function colonDurationToSeconds(duration: string | null | undefined): number | undefined {
-  if (!duration) return undefined;
-  const parts = duration.trim().split(":");
-  if (parts.length < 2 || parts.length > 3 || !parts.every((p) => /^\d+$/.test(p))) return undefined;
-  return parts.reduce((total, p) => total * 60 + Number(p), 0);
-}
-
-function restoreSidebarVisibility() {
-  document.body.classList.remove("cinema");
-  document.body.classList.toggle("sidebar-hidden", localStorage.getItem(SIDEBAR_KEY) === "0");
-}
-function fmtTime(s: number): string {
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = Math.floor(s % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  return `${m}:${String(sec).padStart(2, "0")}`;
-}
-
-/** Render plain text with URLs turned into clickable links. */
-function rewriteYouTubeUrl(url: string, base: string): string | null {
-  try {
-    const u = new URL(url);
-    const h = u.hostname.replace(/^www\./, "");
-    if (h === "youtu.be") {
-      const id = u.pathname.slice(1).split("/")[0];
-      if (id) return `${base}/watch/${id}`;
-    }
-    if (h === "youtube.com") {
-      if (u.pathname.startsWith("/shorts/")) {
-        const id = u.pathname.split("/")[2];
-        if (id) return `${base}/watch/${id}`;
-      }
-      if (u.pathname === "/watch") {
-        const id = u.searchParams.get("v");
-        if (id) return `${base}/watch/${id}`;
-      }
-      if (u.pathname.startsWith("/channel/")) {
-        const id = u.pathname.split("/")[2];
-        if (id) return `${base}/channel/${id}`;
-      }
-    }
-  } catch {}
-  return null;
-}
-
-// YouTube glues a truncation marker straight onto long links in descriptions
-// (e.g. "https://makerworld.com...​" with a trailing ellipsis + zero-width
-// space). Peel that — plus stray trailing punctuation — off the URL so the href
-// isn't broken and the leftover renders as plain text, the way YouTube shows it.
-function splitTrailingJunk(url: string): [string, string] {
-  let u = url;
-  let trailing = "";
-  const junk = /(\.\.\.|[​‌‍﻿…)\].,;:!?'"»」]+)$/;
-  let m: RegExpMatchArray | null;
-  while ((m = u.match(junk)) && m[0].length && u.length - m[0].length > "https://".length) {
-    trailing = m[0] + trailing;
-    u = u.slice(0, u.length - m[0].length);
-  }
-  return [u, trailing];
-}
-
-function MentionText({ text, channelHandles }: { text: string; channelHandles: Map<string, string> }) {
-  const parts = text.split(/(@[\p{L}\p{N}._-]+)/gu);
-  return parts.map((part, index) => {
-    const channelId = part.startsWith("@") ? channelHandles.get(part.toLocaleLowerCase()) : undefined;
-    return channelId ? (
-      <Link key={index} to={`/channel/${channelId}`} className="desc-link" onClick={(event) => event.stopPropagation()}>
-        {part}
-      </Link>
-    ) : part;
-  });
-}
-
-function Linkify({ text, baseUrl, channelHandles = new Map() }: { text: string; baseUrl: string; channelHandles?: Map<string, string> }) {
-  const base = baseUrl || window.location.origin;
-  const parts = text.split(/(https?:\/\/[^\s<>"]+)/g);
-  return (
-    <>
-      {parts.map((p, i) => {
-        if (!/^https?:\/\//.test(p)) return <MentionText key={i} text={p} channelHandles={channelHandles} />;
-        const [url, trailing] = splitTrailingJunk(p);
-        const local = rewriteYouTubeUrl(url, base);
-        return (
-          <span key={i}>
-            {local ? (
-              <a href={local} className="desc-link" onClick={(e) => e.stopPropagation()}>
-                {url}
-              </a>
-            ) : (
-              <a href={markYouTubeUrl(url)} target="_blank" rel="noreferrer" className="desc-link" onClick={(e) => e.stopPropagation()}>
-                {url}
-              </a>
-            )}
-            {trailing}
-          </span>
-        );
-      })}
-    </>
-  );
-}
 
 export default function WatchPage() {
   const { t, bucketLabel, language, locale, timeZone } = useI18n();
@@ -1772,7 +1652,7 @@ export default function WatchPage() {
             {videoInfo.description && (
               <>
                 <div className="watch-desc-sep" />
-                <Linkify text={videoInfo.description} baseUrl={appUrl} channelHandles={creatorHandles} />
+                <WatchDescription text={videoInfo.description} baseUrl={appUrl} channelHandles={creatorHandles} />
               </>
             )}
           </div>
@@ -2082,7 +1962,7 @@ export default function WatchPage() {
             {video.description && (
               <>
                 <div className="watch-desc-sep" />
-                <Linkify text={video.description} baseUrl={appUrl} channelHandles={creatorHandles} />
+                <WatchDescription text={video.description} baseUrl={appUrl} channelHandles={creatorHandles} />
               </>
             )}
           </div>
@@ -2104,7 +1984,7 @@ export default function WatchPage() {
                     onClick={() => playerRef.current?.seekTo(ch.start, true)}
                   >
                     <span className="sb-segment-name">{ch.title}</span>
-                    <span className="sb-time">{fmtTime(ch.start)}</span>
+                    <span className="sb-time">{formatWatchTime(ch.start)}</span>
                   </button>
                 ))}
               </WatchPanel>
@@ -2139,7 +2019,7 @@ export default function WatchPage() {
                       <button type="button" className="sb-segment-seek" onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}>
                         <span className="sb-dot" aria-hidden="true" />
                         <span className="sb-segment-name">{cat ? t(cat.labelKey) : seg.category}</span>
-                        <span className="sb-time">{fmtTime(seg.segment[0])} → {fmtTime(seg.segment[1])}</span>
+                        <span className="sb-time">{formatWatchTime(seg.segment[0])} → {formatWatchTime(seg.segment[1])}</span>
                       </button>
                       <span className="sb-seg-toggle">
                         <Switch

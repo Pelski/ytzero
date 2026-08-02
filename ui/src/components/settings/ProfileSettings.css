@@ -1,0 +1,51 @@
+/* ---------- Profiles in settings ---------- */
+.profiles-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.profile-card {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--surface-2);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.profile-card.active { border-color: var(--accent); }
+.profile-card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.profile-card-name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.profile-card-meta { color: var(--text-2); font-size: 13px; }
+.profile-card-actions { display: flex; gap: 8px; flex-shrink: 0; }
+/* Card-level actions sit on the right; the expanded editor wraps onto its own row. */
+.profile-card > .profile-card-actions { margin-left: auto; }
+.profile-edit-grid { display: flex; flex-direction: column; gap: 16px; }
+.profile-edit-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.profile-password-fields { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.profile-password-feedback { margin-top: 12px; }
+@container settings-section (max-width: 700px) {
+  .profile-password-fields { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Avatar + name side by side */
+.profile-edit-top { display: flex; gap: 16px; align-items: center; }
+.profile-avatar-editable { position: relative; flex-shrink: 0; cursor: pointer; border-radius: 50%; }
+.profile-avatar-overlay {
+  position: absolute; inset: 0; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.5); color: #fff; opacity: 0; transition: opacity 0.15s;
+}
+.profile-avatar-editable:hover .profile-avatar-overlay { opacity: 1; }
+.profile-avatar-remove { position: absolute; top: -2px; right: -2px; }
+.profile-avatar-remove-btn {
+  width: 22px; height: 22px; padding: 0; border-radius: 50%;
+  background: var(--surface-3); color: var(--text); border: 2px solid var(--surface);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.profile-avatar-remove-btn:hover { background: var(--live); color: #fff; }
+.profile-name-field { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.profile-name-field .form-input { width: 100%; }
+
+.profile-color-section { display: flex; flex-direction: column; gap: 8px; }
+.profile-color-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+.profile-color-swatch {
+  width: 28px; height: 28px; border-radius: 50%; cursor: pointer;
+  border: 2px solid transparent;
+}
+.profile-color-swatch.selected { border-color: var(--text); }
+.profile-edit-row input.input-error { border-color: var(--live); }
+
+

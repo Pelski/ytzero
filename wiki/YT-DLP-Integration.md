@@ -92,6 +92,7 @@ files with no remaining owner are removed. Treat it as destructive.
 
 - Downloads run on the server one at a time with automatic retries (3 attempts with backoff) and crash recovery on restart. Waiting viewers, manual requests, automation, and scheduled items receive different queue priorities.
 - Paths are rendered from the configured filename template inside `DOWNLOADS_DIR`; the video ID is added when necessary to keep names unique and cleanup-safe. Files use HTTP Range playback, so seeking does not restart the transfer.
+- Every completed download also receives a small `<videoId>.ytz.json` recovery sidecar in the same folder. Its name never includes the video title; it records the YouTube video ID, the relative media-file name, and its size. When the whole `DOWNLOADS_DIR` is moved, YT Zero scans these sidecars before cleanup and reconnects known downloads automatically. Keep each `.ytz.json` file beside its media file when moving downloads. A valid sidecar also prevents an as-yet-unrecognised file from being automatically removed.
 - An item removed from the queue or the Downloads tab leaves a tombstone: automatic policies treat it as rejected and never bring it back. A manual download request clears the tombstone.
 - The image cache already stores thumbnails locally, so a downloaded video plays fully offline.
 

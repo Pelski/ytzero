@@ -3,7 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import sharp from "sharp";
+import { runIsolatedTestFile } from "../tests/isolatedTestFile";
 
+const ISOLATION_FLAG = "YTZERO_PORTABLE_BACKUP_TEST_ISOLATED";
+if (process.env[ISOLATION_FLAG] !== "1") {
+  test("portable backup suite runs in an isolated application runtime", async () => {
+    await runIsolatedTestFile("src/portableBackup.test.ts", ISOLATION_FLAG);
+  });
+} else {
 const root = mkdtempSync(resolve(tmpdir(), "ytzero-portable-backup-"));
 const avatarDir = resolve(root, "avatars");
 process.env.DB_PATH = resolve(root, "db", "source.db");
@@ -160,3 +167,4 @@ describe("portable backup classification and restore", () => {
     expect({ format: restoredMetadata.format, width: restoredMetadata.width, height: restoredMetadata.height }).toEqual({ format: "webp", width: 256, height: 256 });
   });
 });
+}

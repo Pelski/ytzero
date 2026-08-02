@@ -35,7 +35,7 @@ container's `TZ` environment variable.
 | `IMPORT_ENRICH_BATCH_SIZE` | `15` | Videos processed per import-enrichment run. Together with the interval, this sets the pace shown in the import wizard's time estimate. |
 | `VIDEO_MAINTENANCE_MAX_AGE_DAYS` | `90` | Maximum video age considered by automatic Shorts and duration backfills. Older videos are resolved only when accessed or manually synchronized. |
 | `UI_DIST` | `./public` | Built frontend directory served by the backend. |
-| `DOWNLOADS_DIR` | `./data/downloads` | Where the [YT-DLP Integration](YT-DLP-Integration) plugin stores downloaded video files. |
+| `DOWNLOADS_DIR` | `./data/downloads` | Where the [YT-DLP Integration](YT-DLP-Integration) plugin stores downloaded video files and their `<videoId>.ytz.json` recovery sidecars. Move each sidecar with its media file. |
 | `DOWNLOAD_COOKIES_DIR` | `./data/download-cookies` | Machine-local directory for per-profile YouTube cookie files. Keep it private and inside persistent storage. |
 | `YTDLP_PATH` | `yt-dlp` | Path to the yt-dlp binary used by the [YT-DLP Integration](YT-DLP-Integration) plugin. |
 | `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg, used for merged downloads and experimental stream-while-downloading playback. |

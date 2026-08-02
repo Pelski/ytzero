@@ -5,14 +5,14 @@ const NOW = new Date("2026-07-24T12:00:00.000Z");
 
 describe("feed max-age cutoff", () => {
   test("subtracts days, weeks, months and years", () => {
-    expect(feedMaxAgeCutoff(10, "days", NOW)).toBe("2026-07-14T12:00:00.000Z");
-    expect(feedMaxAgeCutoff(2, "weeks", NOW)).toBe("2026-07-10T12:00:00.000Z");
-    expect(feedMaxAgeCutoff(6, "months", NOW)).toBe("2026-01-24T12:00:00.000Z");
-    expect(feedMaxAgeCutoff(1, "years", NOW)).toBe("2025-07-24T12:00:00.000Z");
+    expect(feedMaxAgeCutoff(10, "days", NOW, "UTC")).toBe("2026-07-14T12:00:00.000Z");
+    expect(feedMaxAgeCutoff(2, "weeks", NOW, "UTC")).toBe("2026-07-10T12:00:00.000Z");
+    expect(feedMaxAgeCutoff(6, "months", NOW, "UTC")).toBe("2026-01-24T12:00:00.000Z");
+    expect(feedMaxAgeCutoff(1, "years", NOW, "UTC")).toBe("2025-07-24T12:00:00.000Z");
   });
 
   test("month arithmetic crosses year boundaries", () => {
-    expect(feedMaxAgeCutoff(9, "months", NOW)).toBe("2025-10-24T12:00:00.000Z");
+    expect(feedMaxAgeCutoff(9, "months", NOW, "UTC")).toBe("2025-10-24T12:00:00.000Z");
   });
 
   test("preserves local wall time across daylight-saving changes", () => {
@@ -21,7 +21,7 @@ describe("feed max-age cutoff", () => {
   });
 
   test("settings arrive as strings and are accepted", () => {
-    expect(feedMaxAgeCutoff("6", "months", NOW)).toBe(feedMaxAgeCutoff(6, "months", NOW));
+    expect(feedMaxAgeCutoff("6", "months", NOW, "UTC")).toBe(feedMaxAgeCutoff(6, "months", NOW, "UTC"));
   });
 
   test("off / unknown unit disables the limit", () => {
@@ -38,7 +38,7 @@ describe("feed max-age cutoff", () => {
   });
 
   test("absurd values are clamped rather than producing a useless date", () => {
-    expect(feedMaxAgeCutoff(99999, "years", NOW)).toBe(feedMaxAgeCutoff(600, "years", NOW));
+    expect(feedMaxAgeCutoff(99999, "years", NOW, "UTC")).toBe(feedMaxAgeCutoff(600, "years", NOW, "UTC"));
   });
 
   test("isFeedMaxAgeUnit only accepts the four real units", () => {

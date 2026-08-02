@@ -4,7 +4,7 @@ import { api } from "./routes";
 import { db, getSetting } from "./db";
 import { database, databaseConfig } from "./database";
 import { startSQLiteMaintenance } from "./sqliteMaintenance";
-import { startScheduler } from "./refresher";
+import { startScheduler } from "./refreshScheduler";
 import { startDownloader } from "./downloader";
 import { log } from "./logger";
 import { COMMIT, VERSION } from "./version";

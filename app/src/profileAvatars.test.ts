@@ -3,7 +3,14 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import sharp from "sharp";
+import { runIsolatedTestFile } from "../tests/isolatedTestFile";
 
+const ISOLATION_FLAG = "YTZERO_PROFILE_AVATARS_TEST_ISOLATED";
+if (process.env[ISOLATION_FLAG] !== "1") {
+  test("profile avatar suite runs in an isolated application runtime", async () => {
+    await runIsolatedTestFile("src/profileAvatars.test.ts", ISOLATION_FLAG);
+  });
+} else {
 const root = mkdtempSync(resolve(tmpdir(), "ytzero-profile-avatars-"));
 const avatarDir = resolve(root, "avatars");
 process.env.DB_PATH = resolve(root, "db", "source.db");
@@ -74,3 +81,4 @@ describe("profile avatar optimization", () => {
     expect(existsSync(resolve(avatarDir, `${profile.id}.webp`))).toBe(false);
   });
 });
+}

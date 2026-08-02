@@ -7,172 +7,39 @@ import { log } from "./logger";
 import { beginMutation, maintenanceActive } from "./maintenance";
 import { publishAppEvent } from "./appEvents";
 import { notifyDownloadFailed } from "./notifications";
+import { createDownloadStreaming } from "./downloadStreaming";
 import { autoDownloadFollowerExistsSql } from "./downloadEligibility";
 import { automaticDownloadCandidates, migrateLegacyDownloadAutomation } from "./downloadRules";
 import { shouldAutoDownloadVideo } from "./downloadContentPolicy";
-
-// Files land in one global directory: a video downloaded once serves every
-// profile. Retention below is the only thing that removes them.
-const DOWNLOADS_DIR = process.env.DOWNLOADS_DIR ?? resolve(import.meta.dir, "../../data/downloads");
-mkdirSync(DOWNLOADS_DIR, { recursive: true });
-const DOWNLOAD_COOKIES_DIR = process.env.DOWNLOAD_COOKIES_DIR ?? resolve(dirname(DB_PATH), "../download-cookies");
-const LEGACY_DOWNLOAD_COOKIES_FILE = process.env.LEGACY_DOWNLOAD_COOKIES_FILE ?? resolve(import.meta.dir, "../../data/yt-dlp-cookies.txt");
-mkdirSync(DOWNLOAD_COOKIES_DIR, { recursive: true });
-const MAX_COOKIES_BYTES = 4 * 1024 * 1024;
-
-const YTDLP = process.env.YTDLP_PATH ?? "yt-dlp";
+import {
+  DOWNLOADS_DIR,
+  YTDLP,
+  dlEnabled,
+  dlSettings,
+  downloadCookiesConfigured,
+  downloadCookiesFile,
+  invalidateYtdlpStatus,
+  migrateLegacyDownloadCookies,
+  ytdlpSelfUpdate,
+  ytdlpStatus,
+  type DlSettings,
+} from "./downloadConfig";
+export {
+  DL_DEFAULTS,
+  dlSettings,
+  downloadCookiesConfigured,
+  migrateLegacyDownloadCookies,
+  removeDownloadCookies,
+  saveDownloadCookies,
+  ytdlpCommand,
+  ytdlpStatus,
+} from "./downloadConfig";
+export type { DlSettings } from "./downloadConfig";
 const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_MIN = 30;
 const CLEANUP_INTERVAL_MS = 10 * 60_000;
 const TICK_INTERVAL_MS = 30_000;
-const DOWNLOAD_MANIFEST_SUFFIX = ".ytz.json";
-
-// ---------- settings ----------
-
-export const DL_DEFAULTS = {
-  quality: "1080",
-  watch_source_mode: "youtube",
-  // HEAVILY EXPERIMENTAL: play a not-yet-downloaded video immediately by piping
-  // yt-dlp straight into ffmpeg and streaming a fragmented MP4 to the browser as
-  // it is produced (see startLiveStream). Off by default.
-  experimental_streaming: 0,
-  // Filename template, rendered server-side from the DB (so {channel} honours
-  // the custom channel name). "/" creates subdirectories; the extension is
-  // appended automatically; a missing {id} is added as " [id]" to keep files
-  // unique and trackable.
-  // Playlist bulk downloads land in an optional playlist folder. For every
-  // other source {playlist} is empty and the renderer removes that segment.
-  output_template: "{playlist}/{id}",
-  write_thumbnail: 0,
-  embed_metadata: 0,
-  write_info_json: 0,
-  write_nfo: 0,
-  write_subs: 0,
-  write_auto_subs: 0,
-  sub_langs: "en",
-  thumb_progress: 1,
-  download_scheduled: 1,
-  download_feed: 0,
-  feed_max_age_hours: 48,
-  feed_min_duration_minutes: 0,
-  download_shorts: 0,
-  retention_days: 14,
-  delete_watched: 1,
-  delete_watched_hours: 24,
-  keep_liked: 1,
-  max_storage_gb: 25,
-} as const;
-
-export type DlSettings = { [K in keyof typeof DL_DEFAULTS]: (typeof DL_DEFAULTS)[K] extends number ? number : string };
-
-const ADMIN_DOWNLOAD_SETTING_KEYS = new Set([
-  "output_template", "write_thumbnail", "embed_metadata", "write_info_json", "write_nfo",
-  "write_subs", "max_storage_gb",
-]);
-
-export async function dlSettings(userId?: number): Promise<DlSettings> {
-  const profileValues = new Map<string, string>();
-  if (userId != null) {
-    const rows = await database.prepare("SELECT key,value FROM plugin_settings WHERE plugin_id='downloads' AND user_id=?").all(userId) as { key: string; value: string }[];
-    for (const row of rows) profileValues.set(row.key, row.value);
-  }
-  const out: Record<string, number | string> = {};
-  for (const [key, def] of Object.entries(DL_DEFAULTS)) {
-    const raw = ADMIN_DOWNLOAD_SETTING_KEYS.has(key)
-      ? getSetting(`plugin_downloads_${key}`)
-      : profileValues.get(key);
-    if (raw == null) { out[key] = def; continue; }
-    out[key] = typeof def === "number" ? (Number.isFinite(Number(raw)) ? Number(raw) : def) : raw;
-  }
-  return out as DlSettings;
-}
-
-function downloadCookiesFile(userId: number) {
-  if (!Number.isInteger(userId) || userId <= 0) throw new Error("invalid profile id");
-  return join(DOWNLOAD_COOKIES_DIR, `${userId}.txt`);
-}
-
-/** Cookie jars are deliberately stored outside the settings database, one per
- * profile, so they are never returned by a settings API or portable backup. */
-export function downloadCookiesConfigured(userId: number) {
-  return existsSync(downloadCookiesFile(userId));
-}
-
-/** Build an argv list for metadata-only features that share yt-dlp and its
- * optional cookie jar without exposing the cookie path outside this module. */
-export function ytdlpCommand(userId: number, args: string[], useCookies = false): string[] {
-  return [YTDLP, ...args, ...(useCookies && downloadCookiesConfigured(userId) ? ["--cookies", downloadCookiesFile(userId)] : [])];
-}
-
-export function saveDownloadCookies(userId: number, contents: string) {
-  if (!contents.trim()) throw new Error("cookies file is empty");
-  if (new TextEncoder().encode(contents).byteLength > MAX_COOKIES_BYTES) {
-    throw new Error("cookies file is too large");
-  }
-  const normalized = contents.replace(/^\uFEFF/, "");
-  if (!/^# (?:(?:Netscape )?HTTP Cookie File|Netscape Cookie File)\b/m.test(normalized)) {
-    throw new Error("cookies must be in Netscape cookies.txt format");
-  }
-  const destination = downloadCookiesFile(userId);
-  const temporary = `${destination}.tmp`;
-  writeFileSync(temporary, normalized, { mode: 0o600 });
-  renameSync(temporary, destination);
-  try { chmodSync(destination, 0o600); } catch { /* unsupported on some hosts */ }
-}
-
-export function removeDownloadCookies(userId: number) {
-  const path = downloadCookiesFile(userId);
-  if (existsSync(path)) unlinkSync(path);
-}
-
-/** Move the former instance-wide cookie jar into each existing profile once.
- * Copying preserves the old behavior immediately; profiles can then replace or
- * remove their own secret independently. */
-export async function migrateLegacyDownloadCookies() {
-  if (getSetting("downloads_profile_cookies_migrated") === "1") return;
-  if (existsSync(LEGACY_DOWNLOAD_COOKIES_FILE)) {
-    const users = await database.prepare("SELECT id FROM users").all() as { id: number }[];
-    for (const user of users) {
-      const destination = downloadCookiesFile(user.id);
-      if (!existsSync(destination)) copyFileSync(LEGACY_DOWNLOAD_COOKIES_FILE, destination);
-      try { chmodSync(destination, 0o600); } catch { /* unsupported on some hosts */ }
-    }
-    unlinkSync(LEGACY_DOWNLOAD_COOKIES_FILE);
-  }
-  setSetting("downloads_profile_cookies_migrated", "1");
-}
-
-async function dlEnabled(): Promise<boolean> {
-  const row = await database.prepare("SELECT enabled FROM plugins WHERE id = 'downloads'").get() as { enabled: number } | null;
-  return row?.enabled === 1;
-}
-
-// ---------- yt-dlp binary ----------
-
-let ytdlpVersion: string | null | undefined;
-
-export async function ytdlpStatus(): Promise<string | null> {
-  if (ytdlpVersion !== undefined) return ytdlpVersion;
-  try {
-    const proc = Bun.spawn([YTDLP, "--version"], { stdout: "pipe", stderr: "ignore" });
-    const out = await new Response(proc.stdout).text();
-    ytdlpVersion = (await proc.exited) === 0 ? out.trim() : null;
-  } catch {
-    ytdlpVersion = null;
-  }
-  if (!ytdlpVersion) log.warn("downloads.ytdlp_missing", { path: YTDLP });
-  return ytdlpVersion;
-}
-
-async function ytdlpSelfUpdate() {
-  if (process.env.YTDLP_AUTO_UPDATE !== "1") return;
-  try {
-    const proc = Bun.spawn([YTDLP, "-U"], { stdout: "ignore", stderr: "ignore" });
-    await proc.exited;
-    ytdlpVersion = undefined; // re-read version on next status call
-  } catch {}
-}
-
+export const DOWNLOAD_MANIFEST_SUFFIX = ".ytz.json";
 // ---------- queue state ----------
 
 interface ActiveDownload {
@@ -303,7 +170,7 @@ function manifestPathFor(videoId: string, filePath: string): string {
   return join(dirname(filePath), `${videoId}${DOWNLOAD_MANIFEST_SUFFIX}`);
 }
 
-function writeDownloadManifest(videoId: string, filePath: string, sizeBytes: number) {
+export function writeDownloadManifest(videoId: string, filePath: string, sizeBytes: number) {
   const manifest: DownloadManifest = {
     schemaVersion: 1,
     videoId,
@@ -983,7 +850,7 @@ async function runDownload(userId: number, videoId: string, s: DlSettings) {
       await database.prepare("UPDATE downloads SET status = 'error', error = ? WHERE video_id = ?").run(error, videoId);
       notifyDownloadChanged(videoId);
       await notifyDownloadFailure(videoId, error);
-      ytdlpVersion = undefined; // binary may have moved — re-check on next tick
+      invalidateYtdlpStatus(); // binary may have moved — re-check on next tick
       log.error("downloads.spawn_failed", { videoId, error });
       active = null;
       return;
@@ -1077,264 +944,26 @@ async function runDownload(userId: number, videoId: string, s: DlSettings) {
   log.error("downloads.failed", { videoId, code, error });
 }
 
-// ---------- experimental: on-demand transcoding HLS (seek anywhere) ----------
-// HEAVILY EXPERIMENTAL. A static VOD playlist for the WHOLE video (fixed-size
-// segments, computed from the known duration) is served immediately, so the
-// browser can seek anywhere. Segments don't exist up front — each is produced
-// on demand by an ffmpeg "region" that seeks (-ss) into the direct googlevideo
-// stream and transcodes forward from there (like Plex/Jellyfin). Seek far ahead
-// → we respawn the region at that point. A clean copy of the file is saved in
-// the background via the normal download queue, so the next visit plays locally.
+const {
+  destroyHlsSession,
+  getHlsPlaylist,
+  getHlsSegment,
+  isSegmentName,
+  liveStreamEnabled,
+  resetHlsScratch,
+} = createDownloadStreaming({
+  DOWNLOADS_DIR,
+  YTDLP,
+  dlEnabled,
+  dlSettings,
+  downloadCookiesConfigured,
+  downloadCookiesFile,
+  prioritizeDownload,
+  readLines,
+  ytdlpStatus,
+});
 
-const FFMPEG = process.env.FFMPEG_PATH ?? "ffmpeg";
-// HLS scratch lives OUTSIDE the downloads dir so retention/orphan cleanup
-// (which walks DOWNLOADS_DIR) never touches transcoded segments.
-const HLS_DIR = resolve(DOWNLOADS_DIR, "..", "hls-stream");
-const SEG_SECONDS = 6;              // fixed grid segment length
-const REGION_SEGMENTS = 20;         // how far ahead one ffmpeg region transcodes (~120s)
-const HLS_IDLE_MS = 120_000;
-const SEGMENT_WAIT_MS = 25_000;
-const SEGMENT_RE = /^seg(\d{5})\.ts$/;
-
-interface HlsRegion {
-  proc: ReturnType<typeof Bun.spawn>;
-  startIndex: number;
-  exited: boolean;
-}
-
-interface HlsSession {
-  videoId: string;
-  dir: string;
-  durationSec: number;
-  segCount: number;
-  fps: number;
-  videoUrl: string;
-  audioUrl: string | null;
-  playlist: string;
-  region: HlsRegion | null;
-  lastAccess: number;
-}
-
-const hlsSessions = new Map<string, HlsSession>();
-let hlsSweeper: ReturnType<typeof setInterval> | null = null;
-
-export async function liveStreamEnabled(userId?: number): Promise<boolean> {
-  return await dlEnabled() && (await dlSettings(userId)).experimental_streaming === 1;
-}
-
-export function isSegmentName(name: string): boolean {
-  return SEGMENT_RE.test(name);
-}
-
-function hlsSessionDir(videoId: string): string {
-  return join(HLS_DIR, videoId.replace(/[^A-Za-z0-9_-]/g, "_"));
-}
-
-async function streamFormat(userId: number): Promise<string> {
-  const s = await dlSettings(userId);
-  const height = s.quality === "best" ? null : Number(s.quality);
-  // H.264 + AAC keeps the on-demand transcode a cheap H.264->H.264 re-encode.
-  const cap = height ? `[height<=${height}]` : "";
-  return `bestvideo*[vcodec^=avc1]${cap}+bestaudio[acodec^=mp4a]/best[vcodec^=avc1]${cap}/best${cap}`;
-}
-
-/** One yt-dlp call: total duration, source fps and the direct stream URL(s). */
-async function probeSource(userId: number, videoId: string): Promise<{ durationSec: number; fps: number; videoUrl: string; audioUrl: string | null } | null> {
-  const args = [
-    `https://www.youtube.com/watch?v=${videoId}`,
-    "--no-playlist", "--no-warnings",
-    "-f", await streamFormat(userId),
-    "--print", "%(duration)s",
-    "--print", "%(fps)s",
-    "--print", "urls",
-  ];
-  if (downloadCookiesConfigured(userId)) args.push("--cookies", downloadCookiesFile(userId));
-  try {
-    const proc = Bun.spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
-    const out = await new Response(proc.stdout).text();
-    if ((await proc.exited) !== 0) return null;
-    const lines = out.trim().split(/\r?\n/).filter(Boolean);
-    const durationSec = Math.floor(Number(lines[0]));
-    const fps = Math.max(1, Math.round(Number(lines[1]) || 30));
-    const urls = lines.slice(2);
-    if (!Number.isFinite(durationSec) || durationSec <= 0 || urls.length === 0) return null;
-    return { durationSec, fps, videoUrl: urls[0], audioUrl: urls[1] ?? null };
-  } catch {
-    return null;
-  }
-}
-
-function buildVodPlaylist(durationSec: number, segCount: number): string {
-  const lines = [
-    "#EXTM3U",
-    "#EXT-X-VERSION:3",
-    `#EXT-X-TARGETDURATION:${SEG_SECONDS}`,
-    "#EXT-X-MEDIA-SEQUENCE:0",
-    "#EXT-X-PLAYLIST-TYPE:VOD",
-    "#EXT-X-INDEPENDENT-SEGMENTS",
-  ];
-  for (let i = 0; i < segCount; i++) {
-    const dur = i === segCount - 1 ? durationSec - (segCount - 1) * SEG_SECONDS : SEG_SECONDS;
-    lines.push(`#EXTINF:${(dur > 0 ? dur : SEG_SECONDS).toFixed(6)},`);
-    lines.push(`seg${String(i).padStart(5, "0")}.ts`);
-  }
-  lines.push("#EXT-X-ENDLIST");
-  return lines.join("\n") + "\n";
-}
-
-function killRegion(session: HlsSession) {
-  if (session.region) {
-    try { session.region.proc.kill(); } catch {}
-    session.region.exited = true;
-    session.region = null;
-  }
-}
-
-/** Start transcoding a window of segments forward from segment `startIndex`. */
-function spawnRegion(session: HlsSession, startIndex: number) {
-  killRegion(session);
-  const start = startIndex * SEG_SECONDS;
-  // Two-stage seek: fast (keyframe) input seek near the target, then an accurate
-  // output seek for the remainder, so the region starts exactly on the grid.
-  const fast = Math.max(0, start - 4);
-  const acc = start - fast;
-  const windowDur = Math.min(REGION_SEGMENTS * SEG_SECONDS, session.durationSec - start) + 1;
-
-  const args = ["-nostdin", "-hide_banner", "-loglevel", "error"];
-  args.push("-ss", String(fast), "-i", session.videoUrl);
-  if (session.audioUrl) args.push("-ss", String(fast), "-i", session.audioUrl);
-  if (acc > 0) args.push("-ss", String(acc));
-  args.push("-t", String(windowDur));
-  args.push("-map", "0:v:0", "-map", session.audioUrl ? "1:a:0" : "0:a:0?");
-  // Constant frame rate + a forced keyframe on every grid boundary makes each
-  // segment exactly SEG_SECONDS long, so the pre-built playlist's timings match
-  // and there is no A/V drift across segments.
-  args.push("-r", String(session.fps), "-vsync", "cfr", "-sc_threshold", "0");
-  args.push("-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p");
-  args.push("-force_key_frames", `expr:gte(t,n_forced*${SEG_SECONDS})`);
-  args.push("-c:a", "aac", "-ac", "2");
-  // Absolute output timestamps so every region shares ONE continuous timeline
-  // (segment N starts at N*SEG). Without this each region restarts at PTS 0 and
-  // collides with earlier segments, which corrupts the player's timeline.
-  args.push("-output_ts_offset", String(start), "-muxdelay", "0", "-muxpreload", "0");
-  args.push(
-    "-f", "hls",
-    "-hls_time", String(SEG_SECONDS),
-    "-hls_list_size", "0",
-    "-hls_flags", "independent_segments+omit_endlist+temp_file",
-    "-hls_segment_type", "mpegts",
-    "-start_number", String(startIndex),
-    "-hls_segment_filename", join(session.dir, "seg%05d.ts"),
-    join(session.dir, "_region.m3u8"),
-  );
-
-  const proc = Bun.spawn([FFMPEG, ...args], { stdout: "ignore", stderr: "pipe" });
-  const region: HlsRegion = { proc, startIndex, exited: false };
-  session.region = region;
-  readLines(proc.stderr as ReadableStream<Uint8Array>, () => {}).catch(() => {});
-  void proc.exited.then(() => { region.exited = true; });
-}
-
-export function destroyHlsSession(videoId: string) {
-  const session = hlsSessions.get(videoId);
-  if (!session) return;
-  hlsSessions.delete(videoId);
-  killRegion(session);
-  try { rmSync(session.dir, { recursive: true, force: true }); } catch {}
-}
-
-function sweepHlsSessions() {
-  const now = Date.now();
-  for (const [videoId, session] of hlsSessions) {
-    if (now - session.lastAccess > HLS_IDLE_MS) destroyHlsSession(videoId);
-  }
-}
-
-/**
- * Create (or reuse) a seek-anywhere streaming session and return its static VOD
- * playlist. Null when yt-dlp/ffmpeg can't resolve the video. Also enqueues a
- * clean background copy download so the next visit plays the local file.
- */
-export async function getHlsPlaylist(userId: number, videoId: string): Promise<string | null> {
-  const existing = hlsSessions.get(videoId);
-  if (existing) { existing.lastAccess = Date.now(); return existing.playlist; }
-  if (!(await ytdlpStatus())) return null;
-  if (!await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId)) return null;
-
-  const probe = await probeSource(userId, videoId);
-  if (!probe) return null;
-
-  // A second concurrent request may have created the session while we probed.
-  const raced = hlsSessions.get(videoId);
-  if (raced) { raced.lastAccess = Date.now(); return raced.playlist; }
-
-  const segCount = Math.max(1, Math.ceil(probe.durationSec / SEG_SECONDS));
-  const dir = hlsSessionDir(videoId);
-  try { rmSync(dir, { recursive: true, force: true }); } catch {}
-  mkdirSync(dir, { recursive: true });
-
-  const session: HlsSession = {
-    videoId, dir,
-    durationSec: probe.durationSec,
-    segCount,
-    fps: probe.fps,
-    videoUrl: probe.videoUrl,
-    audioUrl: probe.audioUrl,
-    playlist: buildVodPlaylist(probe.durationSec, segCount),
-    region: null,
-    lastAccess: Date.now(),
-  };
-  hlsSessions.set(videoId, session);
-  if (!hlsSweeper) hlsSweeper = setInterval(sweepHlsSessions, 30_000);
-
-  // Kick off the clean full download at top priority and start it immediately
-  // (not on the next 30s tick). yt-dlp's chunked range download defeats
-  // YouTube's per-connection throttling, so the whole file lands in seconds —
-  // the moment it's done the player switches to the local, natively seekable
-  // file. Until then the on-demand transcode covers playback.
-  await prioritizeDownload(userId, videoId);
-
-  log.info("downloads.stream_start", { videoId, durationSec: probe.durationSec, segCount, fps: probe.fps });
-  return session.playlist;
-}
-
-/** Serve a segment, transcoding it on demand (waiting for the region to reach it). */
-export async function getHlsSegment(videoId: string, file: string, signal?: AbortSignal): Promise<string | null> {
-  const session = hlsSessions.get(videoId);
-  if (!session) return null;
-  session.lastAccess = Date.now();
-  const m = file.match(SEGMENT_RE);
-  if (!m) return null;
-  const index = Number(m[1]);
-  if (index < 0 || index >= session.segCount) return null;
-
-  const path = join(session.dir, file);
-  if (existsSync(path)) return path;
-
-  // A region starts exactly at the requested segment (so a seek produces that
-  // segment first, not after grinding from a block boundary) and transcodes
-  // forward for REGION_SEGMENTS. Contiguous requests fall inside that window and
-  // reuse it; only a real jump outside it repositions the transcoder. Aborted
-  // requests (a seek dropping its stale read-ahead) bail without respawning, so
-  // concurrent segment fetches never thrash the single transcoder.
-  let spawns = 0;
-  const deadline = Date.now() + SEGMENT_WAIT_MS;
-  while (Date.now() < deadline) {
-    if (signal?.aborted) return null;
-    if (existsSync(path)) return path;
-    const r = session.region;
-    const usable = r && !r.exited && index >= r.startIndex && index < r.startIndex + REGION_SEGMENTS;
-    if (!usable && spawns < 3) { spawnRegion(session, index); spawns++; }
-    await new Promise((res) => setTimeout(res, 150));
-  }
-  return existsSync(path) ? path : null;
-}
-
-/** Drop any HLS scratch left over from a previous run (called on boot). */
-export function resetHlsScratch() {
-  try { rmSync(HLS_DIR, { recursive: true, force: true }); } catch {}
-}
-
+export { destroyHlsSession, getHlsPlaylist, getHlsSegment, isSegmentName, liveStreamEnabled };
 // ---------- scheduler ----------
 
 let ticking = false;

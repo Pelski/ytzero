@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./ShortsPlayer.css";
 import { ChevronDown, ChevronUp, Heart, Share2, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";

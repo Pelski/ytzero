@@ -10,6 +10,8 @@
     "generate:changelog": "bun scripts/generate-changelog.ts",
     "build:prepared": "bun run check:css && vite build",
     "build": "bun run check:css && bun run generate:changelog && vite build",
+    "test": "bun test",
+    "typecheck": "bun x tsc --noEmit",
     "preview": "vite preview"
   },
   "dependencies": {

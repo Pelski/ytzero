@@ -22,6 +22,10 @@ beforeAll(async () => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("download recovery manifests", () => {
+  test("writes a short, title-independent manifest beside the downloaded file", () => {
+    expect(result.writtenManifest).toMatchObject({ schemaVersion: 1, videoId: "recover001", file: "moved.mp4", sizeBytes: 15 });
+  });
+
   test("reconnects a moved file before cleanup removes its old database path", () => {
     expect(result.recovered.status).toBe("done");
     expect(result.recovered.path).toBe(resolve(root, "downloads", "moved.mp4"));

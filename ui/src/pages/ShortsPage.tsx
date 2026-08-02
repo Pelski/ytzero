@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import "./ShortsPage.css";
 import { Heart, Play, Shuffle, Zap } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { emitToast, subscribe } from "../events";

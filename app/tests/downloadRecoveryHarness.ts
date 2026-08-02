@@ -1,17 +1,16 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const { db } = await import("../src/db");
-const { cleanupDownloadsNow } = await import("../src/downloader");
+const { cleanupDownloadsNow, writeDownloadManifest } = await import("../src/downloader");
 
 const downloadsDir = process.env.DOWNLOADS_DIR!;
 const movedPath = join(downloadsDir, "moved.mp4");
 const unknownPath = join(downloadsDir, "unknown.mp4");
 mkdirSync(dirname(movedPath), { recursive: true });
 writeFileSync(movedPath, "recovered media");
-writeFileSync(join(downloadsDir, "recover001.ytz.json"), JSON.stringify({
-  schemaVersion: 1, videoId: "recover001", file: "moved.mp4", sizeBytes: 15, downloadedAt: "2026-08-02T00:00:00.000Z",
-}));
+writeDownloadManifest("recover001", movedPath, 15);
+const writtenManifest = JSON.parse(readFileSync(join(downloadsDir, "recover001.ytz.json"), "utf8"));
 writeFileSync(unknownPath, "keep this file");
 writeFileSync(join(downloadsDir, "unknown001.ytz.json"), JSON.stringify({
   schemaVersion: 1, videoId: "unknown001", file: "unknown.mp4", sizeBytes: 14, downloadedAt: "2026-08-02T00:00:00.000Z",
@@ -23,5 +22,5 @@ await db.prepare("INSERT INTO downloads(video_id,status,path,size_bytes) VALUES(
 
 await cleanupDownloadsNow();
 const recovered = await db.prepare("SELECT status,path,size_bytes FROM downloads WHERE video_id=?").get("recover001");
-console.log("RESULT " + JSON.stringify({ recovered, unknownPreserved: existsSync(unknownPath) }));
+console.log("RESULT " + JSON.stringify({ recovered, writtenManifest, unknownPreserved: existsSync(unknownPath) }));
 await db.close();

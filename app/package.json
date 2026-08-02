@@ -6,6 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
+    "test": "bun test",
+    "test:random": "bun test --randomize --seed=123",
+    "typecheck": "bun x tsc --noEmit",
     "start": "bun src/index.ts"
   },
   "dependencies": {
