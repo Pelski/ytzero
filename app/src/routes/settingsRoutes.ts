@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import { publishAppEvent } from "../appEvents";
 import { database } from "../database";
 import { getSetting, getUserSetting, GLOBAL_SETTING_KEYS, SETTING_DEFAULTS, setSetting, setUserSetting } from "../db";
+import { isVideoCardActionMode } from "../videoCardActions";
 import { isProfilePermissionArea, serializeAdminOnlyAreas, type ProfilePermissionArea } from "../profilePermissions";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "../scheduleTime";
 import { isValidTimeZone } from "../timeZone";
@@ -128,6 +129,9 @@ api.put("/settings", async (c) => {
   if ("timezone" in body && !isValidTimeZone(body.timezone)) {
     return c.json({ error: "invalid timezone" }, 400);
   }
+  if ("video_card_actions" in body && !isVideoCardActionMode(body.video_card_actions)) {
+    return c.json({ error: "invalid video card action mode" }, 400);
+  }
   for (const key of Object.keys(SETTING_DEFAULTS)) {
     if (key === "child_lock_pin_hash" || key === "child_lock_enabled") continue;
     if (!(key in body)) continue;
@@ -148,4 +152,3 @@ api.put("/settings", async (c) => {
   return c.json({ ok: true });
 });
 }
-

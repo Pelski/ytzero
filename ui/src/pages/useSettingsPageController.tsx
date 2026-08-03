@@ -19,6 +19,7 @@ import { emit } from "../events";
 import { formatAgeUnit, formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
+import { applyVideoCardActionsMode, parseVideoCardActionsMode, type VideoCardActionsMode } from "../videoCardActions";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { applyVideoCardSize, parseVideoCardSize, persistVideoCardSize, VIDEO_CARD_SIZE_MAX, VIDEO_CARD_SIZE_MIN } from "../videoCardSize";
 import { Alert, Badge, Button, ButtonAnchor, ButtonLink, Chip, ColorPicker, Dialog, Divider, EmptyState, Field, FormActions, IconButton, Inline, Input, InputGroup, PageHeader, Popover, RevealList, SectionHeader, SelectMenu, SettingRow, SettingsNav, SettingsSection, Slider, Switch, Text, type SettingsNavGroup } from "../components/ui";
@@ -191,6 +192,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
   const [feedAutoplayDirection, setFeedAutoplayDirection] = useState<"oldest" | "newest">("newest");
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("everywhere");
   const [watchedStyle, setWatchedStyle] = useState<WatchedStyle>("dimmed");
+  const [videoCardActions, setVideoCardActions] = useState<VideoCardActionsMode>("hover");
   const [videoCardSize, setVideoCardSize] = useState(248);
   const [navConfig, setNavConfig] = useState<NavConfigEntry[]>(() => parseNavConfig(null));
   const navSaveTimer = useRef<number | null>(null);
@@ -478,6 +480,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
           : "everywhere"
       );
       setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
+      setVideoCardActions(parseVideoCardActionsMode(r.settings.video_card_actions));
       setVideoCardSize(parseVideoCardSize(r.settings.grid_size));
       const raw = r.settings.sidebar_nav;
       const navCfg = parseNavConfig(raw);
@@ -739,6 +742,14 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     applyWatchedStyle(next);
     await api.updateSettings({ watched_style: next });
     emit("watched-style-changed");
+    showToast(t("displaySettingsSaved"));
+  };
+
+  const changeVideoCardActions = async (next: VideoCardActionsMode) => {
+    setVideoCardActions(next);
+    applyVideoCardActionsMode(next);
+    await api.updateSettings({ video_card_actions: next });
+    emit("video-card-actions-changed");
     showToast(t("displaySettingsSaved"));
   };
 
@@ -1365,5 +1376,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     watchShowComments,
     watchShowRelated,
     watchedStyle,
+    videoCardActions,
+    changeVideoCardActions,
   };
 }

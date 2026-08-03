@@ -505,6 +505,23 @@ button.video-card:disabled { cursor: default; }
   pointer-events: none;
   z-index: 3;
 }
+
+html[data-video-card-actions="off"] .video-card .thumb-actions-zone { display: none; }
+
+html[data-video-card-actions="always"] .video-card .thumb-actions-peek { display: none; }
+html[data-video-card-actions="always"] .video-card .thumb-actions,
+html[data-video-card-actions="always"] .video-card .thumb-actions button,
+html[data-video-card-actions="always"] .video-card .thumb-actions a,
+html[data-video-card-actions="always"] .video-card .thumb-actions-row {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+html[data-video-card-actions="on_demand"] .video-card .thumb-actions-peek {
+  opacity: .92;
+  transform: translateY(0) scale(1);
+}
 .thumb-actions-peek {
   position: absolute;
   top: 8px;

@@ -77,59 +77,6 @@
   white-space: nowrap;
 }
 
-/* ---------- sidebar order editor (settings) ---------- */
-.sidebar-order-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.sidebar-order-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.sidebar-order-row { display: flex; flex-direction: column; gap: 6px; }
-.sidebar-order-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid var(--surface-2);
-  border-radius: 10px;
-  background: var(--surface);
-  transition: box-shadow 0.15s, border-color 0.15s, background 0.15s;
-}
-.sidebar-order-list.is-dragging .sidebar-order-item { cursor: grabbing; }
-.sidebar-order-item.dragging {
-  border-style: dashed;
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-}
-.sidebar-order-item.dragging .sidebar-order-name,
-.sidebar-order-item.dragging .sidebar-order-icon,
-.sidebar-order-item.dragging .sidebar-order-grip,
-.sidebar-order-item.dragging .sidebar-order-actions { opacity: 0.35; }
-.sidebar-order-item.is-hidden { opacity: 0.55; }
-.sidebar-order-grip {
-  display: flex;
-  color: var(--text-3);
-  cursor: grab;
-}
-.sidebar-order-item.dragging .sidebar-order-grip { cursor: grabbing; }
-.sidebar-order-icon { color: var(--text-2); flex-shrink: 0; }
-.sidebar-order-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-}
-.sidebar-order-actions { display: flex; gap: 2px; flex-shrink: 0; }
-
 .time-section { margin-bottom: 8px; }
 .time-section-header {
   display: flex; align-items: center; gap: 8px;

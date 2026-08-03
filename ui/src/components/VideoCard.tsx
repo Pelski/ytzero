@@ -28,6 +28,7 @@ import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
 import { Badge } from "./ui";
 import { useDeArrowBranding } from "../dearrow";
+import { readAppliedVideoCardActionsMode } from "../videoCardActions";
 import "./VideoGrid.css";
 import "./VideoCard.css";
 
@@ -37,6 +38,7 @@ const SWIPE_EXIT_GUTTER = 24;
 const SWIPE_MAX_DRAG = 160;
 const SWIPE_FEEDBACK_MS = 720;
 const FINAL_EXIT_MS = 280;
+const ACTION_HOVER_DELAY_MS = 3_000;
 export type CardFeedback = "watched" | "unwatched" | "rejected" | "restored" | "scheduled" | "unscheduled" | "removed";
 
 /** Duration in seconds for sorting/comparing; null when the string is unparseable. */
@@ -182,8 +184,10 @@ function VideoCard({
   const foundTime = formatTimeAgo(video.found_at ? `${video.found_at.replace(" ", "T")}Z` : null, language);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
+  const delayedActionsTimerRef = useRef<number | null>(null);
   const blockNextThumbClickRef = useRef(false);
   const blockClickAfterDragRef = useRef(false);
+  const appliedActionsMode = readAppliedVideoCardActionsMode();
   const actionsOpen = actionsPinned || actionsHovered || actionProximity > 0.52;
 
   const exitLeft = () => {
@@ -271,7 +275,7 @@ function VideoCard({
       filterTaps: true,
       from: [0, 0],
       pointer: { capture: true },
-      enabled: !selectable && !readOnly && (allowReject || allowMarkWatched),
+      enabled: appliedActionsMode !== "off" && !selectable && !readOnly && (allowReject || allowMarkWatched),
     }
   );
 
@@ -314,6 +318,8 @@ function VideoCard({
 
   const updateActionProximity = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== "mouse") return;
+    const mode = readAppliedVideoCardActionsMode();
+    if (mode === "off" || mode === "always" || mode === "on_demand") return;
     if ((e.target as HTMLElement).closest(".thumb-actions")) {
       setActionsHovered(true);
       return;
@@ -322,6 +328,21 @@ function VideoCard({
     const next = getActionProximity(rect, e.clientX, e.clientY);
     if (Math.abs(next - lastProximityRef.current) < 0.025) return;
     lastProximityRef.current = next;
+    if (mode === "delay") {
+      if (next > 0.52) {
+        if (delayedActionsTimerRef.current == null && actionProximity <= 0.52) {
+          delayedActionsTimerRef.current = window.setTimeout(() => {
+            delayedActionsTimerRef.current = null;
+            setActionProximity(1);
+          }, ACTION_HOVER_DELAY_MS);
+        }
+      } else {
+        if (delayedActionsTimerRef.current != null) window.clearTimeout(delayedActionsTimerRef.current);
+        delayedActionsTimerRef.current = null;
+        setActionProximity(0);
+      }
+      return;
+    }
     setActionProximity(next);
   };
 
@@ -340,9 +361,16 @@ function VideoCard({
     // Touch pointers leave the element as soon as the finger is lifted. Keep
     // the menu open until an action or an explicit outside tap instead.
     if (e.pointerType !== "mouse") return;
+    if (delayedActionsTimerRef.current != null) window.clearTimeout(delayedActionsTimerRef.current);
+    delayedActionsTimerRef.current = null;
     lastProximityRef.current = 0;
     setActionProximity(0);
+    setActionsHovered(false);
   };
+
+  useEffect(() => () => {
+    if (delayedActionsTimerRef.current != null) window.clearTimeout(delayedActionsTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!actionsOpen) return;

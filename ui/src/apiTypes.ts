@@ -265,6 +265,7 @@ export interface AppSettings {
   player_screenshot_filename: string;
   auto_fullscreen_landscape?: string;
   grid_size: string;
+  video_card_actions: string;
   child_watching_monitor_enabled: string;
   child_lock_enabled: string;
   profile_admin_only_areas: string;

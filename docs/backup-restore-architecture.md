@@ -185,6 +185,10 @@ below.
   DeArrow title and thumbnail enablement are independent portable per-profile
   presentation settings and both default to disabled. Replacements are fetched
   on demand; they do not overwrite library metadata or become portable profile data.
+  The video-card action visibility mode is portable per-profile presentation
+  configuration. It defaults to the historical hover behaviour and may instead
+  keep actions visible, require the overflow button, delay hover activation by
+  three seconds, or leave actions to the video page.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The

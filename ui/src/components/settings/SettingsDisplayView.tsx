@@ -6,9 +6,10 @@ import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE } from "../../playerScreenshot";
 import { scheduleSettingWrite } from "../../settingsWriteQueue";
 import "./SettingsDisplayView.css";
 import { WATCHED_STYLES } from "../../watchedStyle";
+import { VIDEO_CARD_ACTIONS_MODES, type VideoCardActionsMode } from "../../videoCardActions";
 import { useSettingsPageController } from "../../pages/useSettingsPageController";
 import Popconfirm from "../Popconfirm";
-import { Button, ColorPicker, Inline, Input, InputGroup, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Text } from "../ui";
+import { Button, ColorPicker, Divider, Inline, Input, InputGroup, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Text } from "../ui";
 import { SidebarNavEditor } from "./SettingsEditors";
 
 const TIME_ZONES = (() => {
@@ -40,6 +41,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     changeFeedMaxAge,
     changeMembersOnlyVisibility,
     changeWatchedStyle,
+    changeVideoCardActions,
     deArrowThumbnailsEnabled,
     deArrowTitlesEnabled,
     displaySubTab,
@@ -105,6 +107,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     watchShowComments,
     watchShowRelated,
     watchedStyle,
+    videoCardActions,
   } = controller;
 
   return (
@@ -202,6 +205,15 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           }
 
           {displaySubTab === "feed" && canManageArea("feed") && <SettingsSection title={t("displayFeed")} className="settings-display-group">
+
+          <SettingRow label={t("videoCardActionsLabel")} description={t("videoCardActionsHint")}>
+            <SelectMenu
+              label={t("videoCardActionsLabel")}
+              value={videoCardActions}
+              options={VIDEO_CARD_ACTIONS_MODES.map((mode) => ({ value: mode.id, label: t(mode.labelKey) }))}
+              onChange={(next: VideoCardActionsMode) => void changeVideoCardActions(next)}
+            />
+          </SettingRow>
 
           <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
@@ -514,6 +526,8 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           <SettingRow label={t("showTopChannels")} description={t("showTopChannelsHint")}>
             <Switch checked={showTopChannels} onCheckedChange={() => toggleTopChannels()} />
           </SettingRow>
+
+          <Divider className="settings-navigation-divider" />
 
           <div className="sidebar-order-head">
             <div>

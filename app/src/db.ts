@@ -229,6 +229,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // Mobile: rotating to landscape on the watch page enters fullscreen.
   auto_fullscreen_landscape: "0",
   grid_size: "sm",
+  // How action controls are exposed on video cards. Portable per-profile UI
+  // preference; hover preserves the historical behaviour.
+  video_card_actions: "hover",
   // Portable per-profile presentation preference for the child activity
   // shortcut. Live viewing activity remains transient and is never exported.
   child_watching_monitor_enabled: "1",

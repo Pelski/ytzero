@@ -72,3 +72,12 @@
   .sb-category-row,
   .sb-category-name { min-width: 0; }
 }
+.settings-navigation-divider { margin-bottom: 16px; margin-top: 0; }
+
+.sidebar-order-head {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}

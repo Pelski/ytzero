@@ -6,6 +6,7 @@ import { parseNavConfig, type NavConfigEntry } from "../nav";
 import { queueSettingWrite } from "../settingsWriteQueue";
 import { applyVideoCardSize } from "../videoCardSize";
 import { applyWatchedStyle, parseWatchedStyle } from "../watchedStyle";
+import { applyVideoCardActionsMode } from "../videoCardActions";
 
 const DEFAULT_PROFILE_PERMISSIONS: ProfilePermissions = {
   admin_only_areas: ["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"],
@@ -32,6 +33,7 @@ export function useAppPreferences() {
       applyVideoCardSize(settings.grid_size);
       emit("video-card-size-applied");
       applyWatchedStyle(parseWatchedStyle(settings.watched_style));
+      applyVideoCardActionsMode(settings.video_card_actions);
 
       const rawNavConfig = settings.sidebar_nav;
       const nextNavConfig = parseNavConfig(rawNavConfig);
@@ -80,6 +82,7 @@ export function useAppPreferences() {
   useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("watched-style-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("video-card-size-changed", loadSettings), [loadSettings]);
+  useEffect(() => subscribe("video-card-actions-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("player-settings-changed", loadSettings), [loadSettings]);
   useEffect(() => subscribe("child-watching-settings-changed", loadSettings), [loadSettings]);
 
