@@ -8,12 +8,25 @@ import { asset, path } from "../lib/paths";
       <img src={asset("/icon.svg")} width="34" height="34" alt="" />
       <span>YT Zero</span>
     </a>
-    <nav aria-label="Primary navigation">
+    <nav class="desktop-nav" aria-label="Primary navigation">
       <a href={path("/#features")}>Features</a>
       <a href={path("/docs/")}>Docs</a>
       <a href={path("/changelog/")}>Changelog</a>
       <a href={path("/#install")}>Install</a>
       <a class="nav-github" href="https://github.com/Pelski/ytzero">GitHub <span aria-hidden="true">↗</span></a>
     </nav>
+    <details class="mobile-nav">
+      <summary>
+        <span>Menu</span>
+        <i aria-hidden="true"></i>
+      </summary>
+      <nav aria-label="Mobile navigation">
+        <a href={path("/#features")}>Features</a>
+        <a href={path("/docs/")}>Docs</a>
+        <a href={path("/changelog/")}>Changelog</a>
+        <a href={path("/#install")}>Install</a>
+        <a href="https://github.com/Pelski/ytzero">GitHub <span aria-hidden="true">↗</span></a>
+      </nav>
+    </details>
   </div>
 </header>
