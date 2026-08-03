@@ -8,3 +8,6 @@ bun install
 
 cd "$ROOT_DIR/ui"
 bun install
+
+cd "$ROOT_DIR"
+bun run hooks:install

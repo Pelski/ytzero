@@ -7,6 +7,32 @@ import { asset, path } from "../lib/paths";
 const updates = (await getCollection("updates"))
   .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
   .slice(0, 3);
+
+const repository = import.meta.env.GITHUB_REPOSITORY ?? "Pelski/ytzero";
+const repositoryEndpoint = `${import.meta.env.GITHUB_API_URL ?? "https://api.github.com"}/repos/${repository}`;
+const githubHeaders: Record<string, string> = {
+  Accept: "application/vnd.github+json",
+  "X-GitHub-Api-Version": "2022-11-28",
+  "User-Agent": "ytzero-pages",
+};
+
+if (import.meta.env.GITHUB_TOKEN) {
+  githubHeaders.Authorization = `Bearer ${import.meta.env.GITHUB_TOKEN}`;
+}
+
+let starCount: number | null = null;
+
+try {
+  const response = await fetch(repositoryEndpoint, { headers: githubHeaders });
+  if (response.ok) {
+    const repositoryData = await response.json() as { stargazers_count?: number };
+    starCount = repositoryData.stargazers_count ?? null;
+  }
+} catch {
+  // The homepage still builds when the optional repository metadata is unavailable.
+}
+
+const latestRelease = updates[0];
 ---
 
 <BaseLayout>
@@ -21,6 +47,30 @@ const updates = (await getCollection("updates"))
         <div class="button-row">
           <a class="button primary" href={path("/#install")}>Install YT Zero <span aria-hidden="true">↓</span></a>
           <a class="button ghost" href="https://github.com/Pelski/ytzero">View on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+        <div class="hero-status" aria-label="Current project status">
+          {latestRelease && (
+            <a class="hero-status-item" href={path(`/changelog/${latestRelease.id}/`)}>
+              <span class="hero-status-icon release-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" /></svg>
+              </span>
+              <span class="hero-status-copy">
+                <small>Latest</small>
+                <strong>{latestRelease.data.version}</strong>
+              </span>
+            </a>
+          )}
+          {starCount !== null && (
+            <a class="hero-status-item" href="https://github.com/Pelski/ytzero">
+              <span class="hero-status-icon star-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m12 3 2.75 5.57 6.15.9-4.45 4.33 1.05 6.12L12 17.03l-5.5 2.89 1.05-6.12L3.1 9.47l6.15-.9L12 3Z" /></svg>
+              </span>
+              <span class="hero-status-copy">
+                <small>Stars</small>
+                <strong data-star-count aria-live="polite">{starCount.toLocaleString("en-US")}</strong>
+              </span>
+            </a>
+          )}
         </div>
         <ul class="hero-facts" aria-label="Project facts">
           <li><strong>100%</strong><span>self-hosted</span></li>
@@ -201,3 +251,40 @@ const updates = (await getCollection("updates"))
     </div>
   </section>
 </BaseLayout>
+
+<script>
+  const starCountElement = document.querySelector<HTMLElement>("[data-star-count]");
+
+  if (starCountElement) {
+    fetch("https://api.github.com/repos/Pelski/ytzero", { cache: "no-store" })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((repository: { stargazers_count?: number }) => {
+        const nextCount = repository.stargazers_count;
+        if (typeof nextCount !== "number") return;
+
+        const currentCount = Number(starCountElement.textContent?.replace(/[^0-9]/g, "")) || nextCount;
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        if (reduceMotion || currentCount === nextCount) {
+          starCountElement.textContent = nextCount.toLocaleString("en-US");
+          return;
+        }
+
+        const startedAt = performance.now();
+        const duration = 550;
+
+        const updateCount = (now: number) => {
+          const progress = Math.min((now - startedAt) / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const displayedCount = Math.round(currentCount + (nextCount - currentCount) * eased);
+          starCountElement.textContent = displayedCount.toLocaleString("en-US");
+          if (progress < 1) requestAnimationFrame(updateCount);
+        };
+
+        requestAnimationFrame(updateCount);
+      })
+      .catch(() => {
+        // Keep the build-time count when GitHub's public API is unavailable.
+      });
+  }
+</script>
