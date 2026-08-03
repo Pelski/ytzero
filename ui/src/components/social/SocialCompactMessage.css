@@ -1,0 +1,92 @@
+.social-compact-message {
+  min-width: 0;
+  color: var(--text-2);
+  animation: social-compact-message-in .22s cubic-bezier(.22, 1, .36, 1) backwards;
+  animation-delay: calc(var(--social-compact-message-index, 0) * 35ms);
+}
+
+.social-compact-message--preview {
+  display: grid;
+  grid-template-columns: 24px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 2px 3px;
+  border-radius: 7px;
+}
+
+.social-compact-message--chat {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  min-height: 30px;
+  padding: 3px;
+  border-radius: 7px;
+}
+
+.social-compact-message__avatar {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  place-items: center;
+}
+
+.social-compact-message__author {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.social-compact-message--preview .social-compact-message__text {
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.social-compact-message__body { min-width: 0; }
+.social-compact-message__header { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.social-compact-message__header time { flex-shrink: 0; color: var(--text-3); font-size: 10.5px; }
+.social-compact-message--continuation { min-height: 0; padding-top: 0; }
+.social-compact-message--continuation .social-compact-message__body { grid-column: 2; }
+.social-compact-message__inline-meta {
+  color: var(--text-3);
+  display: inline-flex;
+  font-size: 10.5px;
+  gap: 7px;
+  margin-left: 7px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+  white-space: nowrap;
+}
+.social-compact-message--continuation:hover .social-compact-message__inline-meta { opacity: 1; }
+.social-compact-message--chat .social-compact-message__text {
+  margin-top: 1px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.social-compact-message--continuation .social-compact-message__text { margin-top: 0; }
+
+@keyframes social-compact-message-in { from { opacity: 0; transform: translateY(-3px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .social-compact-message { animation: none; }
+  .social-compact-message__inline-meta { transition: none; }
+}
+
+@media (hover: none) {
+  .social-compact-message__inline-meta { opacity: 1; }
+}

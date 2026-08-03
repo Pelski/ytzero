@@ -8,6 +8,7 @@ import { storedUtcTimestampMs, zonedDayHour } from "./timeZone";
 import { effectiveVideoTagsCte } from "./insightTags";
 import { followedExists, followedPlaylistExists } from "./feedQueryFragments";
 import { normalizeSocialEmojiSkinTone, normalizeSocialReaction } from "./social";
+import { socialWatchPartyStore } from "./socialWatchParties";
 import {
   diversifyRecommendations,
   isEligibleRecommendation,
@@ -100,6 +101,7 @@ export async function setPluginEnabled(id: string, enabled: boolean) {
     "INSERT INTO plugins (id, enabled, version, updated_at) VALUES (?, ?, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled, version = excluded.version, updated_at = excluded.updated_at"
   ).run(id, enabled ? 1 : 0, manifest.version);
   pluginEnabledCache.set(id, enabled);
+  if (id === "social" && !enabled) socialWatchPartyStore.closeAll("social_disabled");
 }
 
 function settingDefs(pluginId: string): PluginSettingSource[] {
@@ -201,6 +203,12 @@ export async function setPluginSettings(uid: number, pluginId: string, patch: Re
     await invalidateDiscoveryRecommendations(uid);
     refreshDiscoveryInBackground(uid);
   }
+  if (pluginId === "social" && Object.prototype.hasOwnProperty.call(patch, "watch_together_enabled")) {
+    const definition = byKey.get("watch_together_enabled");
+    if (definition && normalizeSettingValue(String(patch.watch_together_enabled ?? ""), definition) !== 1) {
+      socialWatchPartyStore.closeAll("watch_together_disabled");
+    }
+  }
   return getPluginSettings(uid, pluginId, language);
 }
 
@@ -219,14 +227,14 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
   {
     id: "social",
     scope: "instance",
-    schemaVersion: 2,
+    schemaVersion: 3,
     async export(userId) {
       const settings = (await getPluginSettings(userId, "social")).settings;
-      return { settings: Object.fromEntries(Object.entries(settings).filter(([key]) => ["comments_enabled", "reactions_enabled", "allow_child_profiles"].includes(key))) };
+      return { settings: Object.fromEntries(Object.entries(settings).filter(([key]) => ["comments_enabled", "reactions_enabled", "watch_together_enabled", "allow_child_profiles"].includes(key))) };
     },
     async restore(userId, value) {
       const input = value && typeof value === "object" ? value as any : {};
-      const settings = Object.fromEntries(Object.entries(input.settings ?? {}).filter(([key]) => ["comments_enabled", "reactions_enabled", "allow_child_profiles"].includes(key)));
+      const settings = Object.fromEntries(Object.entries(input.settings ?? {}).filter(([key]) => ["comments_enabled", "reactions_enabled", "watch_together_enabled", "allow_child_profiles"].includes(key)));
       await setPluginSettings(userId, "social", settings);
     },
   },
@@ -290,6 +298,7 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
 export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
   if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
   if (pluginId === "social") {
+    socialWatchPartyStore.closeAll("social_reset");
     await database.transaction(async () => {
       await database.prepare("DELETE FROM social_posts").run();
       await database.prepare("DELETE FROM social_recent_emojis").run();

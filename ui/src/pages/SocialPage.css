@@ -106,21 +106,6 @@
 .social-comments__panel { border-top: 1px solid var(--surface-3); animation: social-comments-open .24s cubic-bezier(.22, 1, .36, 1) backwards; transform-origin: top; }
 .social-comments--preview { padding-bottom: 8px; }
 .social-comment-preview-list { display: grid; gap: 1px; padding-top: 5px; border-top: 1px solid var(--surface-3); }
-.social-comment-preview {
-  display: grid;
-  grid-template-columns: 24px auto minmax(0, 1fr);
-  align-items: center;
-  gap: 7px;
-  min-height: 28px;
-  padding: 2px 3px;
-  border-radius: 7px;
-  color: var(--text-2);
-  animation: social-comment-preview-in .22s cubic-bezier(.22, 1, .36, 1) backwards;
-  animation-delay: calc(var(--comment-index, 0) * 35ms);
-}
-.social-comment-preview__avatar { display: grid; width: 24px; height: 24px; border-radius: 50%; object-fit: cover; color: #fff; font-size: 10px; font-weight: 700; place-items: center; }
-.social-comment-preview strong { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
-.social-comment-preview__text { overflow: hidden; font-size: 12px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .social-comments__skeleton { display: grid; }
 .social-comment-skeleton { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 10px; padding-block: 8px; }
 .social-comment-skeleton > span { width: 32px; height: 32px; border-radius: 50%; }
@@ -169,7 +154,6 @@
 @keyframes social-focused-control-enter { from { opacity: 0; transform: translateX(-6px); } }
 @keyframes social-focused-post-enter { from { opacity: 0; transform: translateY(10px) scale(.985); } }
 @keyframes social-comments-open { from { opacity: 0; transform: scaleY(.97) translateY(-4px); } }
-@keyframes social-comment-preview-in { from { opacity: 0; transform: translateY(-3px); } }
 @keyframes social-comment-expand { from { opacity: .65; transform: translateY(-4px) scale(.985); } }
 @keyframes social-reaction-enter { from { opacity: 0; transform: scale(.86); } }
 
@@ -177,7 +161,6 @@
   .social-post-entry,
   .social-posts--focused .social-posts__back,
   .social-comments__panel,
-  .social-comment-preview,
   .social-comment--expanding,
   .social-reaction.ui-chip { animation: none; }
   .social-reaction.ui-chip { transition: none; }

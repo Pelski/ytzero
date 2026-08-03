@@ -1,5 +1,5 @@
 const { db } = await import("../src/db");
-const { setPluginEnabled } = await import("../src/plugins");
+const { getPluginSettings, setPluginEnabled, setPluginSettings } = await import("../src/plugins");
 const social = await import("../src/social");
 
 db.prepare("UPDATE users SET username='Default' WHERE id=1").run();
@@ -7,7 +7,14 @@ const friend = db.prepare("INSERT INTO users(name,username,avatar_color,sort_ord
 const child = db.prepare("INSERT INTO users(name,username,avatar_color,sort_order,portable_uuid,is_child) VALUES('Kid','Kid','#22aa66',2,?,1) RETURNING id").get(crypto.randomUUID()) as { id: number };
 db.prepare("INSERT INTO channels(channel_id,title,url) VALUES('UCsocial','Social channel','https://youtube.com/channel/UCsocial')").run();
 db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('socialvideo1','UCsocial','Shared video','thumb.jpg')").run();
+const watchTogetherSettingDefault = (await getPluginSettings(1, "social")).settings.watch_together_enabled;
 await setPluginEnabled("social", true);
+const watchTogetherDomainDefault = (await social.socialSettings(1)).watchTogetherEnabled;
+let watchTogetherDisabledError: unknown = null;
+try { await social.assertWatchTogetherAccess(1); }
+catch (error) { watchTogetherDisabledError = { code: (error as any).code, status: (error as any).status }; }
+await setPluginSettings(1, "social", { watch_together_enabled: 1 });
+const watchTogetherEnabled = (await social.assertWatchTogetherAccess(1)).watchTogetherEnabled;
 
 const post = await social.createSocialPost(1, { video_id: "socialvideo1", body: "Obejrzyj @Friend" }, false);
 db.prepare("INSERT INTO social_reactions(post_id,user_id,reaction_key) VALUES(?,?,?)").run(post.id, friend.id, "love");
@@ -77,6 +84,12 @@ console.log("RESULT " + JSON.stringify({
   commentPreview: commentPreview.map((item: { body: string }) => item.body),
   childError,
   childMentionable: profiles.some((profile) => profile.id === child.id),
+  watchTogether: {
+    settingDefault: watchTogetherSettingDefault,
+    domainDefault: watchTogetherDomainDefault,
+    disabledError: watchTogetherDisabledError,
+    enabled: watchTogetherEnabled,
+  },
   socialNotificationTargets: socialNotificationTargets.map((row) => row.target),
   notificationQuotes,
 }));

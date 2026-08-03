@@ -1,16 +1,18 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ReactNode, type UIEventHandler } from "react";
 import { cx } from "./utils";
 import "./ScrollArea.css";
 
 /** Scrollable viewport with edge shadows that reflect the current scroll position. */
-export function ScrollArea({ children, className, viewportClassName }: {
+export const ScrollArea = forwardRef<HTMLDivElement, {
   children: ReactNode;
   className?: string;
   viewportClassName?: string;
-}) {
+  onScroll?: UIEventHandler<HTMLDivElement>;
+}>(function ScrollArea({ children, className, viewportClassName, onScroll }, ref) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [shadowTop, setShadowTop] = useState(false);
   const [shadowBottom, setShadowBottom] = useState(false);
+  useImperativeHandle(ref, () => viewportRef.current as HTMLDivElement, []);
 
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -34,6 +36,6 @@ export function ScrollArea({ children, className, viewportClassName }: {
   }, []);
 
   return <div className={cx("ui-scroll-area", shadowTop && "ui-scroll-area--shadow-top", shadowBottom && "ui-scroll-area--shadow-bottom", className)}>
-    <div ref={viewportRef} className={cx("ui-scroll-area__viewport", viewportClassName)}>{children}</div>
+    <div ref={viewportRef} className={cx("ui-scroll-area__viewport", viewportClassName)} onScroll={onScroll}>{children}</div>
   </div>;
-}
+});

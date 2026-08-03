@@ -9,6 +9,7 @@ import { getCachedImage } from "./imgcache";
 import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
 import { refreshAll } from "./refresher";
 import { log } from "./logger";
+import { registerRequestDiagnostics } from "./requestDiagnostics";
 import { isChildUser } from "./childTime";
 import { beginMutation, maintenanceStatus } from "./maintenance";
 import { isProfilePermissionArea, parseAdminOnlyAreas, permissionAreaForMutation, permissionAreasForSettings, serializeAdminOnlyAreas, settingsMutationRequiresAdmin, type ProfilePermissionArea } from "./profilePermissions";
@@ -20,6 +21,7 @@ import {
 } from "./auth";
 import { registerSystemRoutes } from "./routes/systemRoutes";
 import { registerSocialRoutes } from "./routes/socialRoutes";
+import { registerSocialWatchPartyRoutes } from "./routes/socialWatchPartyRoutes";
 import { registerTagRoutes } from "./routes/tagRoutes";
 import { registerPluginRoutes } from "./routes/pluginRoutes";
 import { registerAuthRoutes } from "./routes/authRoutes";
@@ -47,29 +49,9 @@ import {
 } from "./videoRoutesSupport";
 export { importTakeoutHistory } from "./routes/importRoutes";
 await migrateDownloadsFromPlugin();
-export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } }>();
-api.onError((err, c) => {
-  log.error("api.unhandled_error", { path: c.req.path, method: c.req.method, error: err.message });
-  return c.json({ error: err.message }, 500);
-});
 
-// Log only failed or unusually slow requests. Query strings, request bodies,
-// headers and cookies are intentionally excluded from diagnostic logs.
-api.use("*", async (c, next) => {
-  const startedAt = Date.now();
-  await next();
-  const ms = Date.now() - startedAt;
-  const meta = {
-    method: c.req.method,
-    path: c.req.path,
-    status: c.res.status,
-    ms,
-    userId: c.get("userId") || undefined,
-  };
-  if (c.res.status >= 500) log.error("api.request_failed", meta);
-  else if (c.res.status >= 400) log.warn("api.request_failed", meta);
-  else if (ms >= 2_000) log.warn("api.request_slow", meta);
-});
+export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } }>();
+registerRequestDiagnostics(api);
 
 // ---------- helpers ----------
 
@@ -221,6 +203,18 @@ async function profileFromCookie(c: any): Promise<number> {
   return valid ? raw : (await firstUserId.get() as { id: number } | null)?.id ?? 0;
 }
 
+/** Re-resolve long-lived request identity instead of trusting middleware state forever. */
+export async function revalidateCurrentRequestUser(c: any, expectedUserId: number): Promise<boolean> {
+  const method = authMethod();
+  if (method === "none") return await profileFromCookie(c) === expectedUserId;
+  if (method === "proxy_header") return await resolveProxyUser(c) === expectedUserId;
+
+  const session = await validateSession(parseCookies(c.req.header("cookie"))[AUTH_SESSION_COOKIE]);
+  if (!session) return false;
+  const userId = session.scope === "account" ? await profileFromCookie(c) : session.user_id ?? 0;
+  return userId === expectedUserId;
+}
+
 // Endpoints reachable without an authenticated session (login flow + app config).
 function isAuthFreePath(path: string): boolean {
   return path.startsWith("/auth") || path === "/config";
@@ -353,6 +347,11 @@ registerInsightRoutes(api, currentUserId);
 registerPluginRoutes(api, { isAdmin, currentUserId });
 
 registerSocialRoutes(api, { isAdmin, currentUserId });
+registerSocialWatchPartyRoutes(api, {
+  isAdmin,
+  currentUserId,
+  revalidateCurrentUser: revalidateCurrentRequestUser,
+});
 registerDownloadRoutes(api, { currentUserId, isAdmin });
 
 registerVideoRoutes(api, { currentUserId, isAdmin, attachTags });

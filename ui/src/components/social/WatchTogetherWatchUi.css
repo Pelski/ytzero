@@ -1,0 +1,54 @@
+.watch-layout.together { grid-template-columns: minmax(0, 1fr); }
+.watch-player-stage--together {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) clamp(300px, 24vw, 380px);
+  align-items: stretch;
+  gap: 12px;
+}
+.watch-player-stage--together > .cinema-player-wrap { min-width: 0; }
+.watch-together-join-alert { margin: 12px 0; }
+
+@media (max-width: 1280px) {
+  .watch-layout.together:not(.theater) .watch-player-stage--together { grid-template-columns: minmax(0, 1fr); }
+  .watch-layout.together:not(.theater) .watch-together-panel { height: clamp(320px, 48dvh, 480px); }
+}
+@media (max-width: 1100px) {
+  .watch-player-stage--together { grid-template-columns: minmax(0, 1fr); }
+  .watch-player-stage--together .watch-together-panel { height: clamp(320px, 48dvh, 480px); }
+}
+
+.watch-player--transport-locked .watch-player-yt { pointer-events: none; user-select: none; }
+.sb-chapter-row:disabled,
+.sb-segment-seek:disabled { cursor: default; opacity: .52; }
+
+.watch-layout.theater .watch-player-stage--together {
+  gap: 0;
+  background: #000;
+}
+body.cinema .watch-layout.together .watch-player-stage--together .watch-together-panel {
+  --watch-together-theater-glass: color-mix(in srgb, var(--surface) 76%, transparent);
+  position: relative;
+  z-index: 1;
+  border: 0;
+  border-radius: 0;
+  background: var(--watch-together-theater-glass);
+  backdrop-filter: blur(22px) saturate(1.2);
+}
+body.cinema .watch-layout.together .watch-player-stage--together .watch-together-panel__scroll {
+  --ui-scroll-area-background: var(--watch-together-theater-glass);
+}
+body.cinema .watch-layout.together .watch-player-stage--together .watch-together-panel__composer {
+  background: color-mix(in srgb, var(--surface) 58%, transparent);
+}
+
+.watch-layout.together aside {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+.watch-layout.together aside .related-title { grid-column: 1 / -1; margin-top: 16px; }
+.watch-layout.together .related-item { flex-direction: column; margin-bottom: 0; }
+.watch-layout.together .related-item img { width: 100%; }
+.watch-layout.together .related-thumb { width: 100%; flex-basis: auto; }
+.watch-layout.together .related-thumb-shell { width: 100%; flex-basis: auto; }

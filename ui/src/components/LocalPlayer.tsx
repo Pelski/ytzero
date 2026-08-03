@@ -8,6 +8,7 @@ import { useI18n } from "../i18n";
 import SubtitlePicker from "./SubtitlePicker";
 import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../playerScreenshot";
 import "./LocalPlayer.css";
+import "./LocalPlayerTransportLock.css";
 
 const VOLUME_KEY = "localPlayerVolume";
 const MUTED_KEY = "localPlayerMuted";
@@ -23,6 +24,7 @@ export interface LocalPlayerHandle {
   getCurrentTime: () => number;
   getDuration: () => number;
   getPlayerState: () => number;
+  getPlaybackRate: () => number;
   setPlaybackRate: (rate: number) => void;
   pauseVideo: () => void;
   playVideo: () => void;
@@ -52,6 +54,9 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   startSeconds?: number;
   playbackRate?: number;
   autoplay?: boolean;
+  /** Locks viewer-initiated play, pause, seek, and speed changes while still
+   * allowing imperative room-sync commands through `LocalPlayerHandle`. */
+  transportLocked?: boolean;
   title?: string;
   channelTitle?: string;
   artworkUrl?: string;
@@ -88,6 +93,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   startSeconds = 0,
   playbackRate = 1,
   autoplay = true,
+  transportLocked = false,
   title,
   channelTitle,
   artworkUrl,
@@ -177,8 +183,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     if (subs.some((s) => s.lang === lang)) { setSubLang(lang); return; }
     if (!videoId) return;
     const v = videoRef.current;
-    const wasPlaying = Boolean(v && !v.paused && !v.ended);
-    v?.pause();
+    const wasPlaying = Boolean(!transportLocked && v && !v.paused && !v.ended);
+    if (!transportLocked) v?.pause();
     setSubLoading(lang);
     try {
       const r = await api.downloadSubtitle(videoId, lang);
@@ -191,7 +197,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       setSubLoading(null);
       if (wasPlaying) v?.play().catch(() => {});
     }
-  }, [subs, videoId]);
+  }, [subs, transportLocked, videoId]);
 
   // The browser parses the WebVTT track (mode "hidden"); we render active cues
   // ourselves so the user's subtitle style applies reliably everywhere.
@@ -270,12 +276,21 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       if (v.readyState < 3) return 3;
       return 1;
     },
+    getPlaybackRate: () => videoRef.current?.playbackRate ?? 1,
     setPlaybackRate: (rate: number) => {
       const v = videoRef.current;
       if (v && Number.isFinite(rate) && rate > 0) v.playbackRate = rate;
     },
     pauseVideo: () => videoRef.current?.pause(),
-    playVideo: () => { videoRef.current?.play().catch(() => {}); },
+    playVideo: () => {
+      const video = videoRef.current;
+      if (!video) return;
+      video.play().catch(() => {
+        video.muted = true;
+        setMuted(true);
+        video.play().catch(() => {});
+      });
+    },
     destroy: () => videoRef.current?.pause(),
   }), []);
 
@@ -297,6 +312,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   // blocks autoplay-with-sound, retry muted (always allowed) so the stream
   // actually plays — the viewer can unmute from the volume control.
   const tryStreamAutoplay = useCallback(() => {
+    if (!autoplay) return;
     const v = videoRef.current;
     if (!v) return;
     v.play().catch(() => {
@@ -304,7 +320,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       setMuted(true);
       v.play().catch(() => {});
     });
-  }, []);
+  }, [autoplay]);
 
   // Experimental streaming source: attach the growing HLS playlist via hls.js
   // (or native HLS on Safari). Seeking works across everything downloaded so
@@ -364,19 +380,27 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   }, [volume, muted]);
 
   const togglePlay = useCallback(() => {
+    if (transportLocked) {
+      showControls();
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     if (v.paused || v.ended) v.play().catch(() => {});
     else v.pause();
     showControls();
-  }, [showControls]);
+  }, [showControls, transportLocked]);
 
   const seekBy = useCallback((delta: number) => {
+    if (transportLocked) {
+      showControls();
+      return;
+    }
     const v = videoRef.current;
     if (!v) return;
     v.currentTime = Math.min(Math.max(0, v.currentTime + delta), v.duration || Infinity);
     showControls();
-  }, [showControls]);
+  }, [showControls, transportLocked]);
 
   const toggleFullscreen = useCallback(() => {
     const el = rootRef.current;
@@ -433,6 +457,15 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
+      const isTransportShortcut = e.code === "Space"
+        || e.key === "ArrowLeft"
+        || e.key === "ArrowRight"
+        || /^[jkl0-9]$/i.test(e.key);
+      if (transportLocked && isTransportShortcut) {
+        e.preventDefault();
+        showControls();
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         if (e.repeat || spaceHoldTimerRef.current != null || spaceHoldActiveRef.current) return;
@@ -520,6 +553,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       if (e.code !== "Space") return;
       if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
       e.preventDefault();
+      if (transportLocked) return;
       if (spaceHoldTimerRef.current != null) {
         window.clearTimeout(spaceHoldTimerRef.current);
         spaceHoldTimerRef.current = null;
@@ -537,9 +571,13 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       document.removeEventListener("keyup", onKeyUp);
       if (spaceHoldTimerRef.current != null) window.clearTimeout(spaceHoldTimerRef.current);
       spaceHoldTimerRef.current = null;
+      if (spaceHoldActiveRef.current) {
+        const v = videoRef.current;
+        if (v) v.playbackRate = playbackRate;
+      }
       spaceHoldActiveRef.current = false;
     };
-  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId, takeScreenshot, muted, onShortcut]);
+  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId, takeScreenshot, muted, onShortcut, transportLocked]);
 
   // Media Session: system-level controls (keyboard media keys, lock screen).
   useEffect(() => {
@@ -550,20 +588,22 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         artist: channelTitle ?? "",
         artwork: artworkUrl ? [{ src: artworkUrl, sizes: "480x360", type: "image/jpeg" }] : [],
       });
-      navigator.mediaSession.setActionHandler("play", () => videoRef.current?.play().catch(() => {}));
-      navigator.mediaSession.setActionHandler("pause", () => videoRef.current?.pause());
-      navigator.mediaSession.setActionHandler("seekbackward", () => seekBy(-10));
-      navigator.mediaSession.setActionHandler("seekforward", () => seekBy(10));
+      navigator.mediaSession.setActionHandler("play", transportLocked ? () => {} : () => videoRef.current?.play().catch(() => {}));
+      navigator.mediaSession.setActionHandler("pause", transportLocked ? () => {} : () => videoRef.current?.pause());
+      navigator.mediaSession.setActionHandler("seekbackward", transportLocked ? () => {} : () => seekBy(-10));
+      navigator.mediaSession.setActionHandler("seekforward", transportLocked ? () => {} : () => seekBy(10));
+      navigator.mediaSession.setActionHandler("seekto", transportLocked ? () => {} : null);
+      navigator.mediaSession.setActionHandler("stop", transportLocked ? () => {} : null);
     } catch {}
     return () => {
       try {
         navigator.mediaSession.metadata = null;
-        for (const action of ["play", "pause", "seekbackward", "seekforward"] as const) {
+        for (const action of ["play", "pause", "seekbackward", "seekforward", "seekto", "stop"] as const) {
           navigator.mediaSession.setActionHandler(action, null);
         }
       } catch {}
     };
-  }, [title, channelTitle, artworkUrl, seekBy]);
+  }, [title, channelTitle, artworkUrl, seekBy, transportLocked]);
 
   const updateBuffered = () => {
     const v = videoRef.current;
@@ -584,6 +624,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   };
 
   const scrubTo = (clientX: number) => {
+    if (transportLocked) return;
     const v = videoRef.current;
     if (!v) return;
     const dur = Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (live && durationSeconds ? durationSeconds : 0);
@@ -595,15 +636,26 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
 
   const onBarPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
+    if (transportLocked) {
+      showControls();
+      return;
+    }
     (e.target as Element).setPointerCapture?.(e.pointerId);
     setScrubbing(true);
     scrubTo(e.clientX);
   };
   const onBarPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (transportLocked) return;
     setHoverX(barFraction(e.clientX));
     if (scrubbing) scrubTo(e.clientX);
   };
   const onBarPointerUp = () => setScrubbing(false);
+
+  useEffect(() => {
+    if (!transportLocked) return;
+    setScrubbing(false);
+    setHoverX(null);
+  }, [transportLocked]);
 
   // The static VOD playlist gives hls.js the real duration; fall back to the
   // known length only until metadata arrives.
@@ -637,7 +689,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   return (
     <div
       ref={rootRef}
-      className={`lp-root${controlsVisible || !playing ? "" : " lp-hide-cursor"}`}
+      className={`lp-root${controlsVisible || !playing ? "" : " lp-hide-cursor"}${transportLocked ? " lp-transport-locked" : ""}`}
       onMouseMove={showControls}
       onMouseLeave={() => { if (playing) setControlsVisible(false); }}
     >
@@ -648,6 +700,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         poster={poster}
         autoPlay={autoplay}
         playsInline
+        aria-disabled={transportLocked || undefined}
         onClick={togglePlay}
         onDoubleClick={toggleFullscreen}
         onLoadedMetadata={onLoadedMetadata}
@@ -704,7 +757,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           <span className="lp-live-dot" /> {liveLabel ?? "STREAMING"}
         </div>
       )}
-      {!playing && !buffering && (
+      {!transportLocked && !playing && !buffering && (
         <button className="lp-big-play" onClick={togglePlay} aria-label={t("playerPlay")}>
           <Play size={30} fill="currentColor" />
         </button>
@@ -713,7 +766,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       <div className={`lp-controls${controlsVisible || !playing ? " visible" : ""}`}>
         <div
           ref={barRef}
-          className="lp-bar"
+          className={`lp-bar${transportLocked ? " lp-bar--locked" : ""}`}
+          aria-disabled={transportLocked || undefined}
           onPointerDown={onBarPointerDown}
           onPointerMove={onBarPointerMove}
           onPointerUp={onBarPointerUp}
@@ -739,7 +793,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         </div>
 
         <div className="lp-buttons">
-          <button className="lp-btn" onClick={togglePlay} aria-label={playing ? t("playerPause") : t("playerPlay")}>
+          <button className="lp-btn" onClick={togglePlay} aria-label={playing ? t("playerPause") : t("playerPlay")} disabled={transportLocked}>
             {playing ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" />}
           </button>
           <div className="lp-volume">
@@ -760,7 +814,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           <span className="lp-spacer" />
           {live && onExitStreaming && (
             <>
-              <button className="lp-exit-stream" onClick={onExitStreaming} title={exitStreamingLabel}>
+              <button className="lp-exit-stream" onClick={onExitStreaming} title={exitStreamingLabel} disabled={transportLocked}>
                 <MonitorPlay size={17} />
                 {exitStreamingLabel && <span>{exitStreamingLabel}</span>}
               </button>

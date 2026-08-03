@@ -1,6 +1,6 @@
 import { plural } from "../format";
-// English is the source of truth for the set of message keys.
-// `pl` and `de` are type-checked against the keys defined here.
+import { watchTogetherMessages } from "./watchTogether";
+// English defines the message keys; `pl` and `de` are type-checked against them.
 export const en = {
   messages: {
     navToday: "Main",
@@ -77,6 +77,7 @@ export const en = {
     socialSettingsHowHint: "Profiles on this installation can share library videos, add any emoji reaction, discuss them with locally liked comments, and mention profiles by typing @username. Administrative controls apply to everyone; notification preferences apply only to your profile.",
     socialResetHint: "Restore defaults and permanently remove all Social posts, comments, reactions, likes and mentions.",
     socialResetConfirm: "Reset Social and permanently delete every shared post, comment, reaction, comment like and mention for all profiles?",
+    ...watchTogetherMessages.en,
     insightsEyebrow: "Viewing insights",
     insightsTitle: "Pulse",
     insightsView: "View",
@@ -1189,8 +1190,7 @@ export const en = {
     tomorrow_evening: "Tomorrow evening",
     weekend: "Weekend",
   },
-  // English playlist-icon labels are derived from the icon id (see iconLabel()),
-  // so no curated map is needed here.
+  // English playlist-icon labels are derived from the icon id (see iconLabel()), so no curated map is needed here.
   iconLabels: {} as Record<string, string>,
   format: {
     videoCount: (n: number) => `${n} ${plural("en", n, { one: "video", other: "videos" })}`,

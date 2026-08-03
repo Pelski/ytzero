@@ -51,4 +51,13 @@ describe("Social domain", () => {
     expect(result.childError).toEqual({ code: "social_child_restricted", status: 403 });
     expect(result.childMentionable).toBe(false);
   });
+
+  test("keeps Watch together opt-in and enforces its access gate", () => {
+    expect(result.watchTogether).toEqual({
+      settingDefault: 0,
+      domainDefault: false,
+      disabledError: { code: "social_watch_together_disabled", status: 409 },
+      enabled: true,
+    });
+  });
 });

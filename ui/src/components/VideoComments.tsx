@@ -10,17 +10,17 @@ import "./VideoComments.css";
 
 const COMMENT_PAGE_SIZE = 20;
 
-function CommentText({ text, onSeek }: { text: string; onSeek: (seconds: number) => void }) {
+function CommentText({ text, onSeek, seekDisabled }: { text: string; onSeek: (seconds: number) => void; seekDisabled: boolean }) {
   return <>{parseCommentText(text).map((part, index): ReactNode => {
     if (part.type === "url") return <a key={index} href={markYouTubeUrl(part.value)} target="_blank" rel="noreferrer">{part.value}</a>;
     if (part.type === "timestamp") {
-      return <button key={index} type="button" className="video-comment__timestamp" onClick={() => onSeek(part.seconds)}>{part.value}</button>;
+      return <button key={index} type="button" className="video-comment__timestamp" disabled={seekDisabled} onClick={() => onSeek(part.seconds)}>{part.value}</button>;
     }
     return part.value;
   })}</>;
 }
 
-function CommentRow({ comment, creatorAvatar, onSeek }: { comment: VideoComment; creatorAvatar?: string | null; onSeek: (seconds: number) => void }) {
+function CommentRow({ comment, creatorAvatar, onSeek, seekDisabled }: { comment: VideoComment; creatorAvatar?: string | null; onSeek: (seconds: number) => void; seekDisabled: boolean }) {
   const { t, language } = useI18n();
   const published = comment.timestamp
     ? formatTimeAgo(new Date(comment.timestamp * 1_000).toISOString(), language)
@@ -45,7 +45,7 @@ function CommentRow({ comment, creatorAvatar, onSeek }: { comment: VideoComment;
           {published && <time dateTime={comment.timestamp ? new Date(comment.timestamp * 1_000).toISOString() : undefined}>{published}</time>}
         </header>
         {comment.isPinned && <div className="video-comment__pinned"><Pin /> {t("commentsPinned")}</div>}
-        <div className="video-comment__text"><CommentText text={comment.text} onSeek={onSeek} /></div>
+        <div className="video-comment__text"><CommentText text={comment.text} onSeek={onSeek} seekDisabled={seekDisabled} /></div>
         {(comment.likeCount > 0 || comment.isFavorited) && (
           <footer className="video-comment__meta">
             {comment.likeCount > 0 && <span title={t("commentsLikes")}><ThumbsUp /> {compactNumber(comment.likeCount, language)}</span>}
@@ -107,7 +107,7 @@ function buildCommentThreads(comments: VideoComment[]): CommentThread[] {
   return roots;
 }
 
-function CommentThreadRow({ thread, creatorAvatar, onSeek, revealIndex = 0 }: { thread: CommentThread; creatorAvatar?: string | null; onSeek: (seconds: number) => void; revealIndex?: number }) {
+function CommentThreadRow({ thread, creatorAvatar, onSeek, seekDisabled, revealIndex = 0 }: { thread: CommentThread; creatorAvatar?: string | null; onSeek: (seconds: number) => void; seekDisabled: boolean; revealIndex?: number }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -138,7 +138,7 @@ function CommentThreadRow({ thread, creatorAvatar, onSeek, revealIndex = 0 }: { 
       style={{ "--comment-reveal-delay": `${Math.min(revealIndex, COMMENT_PAGE_SIZE - 1) * 75}ms` } as CSSProperties}
     >
       <div className="video-comment-thread__head">
-        <CommentRow comment={thread.comment} creatorAvatar={creatorAvatar} onSeek={onSeek} />
+        <CommentRow comment={thread.comment} creatorAvatar={creatorAvatar} onSeek={onSeek} seekDisabled={seekDisabled} />
         {thread.replies.length > 0 && (
           <Button
             size="sm"
@@ -154,7 +154,7 @@ function CommentThreadRow({ thread, creatorAvatar, onSeek, revealIndex = 0 }: { 
       </div>
       {expanded && (
         <div className={`video-comment-thread__replies${closing ? " video-comment-thread__replies--closing" : ""}`}>
-          {thread.replies.map((reply, index) => <CommentThreadRow key={reply.comment.id} thread={reply} creatorAvatar={creatorAvatar} onSeek={onSeek} revealIndex={index} />)}
+          {thread.replies.map((reply, index) => <CommentThreadRow key={reply.comment.id} thread={reply} creatorAvatar={creatorAvatar} onSeek={onSeek} seekDisabled={seekDisabled} revealIndex={index} />)}
         </div>
       )}
     </div>
@@ -179,7 +179,7 @@ function errorHint(code: string | undefined, t: Translate) {
   return t("commentsLoadFailedHint");
 }
 
-export default function VideoComments({ videoId, creatorAvatar, cinemaMode = false, onSeek }: { videoId: string; creatorAvatar?: string | null; cinemaMode?: boolean; onSeek: (seconds: number) => void }) {
+export default function VideoComments({ videoId, creatorAvatar, cinemaMode = false, onSeek, seekDisabled = false }: { videoId: string; creatorAvatar?: string | null; cinemaMode?: boolean; onSeek: (seconds: number) => void; seekDisabled?: boolean }) {
   const { t } = useI18n();
   const sectionRef = useRef<HTMLElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -349,7 +349,7 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
       {status === "ready" && comments.length === 0 && <EmptyState icon={<MessageCircle />} title={t("commentsEmpty")} />}
       {status === "ready" && comments.length > 0 && (
         <>
-          <div className="video-comments__list">{visibleThreads.map((thread, index) => <CommentThreadRow key={thread.comment.id} thread={thread} creatorAvatar={creatorAvatar} onSeek={onSeek} revealIndex={index % COMMENT_PAGE_SIZE} />)}</div>
+          <div className="video-comments__list">{visibleThreads.map((thread, index) => <CommentThreadRow key={thread.comment.id} thread={thread} creatorAvatar={creatorAvatar} onSeek={onSeek} seekDisabled={seekDisabled} revealIndex={index % COMMENT_PAGE_SIZE} />)}</div>
           {visibleThreadCount < threads.length && (
             <div className="video-comments__load-more">
               <Button variant="secondary" onClick={() => setVisibleThreadCount((count) => count + COMMENT_PAGE_SIZE)}>{t("showMore")}</Button>

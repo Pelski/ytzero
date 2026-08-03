@@ -6,6 +6,7 @@
   max-width: 1750px;
   margin-inline: auto;
 }
+.watch-player-stage { min-width: 0; }
 @media (max-width: 1280px) {
   .watch-layout { grid-template-columns: 1fr; }
 }
@@ -65,11 +66,6 @@
     border-radius: 0;
   }
 }
-.shortcut-feedback { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 999px; background: rgba(10, 10, 10, 0.62); color: #fff; backdrop-filter: blur(7px); pointer-events: none; z-index: 8; font-size: 13px; font-weight: 650; animation: shortcut-feedback-in 1.56s ease-out both; }
-.shortcut-feedback--sponsorblock { animation-duration: 4.2s; }
-@keyframes shortcut-feedback-in { 0% { opacity: 0; transform: translate(-50%, 5px) scale(.94); } 20% { opacity: 1; transform: translate(-50%, 0) scale(1); } 100% { opacity: 0; transform: translate(-50%, -4px) scale(.98); } }
-@media (prefers-reduced-motion: reduce) { .shortcut-feedback { animation: none; } }
-
 .watch-actions .dl-done { color: #7ee08a; }
 .watch-download-feedback-region {
   display: grid;
@@ -520,7 +516,7 @@
 }
 
 /* Cinema: strip content padding so theater player spans full width and sits flush under topbar */
-body.cinema .content {
+body.cinema .content:has(.watch-layout.theater) {
   padding-left: 0;
   padding-right: 0;
   padding-top: 0;
@@ -788,7 +784,6 @@ body.cinema .content {
   grid-template-columns: 1fr;
   max-width: none;
 }
-
 /* Player wrap: flex so player centres on wide screens */
 .watch-layout.theater .cinema-player-wrap {
   display: flex;

@@ -42,6 +42,7 @@ interface SocialProfileRow {
 interface SocialSettings {
   commentsEnabled: boolean;
   reactionsEnabled: boolean;
+  watchTogetherEnabled: boolean;
   allowChildProfiles: boolean;
   notifyNewPosts: boolean;
   notifyComments: boolean;
@@ -64,6 +65,7 @@ export async function socialSettings(userId: number): Promise<SocialSettings> {
   return {
     commentsEnabled: globalToggle("comments_enabled", true),
     reactionsEnabled: globalToggle("reactions_enabled", true),
+    watchTogetherEnabled: globalToggle("watch_together_enabled", false),
     allowChildProfiles: globalToggle("allow_child_profiles", false),
     notifyNewPosts: await userToggle(userId, "notify_new_posts", true),
     notifyComments: await userToggle(userId, "notify_comments", true),
@@ -146,6 +148,14 @@ export async function assertSocialAccess(userId: number): Promise<SocialSettings
   const settings = await socialSettings(userId);
   if (!settings.allowChildProfiles && await isChildUser(userId)) {
     throw new SocialError("Social is not available for child profiles", 403, "social_child_restricted");
+  }
+  return settings;
+}
+
+export async function assertWatchTogetherAccess(userId: number): Promise<SocialSettings> {
+  const settings = await assertSocialAccess(userId);
+  if (!settings.watchTogetherEnabled) {
+    throw new SocialError("Watch together is disabled", 409, "social_watch_together_disabled");
   }
   return settings;
 }

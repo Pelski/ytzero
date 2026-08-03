@@ -217,9 +217,12 @@ below.
   Restore remains compatible with archives that stored this payload as the
   former `plugins.downloads` profile adapter (schema v4) and used the downloads
   row in `instance.plugins` as its enabled flag.
-  Social's instance adapter schema v2 stores its feature toggles and child
-  access policy. The removed reaction allow-list is ignored when restoring v1;
-  chosen emoji belong to the Social activity section instead.
+  Social's instance adapter schema v3 stores its feature toggles and child
+  access policy, including the administrator-owned Watch together toggle that
+  defaults to disabled. A v2 backup has no Watch together field and therefore
+  leaves the target installation's current value unchanged. The removed
+  reaction allow-list is ignored when restoring v1; chosen emoji belong to the
+  Social activity section instead.
   Social's profile adapter schema v3 also stores a bounded, ordered list of up
   to 6 recently used emoji and the selected emoji skin tone. Both are portable
   per-profile picker preferences, contain no post or profile identifiers, and
@@ -284,6 +287,8 @@ below.
   time are portable configuration instead)
 - pending child time requests and one-day child time extras
 - active/expired authentication sessions
+- active Social Watch together rooms, participant presence, playback
+  synchronization state, and session chat messages
 - in-progress download jobs, errors, output paths, and temporary playlist-name
   context used to render local filenames
 - `download_owners`, which is profile-scoped runtime ownership/visibility for

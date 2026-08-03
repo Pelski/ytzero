@@ -1,5 +1,6 @@
 import type { Locale } from "../types";
 import { plural } from "../format";
+import { watchTogetherMessages } from "./watchTogether";
 export const de: Locale = {
   messages: {
     navToday: "Start",
@@ -76,6 +77,7 @@ export const de: Locale = {
     socialSettingsHowHint: "Profile dieser Installation können Videos aus der Bibliothek teilen, mit beliebigen Emojis reagieren, sie in lokal gelikten Kommentaren besprechen und Profile mit @Benutzername erwähnen. Administrative Einstellungen gelten für alle, Benachrichtigungen nur für dein Profil.",
     socialResetHint: "Setzt die Standardwerte zurück und entfernt dauerhaft alle Social-Beiträge, Kommentare, Reaktionen, Likes und Erwähnungen.",
     socialResetConfirm: "Social zurücksetzen und alle geteilten Beiträge, Kommentare, Reaktionen, Kommentar-Likes und Erwähnungen aller Profile dauerhaft löschen?",
+    ...watchTogetherMessages.de,
     insightsEyebrow: "Einblicke ins Sehverhalten",
     insightsTitle: "Puls",
     insightsView: "Ansicht",
@@ -806,7 +808,6 @@ export const de: Locale = {
     profileAdministratorHint: "Kann gemeinsame Einstellungen und andere Profile verwalten, aber weder das primäre Profil noch Anmeldung oder Administratorrollen ändern.",
     profileAdministratorGranted: "Administratorzugriff gewährt",
     profileAdministratorRevoked: "Administratorzugriff entzogen",
-    // ---------- Anmeldung ----------
     authTab: "Anmeldung",
     advanced: "Erweitert",
     dangerous: "Gefährlich",
@@ -906,7 +907,6 @@ export const de: Locale = {
     authSave: "Speichern",
     authSaved: "Gespeichert",
     authNeedsCredentials: "Lege Anmeldedaten fest, bevor du diese Methode aktivierst.",
-    // Anmeldeseite
     loginTitle: "Anmelden",
     loginSignIn: "Anmelden",
     loginWithPasskey: "Mit Passkey anmelden",

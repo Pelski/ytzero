@@ -1,18 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import confetti from "canvas-confetti";
+import type { CSSProperties } from "react";
 import "./WatchPage.css";
-import { emit, emitToast, subscribe } from "../events";
-import { scheduleSettingWrite } from "../settingsWriteQueue";
-import { queueProgressWrite } from "../progressWriteQueue";
-import { isIncognitoMode } from "../incognitoMode";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { emitToast } from "../events";
+import { Link } from "react-router-dom";
 import {
   Archive,
   AlertTriangle,
   ArrowDownToLine,
   BookmarkPlus,
   CalendarDays,
-  Camera,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -21,7 +16,6 @@ import {
   Copy,
   EllipsisVertical,
   ExternalLink,
-  FastForward,
   Eye,
   Gauge,
   HardDrive,
@@ -30,51 +24,38 @@ import {
   MonitorPlay,
   Pause,
   Play,
-  Rewind,
   Share2,
   Star,
   ThumbsUp,
   Trash2,
   Undo2,
   UsersRound,
-  Volume1,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
-import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
-import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
+import { api, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount } from "../i18n";
 import { formatAppDate } from "../dateTime";
-import { useDocumentTitle } from "../useDocumentTitle";
 import TagChip from "../components/TagChip";
-import LocalPlayer, { type LocalPlayerShortcut } from "../components/LocalPlayer";
+import LocalPlayer from "../components/LocalPlayer";
 import Popconfirm from "../components/Popconfirm";
 import PlaylistPicker from "../components/PlaylistPicker";
-import { BUCKET_ICONS, formatVideoDuration, parseVideoDurationSeconds } from "../components/VideoCard";
+import { formatVideoDuration } from "../components/VideoCard";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
 import UpNextOverlay from "../components/UpNextOverlay";
 import { img } from "../img";
-import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
 import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, MenuItem, MenuSeparator, MenuStatus, Popover, ScrollArea, Switch } from "../components/ui";
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
 import Tooltip from "../components/Tooltip";
-import { normalizeSponsorSegments } from "../sponsorblock";
 import { markYouTubeUrl } from "../youtubeUrl";
-import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
-import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
-import { subscribeServerEvent } from "../serverEvents";
 import VideoComments from "../components/VideoComments";
 import SocialShareDialog from "../components/social/SocialShareDialog";
-import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
+import { getWatchTogetherLabels, WatchTogetherJoinStatus, WatchTogetherPanelSlot } from "../components/social/WatchTogetherWatchUi";
 import WatchDescription from "../components/watch/WatchDescription";
 import WatchPlaylistPanel from "../components/watch/WatchPlaylistPanel";
-import { colonDurationToSeconds, formatWatchTime, loadYouTubeApi, restoreSidebarVisibility } from "./watchRuntime";
+import { colonDurationToSeconds, formatWatchTime } from "./watchRuntime";
 import { useWatchPageController } from "./useWatchPageController";
-type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
-
-const CINEMA_MODE_KEY = "watchCinemaMode";
-const DESCRIPTION_COLLAPSED_HEIGHT = 148;
+import WatchPlayerFeedback from "./WatchPlayerFeedback";
 
 export default function WatchPage() {
   const controller = useWatchPageController();
@@ -193,16 +174,23 @@ export default function WatchPage() {
     videoPlaylists,
     waitError,
     waitProgress,
+    watchTogether,
+    watchTogetherEnabled,
+    watchTogetherRoomId,
+    watchTogetherTransportLocked,
     youtubeAutoplayBlocked,
     youtubeError,
     ytWrapRef,
   } = controller;
 
+  const { errorText: watchTogetherError, transportLockLabel: watchTogetherTransportLockLabel } = getWatchTogetherLabels(watchTogether, t);
+
 
   return (
-    <div className={`watch-layout${cinemaMode ? " theater" : ""}`}>
+    <div className={`watch-layout${cinemaMode ? " theater" : ""}${watchTogether.room ? " together" : ""}`}>
       <div>
-        <div className="cinema-player-wrap">
+        <div className={`watch-player-stage${watchTogether.room ? " watch-player-stage--together" : ""}`}>
+          <div className="cinema-player-wrap">
           {video && (
             <div
               className="player-glow"
@@ -210,7 +198,10 @@ export default function WatchPage() {
             />
           )}
           <div className="watch-player-shell">
-            <div ref={playerWrapRef} className={`watch-player${usingLocal ? " watch-player--local" : ""}`}>
+            <div
+              ref={playerWrapRef}
+              className={`watch-player${usingLocal ? " watch-player--local" : ""}${watchTogetherTransportLocked ? " watch-player--transport-locked" : ""}`}
+            >
               {privateVideoNotice && video ? (
                 <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
                   <div className="wp-panel-scrim" />
@@ -245,17 +236,19 @@ export default function WatchPage() {
                   live
                   liveLabel={t("watchStreamingBadge")}
                   durationSeconds={colonDurationToSeconds(video.duration)}
-                  onExitStreaming={exitStreaming}
+                  onExitStreaming={watchTogetherTransportLocked ? undefined : exitStreaming}
                   exitStreamingLabel={t("watchExitStreaming")}
                   src={api.hlsUrl(video.video_id)}
                   poster={img(video.thumbnail)}
+                  autoplay={!watchTogetherRoomId}
+                  transportLocked={watchTogetherTransportLocked}
                   playbackRate={Number(speed)}
                   title={video.title}
                   channelTitle={video.channel_title}
                   artworkUrl={img(video.thumbnail)}
                   cinemaMode={cinemaMode}
                   onToggleCinema={() => setCinemaMode((mode) => !mode)}
-                  onEnded={handleEnded}
+                  onEnded={watchTogetherTransportLocked ? undefined : handleEnded}
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
                   screenshotFormat={screenshotFormat}
@@ -278,6 +271,8 @@ export default function WatchPage() {
                   ref={playerRef}
                   src={api.streamUrl(video.video_id)}
                   poster={img(video.thumbnail)}
+                  autoplay={!watchTogetherRoomId}
+                  transportLocked={watchTogetherTransportLocked}
                   startSeconds={
                     sharedStartSeconds
                       || Math.floor(streamPositionRef.current)
@@ -294,7 +289,7 @@ export default function WatchPage() {
                   sbSegments={sbSegments}
                   cinemaMode={cinemaMode}
                   onToggleCinema={() => setCinemaMode((mode) => !mode)}
-                  onEnded={handleEnded}
+                  onEnded={watchTogetherTransportLocked ? undefined : handleEnded}
                   keyboardSeekSeconds={keyboardSeekSeconds}
                   onShortcut={showShortcutFeedback}
                   screenshotFormat={screenshotFormat}
@@ -375,32 +370,7 @@ export default function WatchPage() {
                   )}
                 </div>
               )}
-              {shortcutFeedback && (() => {
-                const Icon = shortcutFeedback.kind === "back" ? Rewind
-                  : shortcutFeedback.kind === "forward" ? FastForward
-                    : shortcutFeedback.kind === "volumeUp" ? Volume2
-                      : shortcutFeedback.kind === "volumeDown" ? Volume1
-                        : shortcutFeedback.kind === "mute" ? VolumeX
-                          : shortcutFeedback.kind === "unmute" ? Volume2
-                        : shortcutFeedback.kind === "sponsorblock" ? FastForward
-                          : shortcutFeedback.kind === "screenshot" ? Camera
-                            : shortcutFeedback.kind === "screenshotError" ? AlertTriangle
-                              : shortcutFeedback.kind === "screenshotUnsupported" ? AlertTriangle
-                          : shortcutFeedback.kind === "captionsOn" || shortcutFeedback.kind === "captionsOff" ? Clapperboard : Gauge;
-                const sponsorCategory = shortcutFeedback.category ? SB_CATEGORIES.find((category) => category.id === shortcutFeedback.category) : undefined;
-                const label = shortcutFeedback.kind === "back" ? `−${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
-                  : shortcutFeedback.kind === "forward" ? `+${shortcutFeedback.seconds ?? keyboardSeekSeconds} s`
-                    : shortcutFeedback.kind === "speed" ? "2×"
-                      : shortcutFeedback.kind === "mute" ? t("playerMute")
-                        : shortcutFeedback.kind === "unmute" ? t("playerUnmute")
-                      : shortcutFeedback.kind === "captionsOn" ? t("captionsOn")
-                        : shortcutFeedback.kind === "captionsOff" ? t("captionsOff")
-                          : shortcutFeedback.kind === "screenshot" ? t("playerScreenshotSaved")
-                            : shortcutFeedback.kind === "screenshotError" ? t("playerScreenshotError")
-                              : shortcutFeedback.kind === "screenshotUnsupported" ? t("playerScreenshotUnsupported")
-                          : shortcutFeedback.kind === "sponsorblock" ? t("sponsorblockSkipped", { category: sponsorCategory ? t(sponsorCategory.labelKey) : shortcutFeedback.category ?? "SponsorBlock" }) : "";
-                return <div key={shortcutFeedback.id} className={`shortcut-feedback${shortcutFeedback.kind === "sponsorblock" ? " shortcut-feedback--sponsorblock" : ""}`}><Icon size={19} />{label && <span>{label}</span>}</div>;
-              })()}
+              {shortcutFeedback && <WatchPlayerFeedback key={shortcutFeedback.id} feedback={shortcutFeedback} keyboardSeekSeconds={keyboardSeekSeconds} />}
               {playerKind === "youtube" && youtubeAutoplayBlocked && (
                 <div className="wp-autoplay-blocked">
                   <Button variant="primary" onClick={requestYouTubePlayback}>
@@ -419,7 +389,10 @@ export default function WatchPage() {
               )}
             </div>
           </div>
+          </div>
+          <WatchTogetherPanelSlot controller={watchTogether} errorText={watchTogetherError} />
         </div>
+        <WatchTogetherJoinStatus controller={watchTogether} errorText={watchTogetherError} roomId={watchTogetherRoomId} />
         {playerKind === "youtube" && youtubeError === 153 && (
           <Alert className="youtube-referrer-alert-layout" variant="warning" icon={<AlertTriangle />} title={t("youtubeReferrerErrorTitle")}>{t("youtubeReferrerErrorHint")}</Alert>
         )}
@@ -520,9 +493,9 @@ export default function WatchPage() {
               align="end"
               surface="menu"
               open={speedOpen}
-              onOpenChange={setSpeedOpen}
+              onOpenChange={(open) => { if (!watchTogetherTransportLocked) setSpeedOpen(open); }}
               className="watch-speed-popover"
-              trigger={<Button variant={speed !== "1" ? "secondary" : "default"} title={t("playbackSpeed")}>
+              trigger={<Button disabled={watchTogetherTransportLocked} variant={speed !== "1" ? "secondary" : "default"} title={watchTogetherTransportLocked ? watchTogetherTransportLockLabel : t("playbackSpeed")}>
                 <Gauge size={15} /> {speed}×
               </Button>}
             >
@@ -568,6 +541,15 @@ export default function WatchPage() {
             </Popover>
             </div>
             <div className="watch-action-group watch-action-group--utility">
+            {watchTogetherEnabled && video.is_private !== 1 && video.members_only !== 1 && video.live_status !== "live" && video.live_status !== "upcoming" && <IconButton
+              variant={watchTogether.room ? "secondary" : "default"}
+              label={t("watchTogetherAction")}
+              aria-pressed={Boolean(watchTogether.room)}
+              disabled={watchTogether.starting}
+              onClick={() => void (watchTogether.room ? watchTogether.copyInvite() : watchTogether.start())}
+            >
+              {watchTogether.starting ? <LoaderCircle className="spin" /> : <UsersRound />}
+            </IconButton>}
             <div className="share-btn-wrap">
               <Popover
                 align="end"
@@ -623,7 +605,7 @@ export default function WatchPage() {
                         <Clapperboard /> {t("cinemaMode")}
                         {cinemaMode && <MenuStatus><Check size={14} /></MenuStatus>}
                       </button>
-                      <button className="more-item-medium" onClick={() => setMoreView("speed")}>
+                      <button className="more-item-medium" disabled={watchTogetherTransportLocked} onClick={() => setMoreView("speed")}>
                         <Gauge /> {t("channelSpeed")}
                         <MenuStatus>{speed}×</MenuStatus>
                       </button>
@@ -802,6 +784,7 @@ export default function WatchPage() {
                     type="button"
                     key={ch.start}
                     className="sb-segment-row sb-chapter-row"
+                    disabled={watchTogetherTransportLocked}
                     onClick={() => playerRef.current?.seekTo(ch.start, true)}
                   >
                     <span className="sb-segment-name">{ch.title}</span>
@@ -835,9 +818,9 @@ export default function WatchPage() {
                     <div
                       key={seg.UUID}
                       className={`sb-segment-row${off ? " disabled" : ""}`}
-                      style={{ "--sb-color": cat?.color ?? "#888" } as React.CSSProperties}
+                      style={{ "--sb-color": cat?.color ?? "#888" } as CSSProperties}
                     >
-                      <button type="button" className="sb-segment-seek" onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}>
+                      <button type="button" className="sb-segment-seek" disabled={watchTogetherTransportLocked} onClick={() => playerRef.current?.seekTo(seg.segment[0], true)}>
                         <span className="sb-dot" aria-hidden="true" />
                         <span className="sb-segment-name">{cat ? t(cat.labelKey) : seg.category}</span>
                         <span className="sb-time">{formatWatchTime(seg.segment[0])} → {formatWatchTime(seg.segment[1])}</span>
@@ -896,7 +879,9 @@ export default function WatchPage() {
             videoId={video.video_id}
             creatorAvatar={video.channel_thumbnail}
             cinemaMode={cinemaMode}
+            seekDisabled={watchTogetherTransportLocked}
             onSeek={(seconds) => {
+              if (watchTogetherTransportLocked) return;
               playerRef.current?.seekTo(seconds, true);
               playerRef.current?.playVideo?.();
             }}

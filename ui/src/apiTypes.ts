@@ -428,6 +428,8 @@ export interface SocialPost {
   can_delete: boolean;
 }
 
+export type { SocialWatchParty, SocialWatchPartyEvent, SocialWatchPartyMessage, SocialWatchPartyPlayback } from "./socialWatchPartyTypes";
+
 export interface VideoSubtitle {
   lang: string;
   url: string;

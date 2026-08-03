@@ -69,6 +69,15 @@ export const SOCIAL_SETTINGS: PluginSettingSource[] = [
     defaultValue: 1,
   },
   {
+    key: "watch_together_enabled",
+    type: "toggle",
+    scope: "global",
+    adminOnly: true,
+    label: { en: "Watch together", pl: "Wspólne oglądanie", de: "Gemeinsam ansehen" },
+    description: { en: "Profiles can create synchronized watch rooms with a shared chat.", pl: "Profile mogą tworzyć zsynchronizowane pokoje oglądania ze wspólnym czatem.", de: "Profile können synchronisierte Wiedergaberäume mit gemeinsamem Chat erstellen." },
+    defaultValue: 0,
+  },
+  {
     key: "allow_child_profiles",
     type: "toggle",
     scope: "global",

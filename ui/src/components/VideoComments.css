@@ -139,6 +139,7 @@
 }
 .video-comment__timestamp:hover { text-decoration: underline; }
 .video-comment__timestamp:focus-visible { border-radius: 2px; outline: 2px solid var(--accent); outline-offset: 2px; }
+.video-comment__timestamp:disabled { color: var(--text-3); cursor: default; text-decoration: none; }
 .video-comment__meta { display: flex; align-items: center; gap: 16px; margin-top: 6px; color: var(--text-3); font-size: 12px; }
 .video-comment__meta span { display: inline-flex; align-items: center; gap: 5px; }
 .video-comment__meta svg { width: 14px; height: 14px; }

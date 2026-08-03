@@ -1,76 +1,25 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
-import "./WatchPage.css";
 import { emit, emitToast, subscribe } from "../events";
 import { scheduleSettingWrite } from "../settingsWriteQueue";
 import { queueProgressWrite } from "../progressWriteQueue";
 import { isIncognitoMode } from "../incognitoMode";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import {
-  Archive,
-  AlertTriangle,
-  ArrowDownToLine,
-  BookmarkPlus,
-  CalendarDays,
-  Camera,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
-  Clapperboard,
-  Copy,
-  EllipsisVertical,
-  ExternalLink,
-  FastForward,
-  Eye,
-  Gauge,
-  HardDrive,
-  LoaderCircle,
-  Lock,
-  MonitorPlay,
-  Pause,
-  Play,
-  Rewind,
-  Share2,
-  Star,
-  ThumbsUp,
-  Trash2,
-  Undo2,
-  UsersRound,
-  Volume1,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
-import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
-import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
-import { formatAppDate } from "../dateTime";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo } from "../api";
+import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import TagChip from "../components/TagChip";
-import LocalPlayer, { type LocalPlayerShortcut } from "../components/LocalPlayer";
-import Popconfirm from "../components/Popconfirm";
-import PlaylistPicker from "../components/PlaylistPicker";
-import { BUCKET_ICONS, formatVideoDuration, parseVideoDurationSeconds } from "../components/VideoCard";
-import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
-import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
-import UpNextOverlay from "../components/UpNextOverlay";
+import { parseVideoDurationSeconds } from "../components/VideoCard";
 import { img } from "../img";
 import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
-import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, MenuItem, MenuSeparator, MenuStatus, Popover, ScrollArea, Switch } from "../components/ui";
-import { WatchPanel } from "../components/WatchPanel";
-import VideoCreators from "../components/VideoCreators";
-import Tooltip from "../components/Tooltip";
 import { normalizeSponsorSegments } from "../sponsorblock";
 import { markYouTubeUrl } from "../youtubeUrl";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
-import VideoComments from "../components/VideoComments";
-import SocialShareDialog from "../components/social/SocialShareDialog";
 import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
-import WatchDescription from "../components/watch/WatchDescription";
-import { colonDurationToSeconds, formatWatchTime, loadYouTubeApi, resolveShareTimestamp, restoreSidebarVisibility } from "./watchRuntime";
-
-type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
+import { loadYouTubeApi, resolveShareTimestamp, restoreSidebarVisibility } from "./watchRuntime";
+import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
+import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTubeKeyboardShortcuts";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
@@ -78,15 +27,16 @@ const DESCRIPTION_COLLAPSED_HEIGHT = 148;
 
 
 export function useWatchPageController() {
-  const { t, bucketLabel, language, locale, timeZone } = useI18n();
+  const { t, language, locale, timeZone } = useI18n();
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const feedContext = searchParams.get("feedContext") === "1";
   const feedTags = searchParams.get("tags") ?? "";
   const feedShowAll = searchParams.get("show_all") === "1";
   const feedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
+  const watchTogetherRoomId = searchParams.get("room")?.trim() || null;
   const playbackQueue = useMemo<PlaybackQueueContext | null>(() => {
     const stateQueue = (location.state as { playbackQueue?: unknown } | null)?.playbackQueue;
     if (isPlaybackQueueContext(stateQueue)) return stateQueue;
@@ -108,6 +58,8 @@ export function useWatchPageController() {
   const [socialShareOpen, setSocialShareOpen] = useState(false);
   const [shareWithTimestamp, setShareWithTimestamp] = useState(false);
   const [socialEnabled, setSocialEnabled] = useState(false);
+  const [watchTogetherEnabled, setWatchTogetherEnabled] = useState(false);
+  const [socialConfigReady, setSocialConfigReady] = useState(false);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   // Withheld until settings load: for a profile that turned suggestions off,
   // rendering them first and pulling them away is worse than a brief gap.
@@ -116,7 +68,25 @@ export function useWatchPageController() {
   const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
 
   useEffect(() => {
-    const loadSocial = () => api.plugins().then(({ plugins }) => setSocialEnabled(Boolean(plugins.find((plugin) => plugin.id === "social")?.enabled))).catch(() => setSocialEnabled(false));
+    const loadSocial = async () => {
+      setSocialConfigReady(false);
+      try {
+        const { plugins } = await api.plugins();
+        const enabled = Boolean(plugins.find((plugin) => plugin.id === "social")?.enabled);
+        setSocialEnabled(enabled);
+        if (!enabled) {
+          setWatchTogetherEnabled(false);
+          return;
+        }
+        const config = await api.pluginSettings("social");
+        setWatchTogetherEnabled(Number(config.settings.watch_together_enabled ?? 0) === 1);
+      } catch {
+        setSocialEnabled(false);
+        setWatchTogetherEnabled(false);
+      } finally {
+        setSocialConfigReady(true);
+      }
+    };
     void loadSocial();
     return subscribe("plugins-changed", loadSocial);
   }, []);
@@ -200,8 +170,6 @@ export function useWatchPageController() {
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
-  const spaceHoldTimerRef = useRef<number | null>(null);
-  const spaceHoldActiveRef = useRef(false);
   const shortcutFeedbackTimerRef = useRef<number | null>(null);
   const likeButtonRef = useRef<HTMLButtonElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
@@ -369,7 +337,9 @@ export function useWatchPageController() {
           },
         },
         chapters,
-        sponsorBlockSegments: sbSegments,
+        // The parent page remains the single SponsorBlock driver in a room, so
+        // the optional iframe extension cannot apply a guest-only local seek.
+        sponsorBlockSegments: watchTogetherRoomId ? [] : sbSegments,
       },
       screenshot: {
         format: screenshotFormat,
@@ -380,7 +350,7 @@ export function useWatchPageController() {
     publishContext();
     document.addEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
     return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
-  }, [captionsDefaultLang, captionsDefaultOn, chapters, keyboardSeekSeconds, playerKind, screenshotFilenameTemplate, screenshotFormat, screenshotQuality, sbSegments, settings?.player_speed, settings?.player_sub_bg, settings?.player_sub_color, subtitleSize, video]);
+  }, [captionsDefaultLang, captionsDefaultOn, chapters, keyboardSeekSeconds, playerKind, screenshotFilenameTemplate, screenshotFormat, screenshotQuality, sbSegments, settings?.player_speed, settings?.player_sub_bg, settings?.player_sub_color, subtitleSize, video, watchTogetherRoomId]);
 
   useEffect(() => {
     const onScreenshotResult = (event: Event) => {
@@ -415,10 +385,43 @@ export function useWatchPageController() {
         iframe.setAttribute("allow", [...permissions].join("; "));
         iframe.setAttribute("allowfullscreen", "");
       }
-      if (id) void sendPlayerCommand(id, "play").catch(() => p?.playVideo?.());
-      else p?.playVideo?.();
+      // Keep the native call inside the user gesture so browser autoplay
+      // policy can approve it. Enhance remains an additional control path.
+      p?.playVideo?.();
+      if (id) void sendPlayerCommand(id, "play").catch(() => {});
     } catch {}
   }, [id]);
+
+  const setWatchTogetherRoomId = useCallback((nextRoomId: string | null) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (nextRoomId) next.set("room", nextRoomId);
+      else next.delete("room");
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const {
+    room: watchTogether,
+    transportLocked: watchTogetherTransportLocked,
+    transportLockedRef: watchTogetherTransportLockedRef,
+  } = useWatchTogetherPlayback({
+    configReady: socialConfigReady,
+    enabled: socialEnabled && watchTogetherEnabled,
+    enhancePlayerStateRef,
+    id,
+    joinErrorLabel: t("watchTogetherJoinError"),
+    playerKind,
+    playerRef,
+    requestPlayback: requestYouTubePlayback,
+    roomId: watchTogetherRoomId,
+    setMoreView,
+    setRoomId: setWatchTogetherRoomId,
+    setSpeed,
+    setSpeedOpen,
+    speedRef,
+    videoId: video?.video_id,
+  });
 
   const chooseYouTube = useCallback(() => {
     setYoutubeAutoplayBlocked(false);
@@ -631,9 +634,12 @@ export function useWatchPageController() {
     if (endedHandledRef.current === id) return;
     endedHandledRef.current = id;
     if (!isIncognitoMode()) api.complete(id).catch(() => {});
+    // A watch room is tied to one video. Keep the ended player and chat in
+    // place instead of silently navigating the host away from every guest.
+    if (watchTogetherRoomId) return;
     if (nextInPlaylistRef.current) navigate(nextInPlaylistRef.current);
     else if (settings?.feed_autoplay_enabled === "1" && nextInQueueRef.current) setUpNextVideo(nextInQueueRef.current);
-  }, [id, navigate, settings?.feed_autoplay_enabled]);
+  }, [id, navigate, settings?.feed_autoplay_enabled, watchTogetherRoomId]);
 
   const goToUpNextVideo = useCallback(() => {
     if (!upNextVideo) return;
@@ -692,7 +698,7 @@ export function useWatchPageController() {
         return;
       }
 
-      if (message.type === "ended") handleEndedRef.current();
+      if (message.type === "ended" && !watchTogetherTransportLockedRef.current) handleEndedRef.current();
     };
     document.addEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
     return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
@@ -747,7 +753,7 @@ export function useWatchPageController() {
             api.archiveVideo(id).catch(() => {});
           }
         }
-        if (!sbPausedRef.current) {
+        if (!watchTogetherTransportLockedRef.current && !sbPausedRef.current) {
           for (const seg of sbSegmentsRef.current) {
             if (disabledSegsRef.current.has(seg.UUID)) continue;
             if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
@@ -796,7 +802,7 @@ export function useWatchPageController() {
     if (!wrap) return;
 
     const playerVars: Record<string, any> = {
-      autoplay: 1,
+      autoplay: watchTogetherRoomId ? 0 : 1,
       rel: 0,
       iv_load_policy: 3,
       playsinline: 1,
@@ -840,10 +846,14 @@ export function useWatchPageController() {
           onReady: (e: any) => {
             if (destroyed) return;
             applySpeed(e.target);
+            if (watchTogetherTransportLockedRef.current) {
+              const iframe = e.target?.getIframe?.() as HTMLIFrameElement | undefined;
+              if (iframe) iframe.tabIndex = -1;
+            }
             if (channelCaptionsOff) {
               try { e.target.unloadModule?.("captions"); } catch {}
             }
-            requestYouTubePlayback();
+            if (!watchTogetherRoomId) requestYouTubePlayback();
           },
           onAutoplayBlocked: () => {
             if (!destroyed) setYoutubeAutoplayBlocked(true);
@@ -863,7 +873,7 @@ export function useWatchPageController() {
             // 0 === ended
             if (e?.data === 0) {
               try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "none"; } catch {}
-              handleEndedRef.current();
+              if (!watchTogetherTransportLockedRef.current) handleEndedRef.current();
             }
           },
           onError: (e: any) => {
@@ -911,37 +921,46 @@ export function useWatchPageController() {
         artwork: video.thumbnail ? [{ src: img(video.thumbnail), sizes: "480x360", type: "image/jpeg" }] : [],
       });
     } catch {}
-    setHandler("play", () => {
-      void sendPlayerCommand(video.video_id, "play").catch(() => playerRef.current?.playVideo?.());
-    });
-    setHandler("pause", () => {
-      void sendPlayerCommand(video.video_id, "pause").catch(() => playerRef.current?.pauseVideo?.());
-    });
-    setHandler("seekbackward", (details) => {
-      const seconds = -(details.seekOffset ?? 10);
-      void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
-    });
-    setHandler("seekforward", (details) => {
-      const seconds = details.seekOffset ?? 10;
-      void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
-    });
-    setHandler("seekto", (details) => {
-      if (details.seekTime != null) {
-        void sendPlayerCommand(video.video_id, "seek-to", { seconds: details.seekTime })
-          .catch(() => playerRef.current?.seekTo?.(details.seekTime!, true));
+    if (!watchTogetherTransportLocked) {
+      setHandler("play", () => {
+        void sendPlayerCommand(video.video_id, "play").catch(() => playerRef.current?.playVideo?.());
+      });
+      setHandler("pause", () => {
+        void sendPlayerCommand(video.video_id, "pause").catch(() => playerRef.current?.pauseVideo?.());
+      });
+      setHandler("seekbackward", (details) => {
+        const seconds = -(details.seekOffset ?? 10);
+        void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
+      });
+      setHandler("seekforward", (details) => {
+        const seconds = details.seekOffset ?? 10;
+        void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
+      });
+      setHandler("seekto", (details) => {
+        if (details.seekTime != null) {
+          void sendPlayerCommand(video.video_id, "seek-to", { seconds: details.seekTime })
+            .catch(() => playerRef.current?.seekTo?.(details.seekTime!, true));
+        }
+      });
+    } else {
+      // A null handler can hand media keys back to the browser's default media
+      // routing, which may still reach the embedded player. Consume them while
+      // the room host owns transport instead.
+      for (const action of ["play", "pause", "seekbackward", "seekforward", "seekto", "stop"] as MediaSessionAction[]) {
+        setHandler(action, () => {});
       }
-    });
+    }
 
     return () => {
       try {
         mediaSession.metadata = null;
         mediaSession.playbackState = "none";
       } catch {}
-      for (const action of ["play", "pause", "seekbackward", "seekforward", "seekto"] as MediaSessionAction[]) {
+      for (const action of ["play", "pause", "seekbackward", "seekforward", "seekto", "stop"] as MediaSessionAction[]) {
         setHandler(action, null);
       }
     };
-  }, [playerKind, video?.video_id, video?.title, video?.channel_title, video?.thumbnail]);
+  }, [playerKind, video?.video_id, video?.title, video?.channel_title, video?.thumbnail, watchTogetherTransportLocked]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
@@ -974,6 +993,11 @@ export function useWatchPageController() {
   // Apply a speed: change playback now and persist it as this channel's override
   // (null clears the override, falling back to the global default).
   const changeSpeed = (v: string | null) => {
+    if (watchTogetherTransportLocked) {
+      setMoreOpen(false);
+      setSpeedOpen(false);
+      return;
+    }
     const eff = v ?? settings?.player_speed ?? "1";
     setSpeed(eff);
     speedRef.current = eff;
@@ -1079,100 +1103,17 @@ export function useWatchPageController() {
     };
   }, []);
 
-  // The YouTube iframe only receives its built-in shortcuts after it has been
-  // focused. Mirror the essential playback keys at the page level so they
-  // work immediately after playback starts; LocalPlayer owns these itself.
-  useEffect(() => {
-    if (playerKind !== "youtube") return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
-      if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
-      const player = playerRef.current;
-      if (!player) return;
-
-      if (e.code === "Space") {
-        e.preventDefault();
-        if (e.repeat || spaceHoldTimerRef.current != null || spaceHoldActiveRef.current) return;
-        spaceHoldTimerRef.current = window.setTimeout(() => {
-          spaceHoldTimerRef.current = null;
-          const activePlayer = playerRef.current;
-          if (!activePlayer) return;
-          spaceHoldActiveRef.current = true;
-          activePlayer.setPlaybackRate?.(2);
-          showShortcutFeedback("speed");
-        }, 220);
-        return;
-      }
-
-      if (e.key === "s" || e.key === "S") {
-        e.preventDefault();
-        if (!e.repeat) void takeEmbeddedScreenshot();
-        return;
-      }
-
-      if (e.key === "m" || e.key === "M") {
-        e.preventDefault();
-        if (e.repeat) return;
-        const enhancedState = enhancePlayerStateRef.current?.state;
-        const muted = enhancedState?.muted ?? Boolean(player.isMuted?.());
-        showShortcutFeedback(muted ? "unmute" : "mute");
-        if (id) {
-          void sendPlayerCommand(id, "toggle-muted").catch(() => {
-            if (muted) player.unMute?.();
-            else player.mute?.();
-          });
-        } else if (muted) player.unMute?.();
-        else player.mute?.();
-        return;
-      }
-
-      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-        const current = player.getCurrentTime?.();
-        const duration = player.getDuration?.();
-        if (!Number.isFinite(current) || !Number.isFinite(duration)) return;
-        e.preventDefault();
-        const delta = e.key === "ArrowLeft" ? -keyboardSeekSeconds : keyboardSeekSeconds;
-        const next = Math.min(Math.max(0, current + delta), duration);
-        player.seekTo?.(next, true);
-        showShortcutFeedback(e.key === "ArrowLeft" ? "back" : "forward", keyboardSeekSeconds);
-        return;
-      }
-
-      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-        const volume = player.getVolume?.();
-        if (!Number.isFinite(volume)) return;
-        e.preventDefault();
-        const next = Math.min(100, Math.max(0, volume + (e.key === "ArrowUp" ? 5 : -5)));
-        player.setVolume?.(next);
-        if (next > 0) player.unMute?.();
-        showShortcutFeedback(e.key === "ArrowUp" ? "volumeUp" : "volumeDown");
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
-      e.preventDefault();
-      if (spaceHoldTimerRef.current != null) {
-        window.clearTimeout(spaceHoldTimerRef.current);
-        spaceHoldTimerRef.current = null;
-        const player = playerRef.current;
-        if (player?.getPlayerState?.() === 1) player.pauseVideo?.();
-        else player?.playVideo?.();
-      } else if (spaceHoldActiveRef.current) {
-        spaceHoldActiveRef.current = false;
-        playerRef.current?.setPlaybackRate?.(Number(speedRef.current));
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("keyup", onKeyUp);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("keyup", onKeyUp);
-      if (spaceHoldTimerRef.current != null) window.clearTimeout(spaceHoldTimerRef.current);
-      spaceHoldTimerRef.current = null;
-      spaceHoldActiveRef.current = false;
-    };
-  }, [id, playerKind, showShortcutFeedback, keyboardSeekSeconds, takeEmbeddedScreenshot]);
+  useYouTubeKeyboardShortcuts({
+    enhancePlayerStateRef,
+    id,
+    keyboardSeekSeconds,
+    playerKind,
+    playerRef,
+    showFeedback: showShortcutFeedback,
+    speedRef,
+    takeScreenshot: takeEmbeddedScreenshot,
+    transportLocked: watchTogetherTransportLocked,
+  });
 
   // While this video is being fetched — or is playing via the experimental
   // Track background downloads. A normal remote player remains mounted when
@@ -1494,6 +1435,10 @@ export function useWatchPageController() {
     videoPlaylists,
     waitError,
     waitProgress,
+    watchTogether,
+    watchTogetherEnabled,
+    watchTogetherRoomId,
+    watchTogetherTransportLocked,
     youtubeAutoplayBlocked,
     youtubeError,
     ytWrapRef,

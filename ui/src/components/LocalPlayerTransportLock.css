@@ -1,0 +1,13 @@
+.lp-root.lp-transport-locked .lp-video { cursor: default; }
+.lp-exit-stream:disabled { cursor: default; opacity: 0.42; }
+
+.lp-bar--locked {
+  cursor: default;
+  opacity: 0.72;
+  touch-action: auto;
+}
+.lp-bar--locked:hover .lp-bar-track { height: 3px; }
+.lp-bar.lp-bar--locked:hover .lp-bar-knob { transform: translate(-50%, -50%) scale(0); }
+
+.lp-btn:disabled { cursor: default; opacity: 0.38; }
+.lp-btn:disabled:hover { background: transparent; }

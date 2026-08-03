@@ -1,10 +1,9 @@
 import { decodeApiTitles } from "./htmlEntities";
 import { apiFetch } from "./apiTransport";
 import type { EmojiSkinTone } from "./emojiSkinTone";
+import { createSocialWatchPartyApi } from "./socialWatchPartyApi";
 import {
-  BUCKET_LABELS,
-  PLAYBACK_SPEEDS,
-  SB_CATEGORIES,
+  BUCKET_LABELS, PLAYBACK_SPEEDS, SB_CATEGORIES,
   type AppChangelog,
   type AppLogs,
   type AppNotification,
@@ -208,6 +207,7 @@ export const api = {
   deleteSocialComment: (id: string) => http<{ ok: true }>(`/social/comments/${id}`, { method: "DELETE" }),
   setSocialCommentLike: (id: string, liked: boolean) =>
     http<{ comment: SocialComment }>(`/social/comments/${id}/like`, { method: liked ? "PUT" : "DELETE", body: liked ? "{}" : undefined }),
+  ...createSocialWatchPartyApi(http),
   downloadCookies: () => http<{ configured: boolean }>("/downloads/cookies"),
   uploadDownloadCookies: (file: File) => {
     const fd = new FormData();

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Edit3, LoaderCircle, MessageCircle, MoreHorizontal, Plus, Send, ThumbsUp, Trash2 } from "lucide-react";
+import { ArrowLeft, Edit3, LoaderCircle, MessageCircle, MoreHorizontal, Plus, Send, ThumbsUp, Trash2, UsersRound } from "lucide-react";
 import {
   api,
   type Profile,
@@ -14,6 +14,7 @@ import { ProfileAvatar } from "../components/ProfileMenu";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import EmojiReactionPicker from "../components/social/EmojiReactionPicker";
 import ProfileMentionInput from "../components/social/ProfileMentionInput";
+import SocialCompactMessage from "../components/social/SocialCompactMessage";
 import VideoCard from "../components/VideoCard";
 import { VideoThumbnail } from "../components/VideoThumbnail";
 import Popconfirm from "../components/Popconfirm";
@@ -195,13 +196,9 @@ function SocialComments({ open, post, profiles, onPostChange, onError }: { open:
   };
   if (!open) return post.comment_preview.length > 0 ? <section className="social-comments social-comments--preview">
     <div className="social-comment-preview-list">
-      {post.comment_preview.map((comment, index) => <article className="social-comment-preview" key={comment.id} style={{ "--comment-index": index } as CSSProperties}>
-        {comment.author.avatar
-          ? <img className="social-comment-preview__avatar" src={comment.author.avatar} alt="" decoding="async" />
-          : <span className="social-comment-preview__avatar social-comment-preview__avatar--fallback" style={{ background: comment.author.avatar_color }}>{comment.author.name.trim()[0]?.toUpperCase() ?? "?"}</span>}
-        <strong>{comment.author.name}</strong>
-        <span className="social-comment-preview__text"><MentionText text={comment.body} mentions={comment.mentions} /></span>
-      </article>)}
+      {post.comment_preview.map((comment, index) => <SocialCompactMessage author={comment.author} revealIndex={index} key={comment.id}>
+        <MentionText text={comment.body} mentions={comment.mentions} />
+      </SocialCompactMessage>)}
     </div>
   </section> : null;
   return <section className="social-comments">
@@ -241,8 +238,10 @@ function SocialPostCard({
   emojiSkinTone,
   onEmojiSkinToneChange,
   commentsEnabled,
+  watchTogetherEnabled,
   commentsInitiallyOpen = false,
   onError,
+  onWatchTogetherStartError,
 }: {
   post: SocialPost;
   profiles: SocialProfileRef[];
@@ -255,15 +254,24 @@ function SocialPostCard({
   emojiSkinTone: EmojiSkinTone;
   onEmojiSkinToneChange: (skinTone: EmojiSkinTone) => void;
   commentsEnabled: boolean;
+  watchTogetherEnabled: boolean;
   commentsInitiallyOpen?: boolean;
   onError: () => void;
+  onWatchTogetherStartError: () => void;
 }) {
   const { t, language } = useI18n();
+  const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(post.body);
   const [saving, setSaving] = useState(false);
   const [reacting, setReacting] = useState<string | null>(null);
   const [commentsOpen, setCommentsOpen] = useState(commentsInitiallyOpen);
+  const [startingWatchParty, setStartingWatchParty] = useState(false);
+  const canWatchTogether = watchTogetherEnabled
+    && post.video.is_private !== 1
+    && post.video.members_only !== 1
+    && post.video.live_status !== "live"
+    && post.video.live_status !== "upcoming";
   const updateReaction = async (key: string) => {
     const selected = !post.my_reactions.includes(key);
     const optimistic: SocialPost = {
@@ -288,6 +296,19 @@ function SocialPostCard({
     } catch {
       onError();
     } finally { setSaving(false); }
+  };
+  const startWatchParty = async () => {
+    if (startingWatchParty) return;
+    setStartingWatchParty(true);
+    try {
+      const videoId = post.video.video_id;
+      const result = await api.createSocialWatchParty(videoId, { position: 0, paused: true, playback_rate: 1 });
+      navigate(`/watch/${videoId}?room=${encodeURIComponent(result.room.id)}`);
+    } catch {
+      onWatchTogetherStartError();
+    } finally {
+      setStartingWatchParty(false);
+    }
   };
   const refreshVideo = () => api.socialPost(post.id).then((result) => onChange(result.post)).catch(() => {});
   return <article className="social-post" id={`social-post-${post.id}`}>
@@ -322,7 +343,17 @@ function SocialPostCard({
         showWatchProgress
       />
     </div>
-    {(reactionsEnabled || commentsEnabled) && <div className="social-actions">
+    {(reactionsEnabled || commentsEnabled || canWatchTogether) && <div className="social-actions">
+      {canWatchTogether && <Button
+        size="sm"
+        variant="ghost"
+        leadingIcon={startingWatchParty ? <LoaderCircle className="spin" /> : <UsersRound />}
+        disabled={startingWatchParty}
+        aria-busy={startingWatchParty}
+        onClick={() => void startWatchParty()}
+      >
+        {t("watchTogetherAction")}
+      </Button>}
       {reactionsEnabled && Object.entries(post.reactions).filter(([, count]) => count > 0).map(([key, count]) => {
         const active = post.my_reactions.includes(key);
         const profileNames = (post.reaction_profiles[key] ?? []).map((profile) => profile.name).join(", ");
@@ -374,6 +405,7 @@ export default function SocialPage({ onPlay, showToast }: { onPlay: PlayVideo; s
   const [searching, setSearching] = useState(false);
   const [commentsEnabled, setCommentsEnabled] = useState(true);
   const [reactionsEnabled, setReactionsEnabled] = useState(true);
+  const [watchTogetherEnabled, setWatchTogetherEnabled] = useState(false);
   const [recentEmojis, setRecentEmojis] = useState<string[]>([]);
   const [emojiSkinTone, setEmojiSkinTone] = useState<EmojiSkinTone>("neutral");
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -431,9 +463,10 @@ export default function SocialPage({ onPlay, showToast }: { onPlay: PlayVideo; s
       setActiveProfile(social.profiles.find((profile) => profile.id === active?.id) ?? null);
       setCommentsEnabled(Number(config.settings.comments_enabled ?? 1) === 1);
       setReactionsEnabled(Number(config.settings.reactions_enabled ?? 1) === 1);
+      setWatchTogetherEnabled(Number(config.settings.watch_together_enabled ?? 0) === 1);
       setRecentEmojis(recent.emojis);
       setEmojiSkinTone(recent.skinTone);
-    }).catch(() => {});
+    }).catch(() => setWatchTogetherEnabled(false));
   }, []);
   useEffect(() => subscribeServerEvent("social", (data) => {
     const postId = typeof data?.postId === "string" ? data.postId : null;
@@ -532,7 +565,7 @@ export default function SocialPage({ onPlay, showToast }: { onPlay: PlayVideo; s
     />
     {error ? <Alert variant="danger">{t("socialLoadError")}</Alert> : loading ? <SocialPostsSkeleton count={focusedPostUuid ? 1 : 3} showBack={Boolean(focusedPostUuid)} onBack={() => navigate("/social")} /> : posts.length === 0 ? <EmptyState art={<EmptyArt scene="socialEmpty" />} title={t("socialEmptyTitle")} description={t("socialEmptyDescription")} action={<Button variant="primary" onClick={() => setComposerOpen(true)}>{t("socialShareVideo")}</Button>} /> : <div className={`social-posts${focusedPostUuid ? " social-posts--focused" : ""}`}>
       {focusedPostUuid && <Button className="social-posts__back" variant="ghost" leadingIcon={<ArrowLeft />} onClick={() => navigate("/social")}>{t("socialBackToAll")}</Button>}
-      {posts.map((post, index) => <div className={`social-post-entry${focusedPostUuid ? " social-post-entry--focused" : ""}`} style={{ "--social-post-index": Math.min(index, 6) } as CSSProperties} key={`${focusedPostUuid ? "focused" : "feed"}:${post.id}`}><SocialPostCard post={post} profiles={profiles} onPlay={onPlay} onChange={updatePost} onDelete={(id) => void deletePost(id)} reactionsEnabled={reactionsEnabled} recentEmojis={recentEmojis} onEmojiUsed={rememberEmoji} emojiSkinTone={emojiSkinTone} onEmojiSkinToneChange={rememberEmojiSkinTone} commentsEnabled={commentsEnabled} commentsInitiallyOpen={Boolean(focusedPostUuid)} onError={() => showToast(t("socialActionError"))} /></div>)}
+      {posts.map((post, index) => <div className={`social-post-entry${focusedPostUuid ? " social-post-entry--focused" : ""}`} style={{ "--social-post-index": Math.min(index, 6) } as CSSProperties} key={`${focusedPostUuid ? "focused" : "feed"}:${post.id}`}><SocialPostCard post={post} profiles={profiles} onPlay={onPlay} onChange={updatePost} onDelete={(id) => void deletePost(id)} reactionsEnabled={reactionsEnabled} recentEmojis={recentEmojis} onEmojiUsed={rememberEmoji} emojiSkinTone={emojiSkinTone} onEmojiSkinToneChange={rememberEmojiSkinTone} commentsEnabled={commentsEnabled} watchTogetherEnabled={watchTogetherEnabled} commentsInitiallyOpen={Boolean(focusedPostUuid)} onError={() => showToast(t("socialActionError"))} onWatchTogetherStartError={() => showToast(t("watchTogetherStartError"))} /></div>)}
       {loadingMore && <SocialPostSkeleton />}
     </div>}
     {!focusedPostUuid && nextCursor && <div className="social-load-more" ref={loadMoreRef} aria-label={loadingMore ? t("loading") : undefined}>

@@ -19,6 +19,7 @@ process.env.AVATAR_DIR = avatarDir;
 
 const backup = await import("./portableBackup");
 const permissions = await import("./profilePermissions");
+const plugins = await import("./plugins");
 const { db, setSetting, setUserSetting, getSetting, getUserSetting } = await import("./db");
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -113,6 +114,40 @@ describe("portable backup classification and restore", () => {
     expect(serialized).not.toContain("987654321");
     expect(serialized).not.toContain("auth_sessions");
     expect(serialized).not.toContain("download_cookie");
+  });
+
+  test("round-trips the opt-in Watch together setting and accepts a v2 Social payload", async () => {
+    const options = await backup.backupOptions();
+    const profile = options.profiles[0];
+    const adapter = plugins.PLUGIN_BACKUP_ADAPTERS.find((item) => item.id === "social" && item.scope === "instance");
+    expect(adapter?.schemaVersion).toBe(3);
+    if (!adapter) throw new Error("Social instance backup adapter is missing");
+
+    try {
+      await plugins.setPluginSettings(1, "social", { watch_together_enabled: 1 });
+      const zip = await backup.createPortableBackup({ preset: "configuration", profiles: [profile.id] });
+      const entries = backup.readPortableZip(zip);
+      const manifest = JSON.parse(decoder.decode(entries.get("manifest.json")!));
+      const instancePlugins = manifest.sections.find((section: any) => section.id === "instance.plugins");
+      const rows = decoder.decode(entries.get(instancePlugins.path)!).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      const socialRow = rows.find((row: any) => row.id === "social");
+      expect(socialRow.schemaVersion).toBe(3);
+      expect(socialRow.payload.settings.watch_together_enabled).toBe(1);
+
+      await plugins.setPluginSettings(1, "social", { watch_together_enabled: 0 });
+      const analyzed = await backup.analyzePortableBackup(1, zip);
+      const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
+      const plan = await backup.planPortableRestore(1, analyzed.sessionId, { mappings, sections: analyzed.manifest.sections.map((section) => section.id), strategy: "merge" });
+      await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
+      expect((await plugins.getPluginSettings(1, "social")).settings.watch_together_enabled).toBe(1);
+
+      const legacyPayload = structuredClone(socialRow.payload);
+      delete legacyPayload.settings.watch_together_enabled;
+      await adapter.restore(1, legacyPayload);
+      expect((await plugins.getPluginSettings(1, "social")).settings.watch_together_enabled).toBe(1);
+    } finally {
+      await plugins.setPluginSettings(1, "social", { watch_together_enabled: 0 });
+    }
   });
 
   test("restores downloads settings from backups created before downloads became a core feature", async () => {

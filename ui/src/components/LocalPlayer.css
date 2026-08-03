@@ -181,7 +181,7 @@
   white-space: nowrap;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-.lp-exit-stream:hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.6); }
+.lp-exit-stream:not(:disabled):hover { background: rgba(255, 255, 255, 0.18); border-color: rgba(255, 255, 255, 0.6); }
 @media (max-width: 640px) {
   .lp-exit-stream {
     width: 34px;
@@ -293,7 +293,6 @@
 }
 .lp-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.14); }
 .lp-btn.active { opacity: 1; background: rgba(255, 255, 255, 0.2); }
-.lp-btn:disabled { cursor: default; opacity: 0.38; }
 .lp-volume { display: flex; align-items: center; }
 .lp-volume input[type="range"] {
   width: 0;
