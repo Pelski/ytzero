@@ -25,6 +25,17 @@ function markdownText(value: string) {
     .trim();
 }
 
+function githubHeaders() {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "ytzero-pages",
+  };
+  const token = process.env.GITHUB_TOKEN;
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
 function releaseChanges(body: string) {
   return [...body.matchAll(/^[-*]\s+(.+)$/gm)].map((match) => markdownText(match[1]));
 }
@@ -62,13 +73,7 @@ function releaseDescription(body: string, version: string) {
 const githubReleasesLoader: Loader = {
   name: "github-releases",
   async load({ store, parseData, renderMarkdown, generateDigest, logger }) {
-    const headers: Record<string, string> = {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "ytzero-pages",
-    };
-    const token = process.env.GITHUB_TOKEN;
-    if (token) headers.Authorization = `Bearer ${token}`;
+    const headers = githubHeaders();
 
     const releases: GitHubRelease[] = [];
     for (let page = 1; ; page += 1) {

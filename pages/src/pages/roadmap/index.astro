@@ -1,0 +1,103 @@
+---
+import BaseLayout from "../../layouts/BaseLayout.astro";
+
+const planned = [
+  {
+    number: 102,
+    title: "TubeArchivist integration",
+    description: "Browse and play an existing TubeArchivist library from YT Zero, surface its local metadata and comments, and keep watched state in sync.",
+    url: "https://github.com/Pelski/ytzero/issues/102",
+  },
+  {
+    number: null,
+    title: "Jellyfin / Emby bridge",
+    description: "Connect YT Zero with Jellyfin or Emby so locally archived videos can be surfaced or handed off while established media servers handle what they already do best.",
+    url: null,
+  },
+  {
+    number: 100,
+    title: "Reliable local playback on older devices",
+    description: "Improve playback compatibility for downloaded videos on older devices and browsers without affecting direct streaming.",
+    url: "https://github.com/Pelski/ytzero/issues/100",
+  },
+  {
+    number: 85,
+    title: "Download without adding to the feed",
+    description: "Let individual channels keep downloading in the background while hiding all, or all but the latest, uploads from the main inbox.",
+    url: "https://github.com/Pelski/ytzero/issues/85",
+  },
+  {
+    number: 60,
+    title: "Shareable links",
+    description: "Create optional, expiring links to a focused video player without exposing the rest of a YT Zero instance.",
+    url: "https://github.com/Pelski/ytzero/issues/60",
+  },
+];
+---
+
+<BaseLayout
+  title="Roadmap — YT Zero"
+  description="The open ideas and planned directions shaping what comes next for YT Zero."
+  pageClass="roadmap-page"
+>
+  <div class="docs-masthead">
+    <div class="shell">
+      <p>YT Zero / <strong>Roadmap</strong></p>
+      <a href="https://github.com/Pelski/ytzero/issues?q=is%3Aissue%20state%3Aopen%20label%3Aroadmap">View roadmap issues <span aria-hidden="true">↗</span></a>
+    </div>
+  </div>
+
+  <div class="roadmap-main">
+    <div class="shell roadmap-shell">
+      <header class="roadmap-intro">
+        <div>
+          <h1>What comes next.</h1>
+          <p>These are the open ideas currently shaping YT Zero. Priorities can move as the project, the community, and the underlying platforms change.</p>
+        </div>
+        <dl class="roadmap-counts">
+          <div><dt>Planned</dt><dd>{planned.length}</dd></div>
+          <div><dt>Exploring</dt><dd>1</dd></div>
+        </dl>
+      </header>
+
+      <section class="roadmap-section" aria-labelledby="planned-heading">
+        <div class="roadmap-section-heading">
+          <p>01</p>
+          <h2 id="planned-heading">On the horizon</h2>
+        </div>
+        <div class="roadmap-items">
+          {planned.map((item) => (
+            <article class="roadmap-item">
+              <div class="roadmap-item-copy">
+                {item.number && <div class="roadmap-meta"><code>GitHub issue #{item.number}</code></div>}
+                <h3>{item.title}</h3>
+                <p>{item.description}</p>
+              </div>
+              {item.url && <a href={item.url} aria-label={`Open GitHub issue ${item.number}: ${item.title}`}><b aria-hidden="true">↗</b></a>}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="roadmap-section roadmap-exploring" aria-labelledby="exploring-heading">
+        <div class="roadmap-section-heading">
+          <p>02</p>
+          <h2 id="exploring-heading">Exploring</h2>
+        </div>
+        <div class="roadmap-ideas">
+          <article class="roadmap-idea">
+            <div class="roadmap-meta"><code>GitHub issue #84</code></div>
+            <h3>Native apps for iPhone and Apple TV</h3>
+            <p>Explore a native Apple experience that carries the core YT Zero workflow onto iPhone and the living-room screen.</p>
+            <a href="https://github.com/Pelski/ytzero/issues/84">View the issue <span aria-hidden="true">↗</span></a>
+          </article>
+        </div>
+      </section>
+
+      <footer class="roadmap-footer">
+        <p>Have another direction in mind?</p>
+        <a href="https://github.com/Pelski/ytzero/issues/new/choose">Start a discussion on GitHub <span aria-hidden="true">↗</span></a>
+      </footer>
+    </div>
+  </div>
+</BaseLayout>
