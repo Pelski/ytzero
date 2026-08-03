@@ -128,7 +128,7 @@ The manifest is the first and only required entry:
   "format": "ytzero.portable-backup",
   "formatVersion": 1,
   "createdAt": "2026-07-25T10:30:00.000Z",
-  "appVersion": "0.1.0",
+  "appVersion": "2026.08.1",
   "sourceInstallationId": "uuid",
   "exportPreset": "setup",
   "profiles": [

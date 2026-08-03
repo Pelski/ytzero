@@ -7,7 +7,7 @@
 # /opt/ytzero/data and /etc/ytzero/ytzero.env are left alone.
 #
 # Knobs (environment):
-#   YTZERO_VERSION   release tag to install, e.g. v0.5.1 (default: latest)
+#   YTZERO_VERSION   release tag to install, e.g. 2026.08.1 (default: latest)
 #   YTZERO_PORT      port to listen on (default: 3001)
 #   YTZERO_DIR       install directory (default: /opt/ytzero)
 #   YTZERO_DATA      data directory (default: $YTZERO_DIR/data)
@@ -24,6 +24,14 @@ BUN_DIR="/opt/bun"
 msg() { echo -e "\e[1;34m==>\e[0m $*"; }
 warn() { echo -e "\e[1;33m warn\e[0m $*" >&2; }
 die() { echo -e "\e[1;31merror\e[0m $*" >&2; exit 1; }
+
+is_release_tag() {
+  local value="$1"
+  # Product releases use YYYY.MM.N. Keep historical v0.x.y tags installable so
+  # pinned systems can still be repaired or rolled back during the transition.
+  [[ "${value}" =~ ^[1-9][0-9]{3}\.(0[1-9]|1[0-2])\.[1-9][0-9]*$ ]] \
+    || [[ "${value}" =~ ^v0\.[0-9]+\.[0-9]+([._+-][0-9A-Za-z.-]+)?$ ]]
+}
 
 # ---------- preflight ----------
 
@@ -104,8 +112,8 @@ if [[ -z "${VERSION}" ]]; then
     die "Could not resolve the latest release tag from the GitHub API."
   fi
 fi
-[[ "${VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([._+-][0-9A-Za-z.-]+)?$ ]] \
-  || die "Invalid YTZERO_VERSION '${VERSION}'. Expected a tag such as v0.5.1."
+is_release_tag "${VERSION}" \
+  || die "Invalid YTZERO_VERSION '${VERSION}'. Expected a CalVer tag such as 2026.08.1."
 msg "Installing YT Zero ${VERSION}"
 
 TMP_DIR="$(mktemp -d)"

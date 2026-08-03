@@ -34,6 +34,13 @@ OS_TEMPLATE="debian-13-standard"
 msg() { echo -e "\e[1;34m==>\e[0m $*"; }
 die() { echo -e "\e[1;31merror\e[0m $*" >&2; exit 1; }
 
+is_release_tag() {
+  local value="$1"
+  # New releases use YYYY.MM.N; historical v0.x.y tags remain valid pins.
+  [[ "${value}" =~ ^[1-9][0-9]{3}\.(0[1-9]|1[0-2])\.[1-9][0-9]*$ ]] \
+    || [[ "${value}" =~ ^v0\.[0-9]+\.[0-9]+([._+-][0-9A-Za-z.-]+)?$ ]]
+}
+
 # ---------- preflight ----------
 
 [[ ${EUID} -eq 0 ]] || die "Run as root on the Proxmox host."
@@ -49,8 +56,8 @@ done
 [[ -n "${STORAGE}" && "${STORAGE}" != *[[:space:]]* ]] || die "STORAGE must be a non-empty storage id."
 [[ -n "${TEMPLATE_STORAGE}" && "${TEMPLATE_STORAGE}" != *[[:space:]]* ]] || die "TEMPLATE_STORAGE must be a non-empty storage id."
 if [[ -n "${YTZERO_VERSION:-}" ]]; then
-  [[ "${YTZERO_VERSION}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([._+-][0-9A-Za-z.-]+)?$ ]] \
-    || die "Invalid YTZERO_VERSION '${YTZERO_VERSION}'. Expected a tag such as v0.5.1."
+  is_release_tag "${YTZERO_VERSION}" \
+    || die "Invalid YTZERO_VERSION '${YTZERO_VERSION}'. Expected a CalVer tag such as 2026.08.1."
 fi
 
 CTID="${CTID:-$(pvesh get /cluster/nextid)}"

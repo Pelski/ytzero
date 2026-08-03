@@ -3,7 +3,7 @@
   <h1>YT Zero</h1>
   <p><strong>A self-hosted YouTube inbox for people who want subscriptions, not recommendations.</strong></p>
   <p>
-    <a href="https://github.com/Pelski/ytzero/releases"><img src="https://img.shields.io/github/v/release/Pelski/ytzero" alt="Latest release"></a>
+    <a href="https://github.com/Pelski/ytzero/releases"><img src="https://img.shields.io/github/v/release/Pelski/ytzero?sort=date" alt="Latest release"></a>
     <a href="https://github.com/Pelski/ytzero/pkgs/container/ytzero"><img src="https://img.shields.io/badge/docker-ghcr.io%2Fpelski%2Fytzero-2496ED?logo=docker&amp;logoColor=white" alt="Docker image"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="AGPL-3.0-only"></a>
     <a href="https://github.com/Pelski/ytzero/wiki"><img src="https://img.shields.io/badge/docs-wiki-555" alt="Documentation wiki"></a>
@@ -175,7 +175,8 @@ Open <http://localhost:3001>. The app starts empty — add channels from **Setti
 Full instructions (Proxmox and installer options, Unraid, local development, production-like start) are in **[Installation](https://github.com/Pelski/ytzero/wiki/Installation)**.
 
 The native and Proxmox commands require a release that includes the packaged
-`ytzero-vX.Y.Z.tar.gz` asset. Older tags without that asset are Docker/local
+`ytzero-YYYY.MM.N.tar.gz` asset (for example,
+`ytzero-2026.08.1.tar.gz`). Older tags without that asset are Docker/local
 only.
 
 ## Documentation

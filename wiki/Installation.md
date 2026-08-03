@@ -89,7 +89,7 @@ CTID=150 CT_HOSTNAME=ytzero RAM_MB=4096 DISK_GB=16 STORAGE=local-lvm \
 | `BRIDGE` | `vmbr0` | Network bridge. |
 | `STORAGE` | `local-lvm` | Storage for the container's disk. |
 | `TEMPLATE_STORAGE` | `local` | Storage holding the Debian template. |
-| `YTZERO_VERSION` | latest | Release tag to install. |
+| `YTZERO_VERSION` | latest | Release tag to install, for example `2026.08.1`. Historical `v0.x.y` tags remain accepted. |
 
 Useful afterwards:
 
@@ -137,7 +137,8 @@ The directory and port knobs initialize a new installation; updates preserve
 the existing `/etc/ytzero/ytzero.env`.
 
 > **Release requirement:** the native and Proxmox installers need a GitHub
-> release containing `ytzero-vX.Y.Z.tar.gz` and its checksum. Tags created
+> release containing `ytzero-YYYY.MM.N.tar.gz` (for example,
+> `ytzero-2026.08.1.tar.gz`) and its checksum. Tags created
 > before these release assets were introduced cannot be installed this way.
 
 ### Updating

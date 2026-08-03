@@ -1,38 +1,29 @@
 import type { AppChangelog, AppRelease, UpdateCheck } from "./api";
-
-function versionParts(value: string): [number, number, number] | null {
-  const match = value.trim().match(/^v?(\d+)\.(\d+)\.(\d+)(?:[-+].+)?$/);
-  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
-}
-
-function newerVersion(left: AppRelease | null, right: AppRelease): AppRelease {
-  if (!left) return right;
-  const a = versionParts(left.version);
-  const b = versionParts(right.version);
-  if (!a || !b) return left;
-  for (let index = 0; index < a.length; index++) {
-    if (a[index] !== b[index]) return b[index] > a[index] ? right : left;
-  }
-  return left;
-}
+import { compareReleaseVersions, releaseVersionKey } from "./releaseVersion";
 
 function newestFirst(left: AppRelease, right: AppRelease) {
-  const a = versionParts(left.version);
-  const b = versionParts(right.version);
-  if (!a || !b) return 0;
-  for (let index = 0; index < a.length; index++) {
-    if (a[index] !== b[index]) return b[index] - a[index];
-  }
-  return 0;
+  const compared = compareReleaseVersions(left.version, right.version);
+  return compared === null ? 0 : -compared;
 }
 
 function isNewerThan(left: AppRelease, right: AppRelease) {
-  return newestFirst(left, right) < 0;
+  return compareReleaseVersions(left.version, right.version) === 1;
+}
+
+function validUniqueReleases(releases: AppRelease[]): AppRelease[] {
+  const seen = new Set<string>();
+  return releases.filter((release) => {
+    const key = releaseVersionKey(release.version);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort(newestFirst);
 }
 
 export function mergeRemoteChangelog(local: AppChangelog, remote: UpdateCheck): AppChangelog {
-  const remoteEntries = remote.updateAvailable === null ? remote.releases : remote.availableReleases;
-  const latestLocal = local.releases.reduce<AppRelease | null>(newerVersion, null);
+  const localReleases = validUniqueReleases(local.releases);
+  const remoteEntries = validUniqueReleases(remote.updateAvailable === null ? remote.releases : remote.availableReleases);
+  const latestLocal = localReleases[0] ?? null;
   const decoratedRemote = remoteEntries.map((release) => ({
     ...release,
     available: remote.updateAvailable !== null,
@@ -40,12 +31,9 @@ export function mergeRemoteChangelog(local: AppChangelog, remote: UpdateCheck): 
       ? { upcoming: latestLocal ? isNewerThan(release, latestLocal) : true }
       : {}),
   }));
-  const versions = new Set(decoratedRemote.map((release) => release.version));
-  const localEntries = local.releases
-    .filter((release) => !versions.has(release.version))
+  const versions = new Set(decoratedRemote.map((release) => releaseVersionKey(release.version)));
+  const localEntries = localReleases
+    .filter((release) => !versions.has(releaseVersionKey(release.version)))
     .map(({ upcoming: _upcoming, available: _available, ...release }) => release);
-  const releases = [...decoratedRemote, ...localEntries];
-
-  if (remote.updateAvailable !== null) return { releases };
-  return { releases: releases.sort(newestFirst) };
+  return { releases: [...decoratedRemote, ...localEntries].sort(newestFirst) };
 }

@@ -1,6 +1,6 @@
 name: Publish Release
 
-# Pushing a vX.Y.Z tag creates a GitHub Release with a list of commits
+# Pushing a YYYY.MM.N tag creates a GitHub Release with a list of commits
 # made since the previous tag, plus a tarball with a prebuilt UI that
 # scripts/install.sh downloads (native installs must not build the frontend
 # on the target host).
@@ -9,7 +9,8 @@ name: Publish Release
 on:
   push:
     tags:
-      - "v*.*.*"
+      - "[1-9][0-9][0-9][0-9].0[1-9].[1-9]*"
+      - "[1-9][0-9][0-9][0-9].1[0-2].[1-9]*"
 
 permissions:
   contents: write
@@ -19,6 +20,16 @@ jobs:
     name: Build and publish the release assets
     runs-on: ubuntu-latest
     steps:
+      - name: Validate the release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "${GITHUB_REF_NAME}" =~ ^[1-9][0-9]{3}\.(0[1-9]|1[0-2])\.[1-9][0-9]*$ ]]; then
+            echo "Invalid release tag: ${GITHUB_REF_NAME}. Expected YYYY.MM.N (for example 2026.08.1)." >&2
+            exit 1
+          fi
+
       - name: Check out the release source
         uses: actions/checkout@v7
         with:
@@ -103,15 +114,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Mark tags containing a hyphen as pre-releases (for example v1.2.0-rc.1).
-          prerelease=()
-          case "${GITHUB_REF_NAME}" in
-            *-*) prerelease+=(--prerelease) ;;
-          esac
-
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
             --notes-file release-notes.md \
-            "${prerelease[@]}" \
+            --latest \
+            --verify-tag \
             "ytzero-${GITHUB_REF_NAME}.tar.gz" \
             "ytzero-${GITHUB_REF_NAME}.tar.gz.sha256"

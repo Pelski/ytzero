@@ -34,8 +34,9 @@ repository.
 ## Before submitting
 
 1. **Cut a release first.** Both this repo's installer and the upstream draft
-   download `ytzero-vX.Y.Z.tar.gz` from the GitHub release. Until a tag ships
-   that asset (see `.github/workflows/release.yml`), every install fails at the
+   download `ytzero-YYYY.MM.N.tar.gz` (for example,
+   `ytzero-2026.08.1.tar.gz`) from the GitHub release. Until a tag ships that
+   asset (see `.github/workflows/release.yml`), every install fails at the
    download step.
 2. Test `scripts/proxmox-lxc.sh` on a real Proxmox host.
 3. Fork `community-scripts/ProxmoxVED`, copy the two script drafts in, adjust to

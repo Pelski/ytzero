@@ -1,4 +1,4 @@
-import { isReleaseNewer } from "./version";
+import { canonicalVersionKey, compareVersions, isReleaseNewer } from "./version";
 
 export interface GitHubReleaseSummary {
   version: string;
@@ -29,8 +29,21 @@ export function releaseNotesFromBody(body: unknown): string[] {
 
 export function parseGitHubReleases(value: unknown): GitHubReleaseSummary[] {
   if (!Array.isArray(value)) return [];
-  return (value as GitHubRelease[])
-    .filter((release) => release.draft !== true && release.prerelease !== true && typeof release.tag_name === "string")
+  const seenVersions = new Set<string>();
+  const releases = value
+    .filter((release): release is GitHubRelease => (
+      typeof release === "object"
+      && release !== null
+      && release.draft !== true
+      && release.prerelease !== true
+      && typeof release.tag_name === "string"
+    ))
+    .filter((release) => {
+      const key = canonicalVersionKey(release.tag_name as string);
+      if (key === null || seenVersions.has(key)) return false;
+      seenVersions.add(key);
+      return true;
+    })
     .map((release) => ({
       version: release.tag_name as string,
       name: typeof release.name === "string" && release.name ? release.name : release.tag_name as string,
@@ -38,6 +51,8 @@ export function parseGitHubReleases(value: unknown): GitHubReleaseSummary[] {
       url: typeof release.html_url === "string" ? release.html_url : "https://github.com/Pelski/ytzero/releases",
       notes: releaseNotesFromBody(release.body),
     }));
+
+  return releases.sort((left, right) => compareVersions(right.version, left.version) ?? 0);
 }
 
 export function releasesNewerThan(currentVersion: string, releases: GitHubReleaseSummary[]) {

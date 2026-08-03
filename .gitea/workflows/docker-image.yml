@@ -5,7 +5,8 @@ on:
     branches:
       - main
     tags:
-      - "v*.*.*"
+      - "[1-9][0-9][0-9][0-9].0[1-9].[1-9]*"
+      - "[1-9][0-9][0-9][0-9].1[0-2].[1-9]*"
   workflow_dispatch:
 
 env:
@@ -21,6 +22,48 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve and validate the image version
+        id: build-version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          commit="$(git rev-parse HEAD)"
+          version="edge"
+          is_release="false"
+          is_edge="false"
+          # Disabled raw-tag rules still receive syntactically valid values on
+          # branch builds; release refs replace both placeholders below.
+          release_year_month="edge"
+          release_year="edge"
+
+          if [[ "${GITHUB_REF:-}" == "refs/heads/main" ]]; then
+            is_edge="true"
+          fi
+
+          if [[ "${GITHUB_REF:-}" == refs/tags/* ]]; then
+            version="${GITHUB_REF#refs/tags/}"
+            if [[ ! "${version}" =~ ^[1-9][0-9]{3}\.(0[1-9]|1[0-2])\.[1-9][0-9]*$ ]]; then
+              echo "Invalid release tag: ${version}. Expected YYYY.MM.N (for example 2026.08.1)." >&2
+              exit 1
+            fi
+
+            is_release="true"
+            is_edge="false"
+            release_year_month="${version%.*}"
+            release_year="${version%%.*}"
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
+          echo "short_commit=${commit:0:7}" >> "${GITHUB_OUTPUT}"
+          echo "is_release=${is_release}" >> "${GITHUB_OUTPUT}"
+          echo "is_edge=${is_edge}" >> "${GITHUB_OUTPUT}"
+          echo "release_year_month=${release_year_month}" >> "${GITHUB_OUTPUT}"
+          echo "release_year=${release_year}" >> "${GITHUB_OUTPUT}"
 
       - name: Verify registry is set
         run: |
@@ -38,13 +81,14 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # main → edge + sha-xxxx (bleeding edge)
-          # tag vX.Y.Z → X.Y.Z, X.Y, X oraz latest (stabilny release)
+          # release YYYY.MM.N → YYYY.MM.N, YYYY.MM, YYYY, latest oraz sha-xxxx
           tags: |
-            type=edge,branch=main
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,prefix=sha-
+            type=raw,value=edge,enable=${{ steps.build-version.outputs.is_edge == 'true' }}
+            type=raw,value=${{ steps.build-version.outputs.version }},enable=${{ steps.build-version.outputs.is_release == 'true' }}
+            type=raw,value=${{ steps.build-version.outputs.release_year_month }},enable=${{ steps.build-version.outputs.is_release == 'true' }}
+            type=raw,value=${{ steps.build-version.outputs.release_year }},enable=${{ steps.build-version.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ steps.build-version.outputs.is_release == 'true' }}
+            type=raw,value=sha-${{ steps.build-version.outputs.short_commit }}
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -54,3 +98,18 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            YTZERO_VERSION=${{ steps.build-version.outputs.version }}
+            YTZERO_COMMIT=${{ steps.build-version.outputs.commit }}
+
+      - name: Verify the published release image tags
+        if: steps.build-version.outputs.is_release == 'true'
+        run: |
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.build-version.outputs.version }}"
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.build-version.outputs.release_year_month }}"
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.build-version.outputs.release_year }}"
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+
+      - name: Verify the published commit image tag
+        run: |
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.build-version.outputs.short_commit }}"

@@ -88,6 +88,21 @@ Notes:
 - History on `main` is linear; force-pushes and direct pushes to `main` are
   blocked.
 
+## Release versioning
+
+YT Zero product releases use calendar versions in the form `YYYY.MM.N`, and
+the Git tag is the version itself without a `v` prefix. The month is always
+zero-padded (`01` through `12`), while `N` is a positive, non-padded release
+counter that starts at `1` each month. For example, the first two releases in
+August 2026 are `2026.08.1` and `2026.08.2`; the first September release is
+`2026.09.1`.
+
+Pushing a valid release tag builds the GitHub release assets and publishes
+container tags for the exact release, its month and year channels, and
+`latest` (for example `2026.08.1`, `2026.08`, `2026`, and `latest`). The
+private `app/package.json` and `ui/package.json` versions are package-manager
+metadata and are intentionally independent from the product release tag.
+
 ## Coding style
 
 - Match the surrounding code — naming, structure, and comment density.

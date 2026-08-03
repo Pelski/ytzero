@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { compareReleaseVersions, isReleaseVersion, releaseVersionKey } from "../src/releaseVersion";
 
-interface ReleaseEntry {
+export interface ReleaseEntry {
   version: string;
   name: string;
   publishedAt: string;
@@ -68,8 +69,22 @@ function runGit(args: string[]): string | null {
 }
 
 export function currentBuildTag(environmentVersion: string | undefined, exactGitTag: string | null): string | null {
-  const candidate = environmentVersion || exactGitTag || "";
-  return /^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(candidate) ? candidate : null;
+  return [environmentVersion, exactGitTag].find((candidate): candidate is string =>
+    typeof candidate === "string" && isReleaseVersion(candidate)
+  ) ?? null;
+}
+
+export function sortAndDedupeReleases(releases: ReleaseEntry[]): ReleaseEntry[] {
+  const seen = new Set<string>();
+  return releases
+    .filter((release) => release && typeof release.version === "string" && isReleaseVersion(release.version))
+    .sort((left, right) => -(compareReleaseVersions(left.version, right.version) ?? 0))
+    .filter((release) => {
+      const key = releaseVersionKey(release.version);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 async function releaseFromCurrentTag(tag: string, previousVersion: string | undefined, headers: Record<string, string>): Promise<ReleaseEntry> {
@@ -128,28 +143,36 @@ export async function generate() {
     if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
     const raw = await response.json() as GitHubRelease[];
     releases = (Array.isArray(raw) ? raw : [])
-      .filter((release) => release.draft !== true && release.prerelease !== true && typeof release.tag_name === "string")
+      .filter((release): release is GitHubRelease & { tag_name: string } => (
+        typeof release === "object"
+        && release !== null
+        && release.draft !== true
+        && release.prerelease !== true
+        && typeof release.tag_name === "string"
+        && isReleaseVersion(release.tag_name)
+      ))
       .map((release) => ({
-        version: release.tag_name as string,
-        name: typeof release.name === "string" && release.name ? release.name : release.tag_name as string,
+        version: release.tag_name,
+        name: typeof release.name === "string" && release.name ? release.name : release.tag_name,
         publishedAt: typeof release.published_at === "string" ? release.published_at : "",
         url: typeof release.html_url === "string" ? release.html_url : "https://github.com/Pelski/ytzero/releases",
         notes: notesFromBody(release.body),
       }));
   } catch (error) {
-    releases = await cachedReleases();
+    releases = sortAndDedupeReleases(await cachedReleases());
     if (releases.length === 0) throw error;
     console.warn(`Changelog refresh skipped: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  releases = releases.map(({ current: _current, ...release }) => release);
+  releases = sortAndDedupeReleases(releases.map(({ current: _current, ...release }) => release));
   const currentTag = currentBuildTag(process.env.YTZERO_VERSION, runGit(["describe", "--tags", "--exact-match", "HEAD"]));
   if (currentTag) {
-    const existing = releases.find((release) => release.version === currentTag);
+    const currentKey = releaseVersionKey(currentTag);
+    const existing = releases.find((release) => releaseVersionKey(release.version) === currentKey);
     if (existing) existing.current = true;
     else releases.unshift(await releaseFromCurrentTag(currentTag, releases[0]?.version, headers));
   }
-  releases = releases.slice(0, CHANGELOG_RELEASE_LIMIT);
+  releases = sortAndDedupeReleases(releases).slice(0, CHANGELOG_RELEASE_LIMIT);
   const content = `${JSON.stringify({ releases }, null, 2)}\n`;
   await mkdir(dirname(outputPath), { recursive: true });
   const previous = await readFile(outputPath, "utf8").catch(() => "");

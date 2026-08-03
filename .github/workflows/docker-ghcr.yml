@@ -5,7 +5,8 @@ on:
     branches:
       - main
     tags:
-      - "v*.*.*"
+      - "[1-9][0-9][0-9][0-9].0[1-9].[1-9]*"
+      - "[1-9][0-9][0-9][0-9].1[0-2].[1-9]*"
     # A README, wiki page or issue-workflow change cannot affect the image.
     paths:
       - "app/**"
@@ -28,6 +29,9 @@ jobs:
       commit: ${{ steps.build-version.outputs.commit }}
       short_commit: ${{ steps.build-version.outputs.short_commit }}
       is_release: ${{ steps.build-version.outputs.is_release }}
+      is_edge: ${{ steps.build-version.outputs.is_edge }}
+      release_year_month: ${{ steps.build-version.outputs.release_year_month }}
+      release_year: ${{ steps.build-version.outputs.release_year }}
     permissions:
       contents: read
     steps:
@@ -45,16 +49,36 @@ jobs:
           commit="$(git rev-parse HEAD)"
           version="edge"
           is_release="false"
+          is_edge="false"
+          # Disabled raw-tag rules still receive syntactically valid values on
+          # branch builds; release refs replace both placeholders below.
+          release_year_month="edge"
+          release_year="edge"
+
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            is_edge="true"
+          fi
 
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             version="${GITHUB_REF_NAME}"
+            if [[ ! "${version}" =~ ^[1-9][0-9]{3}\.(0[1-9]|1[0-2])\.[1-9][0-9]*$ ]]; then
+              echo "Invalid release tag: ${version}. Expected YYYY.MM.N (for example 2026.08.1)." >&2
+              exit 1
+            fi
+
             is_release="true"
+            is_edge="false"
+            release_year_month="${version%.*}"
+            release_year="${version%%.*}"
           fi
 
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
           echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
           echo "short_commit=${commit:0:7}" >> "${GITHUB_OUTPUT}"
           echo "is_release=${is_release}" >> "${GITHUB_OUTPUT}"
+          echo "is_edge=${is_edge}" >> "${GITHUB_OUTPUT}"
+          echo "release_year_month=${release_year_month}" >> "${GITHUB_OUTPUT}"
+          echo "release_year=${release_year}" >> "${GITHUB_OUTPUT}"
 
       - name: Set up the Bun runtime
         uses: oven-sh/setup-bun@v2
@@ -133,7 +157,7 @@ jobs:
           file: ./Dockerfile
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          # A completed release workflow supplies vX.Y.Z; main builds use edge.
+          # A completed release workflow supplies YYYY.MM.N; main builds use edge.
           build-args: |
             YTZERO_VERSION=${{ needs.prepare.outputs.version }}
             YTZERO_COMMIT=${{ needs.prepare.outputs.commit }}
@@ -177,12 +201,13 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           # main → edge + sha-xxxx (bleeding edge)
-          # ukończony release vX.Y.Z → X.Y.Z, X.Y, X oraz latest
+          # release YYYY.MM.N → YYYY.MM.N, YYYY.MM, YYYY, latest oraz sha-xxxx
           tags: |
-            type=edge,branch=main,enable=${{ needs.prepare.outputs.is_release != 'true' }}
-            type=semver,pattern={{version}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
-            type=semver,pattern={{major}},value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
+            type=raw,value=edge,enable=${{ needs.prepare.outputs.is_edge == 'true' }}
+            type=raw,value=${{ needs.prepare.outputs.version }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
+            type=raw,value=${{ needs.prepare.outputs.release_year_month }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
+            type=raw,value=${{ needs.prepare.outputs.release_year }},enable=${{ needs.prepare.outputs.is_release == 'true' }}
+            type=raw,value=latest,enable=${{ needs.prepare.outputs.is_release == 'true' }}
             type=raw,value=sha-${{ needs.prepare.outputs.short_commit }}
 
       - name: Sign in to the GitHub Container Registry
@@ -198,6 +223,19 @@ jobs:
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
 
-      - name: Verify the published image manifest
+      - name: Verify the published edge image manifest
+        if: needs.prepare.outputs.is_edge == 'true'
         run: |
-          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:edge"
+
+      - name: Verify the published commit image manifest
+        run: |
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ needs.prepare.outputs.short_commit }}"
+
+      - name: Verify the published release image manifests
+        if: needs.prepare.outputs.is_release == 'true'
+        run: |
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.version }}"
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.release_year_month }}"
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.release_year }}"
+          docker buildx imagetools inspect "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
