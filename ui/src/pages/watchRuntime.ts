@@ -30,11 +30,6 @@ export function colonDurationToSeconds(duration: string | null | undefined): num
   return parts.reduce((total, part) => total * 60 + Number(part), 0);
 }
 
-export function restoreSidebarVisibility(): void {
-  document.body.classList.remove("cinema");
-  document.body.classList.toggle("sidebar-hidden", localStorage.getItem("sidebar_open") === "0");
-}
-
 export function formatWatchTime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);

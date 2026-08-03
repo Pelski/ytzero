@@ -17,7 +17,8 @@ import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } fro
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
 import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
-import { loadYouTubeApi, resolveShareTimestamp, restoreSidebarVisibility } from "./watchRuntime";
+import { restoreSidebarVisibility } from "../app-shell/sidebarVisibility";
+import { loadYouTubeApi, resolveShareTimestamp } from "./watchRuntime";
 import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
 import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTubeKeyboardShortcuts";
 

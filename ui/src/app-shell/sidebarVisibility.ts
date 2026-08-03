@@ -3,6 +3,20 @@ import { useEffect, useLayoutEffect } from "react";
 const SIDEBAR_KEY = "sidebar_open";
 export const MOBILE_SIDEBAR_QUERY = "(max-width: 760px)";
 
+export function resolveSidebarHidden(isMobile: boolean, storedPreference: string | null): boolean {
+  return isMobile || storedPreference === "0";
+}
+
+function syncSidebarVisibility(): void {
+  const isMobile = window.matchMedia(MOBILE_SIDEBAR_QUERY).matches;
+  document.body.classList.toggle("sidebar-hidden", resolveSidebarHidden(isMobile, localStorage.getItem(SIDEBAR_KEY)));
+}
+
+export function restoreSidebarVisibility(): void {
+  document.body.classList.remove("cinema");
+  syncSidebarVisibility();
+}
+
 export function toggleSidebar() {
   const hidden = document.body.classList.toggle("sidebar-hidden");
   if (!window.matchMedia(MOBILE_SIDEBAR_QUERY).matches) {
@@ -13,13 +27,9 @@ export function toggleSidebar() {
 export function useSidebarVisibility(pathname: string) {
   useLayoutEffect(() => {
     const media = window.matchMedia(MOBILE_SIDEBAR_QUERY);
-    const syncSidebar = () => {
-      if (media.matches) document.body.classList.add("sidebar-hidden");
-      else document.body.classList.toggle("sidebar-hidden", localStorage.getItem(SIDEBAR_KEY) === "0");
-    };
-    syncSidebar();
-    media.addEventListener("change", syncSidebar);
-    return () => media.removeEventListener("change", syncSidebar);
+    syncSidebarVisibility();
+    media.addEventListener("change", syncSidebarVisibility);
+    return () => media.removeEventListener("change", syncSidebarVisibility);
   }, []);
 
   useEffect(() => {
