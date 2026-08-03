@@ -1,0 +1,63 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import ChangelogEntry from "../../components/ChangelogEntry.astro";
+
+const updates = (await getCollection("updates")).sort(
+  (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
+);
+const years = [...new Set(updates.map((entry) => entry.data.date.getFullYear()))];
+---
+
+<BaseLayout
+  title="Changelog — YT Zero"
+  description="New features, meaningful improvements, and project news from YT Zero."
+  pageClass="changelog-page"
+>
+  <div class="docs-masthead changelog-masthead">
+    <div class="shell">
+      <p>YT Zero / <strong>Changelog</strong></p>
+      <a href="https://github.com/Pelski/ytzero/releases">All releases <span aria-hidden="true">↗</span></a>
+    </div>
+  </div>
+
+  <section class="changelog-list">
+    <div class="shell changelog-layout">
+      <aside class="changelog-sidebar" aria-label="Changelog navigation">
+        <div class="changelog-sidebar-sticky">
+          <a class="changelog-home-link" href="#content-start">
+            <span>Changelog</span>
+            <small>All updates</small>
+          </a>
+          <nav>
+            <h2>Archive</h2>
+            {years.map((year) => <a href={`#year-${year}`}>{year}</a>)}
+          </nav>
+          <a class="archive-github" href="https://github.com/Pelski/ytzero/releases">GitHub Releases ↗</a>
+        </div>
+      </aside>
+
+      <details class="docs-mobile-navigation changelog-mobile-navigation">
+        <summary>Browse changelog <span aria-hidden="true">⌄</span></summary>
+        <div>
+          <h2>Archive</h2>
+          {years.map((year) => <a href={`#year-${year}`}>{year}</a>)}
+          <a href="https://github.com/Pelski/ytzero/releases">GitHub Releases ↗</a>
+        </div>
+      </details>
+
+      <div class="changelog-content" id="content-start">
+        {years.map((year) => (
+          <section class="year-group" id={`year-${year}`}>
+            <div class="year-heading"><h2>{year}</h2><span>{updates.filter((entry) => entry.data.date.getFullYear() === year).length} updates</span></div>
+            <div class="changelog-entries">
+              {updates.filter((entry) => entry.data.date.getFullYear() === year).map((entry) => (
+                <ChangelogEntry entry={entry} latest={entry.id === updates[0].id} />
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  </section>
+</BaseLayout>

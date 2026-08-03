@@ -1,0 +1,50 @@
+---
+import type { MarkdownHeading } from "astro";
+import BaseLayout from "./BaseLayout.astro";
+import DocsSidebar from "../components/DocsSidebar.astro";
+import { docsNeighbors, docsTitle } from "../lib/docs";
+import { path } from "../lib/paths";
+
+interface Props {
+  currentSlug: string;
+  headings: MarkdownHeading[];
+}
+
+const { currentSlug, headings } = Astro.props;
+const title = docsTitle(currentSlug);
+const toc = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
+const { previous, next } = docsNeighbors(currentSlug);
+const hrefFor = (slug: string) => path(`/docs/${slug === "Home" ? "" : `${slug}/`}`);
+---
+
+<BaseLayout title={`${title} — YT Zero Docs`} description={`YT Zero documentation: ${title}.`} pageClass="docs-page">
+  <div class="docs-masthead">
+    <div class="shell">
+      <p>YT Zero / <strong>Docs</strong></p>
+      <a href="https://github.com/Pelski/ytzero/tree/main/wiki">View source <span aria-hidden="true">↗</span></a>
+    </div>
+  </div>
+  <div class="shell docs-shell">
+    <DocsSidebar currentSlug={currentSlug} />
+    <article class="docs-article">
+      <header>
+        <p class="docs-kicker">Documentation</p>
+        <h1>{title}</h1>
+      </header>
+      <div class="docs-prose"><slot /></div>
+      <a class="docs-edit" href={`https://github.com/Pelski/ytzero/edit/main/wiki/${currentSlug}.md`}>
+        Edit this page on GitHub <span aria-hidden="true">↗</span>
+      </a>
+      <nav class="docs-pagination" aria-label="Previous and next documentation pages">
+        {previous ? <a href={hrefFor(previous.slug)}><small>Previous</small><strong>← {previous.title}</strong></a> : <span />}
+        {next ? <a class="next" href={hrefFor(next.slug)}><small>Next</small><strong>{next.title} →</strong></a> : <span />}
+      </nav>
+    </article>
+    {toc.length > 0 && (
+      <aside class="docs-toc" aria-label="On this page">
+        <strong>On this page</strong>
+        <nav>{toc.map((heading) => <a class:list={{ nested: heading.depth === 3 }} href={`#${heading.slug}`}>{heading.text}</a>)}</nav>
+      </aside>
+    )}
+  </div>
+</BaseLayout>

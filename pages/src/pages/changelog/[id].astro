@@ -1,0 +1,51 @@
+---
+import { getCollection, render, type CollectionEntry } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { asset, path } from "../../lib/paths";
+
+export async function getStaticPaths() {
+  const updates = await getCollection("updates");
+  return updates.map((entry) => ({ params: { id: entry.id }, props: { entry } }));
+}
+
+interface Props {
+  entry: CollectionEntry<"updates">;
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+const formattedDate = entry.data.date.toLocaleDateString("en", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+});
+---
+
+<BaseLayout title={`${entry.data.title} — YT Zero`} description={entry.data.description} pageClass="post-page">
+  <div class="docs-masthead">
+    <div class="shell">
+      <p>YT Zero / <strong>Changelog</strong></p>
+      <a href="https://github.com/Pelski/ytzero/releases">All releases <span aria-hidden="true">↗</span></a>
+    </div>
+  </div>
+  <article class="post paper-section">
+    <div class="shell post-shell">
+      <a class="back-link" href={path("/changelog/")}>← All updates</a>
+      <header class="post-header">
+        <div class="update-meta">
+          <span>{entry.data.category}</span>
+          <time datetime={entry.data.date.toISOString()}>{formattedDate}</time>
+          <code>{entry.data.version}</code>
+        </div>
+        <h1>{entry.data.title}</h1>
+        <p>{entry.data.description}</p>
+      </header>
+      {entry.data.image && <img class="post-hero-image" src={asset(entry.data.image)} alt={entry.data.imageAlt ?? ""} />}
+      <div class="docs-prose post-prose"><Content /></div>
+      <footer class="post-footer">
+        <span>That is the update.</span>
+        <a href={entry.data.githubUrl}>View this release on GitHub ↗</a>
+      </footer>
+    </div>
+  </article>
+</BaseLayout>

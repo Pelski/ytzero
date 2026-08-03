@@ -1,0 +1,34 @@
+---
+import type { CollectionEntry } from "astro:content";
+import { path } from "../lib/paths";
+
+interface Props {
+  entry: CollectionEntry<"updates">;
+  latest?: boolean;
+}
+
+const { entry, latest = false } = Astro.props;
+const fullDate = entry.data.date.toLocaleDateString("en", {
+  month: "long",
+  day: "numeric",
+  year: "numeric",
+});
+const href = path(`/changelog/${entry.id}/`);
+---
+
+<article class="changelog-entry">
+  <div class="changelog-entry-date">
+    <time datetime={entry.data.date.toISOString()}>{fullDate}</time>
+    <code>{entry.data.version}</code>
+  </div>
+
+  <div class="changelog-entry-copy">
+    <div class="changelog-entry-meta">
+      {latest && <span class="latest-label">Latest</span>}
+      <span>{entry.data.category}</span>
+    </div>
+    <h3><a href={href}>{entry.data.title}</a></h3>
+    <p>{entry.data.description}</p>
+    <a class="changelog-read" href={href}>Read the update <span aria-hidden="true">→</span></a>
+  </div>
+</article>

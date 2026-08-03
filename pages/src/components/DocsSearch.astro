@@ -1,0 +1,74 @@
+---
+import { docsSearchIndex } from "../lib/docs";
+import { path } from "../lib/paths";
+
+const searchIndex = docsSearchIndex.map((item) => ({
+  ...item,
+  href: path(`/docs/${item.slug === "Home" ? "" : `${item.slug}/`}`),
+}));
+---
+
+<div class="docs-search" data-docs-search>
+  <label>
+    <span class="sr-only">Search documentation</span>
+    <span aria-hidden="true">⌕</span>
+    <input type="search" placeholder="Search docs…" autocomplete="off" />
+  </label>
+  <div class="docs-search-results" hidden></div>
+  <script is:inline type="application/json" set:html={JSON.stringify(searchIndex).replaceAll("<", "\\u003c")} />
+</div>
+
+<script>
+  document.querySelectorAll<HTMLElement>("[data-docs-search]").forEach((root) => {
+    const input = root.querySelector<HTMLInputElement>("input");
+    const results = root.querySelector<HTMLElement>(".docs-search-results");
+    const payload = root.querySelector<HTMLScriptElement>('script[type="application/json"]');
+    if (!input || !results || !payload) return;
+
+    const index = JSON.parse(payload.textContent || "[]") as Array<{ title: string; content: string; href: string }>;
+    const close = () => {
+      results.hidden = true;
+      results.replaceChildren();
+    };
+
+    input.addEventListener("input", () => {
+      const query = input.value.trim().toLocaleLowerCase();
+      if (query.length < 2) return close();
+
+      const matches = index
+        .filter((item) => `${item.title} ${item.content}`.toLocaleLowerCase().includes(query))
+        .slice(0, 6);
+
+      results.replaceChildren(...matches.map((item) => {
+        const link = document.createElement("a");
+        const position = item.content.toLocaleLowerCase().indexOf(query);
+        const start = Math.max(0, position - 45);
+        const excerpt = item.content.slice(start, start + 130);
+        link.href = item.href;
+        const heading = document.createElement("strong");
+        heading.textContent = item.title;
+        const description = document.createElement("span");
+        description.textContent = `${start > 0 ? "…" : ""}${excerpt}${excerpt.length === 130 ? "…" : ""}`;
+        link.append(heading, description);
+        return link;
+      }));
+
+      if (!matches.length) {
+        const empty = document.createElement("p");
+        empty.textContent = "No matching docs.";
+        results.append(empty);
+      }
+      results.hidden = false;
+    });
+
+    document.addEventListener("click", (event) => {
+      if (!root.contains(event.target as Node)) close();
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        close();
+        input.blur();
+      }
+    });
+  });
+</script>

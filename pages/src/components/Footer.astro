@@ -1,0 +1,34 @@
+---
+import { asset, path } from "../lib/paths";
+const year = new Date().getFullYear();
+---
+
+<footer class="site-footer">
+  <div class="shell footer-grid">
+    <div>
+      <a class="brand footer-brand" href={path("/")}>
+        <img src={asset("/icon.svg")} width="34" height="34" alt="" />
+        <span>YT Zero</span>
+      </a>
+      <p>A quieter place for the channels you chose on purpose.</p>
+    </div>
+    <div class="footer-links">
+      <div>
+        <strong>Project</strong>
+        <a href={path("/changelog/")}>Changelog</a>
+        <a href="https://github.com/Pelski/ytzero/releases">Releases</a>
+        <a href={path("/docs/")}>Documentation</a>
+      </div>
+      <div>
+        <strong>Community</strong>
+        <a href="https://github.com/Pelski/ytzero">GitHub</a>
+        <a href="https://github.com/Pelski/ytzero/issues">Issues</a>
+        <a href="https://ko-fi.com/pelski">Sponsor</a>
+      </div>
+    </div>
+  </div>
+  <div class="shell footer-bottom">
+    <span>© {year} YT Zero</span>
+    <span>AGPL-3.0 · Built in the open</span>
+  </div>
+</footer>

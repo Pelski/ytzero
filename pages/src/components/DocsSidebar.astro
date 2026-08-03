@@ -1,0 +1,42 @@
+---
+import DocsSearch from "./DocsSearch.astro";
+import { docsHome, docsNavigation } from "../lib/docs";
+import { path } from "../lib/paths";
+
+interface Props { currentSlug: string; }
+const { currentSlug } = Astro.props;
+const hrefFor = (slug: string) => path(`/docs/${slug === "Home" ? "" : `${slug}/`}`);
+---
+
+<aside class="docs-sidebar" aria-label="Documentation navigation">
+  <div class="docs-sidebar-sticky">
+    <a class:list={["docs-home-link", { active: currentSlug === docsHome.slug }]} href={hrefFor(docsHome.slug)}>
+      <span>Documentation</span><small>Overview</small>
+    </a>
+    <DocsSearch />
+    <nav>
+      {docsNavigation.map((group) => (
+        <section>
+          <h2>{group.title}</h2>
+          {group.links.map((link) => (
+            <a class:list={{ active: currentSlug === link.slug }} href={hrefFor(link.slug)} aria-current={currentSlug === link.slug ? "page" : undefined}>{link.title}</a>
+          ))}
+        </section>
+      ))}
+    </nav>
+  </div>
+</aside>
+
+<details class="docs-mobile-navigation">
+  <summary>Browse documentation <span aria-hidden="true">⌄</span></summary>
+  <div>
+    <DocsSearch />
+    <a class:list={{ active: currentSlug === docsHome.slug }} href={hrefFor(docsHome.slug)}>Overview</a>
+    {docsNavigation.map((group) => (
+      <section>
+        <h2>{group.title}</h2>
+        {group.links.map((link) => <a class:list={{ active: currentSlug === link.slug }} href={hrefFor(link.slug)}>{link.title}</a>)}
+      </section>
+    ))}
+  </div>
+</details>

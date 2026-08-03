@@ -1,0 +1,203 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import ChangelogEntry from "../components/ChangelogEntry.astro";
+import { asset, path } from "../lib/paths";
+
+const updates = (await getCollection("updates"))
+  .sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf())
+  .slice(0, 3);
+---
+
+<BaseLayout>
+  <section class="hero dark-section">
+    <div class="hero-orbit hero-orbit-one"></div>
+    <div class="hero-orbit hero-orbit-two"></div>
+    <div class="shell hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Self-hosted · Zero algorithm</p>
+        <h1><span class="hero-line">Your subscriptions.</span><em class="hero-line">Nothing else.</em></h1>
+        <p class="hero-lede">YT Zero turns YouTube into a calm inbox for channels you chose on purpose. No Google account. No API key. No recommendation loop.</p>
+        <div class="button-row">
+          <a class="button primary" href={path("/#install")}>Install YT Zero <span aria-hidden="true">↓</span></a>
+          <a class="button ghost" href="https://github.com/Pelski/ytzero">View on GitHub <span aria-hidden="true">↗</span></a>
+        </div>
+        <ul class="hero-facts" aria-label="Project facts">
+          <li><strong>100%</strong><span>self-hosted</span></li>
+          <li><strong>0</strong><span>API keys</span></li>
+          <li><strong>AGPL</strong><span>open source</span></li>
+        </ul>
+      </div>
+      <div class="product-stage" aria-label="YT Zero application preview">
+        <div class="app-window">
+          <div class="window-bar">
+            <span></span><span></span><span></span>
+            <div>ytzero.local</div>
+          </div>
+          <img src={asset("/feed.png")} alt="YT Zero showing a chronological feed from followed channels" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="scroll-cue-wrap paper-section">
+    <a class="scroll-cue" href="#idea" aria-label="Scroll to learn more">
+      <span>⌄</span><span>⌄</span>
+    </a>
+  </div>
+
+  <section id="idea" class="manifesto paper-section">
+    <div class="shell manifesto-grid">
+      <p class="section-index">01 / THE IDEA</p>
+      <div>
+        <h2>The usual feed is built to surface <em>more.</em><br />YT Zero is built for <em>enough.</em></h2>
+        <p>New uploads arrive in order. You decide what stays, what waits, and what disappears. When you reach the end, the screen stops asking for your attention.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="features paper-section">
+    <div class="shell">
+      <div class="section-heading">
+        <div>
+          <p class="section-index">02 / YOUR FEED, YOUR RULES</p>
+          <h2>Everything useful.<br />None of the machinery.</h2>
+        </div>
+        <p>Keep what helps you watch intentionally. Leave the attention economy at the door.</p>
+      </div>
+
+      <div class="feature-grid">
+        <article class="feature-card feature-wide dark-card">
+          <div class="card-copy">
+            <span class="feature-number">01</span>
+            <h3>A real subscription inbox</h3>
+            <p>Every new video from channels you follow, in chronological order. Triage it like mail: watch, schedule, archive, or reject.</p>
+          </div>
+          <div class="cropped-screen"><img src={asset("/feed.png")} alt="Chronological YT Zero subscription feed" loading="lazy" /></div>
+        </article>
+
+        <article class="feature-card accent-card">
+          <span class="feature-number">02</span>
+          <h3>Plan what deserves your time.</h3>
+          <p>Today, tonight, tomorrow, or the weekend. A watch-later list with actual intent.</p>
+          <div class="schedule-stack" aria-hidden="true">
+            <span>TONIGHT <b>3</b></span><span>TOMORROW <b>7</b></span><span>WEEKEND <b>12</b></span>
+          </div>
+        </article>
+
+        <article class="feature-card light-card">
+          <span class="feature-number">03</span>
+          <h3>Your data stays home.</h3>
+          <p>Subscriptions, history, progress, tags, rules, and playlists live on your own server — SQLite or PostgreSQL.</p>
+          <div class="privacy-mark" aria-hidden="true"><span>LOCAL</span><b>∞</b></div>
+        </article>
+
+        <article class="feature-card feature-wide media-card">
+          <div class="single-player">
+            <img src={asset("/video-theater.png")} alt="YT Zero theater player" loading="lazy" />
+          </div>
+          <div class="card-copy">
+            <span class="feature-number">04</span>
+            <h3>Playback on your terms</h3>
+            <p>Progress tracking, chapters, captions, SponsorBlock, picture-in-picture, local downloads, and a theater mode that gets out of the way.</p>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="household dark-section">
+    <div class="shell household-grid">
+      <div>
+        <p class="section-index inverse">03 / ONE HOME, MANY VIEWERS</p>
+        <h2>Personal enough for one.<br />Practical enough for a household.</h2>
+        <p>Separate profiles keep progress, history, tags, and playlists apart. Child profiles add time limits and content guardrails without turning the whole installation into parental-control software.</p>
+        <ul class="check-list">
+          <li>Independent profiles and authentication</li>
+          <li>Child profiles with daily watch limits</li>
+          <li>Optional downloads for offline playback</li>
+          <li>Watch Together for shared instances</li>
+        </ul>
+      </div>
+      <div class="pulse-panel">
+        <div class="pulse-head"><span>HOUSEHOLD PULSE</span><span>THIS WEEK</span></div>
+        <div class="pulse-total"><strong>6h 42m</strong><span>intentional watch time</span></div>
+        <div class="pulse-bars" aria-hidden="true">
+          <i style="--h: 32%"></i><i style="--h: 58%"></i><i style="--h: 42%"></i><i style="--h: 84%"></i><i style="--h: 63%"></i><i style="--h: 28%"></i><i style="--h: 47%"></i>
+        </div>
+        <div class="pulse-days"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+        <div class="pulse-stat"><span>Time skipped with SponsorBlock</span><strong>38m</strong></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="workflow paper-section">
+    <div class="shell">
+      <div class="section-heading compact-heading">
+        <div>
+          <p class="section-index">04 / HOW IT WORKS</p>
+          <h2>From channel feed to quiet queue.</h2>
+        </div>
+      </div>
+      <ol class="workflow-grid">
+        <li><span>01</span><h3>Follow</h3><p>Add channels directly or import subscriptions from Google Takeout.</p></li>
+        <li><span>02</span><h3>Sort</h3><p>Use tags and rules to shape the inbox before it asks for attention.</p></li>
+        <li><span>03</span><h3>Watch</h3><p>Stream directly or download locally with the optional yt-dlp integration.</p></li>
+        <li><span>04</span><h3>Stop</h3><p>Reach inbox zero. Close the tab. Go do literally anything else.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="install" class="install paper-section">
+    <div class="shell install-panel">
+      <div class="install-intro">
+        <p class="section-index inverse">05 / RUN IT YOURSELF</p>
+        <h2>Your server.<br />Your screen time.</h2>
+        <p>Start with Docker, or choose the setup that already fits your homelab.</p>
+      </div>
+      <div class="install-options">
+        <a href="https://github.com/Pelski/ytzero/wiki/Installation">
+          <span>Recommended</span><strong>Docker Compose</strong><small>NAS, home server, or VPS</small><b>→</b>
+        </a>
+        <a href="https://ca.unraid.net/apps/yt-zero-1ry69q20pcrx1i?q=YT-Zero">
+          <span>App store</span><strong>Unraid</strong><small>Community Applications</small><b>→</b>
+        </a>
+        <a href="https://github.com/Pelski/ytzero/wiki/Installation">
+          <span>One command</span><strong>Proxmox VE</strong><small>Unprivileged Debian LXC</small><b>→</b>
+        </a>
+        <a href="https://github.com/Pelski/ytzero/wiki/Installation">
+          <span>Native</span><strong>Debian / Ubuntu</strong><small>systemd service, no Docker</small><b>→</b>
+        </a>
+      </div>
+      <div class="command-line"><code>docker compose up -d</code><a href="https://github.com/Pelski/ytzero/wiki/Installation">Full installation guide ↗</a></div>
+    </div>
+  </section>
+
+  <section class="updates paper-section">
+    <div class="shell">
+      <div class="section-heading">
+        <div>
+          <p class="section-index">06 / BUILT IN PUBLIC</p>
+          <h2>Latest releases.</h2>
+        </div>
+        <a class="text-link large-link" href={path("/changelog/")}>See the full changelog <span aria-hidden="true">→</span></a>
+      </div>
+      <div class="homepage-release-list">
+        {updates.map((entry, index) => <ChangelogEntry entry={entry} latest={index === 0} />)}
+      </div>
+    </div>
+  </section>
+
+  <section class="final-cta dark-section">
+    <div class="shell final-cta-inner">
+      <img src={asset("/icon.svg")} width="72" height="72" alt="" />
+      <p class="eyebrow"><span></span> Reclaim the subscription feed</p>
+      <h2>Watch what you meant to watch.</h2>
+      <p>Self-hosted, open source, and refreshingly uninterested in keeping you online.</p>
+      <div class="button-row center-buttons">
+        <a class="button primary" href="https://github.com/Pelski/ytzero">Get YT Zero on GitHub <span aria-hidden="true">↗</span></a>
+        <a class="button ghost" href="https://github.com/Pelski/ytzero/wiki">Read the docs</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

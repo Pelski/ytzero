@@ -1,0 +1,48 @@
+---
+import "../styles/global.css";
+import "@fontsource-variable/manrope";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import { asset } from "../lib/paths";
+
+interface Props {
+  title?: string;
+  description?: string;
+  pageClass?: string;
+}
+
+const {
+  title = "YT Zero — Your subscriptions. Nothing else.",
+  description = "A quiet, self-hosted video inbox for the channels you choose.",
+  pageClass = "",
+} = Astro.props;
+
+const canonical = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={description} />
+    <meta name="theme-color" content="#07101f" />
+    <link rel="icon" type="image/svg+xml" href={asset("/icon.svg")} />
+    <link rel="alternate" type="application/rss+xml" title="YT Zero changelog" href={new URL(`${import.meta.env.BASE_URL}changelog.xml`, Astro.site)} />
+    <link rel="canonical" href={canonical} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL(asset("/ytzero-promo-poster.png"), Astro.site)} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>{title}</title>
+  </head>
+  <body class={pageClass}>
+    <a class="skip-link" href="#content">Skip to content</a>
+    <Header />
+    <main id="content">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>
