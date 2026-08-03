@@ -1,8 +1,6 @@
 import { defineConfig } from "astro/config";
 import { unified } from "@astrojs/markdown-remark";
 
-const base = "/ytzero";
-
 function remarkWikiLinks() {
   return (tree, file) => {
     const source = file.history?.[0] ?? "";
@@ -13,7 +11,7 @@ function remarkWikiLinks() {
         const url = node.url;
         if (!/^(?:[a-z]+:|\/|#)/i.test(url)) {
           const [slug, fragment] = url.split("#", 2);
-          node.url = `${base}/docs/${slug}/${fragment ? `#${fragment}` : ""}`;
+          node.url = `/docs/${slug}/${fragment ? `#${fragment}` : ""}`;
         }
       }
       if (Array.isArray(node?.children)) node.children.forEach(visit);
@@ -24,8 +22,7 @@ function remarkWikiLinks() {
 }
 
 export default defineConfig({
-  site: "https://pelski.github.io",
-  base,
+  site: "https://ytzero.app",
   output: "static",
   publicDir: "../docs/assets",
   trailingSlash: "always",

@@ -10,13 +10,13 @@ function escapeXml(value: string) {
 }
 
 export async function GET({ site }: { site?: URL }) {
-  const baseUrl = site ?? new URL("https://pelski.github.io");
+  const baseUrl = site ?? new URL("https://ytzero.app");
   const updates = (await getCollection("updates")).sort(
     (a, b) => b.data.date.valueOf() - a.data.date.valueOf()
   );
 
   const items = updates.map((entry) => {
-    const link = new URL(`/ytzero/changelog/${entry.id}/`, baseUrl).toString();
+    const link = new URL(`/changelog/${entry.id}/`, baseUrl).toString();
     return `<item>
       <title>${escapeXml(entry.data.title)}</title>
       <link>${link}</link>
@@ -30,7 +30,7 @@ export async function GET({ site }: { site?: URL }) {
 <rss version="2.0">
   <channel>
     <title>YT Zero changelog</title>
-    <link>${new URL("/ytzero/changelog/", baseUrl)}</link>
+    <link>${new URL("/changelog/", baseUrl)}</link>
     <description>New features, meaningful improvements, and project news from YT Zero.</description>
     <language>en</language>
     ${items}
