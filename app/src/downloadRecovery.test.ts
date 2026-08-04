@@ -22,8 +22,9 @@ beforeAll(async () => {
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("download recovery manifests", () => {
-  test("writes a short, title-independent manifest beside the downloaded file", () => {
+  test("groups the recovery manifest with the downloaded filename", () => {
     expect(result.writtenManifest).toMatchObject({ schemaVersion: 1, videoId: "recover001", file: "moved.mp4", sizeBytes: 15 });
+    expect(result.groupedManifest).toBe(true);
   });
 
   test("reconnects a moved file before cleanup removes its old database path", () => {
@@ -34,5 +35,28 @@ describe("download recovery manifests", () => {
 
   test("preserves an unfamiliar file that has a valid recovery manifest", () => {
     expect(result.unknownPreserved).toBe(true);
+  });
+
+  test("recovers a legacy YT Zero filename by its unambiguous video id", () => {
+    expect(result.legacyRecovered).toMatchObject({ status: "done", path: resolve(root, "downloads", "Legacy Channel - Legacy title [legacy00001].mp4") });
+    expect(result.legacyManifestCreated).toBe(true);
+  });
+
+  test("continues to read old id-named manifests", () => {
+    expect(result.oldManifestRecovered).toMatchObject({ status: "done", path: resolve(root, "downloads", "old-video.mp4") });
+    expect(result.oldManifestGrouped).toBe(true);
+  });
+
+  test("backfills a missing sidecar for an existing healthy download", () => {
+    expect(result.currentManifest).toMatchObject({
+      schemaVersion: 1,
+      videoId: "current0001",
+      file: "Current Channel - Existing download [current0001].mp4",
+      sizeBytes: 25,
+    });
+  });
+
+  test("never deletes an unknown file merely because it is in the downloads directory", () => {
+    expect(result.untrackedPreserved).toBe(true);
   });
 });

@@ -85,7 +85,13 @@ to the exact-instance `data/` backup documentation when the user needs it.
 The small `.ytz.json` recovery sidecars stored beside downloaded
 media are machine-bound download-library metadata: they are excluded together
 with downloaded media from portable backups, but enable safe reconnection after
-the entire download directory is moved.
+the entire download directory is moved. Their filenames share the media base so
+file managers keep each pair together; older ID-only sidecar names remain
+readable. A missing sidecar is backfilled in place for a healthy completed
+download whose current database path still exists; this does not re-download
+the media. Legacy media without a sidecar may be reconnected only through one
+unambiguous known YouTube video ID in its path. Unidentified files are never
+treated as disposable application data.
 
 ## Archive format
 

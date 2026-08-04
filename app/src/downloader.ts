@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync, rmdirSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { database } from "./database";
 import { DB_PATH, getSetting, setSetting } from "./db";
@@ -25,6 +25,7 @@ import {
   ytdlpStatus,
   type DlSettings,
 } from "./downloadConfig";
+import { DOWNLOAD_MANIFEST_SUFFIX, recoverDownloadsFromDisk, writeDownloadManifest } from "./downloadRecovery";
 export {
   DL_DEFAULTS,
   dlSettings,
@@ -40,7 +41,7 @@ const MAX_ATTEMPTS = 3;
 const RETRY_AFTER_MIN = 30;
 const CLEANUP_INTERVAL_MS = 10 * 60_000;
 const TICK_INTERVAL_MS = 30_000;
-export const DOWNLOAD_MANIFEST_SUFFIX = ".ytz.json";
+export { DOWNLOAD_MANIFEST_SUFFIX, writeDownloadManifest };
 // ---------- queue state ----------
 
 interface ActiveDownload {
@@ -150,75 +151,6 @@ function pruneEmptyDirs(base: string | null) {
     }
     dir = dirname(dir);
   }
-}
-
-interface DownloadManifest {
-  schemaVersion: 1;
-  videoId: string;
-  /** Relative to the manifest. Never an absolute host path. */
-  file: string;
-  sizeBytes: number;
-  downloadedAt: string;
-}
-
-function isSafeRelativePath(value: unknown): value is string {
-  if (typeof value !== "string" || !value || value.length > 1_024) return false;
-  if (value.includes("\\") || value.startsWith("/") || value.split("/").some((part) => !part || part === "." || part === "..")) return false;
-  return true;
-}
-
-function manifestPathFor(videoId: string, filePath: string): string {
-  return join(dirname(filePath), `${videoId}${DOWNLOAD_MANIFEST_SUFFIX}`);
-}
-
-export function writeDownloadManifest(videoId: string, filePath: string, sizeBytes: number) {
-  const manifest: DownloadManifest = {
-    schemaVersion: 1,
-    videoId,
-    file: basename(filePath),
-    sizeBytes,
-    downloadedAt: new Date().toISOString(),
-  };
-  const path = manifestPathFor(videoId, filePath);
-  const temporaryPath = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporaryPath, `${JSON.stringify(manifest)}\n`);
-  renameSync(temporaryPath, path);
-}
-
-/**
- * Reconnect files moved with their small recovery manifest before cleanup can
- * classify their former database paths as missing. Manifests without a known
- * download are still returned as protected, so an unfamiliar file is never
- * deleted merely because it lives under DOWNLOADS_DIR.
- */
-async function recoverManifestDownloads(): Promise<{ recovered: number; recoveredVideoIds: Set<string>; protectedFiles: Set<string> }> {
-  const root = resolve(DOWNLOADS_DIR);
-  const protectedFiles = new Set<string>();
-  const recoveredVideoIds = new Set<string>();
-  let recovered = 0;
-  for (const manifestPath of walkFiles(DOWNLOADS_DIR).filter((path) => path.endsWith(DOWNLOAD_MANIFEST_SUFFIX))) {
-    protectedFiles.add(manifestPath);
-    let value: Partial<DownloadManifest>;
-    try { value = JSON.parse(await Bun.file(manifestPath).text()); } catch { continue; }
-    if (value.schemaVersion !== 1 || typeof value.videoId !== "string" || !/^[A-Za-z0-9_-]{1,128}$/.test(value.videoId) || !isSafeRelativePath(value.file)) continue;
-    const filePath = resolve(dirname(manifestPath), value.file);
-    if (!filePath.startsWith(`${root}/`) || !existsSync(filePath)) continue;
-    let size: number;
-    try { size = statSync(filePath).size; } catch { continue; }
-    protectedFiles.add(filePath);
-    const result = await database.prepare(`
-      UPDATE downloads
-      SET status='done', path=?, size_bytes=?, error=NULL, finished_at=COALESCE(finished_at, datetime('now'))
-      WHERE video_id=? AND status IN ('done', 'deleted')
-    `).run(filePath, size, value.videoId);
-    if (result.changes > 0) {
-      recovered++;
-      recoveredVideoIds.add(value.videoId);
-      notifyDownloadChanged(value.videoId);
-      log.info("downloads.recovered_from_manifest", { videoId: value.videoId, path: filePath });
-    }
-  }
-  return { recovered, recoveredVideoIds, protectedFiles };
 }
 
 // ---------- subtitles ----------
@@ -607,7 +539,7 @@ async function tombstone(videoId: string) {
 }
 
 async function cleanup(s: DlSettings) {
-  const manifestRecovery = await recoverManifestDownloads();
+  const manifestRecovery = await recoverDownloadsFromDisk(DOWNLOADS_DIR, notifyDownloadChanged);
   if (manifestRecovery.recovered > 0) publishAppEvent("downloads", { recovered: manifestRecovery.recovered });
   // 1–2. Retention and watched cleanup are profile policies. Remove only that
   // profile's ownership; removeDownload tombstones the physical file only when
@@ -670,30 +602,8 @@ async function cleanup(s: DlSettings) {
     notifyDownloadChanged(row.video_id);
   }
 
-  // 5. Orphan files no live row accounts for. A file belongs to a row when its
-  // path minus extensions equals the row's output base (covers the video and
-  // every sidecar: .nfo, thumbnails, .info.json, subtitles, .part resumes).
-  const live = await database.prepare("SELECT video_id, output_base FROM downloads WHERE status != 'deleted'").all() as { video_id: string; output_base: string | null }[];
-  const liveBases = new Set<string>();
-  for (const row of live) {
-    liveBases.add(row.video_id); // legacy flat {id}.* layout
-    if (row.output_base) liveBases.add(row.output_base);
-  }
-  for (const full of walkFiles(DOWNLOADS_DIR)) {
-    if (manifestRecovery.protectedFiles.has(full)) continue;
-    const rel = full.slice(resolve(DOWNLOADS_DIR).length + 1);
-    let stem = rel;
-    let owned = false;
-    while (true) {
-      if (liveBases.has(stem)) { owned = true; break; }
-      const dot = stem.lastIndexOf(".");
-      if (dot <= stem.lastIndexOf("/")) break;
-      stem = stem.slice(0, dot);
-    }
-    if (!owned) {
-      try { unlinkSync(full); } catch {}
-    }
-  }
+  // Unknown files are user data, not garbage. Only paths tied to a database
+  // row may be removed by retention, watched cleanup or the storage cap above.
   pruneAllEmptyDirs(DOWNLOADS_DIR);
 }
 
@@ -701,15 +611,6 @@ async function cleanup(s: DlSettings) {
  * tests; the scheduler invokes the same profile-aware cleanup internally. */
 export async function cleanupDownloadsNow() {
   await cleanup(await dlSettings());
-}
-
-function walkFiles(dir: string, out: string[] = []): string[] {
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) walkFiles(full, out);
-    else out.push(full);
-  }
-  return out;
 }
 
 /** Depth-first removal of empty template subdirectories (the root stays). */
@@ -1011,6 +912,6 @@ export async function startDownloader() {
   setTimeout(() => tick().catch(reportTickError), 8_000);
   setInterval(() => tick().catch(reportTickError), TICK_INTERVAL_MS);
   setInterval(() => ytdlpSelfUpdate().catch((error) => log.warn("downloads.ytdlp_update_failed", { error: error instanceof Error ? error.message : String(error) })), 24 * 60 * 60_000);
-  const queue = Object.fromEntries((await database.prepare("SELECT status AS name, COUNT(*) AS count FROM downloads GROUP BY status").all() as { name: string; count: number }[]).map((row) => [row.name, Number(row.count)]));
-  log.info("scheduler.downloads", { dir: DOWNLOADS_DIR, intervalMs: TICK_INTERVAL_MS, enabled: await dlEnabled(), queue });
+  const recordsByStatus = Object.fromEntries((await database.prepare("SELECT status AS name, COUNT(*) AS count FROM downloads GROUP BY status").all() as { name: string; count: number }[]).map((row) => [row.name, Number(row.count)]));
+  log.info("scheduler.downloads", { dir: DOWNLOADS_DIR, intervalMs: TICK_INTERVAL_MS, enabled: await dlEnabled(), recordsByStatus });
 }
