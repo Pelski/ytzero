@@ -61,10 +61,10 @@ api.get("/feed", async (c) => {
       where.push("(v.title LIKE ? OR v.description LIKE ?)");
       params.push(`%${q}%`, `%${q}%`);
     }
-    // shorts=1 forces shorts in, shorts=0 forces them out; otherwise the active
-    // profile's setting decides.
+    // Outside Main, only an explicit query parameter controls Shorts. The
+    // profile policy is deliberately scoped to the main feed.
     const shortsParam = c.req.query("shorts");
-    if (shortsParam === "0" || (shortsParam !== "1" && getUserSetting(uid, "show_shorts") !== "1")) {
+    if (shortsParam === "0") {
       where.push("COALESCE(v.is_short, 0) = 0");
     }
     if (c.req.query("only_shorts") === "1") {
@@ -151,4 +151,3 @@ api.get("/feed/adjacent", async (c) => {
 });
 
 }
-

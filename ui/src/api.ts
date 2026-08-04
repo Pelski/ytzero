@@ -20,6 +20,7 @@ import {
   type ChannelManualStatus,
   type ChannelRefreshScheduleDetails,
   type ChannelSearchResult,
+  type ChannelShortsFeedVisibility,
   type ChannelSyncJob,
   type ChildConfig,
   type ChildGrant,
@@ -391,6 +392,8 @@ export const api = {
     http(`/channels/${id}/captions`, { method: "PUT", body: JSON.stringify({ mode, language }) }),
   setChannelMembersOnlyVisibility: (id: string, visibility: MembersOnlyVisibility) =>
     http(`/channels/${id}/members-only-feed`, { method: "PUT", body: JSON.stringify({ visibility }) }),
+  setChannelShortsFeedVisibility: (id: string, visibility: ChannelShortsFeedVisibility) =>
+    http(`/channels/${id}/shorts-feed`, { method: "PUT", body: JSON.stringify({ visibility }) }),
   setChannelDownloadMinDuration: (id: string, seconds: number | null) =>
     http(`/channels/${id}/download-min-duration`, { method: "PUT", body: JSON.stringify({ seconds }) }),
   channelRefreshSchedule: (id: string) => http<ChannelRefreshScheduleDetails>(`/channels/${id}/refresh-schedule`),

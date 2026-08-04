@@ -263,6 +263,9 @@ CREATE TABLE IF NOT EXISTS user_channels (
   -- captions for this channel and "language" forces caption_language.
   caption_mode TEXT,
   caption_language TEXT,
+  -- "default" inherits the global Shorts feed mode; "show" opts this
+  -- channel into the selective mode.
+  shorts_feed_visibility TEXT,
   added_at   TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (user_id, channel_id)
 );

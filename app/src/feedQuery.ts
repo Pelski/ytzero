@@ -12,6 +12,27 @@ export interface FeedVisibilityQuery {
   shorts?: string;
 }
 
+export type ShortsFeedMode = "0" | "selected" | "1";
+
+export function shortsFeedMode(userId: number): ShortsFeedMode {
+  const value = getUserSetting(userId, "show_shorts");
+  return value === "1" || value === "selected" ? value : "0";
+}
+
+export function appendShortsFeedVisibility(where: string[], userId: number): void {
+  const mode = shortsFeedMode(userId);
+  if (mode === "0") {
+    where.push("COALESCE(v.is_short, 0) = 0");
+  } else if (mode === "selected") {
+    where.push(`(
+      COALESCE(v.is_short, 0) = 0 OR COALESCE((
+        SELECT shorts_pref.shorts_feed_visibility FROM user_channels shorts_pref
+        WHERE shorts_pref.user_id = ${userId} AND shorts_pref.channel_id = v.channel_id
+      ), 'default') = 'show'
+    )`);
+  }
+}
+
 // The WHERE clause for the plain, unfiltered-by-channel/search main feed —
 // shared by GET /feed (when none of channel/q/all_sources/liked/only_shorts
 // apply), GET /feed/adjacent and the cleanup view, so "what the feed shows"
@@ -50,8 +71,10 @@ export function feedVisibilityWhere(
       params.push(cutoff);
     }
     const shortsParam = q.shorts;
-    if (shortsParam === "0" || (shortsParam !== "1" && getUserSetting(uid, "show_shorts") !== "1")) {
+    if (shortsParam === "0") {
       where.push("COALESCE(v.is_short, 0) = 0");
+    } else if (shortsParam !== "1") {
+      appendShortsFeedVisibility(where, uid);
     }
     if (getUserSetting(uid, "hide_live_from_feed") === "1" || childHidesLive(uid)) {
       where.push("v.live_status NOT IN ('live', 'upcoming')");

@@ -3,7 +3,7 @@ import "./SettingsPage.css";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, ListMinus, LoaderCircle, ListMusic, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type ShortsFeedMode, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
@@ -180,7 +180,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
   const [adminDelegationAvailable, setAdminDelegationAvailable] = useState(false);
   const [activeAuthMethod, setActiveAuthMethod] = useState<AuthMethod>("none");
   const [isChildProfile, setIsChildProfile] = useState<boolean | null>(null);
-  const [showShorts, setShowShorts] = useState(false);
+  const [shortsFeedMode, setShortsFeedMode] = useState<ShortsFeedMode>("0");
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
   const [watchShowRelated, setWatchShowRelated] = useState(true);
@@ -464,7 +464,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
       setAppNameInput(name);
       setAppIconColor(r.settings.app_icon_color || "#0a5fff");
       setUpdateCheckInterval(r.settings.update_check_interval || "off");
-      setShowShorts(r.settings.show_shorts === "1");
+      setShortsFeedMode(r.settings.show_shorts === "1" || r.settings.show_shorts === "selected" ? r.settings.show_shorts : "0");
       setShowTopChannels(r.settings.show_top_channels !== "0");
       setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
       setWatchShowRelated(r.settings.watch_show_related !== "0");
@@ -656,11 +656,16 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     return () => document.removeEventListener("keydown", onKey);
   }, [pluginSettingsModalId]);
 
-  const toggleShorts = async () => {
-    const next = !showShorts;
-    setShowShorts(next);
-    await api.updateSettings({ show_shorts: next ? "1" : "0" });
-    showToast(next ? t("shortsVisible") : t("shortsHidden"));
+  const changeShortsFeedMode = async (next: ShortsFeedMode) => {
+    const previous = shortsFeedMode;
+    setShortsFeedMode(next);
+    try {
+      await api.updateSettings({ show_shorts: next });
+      showToast(t("displaySettingsSaved"));
+    } catch (error) {
+      setShortsFeedMode(previous);
+      showToast(error instanceof Error ? error.message : t("error"));
+    }
   };
 
   const toggleTopChannels = async () => {
@@ -1337,7 +1342,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     settingsLoadError,
     settingsNavGroups,
     settingsReady,
-    showShorts,
+    shortsFeedMode,
     showTopChannels,
     startRenameChannel,
     subBg,
@@ -1359,7 +1364,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     togglePlugin,
     toggleSb,
     toggleSbCategory,
-    toggleShorts,
+    changeShortsFeedMode,
     toggleTopChannels,
     toggleWatchComments,
     toggleWatchRelated,

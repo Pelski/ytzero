@@ -237,7 +237,11 @@ below.
 - `users`: display name, color, avatar reference, order, and child/adult role.
   Exclude usernames, hashes, OIDC subjects, proxy mappings, and PIN hashes.
 - `user_channels`: subscriptions and portable per-channel playback/caption/
-  members-only overrides.
+  members-only overrides. The per-channel Shorts main-feed opt-in is portable
+  configuration in `profile.subscriptions` schema v2; older v1 archives inherit
+  the profile default. The profile-wide Shorts feed mode is portable
+  configuration in `profile.settings` schema v2. Its legacy `0` and `1` values
+  retain their existing meanings, while `selected` enables channel opt-ins.
 - `user_followed_playlists`: followed playlist ID and feed preference.
 - `tags`, `channel_tags`, manual `video_tags`, `auto_tag_rules`.
 - `filter_rules`.

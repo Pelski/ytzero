@@ -19,7 +19,7 @@ access.
 ## Experience settings
 
 - **Appearance** controls the interface language, application identity, video-card density, and watched-video style.
-- **Feed** controls the feed age window and visibility of live, Upcoming, and members-only content.
+- **Feed** controls the feed age window and visibility of Shorts, live, Upcoming, and members-only content. Shorts can be hidden, shown for selected channels, or shown for every followed channel; a channel opt-in affects only the main feed.
 - **Navigation** controls Shorts, top channels, and the order and visibility of sidebar destinations.
 - **Playback** controls related videos, on-demand comments, list continuation, player language, quality, speed, keyboard seeking, and automatic landscape fullscreen.
 - **Subtitles** controls caption defaults and presentation.

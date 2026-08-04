@@ -1,5 +1,6 @@
 .ui-menu { display: grid; margin: -6px; min-width: 190px; padding: 6px; }
 .ui-menu__item { align-items: center; background: transparent; border: 0; border-radius: 8px; color: var(--text); cursor: pointer; display: flex; font-size: 13.5px; gap: 10px; padding: 9px 10px; text-align: left; width: 100%; }
+.ui-menu__item + .ui-menu__item { margin-top: 2px; }
 .ui-menu__item:hover { background: var(--surface-3); }
 .ui-menu__item--selected { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .ui-menu__icon { align-items: center; color: var(--text-2); display: flex; }

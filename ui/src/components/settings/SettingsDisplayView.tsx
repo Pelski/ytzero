@@ -1,5 +1,5 @@
 import { Check, Play } from "lucide-react";
-import { PLAYBACK_SPEEDS, SB_CATEGORIES } from "../../api";
+import { PLAYBACK_SPEEDS, SB_CATEGORIES, type ShortsFeedMode } from "../../api";
 import { emit } from "../../events";
 import { formatAgeUnit, LANGUAGES, languageName } from "../../i18n";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE } from "../../playerScreenshot";
@@ -39,6 +39,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     changeFeedAutoplayBehavior,
     changeFeedAutoplayDirection,
     changeFeedMaxAge,
+    changeShortsFeedMode,
     changeMembersOnlyVisibility,
     changeWatchedStyle,
     changeVideoCardActions,
@@ -88,7 +89,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     setSubBg,
     setSubColor,
     setSubSize,
-    showShorts,
+    shortsFeedMode,
     showTopChannels,
     subBg,
     subColor,
@@ -100,7 +101,6 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     toggleLiveFromFeed,
     toggleSb,
     toggleSbCategory,
-    toggleShorts,
     toggleTopChannels,
     toggleWatchComments,
     toggleWatchRelated,
@@ -217,6 +217,19 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
 
           <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
+          </SettingRow>
+
+          <SettingRow label={t("showShorts")} description={t("showShortsHint")}>
+            <SelectMenu
+              label={t("showShorts")}
+              value={shortsFeedMode}
+              onChange={(next: ShortsFeedMode) => changeShortsFeedMode(next)}
+              options={[
+                { value: "0", label: t("shortsFeedNone") },
+                { value: "selected", label: t("shortsFeedSelected") },
+                { value: "1", label: t("shortsFeedAll") },
+              ]}
+            />
           </SettingRow>
 
           <SettingRow label={t("feedMaxAge")} description={t("feedMaxAgeHint")}>
@@ -519,10 +532,6 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           }
 
           {displaySubTab === "navigation" && canManageArea("navigation") && <SettingsSection title={t("displayNavigation")} className="settings-display-group">
-          <SettingRow label={t("showShorts")} description={t("showShortsHint")}>
-            <Switch checked={showShorts} onCheckedChange={() => toggleShorts()} />
-          </SettingRow>
-
           <SettingRow label={t("showTopChannels")} description={t("showTopChannelsHint")}>
             <Switch checked={showTopChannels} onCheckedChange={() => toggleTopChannels()} />
           </SettingRow>

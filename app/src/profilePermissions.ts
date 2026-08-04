@@ -46,7 +46,7 @@ const SETTING_PERMISSION_AREAS: Readonly<Record<string, ProfilePermissionArea>> 
   hide_live_from_feed: "feed",
   hide_members_only_from_feed: "feed",
   hide_members_only_on_channel: "feed",
-  show_shorts: "navigation",
+  show_shorts: "feed",
   shorts_tab: "navigation",
   show_top_channels: "navigation",
   sidebar_nav: "navigation",

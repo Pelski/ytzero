@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./ChannelPage.css";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { CalendarClock, Captions, Check, ChevronLeft, ChevronRight, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
-import { api, type ChannelAbout, type ChannelManualStatus, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
+import { api, type ChannelAbout, type ChannelManualStatus, type ChannelShortsFeedVisibility, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
 import TagPickerMenu from "../components/TagPickerMenu";
@@ -17,7 +17,6 @@ import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages"
 import { Badge, Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
 import { formatAppDate, parseAppTimestamp } from "../dateTime";
 import ChannelRefreshScheduleDialog from "../components/ChannelRefreshScheduleDialog";
-import ChannelSyncDialog from "../components/ChannelSyncDialog";
 import { markYouTubeUrl } from "../youtubeUrl";
 import { isChannelSyncRateLimitMessage } from "../channelSync";
 import { useChannelSyncActivity } from "../useChannelSyncActivity";
@@ -50,11 +49,11 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [captionMode, setCaptionMode] = useState<"off" | "language" | null>(null);
   const [captionLanguage, setCaptionLanguage] = useState<string | null>(null);
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("default");
+  const [shortsFeedVisibility, setShortsFeedVisibility] = useState<ChannelShortsFeedVisibility>("default");
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [refreshScheduleOpen, setRefreshScheduleOpen] = useState(false);
-  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [startedSyncJobId, setStartedSyncJobId] = useState<string | null>(null);
-  const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "members">("root");
+  const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "members" | "shorts">("root");
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
@@ -77,6 +76,10 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const prevIdRef = useRef<string | undefined>(undefined);
   const completedSyncJobsRef = useRef(new Set<string>());
   const { job: backgroundSyncJob, busy: backgroundSyncBusy } = useChannelSyncActivity();
+  const backgroundChannelSyncActive = backgroundSyncJob?.status === "running"
+    && backgroundSyncJob.channels.some((channel) => channel.channelId === id && (channel.status === "pending" || channel.status === "running"));
+  const startedChannelSyncActive = Boolean(startedSyncJobId && !completedSyncJobsRef.current.has(startedSyncJobId));
+  const channelSyncActive = syncing || startedChannelSyncActive || backgroundChannelSyncActive;
 
   useEffect(() => {
     if (!id) return;
@@ -107,6 +110,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     setCaptionMode(null);
     setCaptionLanguage(null);
     setMembersOnlyVisibility("default");
+    setShortsFeedVisibility("default");
+    setStartedSyncJobId(null);
     window.scrollTo(0, 0);
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
     api.channel(id).then((r) => {
@@ -117,6 +122,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setCaptionMode(r.channel.caption_mode ?? null);
       setCaptionLanguage(r.channel.caption_language ?? null);
       setMembersOnlyVisibility(r.channel.members_only_visibility ?? "default");
+      setShortsFeedVisibility(r.channel.shorts_feed_visibility ?? "default");
     }).catch(console.error);
     api
       .feed({ channel: id, status: "all", shorts: true, page: 0 })
@@ -235,6 +241,25 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       });
   };
 
+  const shortsFeedLabel = shortsFeedVisibility === "show"
+    ? t("channelShortsFeedShow")
+    : t("channelSettingDefault");
+
+  const changeShortsFeedVisibility = (visibility: ChannelShortsFeedVisibility) => {
+    if (!id) return;
+    const previous = shortsFeedVisibility;
+    setShortsFeedVisibility(visibility);
+    api.setChannelShortsFeedVisibility(id, visibility)
+      .catch((error) => {
+        setShortsFeedVisibility(previous);
+        console.error(error);
+      });
+  };
+
+  const withFeedSettingsTooltip = (button: ReactNode) => followed
+    ? button
+    : <Tooltip text={t("channelFeedFollowRequiredHint")} pos="left" portal className="channel-feed-setting-tooltip">{button}</Tooltip>;
+
   const changeCaptions = (mode: "off" | "language" | null, language?: string) => {
     if (!id) return;
     const previousMode = captionMode;
@@ -326,7 +351,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setSyncMsg(t("channelSyncStarted"));
     } catch (error) {
       setSyncMsg(t("syncError"));
-      throw error;
+      console.error(error);
     } finally {
       setSyncing(false);
       setTimeout(() => setSyncMsg(null), 4000);
@@ -458,7 +483,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         </div>
         <div className="channel-header-actions">
           <SplitButton
-            onClick={() => setSyncDialogOpen(true)}
+            onClick={() => void handleSync()}
             disabled={syncing || backgroundSyncBusy || manualStatus !== "active"}
             title={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("syncTitle")}
             menuLabel={t("moreActions")}
@@ -467,8 +492,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
               <MenuItem icon={<FileClock />} onClick={handleMetadataSync} title={t("syncMetadataHint")}>{t("syncMetadata")}</MenuItem>
             </>}
           >
-            <RefreshCw size={15} className={syncing ? "channel-spin" : ""} />
-            {syncing ? t("syncing") : backgroundSyncBusy ? t("channelSyncAlreadyRunning") : syncMsg ?? t("syncChannel")}
+            <RefreshCw size={15} className={channelSyncActive ? "channel-spin" : ""} />
+            {channelSyncActive ? t("syncing") : backgroundSyncBusy ? t("channelSyncAlreadyRunning") : syncMsg ?? t("syncChannel")}
           </SplitButton>
           <Button
             variant={followed ? "danger" : "primary"}
@@ -499,12 +524,15 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     </button>
                     <MenuSeparator />
                     <div className="more-menu-section-label">{t("channelFeed")}</div>
-                    <button className="channel-technical-item" onClick={() => { setTechnicalOpen(false); setRefreshScheduleOpen(true); }}>
+                    {withFeedSettingsTooltip(<button className="channel-technical-item" disabled={!followed} onClick={() => { setTechnicalOpen(false); setRefreshScheduleOpen(true); }}>
                       <CalendarClock /> <span>{t("channelRefreshSchedule")}</span><ChevronRight />
-                    </button>
-                    <button className="channel-technical-item" onClick={() => setTechnicalView("members")}>
+                    </button>)}
+                    {withFeedSettingsTooltip(<button className="channel-technical-item" disabled={!followed} onClick={() => setTechnicalView("members")}>
                       <Star /> <span>{t("channelMembersOnlyFeed")}</span><MenuStatus>{membersOnlyFeedLabel}</MenuStatus><ChevronRight />
-                    </button>
+                    </button>)}
+                    {withFeedSettingsTooltip(<button className="channel-technical-item" disabled={!followed} onClick={() => setTechnicalView("shorts")}>
+                      <Zap /> <span>{t("channelShortsFeed")}</span><MenuStatus>{shortsFeedLabel}</MenuStatus><ChevronRight />
+                    </button>)}
                   </>
                 )}
                 {technicalView === "speed" && (
@@ -564,6 +592,19 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     <button className={membersOnlyVisibility === "hidden" ? "is-selected" : undefined} onClick={() => changeMembersOnlyVisibility("hidden")}>
                       {t("channelMembersOnlyNowhere")}
                       {membersOnlyVisibility === "hidden" && <MenuStatus><Check size={14} /></MenuStatus>}
+                    </button>
+                  </>
+                )}
+                {technicalView === "shorts" && (
+                  <>
+                    <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("channelShortsFeed")}</div>
+                    <button className={shortsFeedVisibility === "default" ? "is-selected" : undefined} onClick={() => changeShortsFeedVisibility("default")}>
+                      {t("channelSettingDefault")}
+                      {shortsFeedVisibility === "default" && <MenuStatus><Check size={14} /></MenuStatus>}
+                    </button>
+                    <button className={shortsFeedVisibility === "show" ? "is-selected" : undefined} onClick={() => changeShortsFeedVisibility("show")}>
+                      {t("channelShortsFeedShow")}
+                      {shortsFeedVisibility === "show" && <MenuStatus><Check size={14} /></MenuStatus>}
                     </button>
                   </>
                 )}
@@ -654,9 +695,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         (videosLoading ? (
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
-          <EmptyState title={t("channelVideosEmpty")} description={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("channelVideosEmptyHint")} action={manualStatus === "active" && <Button variant="primary" onClick={() => setSyncDialogOpen(true)} disabled={syncing || backgroundSyncBusy}>
-              <RefreshCw size={15} className={syncing ? "channel-spin" : undefined} />
-              {syncing ? t("syncing") : t("syncChannelVideos")}
+          <EmptyState title={t("channelVideosEmpty")} description={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("channelVideosEmptyHint")} action={manualStatus === "active" && <Button variant="primary" onClick={() => void handleSync()} disabled={syncing || backgroundSyncBusy}>
+              <RefreshCw size={15} className={channelSyncActive ? "channel-spin" : undefined} />
+              {channelSyncActive ? t("syncing") : t("syncChannelVideos")}
             </Button>} />
         ) : (
           <div className="video-grid">
@@ -730,14 +771,6 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           {(tab === "processing" ? processingHasMore : hasMore) && <div ref={loadMoreRef} style={{ height: 1 }} />}
         </>
       )}
-      <ChannelSyncDialog
-        channels={id ? [{ channel_id: id, title: about?.title || id, url: `https://www.youtube.com/channel/${id}`, thumbnail: about?.avatar || "", handle: about?.handle, manual_status: manualStatus, tags: channelTags }] : []}
-        open={syncDialogOpen}
-        onOpenChange={setSyncDialogOpen}
-        jobRunning={backgroundSyncBusy}
-        initialChannelIds={id ? [id] : []}
-        onStart={handleSync}
-      />
     </>
   );
 }

@@ -88,6 +88,29 @@ describe("portable backup classification and restore", () => {
     expect((await backup.backupOptions()).exclusions.join(" ")).toContain("passkeys");
   });
 
+  test("round-trips the Shorts feed mode and per-channel opt-in", async () => {
+    const options = await backup.backupOptions();
+    const profile = options.profiles[0];
+    await setUserSetting(1, "show_shorts", "selected");
+    db.prepare("UPDATE user_channels SET shorts_feed_visibility='show' WHERE user_id=1 AND channel_id='UCportable'").run();
+    const zip = await backup.createPortableBackup({ preset: "setup", profiles: [profile.id] });
+
+    await setUserSetting(1, "show_shorts", "0");
+    db.prepare("UPDATE user_channels SET shorts_feed_visibility='default' WHERE user_id=1 AND channel_id='UCportable'").run();
+
+    const analyzed = await backup.analyzePortableBackup(1, zip);
+    const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
+    const plan = await backup.planPortableRestore(1, analyzed.sessionId, {
+      mappings,
+      sections: analyzed.manifest.sections.map((section) => section.id),
+      strategy: "merge",
+    });
+    await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
+
+    expect(getUserSetting(1, "show_shorts")).toBe("selected");
+    expect((db.prepare("SELECT shorts_feed_visibility FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").get() as any)?.shorts_feed_visibility).toBe("show");
+  });
+
   test("configuration export excludes authentication values and runtime tables", async () => {
     setSetting("auth_oidc_client_secret", "DO-NOT-EXPORT-THIS");
     setSetting("auth_shared_password_hash", "HASH-DO-NOT-EXPORT");

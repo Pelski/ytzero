@@ -12,7 +12,6 @@ export default function ArchivePage({ onPlay }: { onPlay: PlayVideo }) {
   const { t } = useI18n();
   useDocumentTitle(t("navArchive"));
   const [videos, setVideos] = useState<Video[]>([]);
-  const [showShorts, setShowShorts] = useState(true);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
@@ -26,23 +25,18 @@ export default function ArchivePage({ onPlay }: { onPlay: PlayVideo }) {
   }, []);
 
   useEffect(load, [load]);
-  useEffect(() => {
-    api.settings().then((r) => setShowShorts(r.settings.show_shorts === "1")).catch(console.error);
-  }, []);
-
-  const visible = showShorts ? videos : videos.filter((v) => v.is_short !== 1);
-  const playbackQueue = snapshotPlaybackQueue(visible, t("navArchive"));
+  const playbackQueue = snapshotPlaybackQueue(videos, t("navArchive"));
 
   return (
     <>
       <PageHeader title={t("navArchive")} />
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
-      ) : visible.length === 0 ? (
+      ) : videos.length === 0 ? (
         <EmptyState art={<EmptyArt scene="archiveEmpty" />} title={t("archiveEmpty")} description={t("archiveEmptyHint")} />
       ) : (
         <div className="video-grid">
-          {visible.map((v) => (
+          {videos.map((v) => (
             <VideoCard key={v.video_id} video={v} onPlay={(video) => onPlay(video, playbackQueue)} onChanged={load} showRestore />
           ))}
         </div>

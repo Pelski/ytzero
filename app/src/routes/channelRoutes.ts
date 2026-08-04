@@ -499,6 +499,20 @@ api.put("/channels/:id/members-only-feed", async (c) => {
   return c.json({ ok: true, visibility });
 });
 
+// Per-profile opt-in for the selective Shorts mode. Strict global "none" and
+// "all" modes ignore this value but keep it so switching modes is reversible.
+api.put("/channels/:id/shorts-feed", async (c) => {
+  const { visibility } = await c.req.json<{ visibility: unknown }>();
+  if (visibility !== "default" && visibility !== "show") {
+    return c.json({ error: "visibility must be default or show" }, 400);
+  }
+  await database.prepare(
+    `INSERT INTO user_channels (user_id, channel_id, followed, shorts_feed_visibility) VALUES (?, ?, 0, ?)
+     ON CONFLICT(user_id, channel_id) DO UPDATE SET shorts_feed_visibility = excluded.shorts_feed_visibility`
+  ).run(currentUserId(c), c.req.param("id"), visibility);
+  return c.json({ ok: true, visibility });
+});
+
 // Downloads are shared between profiles, therefore this is intentionally a
 // channel-level setting rather than a user_channels preference. Zero disables
 // the threshold.
@@ -558,9 +572,9 @@ api.get("/channels/top", async (c) => {
 
 api.get("/channels/recent", async (c) => {
   const uid = currentUserId(c);
-  const shortsFilter = getUserSetting(uid, "show_shorts") === "1"
-    ? ""
-    : "AND COALESCE(is_short, 0) = 0";
+  // Sidebar ordering is navigation, not the main feed. Keep it stable by using
+  // the latest regular upload regardless of the Shorts feed policy.
+  const shortsFilter = "AND COALESCE(is_short, 0) = 0";
   const rows = await database.prepare(`
     SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail,
            (SELECT thumbnail FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1) AS latest_thumbnail,
@@ -588,8 +602,8 @@ api.get("/channels/:id", async (c) => {
     )
     .all(uid, c.req.param("id")) as any[];
   // followed reflects the active profile (null row = not subscribed).
-  const sub = await database.prepare("SELECT followed, playback_speed, caption_mode, caption_language, hide_members_only_from_feed, hide_members_only_on_channel, members_only_visibility FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null; hide_members_only_from_feed: number | null; hide_members_only_on_channel: number | null; members_only_visibility: string | null } | null;
-  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, hide_members_only_from_feed: sub?.hide_members_only_from_feed ?? null, hide_members_only_on_channel: sub?.hide_members_only_on_channel ?? null, members_only_visibility: sub?.members_only_visibility === "feed" ? "everywhere" : sub?.members_only_visibility ?? "default", tags } });
+  const sub = await database.prepare("SELECT followed, playback_speed, caption_mode, caption_language, hide_members_only_from_feed, hide_members_only_on_channel, members_only_visibility, shorts_feed_visibility FROM user_channels WHERE user_id = ? AND channel_id = ?").get(uid, c.req.param("id")) as { followed: number; playback_speed: string | null; caption_mode: string | null; caption_language: string | null; hide_members_only_from_feed: number | null; hide_members_only_on_channel: number | null; members_only_visibility: string | null; shorts_feed_visibility: string | null } | null;
+  return c.json({ channel: { ...serializeChannel(ch), followed: sub ? sub.followed : 0, playback_speed: sub?.playback_speed ?? null, caption_mode: sub?.caption_mode ?? null, caption_language: sub?.caption_language ?? null, hide_members_only_from_feed: sub?.hide_members_only_from_feed ?? null, hide_members_only_on_channel: sub?.hide_members_only_on_channel ?? null, members_only_visibility: sub?.members_only_visibility === "feed" ? "everywhere" : sub?.members_only_visibility ?? "default", shorts_feed_visibility: sub?.shorts_feed_visibility === "show" ? "show" : "default", tags } });
 });
 
 api.get("/channels/:id/refresh-schedule", async (c) => {

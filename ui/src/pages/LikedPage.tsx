@@ -17,10 +17,9 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [showShorts, setShowShorts] = useState<boolean | null>(null);
+  const [showShorts, setShowShorts] = useState(true);
 
   const load = useCallback((requestedPage = page) => {
-    if (showShorts === null) return;
     if (requestedPage === 0) setLoading(true);
     else setLoadingMore(true);
     api
@@ -36,18 +35,12 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
       });
   }, [page, showShorts]);
 
-  useEffect(() => {
-    api
-      .settings()
-      .then((r) => setShowShorts(r.settings.show_shorts === "1"))
-      .catch(() => setShowShorts(false));
-  }, []);
   useEffect(load, [load]);
 
   const toggleShorts = () => {
     setPage(0);
     setVideos([]);
-    setShowShorts((prev) => !(prev ?? false));
+    setShowShorts((prev) => !prev);
   };
   const playbackQueue = snapshotPlaybackQueue(videos, t("navLiked"));
 
@@ -58,7 +51,6 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
         <Chip
           active={showShorts === true}
           onClick={toggleShorts}
-          disabled={showShorts === null}
         >
           <Clapperboard size={13} />
           {t("navShorts")}

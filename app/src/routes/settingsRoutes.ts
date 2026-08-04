@@ -132,6 +132,9 @@ api.put("/settings", async (c) => {
   if ("video_card_actions" in body && !isVideoCardActionMode(body.video_card_actions)) {
     return c.json({ error: "invalid video card action mode" }, 400);
   }
+  if ("show_shorts" in body && body.show_shorts !== "0" && body.show_shorts !== "selected" && body.show_shorts !== "1") {
+    return c.json({ error: "invalid Shorts feed mode" }, 400);
+  }
   for (const key of Object.keys(SETTING_DEFAULTS)) {
     if (key === "child_lock_pin_hash" || key === "child_lock_enabled") continue;
     if (!(key in body)) continue;

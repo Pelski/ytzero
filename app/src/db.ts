@@ -72,6 +72,9 @@ try { db.exec("ALTER TABLE user_channels ADD COLUMN hide_members_only_on_channel
 // databases briefly received a NOT NULL channel flag, which made "default"
 // impossible to persist; this column is the source of truth going forward.
 try { db.exec("ALTER TABLE user_channels ADD COLUMN members_only_visibility TEXT"); } catch {}
+// Explicit per-channel opt-in used by the selective Shorts feed mode. The
+// profile-wide "none" and "all" modes intentionally ignore this preference.
+try { db.exec("ALTER TABLE user_channels ADD COLUMN shorts_feed_visibility TEXT"); } catch {}
 db.exec(`
   UPDATE user_channels
   SET members_only_visibility = CASE
@@ -206,6 +209,9 @@ db.exec("UPDATE videos SET bucket = 'tonight' WHERE bucket = 'evening';");
 
 export const SETTING_DEFAULTS: Record<string, string> = {
   language: "en",
+  // 0 = no Shorts in Main, selected = opted-in channels, 1 = every channel.
+  // Keeping the legacy 0/1 values makes existing databases and backups retain
+  // their exact behaviour without a data migration.
   show_shorts: "0",
   player_hl: "en",
   player_cc: "0",

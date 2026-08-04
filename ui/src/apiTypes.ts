@@ -62,6 +62,8 @@ export interface DeArrowBranding {
 }
 
 export type MembersOnlyVisibility = "default" | "everywhere" | "channel" | "hidden";
+export type ShortsFeedMode = "0" | "selected" | "1";
+export type ChannelShortsFeedVisibility = "default" | "show";
 export type ChannelManualStatus = "active" | "paused" | "broken" | "banned" | "deleted";
 
 export interface ChannelRefreshScheduleDetails {
@@ -97,6 +99,7 @@ export interface Channel {
   hide_members_only_from_feed?: number | null;
   hide_members_only_on_channel?: number | null;
   members_only_visibility?: MembersOnlyVisibility;
+  shorts_feed_visibility?: ChannelShortsFeedVisibility;
   auto_download_min_duration_override?: number | null;
   subscribed_at?: string | null;
   latest_video_at?: string | null;
@@ -248,7 +251,7 @@ export interface UserPlaylistRule {
 
 export interface AppSettings {
   language: "en" | "pl" | "de";
-  show_shorts: string;
+  show_shorts: ShortsFeedMode;
   player_hl: string;
   player_cc: string;
   player_cc_lang: string;
