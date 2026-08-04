@@ -4,8 +4,8 @@ import { useSettingsPageController } from "./useSettingsPageController";
 import { SettingsDisplayView } from "../components/settings/SettingsDisplayView";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, ListMinus, LoaderCircle, ListMusic, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, LoaderCircle, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
+import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildLockStatus, type FilterRule, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
@@ -18,7 +18,7 @@ import { PlaylistIconPicker } from "../components/PlaylistIcon";
 import { TableSkeleton } from "../components/LoadingState";
 import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
-import { formatAgeUnit, formatVideoCount, LANGUAGES, languageName, useI18n, type I18nKey } from "../i18n";
+import { formatAgeUnit, LANGUAGES, languageName, useI18n, type I18nKey } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { applyWatchedStyle, parseWatchedStyle, WATCHED_STYLES, type WatchedStyle } from "../watchedStyle";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
@@ -28,6 +28,7 @@ import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat, type
 import { formatAppDate } from "../dateTime";
 import { mergeRemoteChangelog } from "../changelog";
 import DatabaseSettings from "../components/DatabaseSettings";
+import { FollowedPlaylistSettingsList } from "../components/settings/FollowedPlaylistSettingsList";
 import { scheduleSettingWrite } from "../settingsWriteQueue";
 import ProfilesSettings, { ProfilePasswordSettings } from "../components/settings/ProfileSettings";
 import { ChannelOwnership, FilterRuleGroups, PlaylistSettingsItem, PluginMultiselect, RuleRow, SidebarNavEditor, TagRow } from "../components/settings/SettingsEditors";
@@ -691,17 +692,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
 
           {channelSubTab === "playlists" && canManageArea("followed_playlists") && (
             followedPlaylists.length === 0 ? <EmptyState title={t("noFollowedPlaylists")} description={t("noFollowedPlaylistsHint")} /> :
-            <div className="followed-playlists-settings">
-              {followedPlaylists.map((playlist) => <div className="followed-playlist-row" key={playlist.playlist_id}>
-                <Link to={`/playlist/${playlist.playlist_id}`} className="followed-playlist-row__identity">
-                  {playlist.thumbnail ? <img src={img(playlist.thumbnail)} alt="" /> : <div className="followed-playlist-row__placeholder"><ListMusic /></div>}
-                  <span><strong>{playlist.title}</strong><small>{playlist.channel_title}</small></span>
-                </Link>
-                <span className="muted">{playlist.video_count ? formatVideoCount(Number.parseInt(playlist.video_count, 10) || 0, language) : ""}</span>
-                <Button size="sm" leadingIcon={<RefreshCw />} onClick={async () => { await api.syncPlaylist(playlist.playlist_id); loadFollowedPlaylists(); }}>{t("syncPlaylist")}</Button>
-                <Button size="sm" variant="danger" leadingIcon={<ListMinus />} onClick={async () => { await api.followPlaylist(playlist.playlist_id, false); loadFollowedPlaylists(); }}>{t("unfollowPlaylist")}</Button>
-              </div>)}
-            </div>
+            <FollowedPlaylistSettingsList playlists={followedPlaylists} onChanged={loadFollowedPlaylists} />
           )}
 
           {channelSubTab === "filters" && canManageArea("filters") && (

@@ -1,20 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import "./ChannelPlaylistPage.css";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChevronRight, Download, FileClock, ListMinus, ListPlus, ListVideo, RefreshCw } from "lucide-react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Download, FileClock, ListMinus, ListPlus, RefreshCw } from "lucide-react";
 import { api, type FollowedPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
-import { img } from "../img";
-import { formatPlaylistVideoCount, useI18n } from "../i18n";
+import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, EmptyState, LocalToast, SectionHeader } from "../components/ui";
 import Popconfirm from "../components/Popconfirm";
+import ChannelPlaylistHero from "../components/ChannelPlaylistHero";
 
 export default function ChannelPlaylistPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const [playlist, setPlaylist] = useState<FollowedPlaylist | null>(null);
   useDocumentTitle(playlist?.title);
   const [videos, setVideos] = useState<Video[]>([]);
@@ -71,20 +71,7 @@ export default function ChannelPlaylistPage() {
   if (!playlist) return <EmptyState title={t("playlistUnavailable")} />;
 
   return <>
-    <header className="channel-playlist-hero">
-      <div className="channel-playlist-hero__media">
-        {playlist.thumbnail ? <img src={img(playlist.thumbnail)} alt="" /> : <div className="channel-playlist-hero__placeholder"><ListVideo /></div>}
-        <span className="channel-playlist-hero__count"><ListVideo /> {formatPlaylistVideoCount(playlist.video_count, language)}</span>
-      </div>
-      <div className="channel-playlist-hero__content">
-        <div className="channel-playlist-hero__eyebrow">{t("publicPlaylist")}</div>
-        <h1>{playlist.title}</h1>
-        <Link className="channel-playlist-hero__channel" to={`/channel/${playlist.channel_id}`}>
-          {playlist.channel_thumbnail ? <img src={img(playlist.channel_thumbnail)} alt="" /> : <span className="channel-playlist-hero__avatar-fallback">{playlist.channel_title.charAt(0).toUpperCase()}</span>}
-          <span className="channel-playlist-hero__channel-copy"><small>{t("playlistChannel")}</small><strong>{playlist.channel_title}</strong></span>
-          <ChevronRight />
-        </Link>
-        <div className="channel-playlist-hero__actions">
+    <ChannelPlaylistHero playlist={playlist} actions={<>
           <Button onClick={sync} disabled={pending} leadingIcon={<RefreshCw className={pending ? "spin" : undefined} />}>{t("syncPlaylist")}</Button>
           <Button variant={playlist.followed ? "danger" : "primary"} onClick={toggleFollow} disabled={pending} leadingIcon={playlist.followed ? <ListMinus /> : <ListPlus />}>
             {playlist.followed ? t("unfollowPlaylist") : t("followPlaylist")}
@@ -93,9 +80,7 @@ export default function ChannelPlaylistPage() {
             ? <Popconfirm message={t("playlistDownloadConfirm", { count: allPlaylistVideos.length })} onConfirm={downloadAll}><Button disabled={downloadPending} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button></Popconfirm>
             : <Button onClick={downloadAll} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button>)}
           {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
-        </div>
-      </div>
-    </header>
+        </>} />
     {loading ? <VideoGridSkeleton gridSize="sm" /> : videos.length === 0 && processingVideos.length === 0 ? <EmptyState title={t("playlistIsEmpty")} /> : videos.length > 0 ?
       <div className="video-grid video-grid--sm">{videos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}`)} onChanged={load} />)}</div> : null}
     {!loading && processingVideos.length > 0 && <section className="channel-playlist-processing">

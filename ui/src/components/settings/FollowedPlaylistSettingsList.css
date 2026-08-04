@@ -1,0 +1,18 @@
+.followed-playlist-settings-row__media { aspect-ratio: 16 / 9; background: var(--surface-3); border-radius: 7px; display: flex; height: 54px; justify-content: center; overflow: hidden; }
+.followed-playlist-settings-row__media img { height: 100%; object-fit: cover; width: 96px; }
+.followed-playlist-settings-row__media > span { align-items: center; color: var(--text-3); display: flex; justify-content: center; width: 96px; }
+.followed-playlist-settings-row__media svg { height: 20px; width: 20px; }
+.followed-playlist-settings-row__title { color: inherit; display: block; overflow: hidden; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
+.followed-playlist-settings-row__title:hover { color: var(--accent); }
+
+@container settings-section (max-width: 680px) {
+  .followed-playlist-settings-row { align-items: start; grid-template-columns: auto minmax(0, 1fr) auto; }
+  .followed-playlist-settings-row .ui-list-actions { grid-column: 1 / -1; justify-content: stretch; width: 100%; }
+  .followed-playlist-settings-row .ui-list-actions .ui-button { flex: 1 1 auto; }
+}
+
+@container settings-section (max-width: 430px) {
+  .followed-playlist-settings-row { grid-template-columns: 76px minmax(0, 1fr); }
+  .followed-playlist-settings-row .ui-list-row__meta { display: none; }
+  .followed-playlist-settings-row__media { height: 43px; }
+}

@@ -1,0 +1,32 @@
+.followed-playlists-view { display: grid; gap: 28px; }
+.followed-playlist-section { min-width: 0; }
+.channel-playlist-hero--compact { gap: 18px; grid-template-columns: 190px minmax(0, 1fr); margin: 0; padding: 12px; }
+.channel-playlist-hero--compact .channel-playlist-hero__content { padding: 0 152px 0 0; position: relative; }
+.channel-playlist-hero--compact .channel-playlist-hero__eyebrow { margin-bottom: 4px; }
+.channel-playlist-hero--compact .channel-playlist-hero__channel { border-radius: 9px; margin-top: 9px; max-width: 310px; padding: 5px 8px 5px 5px; }
+.channel-playlist-hero--compact .channel-playlist-hero__channel > img,
+.channel-playlist-hero--compact .channel-playlist-hero__avatar-fallback { flex-basis: 32px; height: 32px; width: 32px; }
+.followed-playlist-title-link { align-items: center; color: var(--text); display: inline-flex; gap: 7px; max-width: 100%; text-decoration: none; }
+.followed-playlist-title-link h2 { font-size: clamp(18px, 2vw, 24px); letter-spacing: -.025em; line-height: 1.12; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.followed-playlist-title-link > svg { color: var(--text-2); flex: 0 0 auto; height: 18px; transition: transform .14s ease; width: 18px; }
+.followed-playlist-title-link:hover > svg { transform: translateX(2px); }
+.followed-playlist-new-count { position: absolute; right: 0; top: 2px; }
+.followed-playlist-videos { margin: 0 12px; }
+.followed-playlist-video { grid-template-columns: 88px minmax(180px, 1fr) auto; }
+
+@media (max-width: 660px) {
+  .channel-playlist-hero--compact { gap: 12px; grid-template-columns: 132px minmax(0, 1fr); padding: 10px; }
+  .channel-playlist-hero--compact .channel-playlist-hero__content { justify-content: flex-start; padding: 0; }
+  .channel-playlist-hero--compact .channel-playlist-hero__channel { background: transparent; margin-top: 5px; padding: 0; }
+  .channel-playlist-hero--compact .channel-playlist-hero__channel > img,
+  .channel-playlist-hero--compact .channel-playlist-hero__avatar-fallback,
+  .channel-playlist-hero--compact .channel-playlist-hero__channel-copy small { display: none; }
+  .followed-playlist-new-count { margin-top: 8px; position: static; }
+  .followed-playlist-videos { margin: 0 6px; }
+}
+
+@media (max-width: 430px) {
+  .channel-playlist-hero--compact { grid-template-columns: 105px minmax(0, 1fr); }
+  .channel-playlist-hero--compact .channel-playlist-hero__eyebrow { display: none; }
+  .followed-playlist-title-link h2 { font-size: 17px; }
+}
