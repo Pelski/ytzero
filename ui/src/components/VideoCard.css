@@ -433,66 +433,6 @@ button.video-card:disabled { cursor: default; }
 }
 .video-card .thumb-wrap:hover .thumb { transform: scale(1.04); }
 
-.video-card .card-body { padding: 10px 2px 0; display: flex; flex-direction: row; gap: 10px; }
-.card-avatar-link { flex-shrink: 0; margin-top: 2px; }
-.card-ch-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  display: block;
-}
-.card-ch-avatar-fallback {
-  background: var(--surface-3);
-  color: var(--text-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
-}
-.card-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.video-card .v-title {
-  color: var(--text);
-  text-decoration: none;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.4;
-  cursor: pointer;
-  letter-spacing: -0.1px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.video-card .v-title:hover { color: #fff; }
-.video-card .v-channel-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 5px;
-  margin-top: 2px;
-  min-width: 0;
-}
-.video-card .v-channel {
-  font-size: 12.5px;
-  color: var(--text-2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 0;
-  max-width: 100%;
-}
-.video-card .v-channel::after {
-  content: "·";
-  color: var(--text-3);
-  /* inline-block keeps the separator out of the link's hover underline */
-  display: inline-block;
-  margin-left: 5px;
-}
-.video-card .v-channel.no-date::after { display: none; }
-.video-card .v-channel:hover { color: var(--text); text-decoration: underline; }
-.video-card .v-time { font-size: 12px; color: var(--text-2); white-space: nowrap; flex-shrink: 0; }
 .channel-link:hover { color: var(--text); text-decoration: underline; }
 
 /* action controls: card hover shows a small handle, top-half hover expands buttons */
@@ -721,11 +661,3 @@ html[data-video-card-actions="on_demand"] .video-card .thumb-actions-peek {
   transform: none;
   opacity: 1;
 }
-
-/* avatar size scales with grid */
-.video-grid--sm .card-ch-avatar,
-.h-scroll-row--sm .card-ch-avatar { width: 30px; height: 30px; font-size: 12px; }
-.video-grid--md .card-ch-avatar,
-.h-scroll-row--md .card-ch-avatar { width: 34px; height: 34px; font-size: 13px; }
-.video-grid--lg .card-ch-avatar,
-.h-scroll-row--lg .card-ch-avatar { width: 40px; height: 40px; font-size: 15px; }

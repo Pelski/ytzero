@@ -20,6 +20,7 @@ PORT="${YTZERO_PORT:-3001}"
 ENV_FILE="/etc/ytzero/ytzero.env"
 SERVICE_USER="ytzero"
 BUN_DIR="/opt/bun"
+BUN_BIN="${BUN_DIR}/bin/bun"
 
 msg() { echo -e "\e[1;34m==>\e[0m $*"; }
 warn() { echo -e "\e[1;33m warn\e[0m $*" >&2; }
@@ -59,18 +60,19 @@ apt-get install -y -qq --no-install-recommends \
 
 # ---------- bun ----------
 
-if [[ ! -x "${BUN_DIR}/bin/bun" ]]; then
+if [[ ! -x "${BUN_BIN}" ]]; then
   msg "Installing Bun to ${BUN_DIR}"
   # Bun's installer picks the baseline build itself on CPUs without AVX2,
   # which is what older homelab hardware needs.
   BUN_INSTALL="${BUN_DIR}" bash -c "$(curl -fsSL https://bun.sh/install)" >/dev/null
 fi
-ln -sf "${BUN_DIR}/bin/bun" /usr/local/bin/bun
+ln -sf "${BUN_BIN}" /usr/local/bin/bun
 
-if ! bun --version >/dev/null 2>&1; then
+if ! "${BUN_BIN}" --version >/dev/null 2>&1; then
   die "Bun was installed but will not run on this CPU. Check the host CPU flags (a baseline build is selected automatically when AVX2 is missing)."
 fi
-msg "Bun $(bun --version)"
+BUN_VERSION="$("${BUN_BIN}" --version)"
+msg "Bun ${BUN_VERSION}"
 
 # ---------- service user ----------
 
@@ -87,6 +89,7 @@ mkdir -p \
   "${DATA_DIR}/downloads" \
   "${DATA_DIR}/avatars" \
   "${DATA_DIR}/logs" \
+  "${DATA_DIR}/restore-sessions" \
   "$(dirname "${ENV_FILE}")"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
 
@@ -151,7 +154,7 @@ cp "${TMP_DIR}/unpack/package.json" "${TMP_DIR}/unpack/bun.lock" "${TMP_DIR}/unp
 msg "Installing dependencies"
 chown -R "${SERVICE_USER}:${SERVICE_USER}" "${APP_DIR}"
 runuser -u "${SERVICE_USER}" -- env HOME="${APP_DIR}" \
-  bun install --cwd "${APP_DIR}" --production --frozen-lockfile >/dev/null
+  "${BUN_BIN}" install --cwd "${APP_DIR}" --production --frozen-lockfile >/dev/null
 
 # ---------- config ----------
 
@@ -170,6 +173,7 @@ IMG_CACHE_DIR=${DATA_DIR}/imgcache
 DOWNLOADS_DIR=${DATA_DIR}/downloads
 AVATAR_DIR=${DATA_DIR}/avatars
 LOG_PATH=${DATA_DIR}/logs/ytzero.log
+RESTORE_SESSION_DIR=${DATA_DIR}/restore-sessions
 YTDLP_PATH=${APP_DIR}/bin/yt-dlp
 YTDLP_AUTO_UPDATE=1
 IDLE_TIMEOUT_SECONDS=120
@@ -180,6 +184,12 @@ EOF
   chown root:"${SERVICE_USER}" "${ENV_FILE}"
 else
   msg "Keeping existing ${ENV_FILE}"
+fi
+
+# Older native installs predate the restore-session setting. Add the safe
+# data-directory default on update without replacing an operator override.
+if ! grep -q '^RESTORE_SESSION_DIR=' "${ENV_FILE}"; then
+  echo "RESTORE_SESSION_DIR=${DATA_DIR}/restore-sessions" >> "${ENV_FILE}"
 fi
 
 # YTZERO_VERSION is what /api/health reports; refreshed on every update.
@@ -210,7 +220,7 @@ Group=${SERVICE_USER}
 WorkingDirectory=${APP_DIR}
 Environment=HOME=${APP_DIR}
 EnvironmentFile=${ENV_FILE}
-ExecStart=${BUN_DIR}/bin/bun src/index.ts
+ExecStart=${BUN_BIN} src/index.ts
 Restart=on-failure
 RestartSec=5
 

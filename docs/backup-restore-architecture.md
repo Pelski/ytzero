@@ -291,6 +291,8 @@ below.
   time are portable configuration instead)
 - pending child time requests and one-day child time extras
 - active/expired authentication sessions
+- uploaded archives and analysis plans in `restore-sessions`; these are
+  short-lived staging files for an in-progress portable restore
 - active Social Watch together rooms, participant presence, playback
   synchronization state, and session chat messages
 - in-progress download jobs, errors, output paths, and temporary playlist-name

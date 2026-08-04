@@ -48,7 +48,7 @@ const lineLimits: Record<string, number> = {
   "ui/src/components/VideoCreators.css": 104,
   "ui/src/components/Popconfirm.css": 24,
   "ui/src/components/settings/SettingsDisplayView.css": 83,
-  "ui/src/components/VideoCard.css": 731,
+  "ui/src/components/VideoCard.css": 663,
   "ui/src/components/VideoThumbnail.css": 100,
   "ui/src/pages/SearchPage.css": 120,
   "app/src/plugins.ts": 1065,

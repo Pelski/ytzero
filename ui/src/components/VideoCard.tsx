@@ -31,6 +31,7 @@ import { useDeArrowBranding } from "../dearrow";
 import { readAppliedVideoCardActionsMode } from "../videoCardActions";
 import "./VideoGrid.css";
 import "./VideoCard.css";
+import "./VideoCardMetadata.css";
 
 export { BUCKET_ICONS } from "./VideoScheduleActions";
 const SWIPE_THRESHOLD = 90;
