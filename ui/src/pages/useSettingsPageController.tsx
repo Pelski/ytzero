@@ -33,7 +33,6 @@ import { ChannelOwnership, FilterRuleGroups, PlaylistSettingsItem, PluginMultise
 import { ChangelogNote, LogLine, SettingsLoadingState } from "../components/settings/SettingsSupport";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
-
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
   const supported = intl.supportedValuesOf?.("timeZone") ?? [
@@ -42,7 +41,6 @@ const TIME_ZONES = (() => {
   ];
   return [...new Set(["UTC", ...supported])];
 })();
-
 // Areas unavailable to a profile are omitted entirely, not shown as dead ends.
 const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
   { id: "channels" },
@@ -184,7 +182,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
   const [watchShowRelated, setWatchShowRelated] = useState(true);
-  const [watchShowComments, setWatchShowComments] = useState(false);
+  const [watchShowComments, setWatchShowComments] = useState(false), [channelPostsTab, setChannelPostsTab] = useState(false);
   const [feedMaxAgeValue, setFeedMaxAgeValue] = useState("6");
   const [feedMaxAgeUnit, setFeedMaxAgeUnit] = useState<FeedMaxAgeUnit>("months");
   const [feedAutoplayEnabled, setFeedAutoplayEnabled] = useState(false);
@@ -468,7 +466,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
       setShowTopChannels(r.settings.show_top_channels !== "0");
       setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
       setWatchShowRelated(r.settings.watch_show_related !== "0");
-      setWatchShowComments(r.settings.watch_show_comments === "1");
+      setWatchShowComments(r.settings.watch_show_comments === "1"); setChannelPostsTab(r.settings.channel_posts_tab === "1");
       setFeedMaxAgeValue(r.settings.feed_max_age_value || "6");
       setFeedMaxAgeUnit(isFeedMaxAgeUnit(r.settings.feed_max_age_unit) ? r.settings.feed_max_age_unit : "off");
       setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
@@ -696,6 +694,8 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     await api.updateSettings({ watch_show_comments: next ? "1" : "0" });
     showToast(t("displaySettingsSaved"));
   };
+
+  const toggleChannelPostsTab = async () => { const next = !channelPostsTab; setChannelPostsTab(next); await api.updateSettings({ channel_posts_tab: next ? "1" : "0" }); showToast(t("displaySettingsSaved")); };
 
   const changeFeedMaxAge = async (value: string, unit: FeedMaxAgeUnit) => {
     setFeedMaxAgeValue(value);
@@ -1195,7 +1195,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     changeWatchedStyle,
     changelog,
     changelogRemoteError,
-    channelCustomName,
+    channelCustomName, channelPostsTab,
     channelQuery,
     channelStatusLabel,
     channelStatusOptions,
@@ -1357,7 +1357,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     tags,
     timeZone,
     toggleAdminOnlyArea,
-    toggleChannelFollow,
+    toggleChannelFollow, toggleChannelPostsTab,
     toggleChannelTag,
     toggleFeedAutoplay,
     toggleLiveFromFeed,

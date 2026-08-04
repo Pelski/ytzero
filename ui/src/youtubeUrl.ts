@@ -1,4 +1,23 @@
 export const YT_NO_REDIRECT_MARKER = "ytNoRedirect";
+const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
+
+export function youtubeVideoId(value: string): string | null {
+  try {
+    const url = new URL(value.startsWith("www.") ? `https://${value}` : value);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    let id: string | null | undefined;
+    if (host === "youtu.be") id = url.pathname.split("/").filter(Boolean)[0];
+    else if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+      if (url.pathname === "/watch") id = url.searchParams.get("v");
+      else if (/^\/(?:shorts|live|embed)\//.test(url.pathname)) id = url.pathname.split("/")[2];
+    } else if (host === "youtube-nocookie.com" || host.endsWith(".youtube-nocookie.com")) {
+      if (url.pathname.startsWith("/embed/")) id = url.pathname.split("/")[2];
+    }
+    return id && VIDEO_ID_PATTERN.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
 
 export function markYouTubeUrl(value: string): string {
   try {

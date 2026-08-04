@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { markYouTubeUrl } from "./youtubeUrl";
+import { markYouTubeUrl, youtubeVideoId } from "./youtubeUrl";
 
 describe("YouTube no-redirect URL marker", () => {
   test("adds the marker after query parameters", () => {
@@ -14,5 +14,22 @@ describe("YouTube no-redirect URL marker", () => {
 
   test("does not duplicate the marker", () => {
     expect(markYouTubeUrl("https://youtube.com/watch?v=abc#ytNoRedirect")).toBe("https://youtube.com/watch?v=abc#ytNoRedirect");
+  });
+});
+
+describe("YouTube video URL detection", () => {
+  test("recognizes standard, shortened and player URLs", () => {
+    expect(youtubeVideoId("https://www.youtube.com/watch?v=b6bxeEZ_j9A")).toBe("b6bxeEZ_j9A");
+    expect(youtubeVideoId("https://youtu.be/b6bxeEZ_j9A#ytNoRedirect")).toBe("b6bxeEZ_j9A");
+    expect(youtubeVideoId("https://youtube.com/shorts/b6bxeEZ_j9A?feature=share")).toBe("b6bxeEZ_j9A");
+    expect(youtubeVideoId("https://www.youtube.com/live/b6bxeEZ_j9A")).toBe("b6bxeEZ_j9A");
+    expect(youtubeVideoId("https://www.youtube-nocookie.com/embed/b6bxeEZ_j9A")).toBe("b6bxeEZ_j9A");
+  });
+
+  test("rejects channels, playlists, other hosts and malformed ids", () => {
+    expect(youtubeVideoId("https://youtube.com/channel/UC123")).toBe(null);
+    expect(youtubeVideoId("https://youtube.com/playlist?list=PL123")).toBe(null);
+    expect(youtubeVideoId("https://example.com/watch?v=b6bxeEZ_j9A")).toBe(null);
+    expect(youtubeVideoId("https://youtu.be/too-short")).toBe(null);
   });
 });

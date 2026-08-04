@@ -49,6 +49,7 @@ const SETTING_PERMISSION_AREAS: Readonly<Record<string, ProfilePermissionArea>> 
   show_shorts: "feed",
   shorts_tab: "navigation",
   show_top_channels: "navigation",
+  channel_posts_tab: "feed",
   sidebar_nav: "navigation",
   player_hl: "playback",
   player_cc: "playback",

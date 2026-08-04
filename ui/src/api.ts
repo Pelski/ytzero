@@ -81,6 +81,7 @@ import {
   type VideoInfo,
   type VideoSubtitle,
 } from "./apiTypes";
+import type { ChannelPost } from "./channelPostTypes";
 export * from "./apiTypes";
 export class ApiError extends Error {
   constructor(message: string, public readonly status: number, public readonly code?: string, public readonly detail?: string) {
@@ -291,7 +292,6 @@ export const api = {
         segment_end: segment.segment[1],
       }),
     }),
-
   queue: (id: string, bucket: Bucket) =>
     http(`/videos/${id}/queue`, { method: "POST", body: JSON.stringify({ bucket }) }),
   saveProgress: (id: string, position: number, duration: number) =>
@@ -403,6 +403,7 @@ export const api = {
 
   channelAbout: (id: string) => http<ChannelAbout>(`/channels/${id}/about`),
   channelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[] }>(`/channels/${id}/playlists`),
+  channelPosts: (id: string, language: "en" | "pl" | "de", refresh = false) => http<{ posts: ChannelPost[]; fetchedAt: string; cached: boolean }>(`/channels/${id}/posts?language=${language}${refresh ? "&refresh=1" : ""}`),
   syncChannelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[]; count: number; synced: number; added: number; errors: number }>(`/channels/${id}/playlists/sync`, { method: "POST" }),
   syncChannelMetadata: (id: string) => http<{ checked: number; updated: number; dates: number; durations: number; shorts: number; failed: number; remaining: number }>(`/channels/${id}/metadata/sync`, { method: "POST" }),
   channelPlaylist: (id: string) => http<{ playlist: FollowedPlaylist }>(`/channel-playlists/${id}`),
@@ -477,7 +478,6 @@ export const api = {
     http<{ ok: boolean }>(`/child/time-requests/${id}/resolve`, { method: "POST", body: JSON.stringify({ action, grant, pin }) }),
 
   config: () => http<{ app_url: string }>("/config"),
-
   // ---------- authentication ----------
   authStatus: () => http<AuthStatus>("/auth/status"),
   passwordLogin: (username: string, password: string) =>

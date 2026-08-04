@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./ChannelPage.css";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { CalendarClock, Captions, Check, ChevronLeft, ChevronRight, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
+import { CalendarClock, Captions, Check, ChevronLeft, ChevronRight, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, MessageSquareText, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
 import { api, type ChannelAbout, type ChannelManualStatus, type ChannelShortsFeedVisibility, type MembersOnlyVisibility, type PlaylistInfo, type Tag, type Video, PLAYBACK_SPEEDS } from "../api";
 import TagChip from "../components/TagChip";
 import TagCreateForm from "../components/TagCreateForm";
@@ -20,8 +20,9 @@ import ChannelRefreshScheduleDialog from "../components/ChannelRefreshScheduleDi
 import { markYouTubeUrl } from "../youtubeUrl";
 import { isChannelSyncRateLimitMessage } from "../channelSync";
 import { useChannelSyncActivity } from "../useChannelSyncActivity";
+import ChannelPosts from "../components/ChannelPosts";
 
-type Tab = "videos" | "shorts" | "playlists" | "processing";
+type Tab = "videos" | "shorts" | "playlists" | "posts" | "processing";
 
 // Matches the server's default /feed page size.
 const CHANNEL_PAGE_SIZE = 40;
@@ -44,6 +45,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [playlists, setPlaylists] = useState<PlaylistInfo[] | null>(null);
   const [descOpen, setDescOpen] = useState(false);
   const [followed, setFollowed] = useState(false);
+  const [postsEnabled, setPostsEnabled] = useState(false);
   const [unfollowPending, setUnfollowPending] = useState(false);
   const [channelSpeed, setChannelSpeed] = useState("");
   const [captionMode, setCaptionMode] = useState<"off" | "language" | null>(null);
@@ -59,6 +61,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [tagsLoading, setTagsLoading] = useState(true);
   const [tagMenuOpen, setTagMenuOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [postsRefreshing, setPostsRefreshing] = useState(false);
+  const [postsRefreshRevision, setPostsRefreshRevision] = useState(0);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [manualStatus, setManualStatus] = useState<ChannelManualStatus>("active");
   const [channelSearch, setChannelSearch] = useState("");
@@ -106,6 +110,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     }
     prevIdRef.current = id;
     setFollowed(false);
+    setPostsEnabled(false);
     setChannelSpeed("");
     setCaptionMode(null);
     setCaptionLanguage(null);
@@ -118,6 +123,9 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
       setChannelTags(r.channel.tags);
       setManualStatus(r.channel.manual_status ?? "active");
       setFollowed(r.channel.followed !== 0);
+      const enabled = r.channel.posts_enabled === true;
+      setPostsEnabled(enabled);
+      if (!enabled && tab === "posts") setTab("videos");
       setChannelSpeed(r.channel.playback_speed ?? "");
       setCaptionMode(r.channel.caption_mode ?? null);
       setCaptionLanguage(r.channel.caption_language ?? null);
@@ -389,6 +397,21 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     }
   };
 
+  const handlePostsRefresh = async () => {
+    if (!id || postsRefreshing || !postsEnabled) return;
+    setPostsRefreshing(true);
+    setSyncMsg(null);
+    try {
+      await api.channelPosts(id, language, true);
+      setPostsRefreshRevision((revision) => revision + 1);
+      setSyncMsg(t("channelPostsRefreshed"));
+    } catch { setSyncMsg(t("syncError")); }
+    finally {
+      setPostsRefreshing(false);
+      setTimeout(() => setSyncMsg(null), 4000);
+    }
+  };
+
   const toggleFollow = async () => {
     if (!id) return;
     setUnfollowPending(true);
@@ -490,6 +513,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             menu={<>
               <MenuItem icon={<ListRestart />} onClick={handlePlaylistCatalogSync} title={t("syncPlaylistCatalogHint")}>{t("syncPlaylistCatalog")}</MenuItem>
               <MenuItem icon={<FileClock />} onClick={handleMetadataSync} title={t("syncMetadataHint")}>{t("syncMetadata")}</MenuItem>
+              {postsEnabled && <MenuItem icon={<RefreshCw className={postsRefreshing ? "channel-spin" : ""} />} onClick={() => void handlePostsRefresh()} disabled={postsRefreshing}>{t("refreshChannelPosts")}</MenuItem>}
             </>}
           >
             <RefreshCw size={15} className={channelSyncActive ? "channel-spin" : ""} />
@@ -657,10 +681,11 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             { value: "videos", label: t("videos"), icon: <VideoIcon />, count: videoCount },
             ...(shortCount > 0 ? [{ value: "shorts" as const, label: "Shorts", icon: <Zap />, count: shortCount }] : []),
             { value: "playlists", label: t("playlists"), icon: <ListVideo />, count: playlists?.length },
+            ...(postsEnabled ? [{ value: "posts" as const, label: t("channelPosts"), icon: <MessageSquareText /> }] : []),
             ...(processingCount > 0 ? [{ value: "processing" as const, label: t("processing"), icon: <FileClock />, count: processingCount }] : []),
           ]}
         />
-        <div className="channel-content-search">
+        {tab !== "posts" && <div className="channel-content-search">
           <Search className="channel-content-search__icon" aria-hidden="true" />
           <Input
             className="channel-content-search__input"
@@ -670,7 +695,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             aria-label={t("searchChannelContent")}
           />
           {channelSearch && <button className="channel-content-search__clear" type="button" onClick={() => setChannelSearch("")} aria-label={t("clearSearch")}><X /></button>}
-        </div>
+        </div>}
       </div>
 
       {searchActive && (
@@ -764,6 +789,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             ))}
           </div>
         ))}
+
+      {!searchActive && tab === "posts" && postsEnabled && id && <ChannelPosts channelId={id} channelName={about?.title ?? ""} channelAvatar={about?.avatar ?? ""} onPlay={onPlay} refreshRevision={postsRefreshRevision} />}
 
       {!searchActive && (tab === "videos" || tab === "shorts" || tab === "processing") && (tab === "processing" ? !processingLoading : !videosLoading) && (
         <>

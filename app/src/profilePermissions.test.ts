@@ -47,7 +47,8 @@ describe("profile administrator permissions", () => {
   test("classifies setting updates by their visible sections", () => {
     expect(permissionAreasForSettings({ language: "pl", watched_style: "dimmed" })).toEqual(["appearance"]);
     expect(permissionAreasForSettings({ feed_max_age_unit: "months", hide_live_from_feed: "1" })).toEqual(["feed"]);
-    expect(permissionAreasForSettings({ show_shorts: "1", sidebar_nav: "[]" })).toEqual(["feed", "navigation"]);
+    expect(permissionAreasForSettings({ show_shorts: "1", channel_posts_tab: "1" })).toEqual(["feed"]);
+    expect(permissionAreasForSettings({ sidebar_nav: "[]" })).toEqual(["navigation"]);
     expect(permissionAreasForSettings({ player_speed: "1.5", sponsorblock_enabled: "1" })).toEqual(["playback"]);
     expect(permissionAreasForSettings({ dearrow_titles_enabled: "1", dearrow_thumbnails_enabled: "1" })).toEqual(["playback"]);
     expect(permissionAreasForSettings({ child_watching_monitor_enabled: "0" })).toEqual(["profiles"]);

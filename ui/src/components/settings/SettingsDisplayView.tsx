@@ -42,7 +42,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     changeShortsFeedMode,
     changeMembersOnlyVisibility,
     changeWatchedStyle,
-    changeVideoCardActions,
+    changeVideoCardActions, channelPostsTab,
     deArrowThumbnailsEnabled,
     deArrowTitlesEnabled,
     displaySubTab,
@@ -101,7 +101,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     toggleLiveFromFeed,
     toggleSb,
     toggleSbCategory,
-    toggleTopChannels,
+    toggleTopChannels, toggleChannelPostsTab,
     toggleWatchComments,
     toggleWatchRelated,
     watchShowComments,
@@ -231,6 +231,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
               ]}
             />
           </SettingRow>
+          <SettingRow label={t("channelPostsTab")} description={t("channelPostsTabHint")}><Switch checked={channelPostsTab} onCheckedChange={() => toggleChannelPostsTab()} /></SettingRow>
 
           <SettingRow label={t("feedMaxAge")} description={t("feedMaxAgeHint")}>
             <Inline gap={2} className="feed-max-age-control">
@@ -535,7 +536,6 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           <SettingRow label={t("showTopChannels")} description={t("showTopChannelsHint")}>
             <Switch checked={showTopChannels} onCheckedChange={() => toggleTopChannels()} />
           </SettingRow>
-
           <Divider className="settings-navigation-divider" />
 
           <div className="sidebar-order-head">

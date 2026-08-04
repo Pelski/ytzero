@@ -178,7 +178,7 @@ below.
   The administrator-only profile permission areas are portable configuration.
   Enabling Child Lock and its PIN remain local and are never exported.
 - `user_settings`: registered settings for selected profiles.
-  This includes `feed_sort`, the portable per-profile choice between publication and first-seen chronology, and `watch_show_comments`, the opt-in presentation preference for the on-demand comments section. Comment payloads remain transient cache data and are not exported.
+  This includes `feed_sort`, the portable per-profile choice between publication and first-seen chronology, `watch_show_comments`, the opt-in presentation preference for the on-demand comments section, and `channel_posts_tab`, the opt-in presentation preference for Community Posts on channel pages. Comment payloads remain transient; the persisted Community Post catalog and its synchronization state are rebuildable cache data. Neither is exported.
   The visibility of the child-watching shortcut is also a portable per-profile
   presentation preference. It defaults to visible; live child activity remains
   transient and is never included in a backup.
@@ -291,6 +291,9 @@ below.
 - full `videos`, `video_creators`, fetched channel metadata, chapters, channel
   playlist cache, and `channel_playlist_videos`, except minimal referenced
   records described above
+- `channel_posts` and `channel_post_sync_state`; posts are a shared, normalized
+  local catalog fetched again from YouTube, while attempt/success timestamps and
+  errors are machine-local scheduler state
 - `discovery_recommendations`
 - derived Discovery `last_terms`
 - `update_check_state`, `notifications` (including derived Social alerts), `bulk_undo`

@@ -26,6 +26,8 @@ container's `TZ` environment variable.
 | `ADAPTIVE_REFRESH_INACTIVE_MAX_MINUTES` | `4320` | Maximum adaptive interval for channels without recent uploads (up to three days). |
 | `FULL_SYNC_INTERVAL_MINUTES` | `15` | Interval between full, rotating channel scans. One subscribed channel is scanned per run, using the same process as the manual channel sync button. |
 | `PLAYLIST_SYNC_INTERVAL_MINUTES` | `15` | Interval between followed-playlist refreshes. One playlist is synchronized per run. |
+| `POSTS_SYNC_INTERVAL_MINUTES` | `10` | Interval between Community Post scheduler passes. One eligible followed channel is synchronized per run. |
+| `POSTS_SYNC_MAX_AGE_MINUTES` | `360` | Per-channel freshness window for the persisted Community Post catalog, including channels whose last successful result was empty. |
 | `LIVE_INTERVAL_MINUTES` | `3` | Followed-channel live-status check interval. This does not refetch old video metadata. |
 | `AVATAR_REFRESH_INTERVAL_MINUTES` | `60` | Interval for refreshing stale channel avatars. |
 | `AVATAR_REFRESH_BATCH_SIZE` | `4` | Maximum channel avatars refreshed in one maintenance pass. |

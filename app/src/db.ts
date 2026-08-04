@@ -5,15 +5,15 @@ import { configureTimeZoneProvider, DEFAULT_TIME_ZONE } from "./timeZone";
 import { configureSQLiteConnection, optimizeSQLite } from "./sqliteMaintenance";
 import { applySQLiteMigrations } from "./sqliteMigrations";
 import { database, databaseConfig } from "./database";
+import { ensureChannelPostsPostgresSchema } from "./channelPostsSchema";
 import { migrateSQLiteToPostgres } from "./postgresMigration";
-
 export const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
-
 export const db = new Database(DB_PATH, { create: true });
 configureSQLiteConnection(db);
 
 db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
+db.exec(readFileSync(new URL("./channelPostsSchema.sql", import.meta.url), "utf8"));
 
 // Per-profile login identity (used by auth_method = per_profile / oidc / proxy_header).
 for (const stmt of [
@@ -36,7 +36,6 @@ for (const stmt of [
   try { db.exec(stmt); } catch {}
 }
 
-// Scheduling signals predate the source column in development databases.
 try { db.exec("ALTER TABLE scheduling_event_log ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'"); } catch {}
 
 // Per-user ownership columns on previously global state tables.
@@ -50,13 +49,11 @@ for (const stmt of [
   try { db.exec(stmt); } catch {}
 }
 
-// is_short: NULL = not checked yet, 0 = regular video, 1 = YouTube Short
 for (const col of ["is_short INTEGER", "views INTEGER", "likes INTEGER"]) {
   try {
     db.exec(`ALTER TABLE videos ADD COLUMN ${col}`);
   } catch {}
 }
-// followed: 1 = subscribed (default), 0 = unfollowed (hidden from feed)
 try { db.exec("ALTER TABLE channels ADD COLUMN followed INTEGER NOT NULL DEFAULT 1"); } catch {}
 // Per-profile per-channel playback speed override (NULL = inherit player_speed).
 try { db.exec("ALTER TABLE user_channels ADD COLUMN playback_speed TEXT"); } catch {}
@@ -266,6 +263,8 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // Comments are fetched on demand through yt-dlp. Keep the section opt-in so
   // opening a video never triggers that extra network request by default.
   watch_show_comments: "0",
+  // Opt-in channel Posts UI; fetched payloads are transient and never persisted.
+  channel_posts_tab: "0",
   hide_members_only_from_feed: "0",
   hide_members_only_on_channel: "0",
   watched_style: "dimmed",
@@ -547,6 +546,7 @@ if (databaseConfig.engine === "postgres") {
   // authorization flag is intentionally migrated in place and is not portable.
   await database.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER NOT NULL DEFAULT 0");
   await database.exec("CREATE TABLE IF NOT EXISTS download_settings (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key))");
+  await ensureChannelPostsPostgresSchema();
   // Social was added after the first PostgreSQL migration path shipped. Keep
   // existing PostgreSQL installations additive and equivalent to the
   // canonical SQLite bootstrap without requiring a destructive remigration.

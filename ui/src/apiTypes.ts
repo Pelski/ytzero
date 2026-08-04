@@ -1,6 +1,5 @@
 import type { I18nKey } from "./i18n";
 import type { EmojiSkinTone } from "./emojiSkinTone";
-
 // YouTube-supported playback rates, shared by the settings, watch and channel UIs.
 export const PLAYBACK_SPEEDS = ["0.25", "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
 
@@ -100,6 +99,7 @@ export interface Channel {
   hide_members_only_on_channel?: number | null;
   members_only_visibility?: MembersOnlyVisibility;
   shorts_feed_visibility?: ChannelShortsFeedVisibility;
+  posts_enabled?: boolean;
   auto_download_min_duration_override?: number | null;
   subscribed_at?: string | null;
   latest_video_at?: string | null;
@@ -150,7 +150,6 @@ export interface ChannelAbout {
   /** Real video/short counts from our DB (independent of UI pagination). */
   counts?: { videos: number; shorts: number; processing: number };
 }
-
 export interface PlaylistInfo {
   playlistId: string;
   title: string;
@@ -284,6 +283,7 @@ export interface AppSettings {
   hide_live_from_feed: string;
   watch_show_related: string;
   watch_show_comments: string;
+  channel_posts_tab: string;
   hide_members_only_from_feed: string;
   hide_members_only_on_channel: string;
   watched_style: string;

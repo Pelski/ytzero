@@ -1,4 +1,5 @@
 import { database } from "./database";
+import { startChannelPostsScheduler } from "./channelPostsScheduler";
 import { log } from "./logger";
 import {
   backfillImportedVideos,
@@ -20,6 +21,7 @@ function positiveNumber(value: string | undefined, fallback: number): number {
 const VIDEO_MAINTENANCE_MAX_AGE_DAYS = positiveNumber(process.env.VIDEO_MAINTENANCE_MAX_AGE_DAYS, 90);
 
 export function startScheduler() {
+  startChannelPostsScheduler();
   setTimeout(() => runAutomaticUpdateChecks().catch(() => {}), 60_000);
   setInterval(() => runAutomaticUpdateChecks().catch(() => {}), 60_000);
   log.info("scheduler.update_checks", { pollIntervalMin: 1 });

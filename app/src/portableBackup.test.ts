@@ -121,6 +121,8 @@ describe("portable backup classification and restore", () => {
     db.prepare("UPDATE users SET oidc_subject = ?, is_admin = 1 WHERE id = 1").run("profile-identity-do-not-export@example.com");
     db.prepare("UPDATE channels SET feed_refresh_attempted_at = ?, feed_refresh_failures = ? WHERE channel_id = 'UCportable'")
       .run("2099-12-31 23:59:58", 987654321);
+    db.prepare(`INSERT INTO channel_posts(post_id,channel_id,body,url) VALUES('cache-post-do-not-export','UCportable','COMMUNITY-CACHE-DO-NOT-EXPORT','https://youtube.com/post/cache-post-do-not-export')`).run();
+    db.prepare(`INSERT INTO channel_post_sync_state(channel_id,last_attempted_at,last_success_at,last_error) VALUES('UCportable','2099-12-31T23:59:57.000Z','2099-12-31T23:59:57.000Z','POST-SYNC-ERROR-DO-NOT-EXPORT')`).run();
     const options = await backup.backupOptions();
     const zip = await backup.createPortableBackup({ preset: "configuration", profiles: options.profiles.map((profile) => profile.id) });
     const serialized = [...backup.readPortableZip(zip).values()].map((value) => new TextDecoder().decode(value)).join("\n");
@@ -135,6 +137,8 @@ describe("portable backup classification and restore", () => {
     expect(serialized).not.toContain('"is_admin"');
     expect(serialized).not.toContain("2099-12-31 23:59:58");
     expect(serialized).not.toContain("987654321");
+    expect(serialized).not.toContain("COMMUNITY-CACHE-DO-NOT-EXPORT");
+    expect(serialized).not.toContain("POST-SYNC-ERROR-DO-NOT-EXPORT");
     expect(serialized).not.toContain("auth_sessions");
     expect(serialized).not.toContain("download_cookie");
   });
@@ -200,6 +204,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_titles_enabled", "1");
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
+    setUserSetting(1, "channel_posts_tab", "1");
     db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
     await setSetting("downloads_output_template", "portable/{id}");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
@@ -230,6 +235,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_titles_enabled", "0");
     setUserSetting(1, "dearrow_thumbnails_enabled", "0");
     setUserSetting(1, "child_watching_monitor_enabled", "1");
+    setUserSetting(1, "channel_posts_tab", "0");
     db.prepare("DELETE FROM download_settings WHERE user_id=1 AND key IN ('compatible_format','download_live_archives')").run();
     db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key='enabled'").run();
     await setSetting("downloads_output_template", "changed/{id}");
@@ -258,6 +264,7 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "dearrow_titles_enabled")).toBe("1");
     expect(getUserSetting(1, "dearrow_thumbnails_enabled")).toBe("1");
     expect(getUserSetting(1, "child_watching_monitor_enabled")).toBe("0");
+    expect(getUserSetting(1, "channel_posts_tab")).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='compatible_format'").get() as { value: string }).value).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='download_live_archives'").get() as { value: string }).value).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='enabled'").get() as { value: string }).value).toBe("1");
