@@ -53,6 +53,7 @@ export default function ChannelPosts({ channelId, channelName, channelAvatar, on
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const appliedRefreshRevision = useRef(refreshRevision);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -74,6 +75,15 @@ export default function ChannelPosts({ channelId, channelName, channelAvatar, on
     appliedRefreshRevision.current = refreshRevision;
     void load(true);
   }, [refreshRevision]);
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel || visible >= posts.length) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) setVisible((count) => Math.min(count + PAGE_SIZE, posts.length));
+    }, { rootMargin: "320px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [visible, posts.length]);
 
   if (loading) return <div className="channel-posts-loading"><RefreshCw className="channel-posts-spin" />{t("channelPostsLoading")}</div>;
   if (error) return <EmptyState title={t("channelPostsError")} description={error} action={<Button onClick={() => void load()}>{t("reload")}</Button>} />;
@@ -114,6 +124,6 @@ export default function ChannelPosts({ channelId, channelName, channelAvatar, on
         </footer>
       </article>)}
     </div>
-    {visible < posts.length && <div className="channel-posts-more"><Button onClick={() => setVisible((count) => count + PAGE_SIZE)}>{t("showMore")}</Button></div>}
+    {visible < posts.length && <div ref={loadMoreRef} className="channel-posts-sentinel" aria-hidden="true" />}
   </section>;
 }

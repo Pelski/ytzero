@@ -40,7 +40,8 @@
 .channel-post-footer { align-items: center; border-top: 1px solid var(--surface-3); color: var(--text-2); display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; }
 .channel-post-footer-stat { align-items: center; border-radius: 8px; display: inline-flex; font-size: 11.5px; gap: 5px; min-height: 30px; padding: 0 8px; }
 .channel-post-footer svg { height: 15px; width: 15px; }
-.channel-posts-loading, .channel-posts-more { align-items: center; color: var(--text-2); display: flex; gap: 8px; justify-content: center; min-height: 120px; }
+.channel-posts-loading { align-items: center; color: var(--text-2); display: flex; gap: 8px; justify-content: center; min-height: 120px; }
+.channel-posts-sentinel { height: 1px; width: 100%; }
 .channel-posts-spin { animation: channel-posts-spin 900ms linear infinite; }
 @keyframes channel-posts-spin { to { transform: rotate(360deg); } }
 @media (max-width: 640px) {
