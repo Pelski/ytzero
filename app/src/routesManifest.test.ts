@@ -34,8 +34,8 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("HTTP route manifest", () => {
   test("keeps every registered method and path stable while routers are extracted", () => {
-    expect(routes).toHaveLength(215);
-    expect(sha256).toBe("a9c2a9c282935045db76e4086a69ee6a94bc8cd6b25576c0e2021ff3fff3586f");
+    expect(routes).toHaveLength(217);
+    expect(sha256).toBe("b4dc0fde3718d7bdc311a44e748b3f18f0a4a452ed3f44176011311e9147ed11");
   });
 
   test("does not register duplicate method/path pairs", () => {

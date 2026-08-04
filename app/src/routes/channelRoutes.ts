@@ -6,7 +6,7 @@ import { database } from "../database";
 import { getSetting, getUserSetting } from "../db";
 import { type ChannelAbout, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelSubscriberCountFromWatch, fetchChannelVideosDurations, resolveChannelId } from "../youtube";
 import { preserveChannelMedia, preservePlaylistMedia } from "../channelMedia";
-import { channelRefreshDiagnostics, refreshChannel, refreshLiveStatus, syncChannel, syncChannelMissingMetadata, syncChannelPlaylists } from "../refresher";
+import { channelRefreshDiagnostics, refreshChannel, refreshLiveStatus, syncChannelMissingMetadata, syncChannelPlaylists } from "../refresher";
 import { log } from "../logger";
 import { isValidTimeZone } from "../timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "../scheduleTime";
@@ -18,6 +18,7 @@ import { isChannelManualStatus } from "../channelStatus";
 import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
 import { videoSelect, type VideoRow } from "../videoRoutesSupport";
 import { ABOUT_DB_TTL, ageMs, PLAYLISTS_DB_TTL } from "../routeCache";
+import { registerChannelSyncRoutes, registerSingleChannelSyncRoute } from "./channelSyncRoutes";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -575,6 +576,8 @@ api.get("/channels/recent", async (c) => {
   return c.json({ channels: await attachWatchedState(uid, rows, (row) => row.latest_video_id) });
 });
 
+registerChannelSyncRoutes(api, currentUserId);
+
 api.get("/channels/:id", async (c) => {
   const uid = currentUserId(c);
   const ch = await database.prepare("SELECT * FROM channels WHERE channel_id = ?").get(c.req.param("id")) as any;
@@ -615,17 +618,6 @@ api.put("/channels/:id/refresh-schedule", async (c) => {
   return c.json(await channelRefreshDiagnostics(c.req.param("id"))!);
 });
 
-api.post("/channels/:id/sync", async (c) => {
-  const channelId = c.req.param("id");
-  if (await channelSyncIsDisabled(channelId)) return c.json({ error: "channel sync disabled" }, 409);
-  try {
-    const result = await syncChannel(channelId);
-    log.info("channel.sync_requested", { channelId, added: result.added });
-    return c.json({ ok: true, added: result.added });
-  } catch (e) {
-    log.error("channel.sync_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
-    return c.json({ error: e instanceof Error ? e.message : String(e) }, 502);
-  }
-});
+registerSingleChannelSyncRoute(api, currentUserId);
 
 }

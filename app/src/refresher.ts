@@ -4,7 +4,6 @@ import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
 import { log } from "./logger";
-import { listDownloadRules } from "./downloadRules";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { notifyFollowedPlaylistVideos } from "./notifications";
@@ -15,6 +14,8 @@ import { publishAppEventSoon } from "./appEvents";
 import { configuredTimeZone } from "./timeZone";
 import { manualScheduleIsDue, nextScheduleOccurrenceMs, parseManualRefreshSchedule } from "./channelRefreshSchedule";
 import { resolveActiveLivestreams } from "./liveStatus";
+import { channelSyncJobIsRunning } from "./channelSyncRuntime";
+import { isYouTubeRateLimitError } from "./youtubeRateLimit";
 
 const upsertVideo = database.prepare(`
   INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
@@ -155,7 +156,7 @@ export async function channelRefreshDiagnostics(channelId: string) {
   };
 }
 
-async function followedChannelStatusCounts(): Promise<Record<string, number>> {
+export async function followedChannelStatusCounts(): Promise<Record<string, number>> {
   const rows = await database.prepare(`
     SELECT c.manual_status AS status, COUNT(DISTINCT c.channel_id) AS count
     FROM channels c
@@ -165,7 +166,7 @@ async function followedChannelStatusCounts(): Promise<Record<string, number>> {
   return Object.fromEntries(rows.map((row) => [row.status, Number(row.count)]));
 }
 
-async function backfillExactPublishedDates(channelId: string) {
+async function backfillExactPublishedDates(channelId: string): Promise<{ recovered: number; rateLimited: boolean }> {
   const ids = (await database.prepare(`
     SELECT video_id FROM videos
     WHERE channel_id = ?
@@ -183,24 +184,31 @@ async function backfillExactPublishedDates(channelId: string) {
     WHERE video_id = ? AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
   `);
   let recovered = 0;
+  let rateLimited = false;
   for (let i = 0; i < ids.length; i += EXACT_DATE_BACKFILL_CONCURRENCY) {
     await Promise.all(ids.slice(i, i + EXACT_DATE_BACKFILL_CONCURRENCY).map(async (videoId) => {
       try {
         const publishedAt = await fetchVideoPublishedAt(videoId);
         if (publishedAt) recovered += (await update.run(publishedAt, videoId)).changes;
-      } catch {
+      } catch (error) {
+        rateLimited ||= isYouTubeRateLimitError(error);
         // Members-only and otherwise restricted videos may not expose a watch
         // payload. Their channel-card relative date remains the honest fallback.
       }
     }));
+    if (rateLimited) break;
     if (i + EXACT_DATE_BACKFILL_CONCURRENCY < ids.length) await Bun.sleep(120);
   }
   if (recovered > 0) log.info("video.published_dates_recovered", { requested: ids.length, recovered });
+  return { recovered, rateLimited };
 }
 
 async function refreshChannelMetadata(channelId: string, forceSubscriberRefresh = false) {
   const about = await fetchChannelAbout(channelId);
-  const watchSubscriber = about.subscriberCount ? null : await fetchChannelSubscriberCountFromWatch(channelId).catch(() => null);
+  const watchSubscriber = about.subscriberCount ? null : await fetchChannelSubscriberCountFromWatch(channelId).catch((error) => {
+    if (isYouTubeRateLimitError(error)) throw error;
+    return null;
+  });
   const subscriberCount = about.subscriberCount || watchSubscriber?.subscriberCount || null;
   const aboutWithSubscriber = subscriberCount && subscriberCount !== about.subscriberCount
     ? { ...about, subscriberCount }
@@ -270,18 +278,17 @@ const ensureChannel = database.prepare(`
 export async function importPlaylistVideos(playlistId: string, force = false): Promise<{ added: number; channelId: string }> {
   const feed = await fetchPlaylistFeed(playlistId, force);
   if (!feed.channelId) return { added: 0, channelId: "" };
-  const snapshot = await fetchPlaylistSnapshot(playlistId, force).catch(() => ({
-    videos: feed.videos.map((video, index) => ({
-      videoId: video.videoId,
-      title: video.title,
-      thumbnail: video.thumbnail,
-      channelTitle: video.channelTitle || feed.channelTitle,
-      channelId: video.channelId || feed.channelId,
-      duration: "",
-      index,
-    })),
-    complete: false,
-  }));
+  const snapshot = await fetchPlaylistSnapshot(playlistId, force).catch((error) => {
+    if (isYouTubeRateLimitError(error)) throw error;
+    return {
+      videos: feed.videos.map((video, index) => ({
+        videoId: video.videoId, title: video.title, thumbnail: video.thumbnail,
+        channelTitle: video.channelTitle || feed.channelTitle,
+        channelId: video.channelId || feed.channelId, duration: "", index,
+      })),
+      complete: false,
+    };
+  });
   const richById = new Map(feed.videos.map((video) => [video.videoId, video]));
 
   await ensureChannel.run(feed.channelId, feed.channelTitle, `https://www.youtube.com/channel/${feed.channelId}`);
@@ -379,7 +386,7 @@ export async function syncChannelPlaylists(channelId: string): Promise<{
       errors++;
       const message = error instanceof Error ? error.message : String(error);
       log.warn("channel.playlists_only.playlist_failed", { channelId, playlistId: playlist.playlistId, error: message });
-      if (message.includes("429")) break;
+      if (isYouTubeRateLimitError(error)) break;
     }
     if (index < playlists.length - 1) await Bun.sleep(PLAYLIST_SYNC_DELAY_MS);
   }
@@ -598,6 +605,9 @@ export async function refreshLiveStatus(channelId: string) {
     fetchLiveInfo(channelId),
     fetchChannelStreams(channelId),
   ]);
+  const rateLimit = [primaryResult, streamsResult]
+    .find((result): result is PromiseRejectedResult => result.status === "rejected" && isYouTubeRateLimitError(result.reason));
+  if (rateLimit) throw rateLimit.reason;
   if (primaryResult.status === "rejected" && streamsResult.status === "rejected") {
     throw new Error(`live discovery failed: ${String(primaryResult.reason)}; ${String(streamsResult.reason)}`);
   }
@@ -641,21 +651,32 @@ export async function refreshLiveStatus(channelId: string) {
  * Fetch the channel's /videos tab for more video IDs than the RSS feed provides (~30 vs 15).
  * Merges scraped data with RSS data (RSS has better quality: description + published_at).
  */
-const channelSyncsInFlight = new Map<string, Promise<{ added: number }>>();
+export interface ChannelSyncResult {
+  added: number;
+  rateLimited?: boolean;
+}
 
-async function runChannelSync(channelId: string): Promise<{ added: number }> {
+const channelSyncsInFlight = new Map<string, Promise<ChannelSyncResult>>();
+
+async function runChannelSync(channelId: string): Promise<ChannelSyncResult> {
   const startedAt = Date.now();
+  let rateLimited = false;
   // A channel page can be opened directly from a YouTube link, before it has
   // been followed or otherwise saved locally. Create an external row first so
   // the video inserts below always have their required parent channel.
   await ensureChannel.run(channelId, "", `https://www.youtube.com/channel/${channelId}`);
   await database.prepare("UPDATE channels SET full_sync_attempted_at = datetime('now') WHERE channel_id = ?").run(channelId);
   await refreshChannelMetadata(channelId, true).catch((e) => {
+    rateLimited = isYouTubeRateLimitError(e);
     log.warn("channel.metadata_refresh_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   });
+  if (rateLimited) return { added: 0, rateLimited: true };
 
   const [feed, scraped, streams] = await Promise.all([
-    fetchChannelFeed(channelId).catch(() => ({ videos: [], channelTitle: "", channelId })),
+    fetchChannelFeed(channelId).catch((error) => {
+      rateLimited ||= isYouTubeRateLimitError(error);
+      return { videos: [], channelTitle: "", channelId };
+    }),
     fetchChannelVideos(channelId),
     fetchChannelStreams(channelId),
   ]);
@@ -749,52 +770,77 @@ async function runChannelSync(channelId: string): Promise<{ added: number }> {
   // playlist's videos are imported (deduped) into their owning channel.
   // Throttled and capped to stay under YouTube's rate limiting (429).
   let playlistsScanned = 0;
-  try {
-    const allPlaylists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, true));
-    await saveChannelPlaylists(channelId, allPlaylists);
-    await database.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
-      .run(JSON.stringify(allPlaylists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
-    const playlists = allPlaylists.slice(0, MAX_SYNC_PLAYLISTS);
-    for (let i = 0; i < playlists.length; i++) {
-      try {
-        const r = await importPlaylistVideos(playlists[i].playlistId);
-        added += r.added;
-        playlistsScanned++;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        log.warn("channel.sync.playlist_failed", { channelId, playlistId: playlists[i].playlistId, error: msg });
-        // Back off entirely once YouTube starts rate-limiting us.
-        if (msg.includes("429")) break;
+  if (!rateLimited) {
+    try {
+      const allPlaylists = await preservePlaylistMedia(channelId, await fetchChannelPlaylists(channelId, true));
+      await saveChannelPlaylists(channelId, allPlaylists);
+      await database.prepare("UPDATE channels SET playlists_json = ?, playlists_fetched_at = datetime('now'), playlists_cache_version = ? WHERE channel_id = ?")
+        .run(JSON.stringify(allPlaylists), CHANNEL_PLAYLIST_CACHE_VERSION, channelId);
+      const playlists = allPlaylists.slice(0, MAX_SYNC_PLAYLISTS);
+      for (let i = 0; i < playlists.length; i++) {
+        try {
+          const r = await importPlaylistVideos(playlists[i].playlistId);
+          added += r.added;
+          playlistsScanned++;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          log.warn("channel.sync.playlist_failed", { channelId, playlistId: playlists[i].playlistId, error: msg });
+          // Back off entirely once YouTube starts rate-limiting us.
+          if (isYouTubeRateLimitError(e)) {
+            rateLimited = true;
+            break;
+          }
+        }
+        if (i < playlists.length - 1) await Bun.sleep(PLAYLIST_SYNC_DELAY_MS);
       }
-      if (i < playlists.length - 1) await Bun.sleep(PLAYLIST_SYNC_DELAY_MS);
+    } catch (e) {
+      rateLimited ||= isYouTubeRateLimitError(e);
+      log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
     }
-  } catch (e) {
-    log.warn("channel.sync.playlists_failed", { channelId, error: e instanceof Error ? e.message : String(e) });
   }
 
   // Playlist pages expose durations but not publication dates. Run this after
   // importing them so newly discovered videos are repaired in the same sync.
-  await backfillExactPublishedDates(channelId);
+  if (!rateLimited) rateLimited = (await backfillExactPublishedDates(channelId)).rateLimited;
 
   // Mark a just-synced current stream immediately, rather than waiting for
   // the periodic live-status refresh before it can appear on the channel page.
-  await refreshLiveStatus(channelId);
-  await database.prepare("UPDATE channels SET last_refreshed_at = datetime('now'), last_full_synced_at = datetime('now') WHERE channel_id = ?").run(channelId);
-  log.info("channel.sync.complete", { channelId, added, scraped: scraped.length, streams: streams.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
-  return { added };
+  if (!rateLimited) {
+    try {
+      await refreshLiveStatus(channelId);
+    } catch (error) {
+      if (!isYouTubeRateLimitError(error)) throw error;
+      rateLimited = true;
+    }
+  }
+  if (rateLimited) {
+    await database.prepare("UPDATE channels SET last_refreshed_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  } else {
+    await database.prepare("UPDATE channels SET last_refreshed_at = datetime('now'), last_full_synced_at = datetime('now') WHERE channel_id = ?").run(channelId);
+  }
+  log.info("channel.sync.complete", { channelId, added, rateLimited, scraped: scraped.length, streams: streams.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
+  return { added, rateLimited: rateLimited || undefined };
 }
 
 /** Full sync shared by the manual button and the background scheduler. Calls
  * for the same channel coalesce instead of scraping YouTube twice in parallel. */
-export async function syncChannel(channelId: string): Promise<{ added: number }> {
-  const status = await database.prepare("SELECT manual_status FROM channels WHERE channel_id=?").get(channelId) as { manual_status: string } | null;
-  if (status && status.manual_status !== "active") return Promise.reject(new Error(`channel sync disabled (${status.manual_status})`));
+export function syncChannel(channelId: string): Promise<ChannelSyncResult> {
   const current = channelSyncsInFlight.get(channelId);
   if (current) return current;
-  const task = runChannelSync(channelId).finally(() => channelSyncsInFlight.delete(channelId));
+  // Register before the first await so a background batch cannot slip in
+  // between a route-level guard and this channel's initial status query.
+  const task = (async () => {
+    const status = await database.prepare("SELECT manual_status FROM channels WHERE channel_id=?").get(channelId) as { manual_status: string } | null;
+    if (status && status.manual_status !== "active") throw new Error(`channel sync disabled (${status.manual_status})`);
+    return runChannelSync(channelId);
+  })().finally(() => channelSyncsInFlight.delete(channelId));
   channelSyncsInFlight.set(channelId, task);
   return task;
 }
+
+let refreshing = false;
+export const feedRefreshIsRunning = () => refreshing;
+export const channelFullSyncIsRunning = () => channelSyncsInFlight.size > 0;
 
 /**
  * Fetch and save avatar + subscriber count for a small batch of channels,
@@ -803,6 +849,10 @@ export async function syncChannel(channelId: string): Promise<{ added: number }>
 export async function refreshAvatarsBatch(limit = 4) {
   if (maintenanceActive()) {
     log.info("avatars.skipped", { reason: "maintenance" });
+    return 0;
+  }
+  if (channelSyncJobIsRunning()) {
+    log.info("avatars.skipped", { reason: "channel_sync_job_in_progress" });
     return 0;
   }
   const startedAt = Date.now();
@@ -928,6 +978,10 @@ async function refreshPlaylistDurations(): Promise<number> {
 
 export async function refreshVideoMetadataBatch(limit = 10) {
   if (maintenanceActive()) return 0;
+  if (channelSyncJobIsRunning()) {
+    log.info("video.metadata_skipped", { reason: "channel_sync_job_in_progress" });
+    return 0;
+  }
   await refreshPlaylistDurations();
   const now = Date.now();
   const candidates = await database
@@ -1031,6 +1085,10 @@ const enrichImportedVideo = database.prepare(`
 
 export async function backfillImportedVideos(limit = 15) {
   if (maintenanceActive()) return 0;
+  if (channelSyncJobIsRunning()) {
+    log.info("import.enrich_skipped", { reason: "channel_sync_job_in_progress" });
+    return 0;
+  }
   const now = Date.now();
   // Anything still parked on the placeholder channel needs enrichment, even
   // when the export supplied a title (history entries). Playlist members and
@@ -1094,8 +1152,6 @@ export async function backfillImportedVideos(limit = 15) {
   log.info("import.enrich_batch", { checked: rows.length, enriched });
 }
 
-let refreshing = false;
-
 export async function refreshAll(options: { force?: boolean; manualOnly?: boolean } = {}): Promise<{ channels: number; added: number; errors: string[] }> {
   if (maintenanceActive()) {
     log.info("refresh.skipped", { reason: "maintenance" });
@@ -1104,6 +1160,10 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
   if (refreshing) {
     log.warn("refresh.skipped", { reason: "already_in_progress" });
     return { channels: 0, added: 0, errors: ["refresh already in progress"] };
+  }
+  if (channelSyncJobIsRunning()) {
+    log.info("refresh.skipped", { reason: "channel_sync_job_in_progress" });
+    return { channels: 0, added: 0, errors: ["channel sync in progress"] };
   }
   const releaseMutation = beginMutation();
   if (!releaseMutation) return { channels: 0, added: 0, errors: [] };
@@ -1153,7 +1213,7 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
         errors.push(`${channelId}: ${error}`);
         await markFailed.run(channelId);
         log.error("channel.refresh_failed", { channelId, error });
-        if (error.includes("429")) {
+        if (isYouTubeRateLimitError(error)) {
           log.warn("refresh.halted", { reason: "youtube_rate_limit", remaining: channels.length - index - 1 });
           break;
         }
@@ -1172,110 +1232,7 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
 }
 
 let liveRefreshing = false;
-
-let scheduledFullSyncRunning = false;
-let scheduledPlaylistSyncRunning = false;
-
-/** Run the same deep scan as the channel-page button for one subscribed
- * channel. Attempt time drives rotation so one broken channel cannot starve
- * every channel after it. */
-export async function syncNextSubscribedChannel(): Promise<void> {
-  if (maintenanceActive()) {
-    log.info("channel.full_sync.skipped", { reason: "maintenance" });
-    return;
-  }
-  if (refreshing) {
-    log.info("channel.full_sync.skipped", { reason: "feed_refresh_in_progress" });
-    return;
-  }
-  if (scheduledFullSyncRunning) {
-    log.warn("channel.full_sync.skipped", { reason: "already_in_progress" });
-    return;
-  }
-  const releaseMutation = beginMutation();
-  if (!releaseMutation) return;
-  scheduledFullSyncRunning = true;
-  try {
-    const channel = await database.prepare(`
-      SELECT c.channel_id
-      FROM channels c
-      WHERE c.external = 0
-        AND c.manual_status = 'active'
-        AND EXISTS (
-          SELECT 1 FROM user_channels uc
-          WHERE uc.channel_id = c.channel_id AND uc.followed = 1
-        )
-      ORDER BY COALESCE(c.full_sync_attempted_at, c.last_full_synced_at, '1970-01-01') ASC,
-               c.added_at ASC,
-               c.channel_id ASC
-      LIMIT 1
-    `).get() as { channel_id: string } | null;
-    if (!channel) {
-      log.info("channel.full_sync.skipped", { reason: "no_eligible_subscribed_channels", followedByStatus: await followedChannelStatusCounts() });
-      return;
-    }
-    const startedAt = Date.now();
-    log.info("channel.full_sync.start", { channelId: channel.channel_id });
-    try {
-      const result = await syncChannel(channel.channel_id);
-      log.info("channel.full_sync.complete", { channelId: channel.channel_id, added: result.added, ms: Date.now() - startedAt });
-    } catch (error) {
-      log.error("channel.full_sync.failed", {
-        channelId: channel.channel_id,
-        error: error instanceof Error ? error.message : String(error),
-        ms: Date.now() - startedAt,
-      });
-    }
-  } finally {
-    scheduledFullSyncRunning = false;
-    releaseMutation();
-  }
-}
-
-export async function syncNextFollowedPlaylist(): Promise<void> {
-  if (maintenanceActive()) {
-    log.info("playlist.sync.skipped", { reason: "maintenance" });
-    return;
-  }
-  if (scheduledPlaylistSyncRunning) {
-    log.info("playlist.sync.skipped", { reason: "already_in_progress" });
-    return;
-  }
-  const releaseMutation = beginMutation();
-  if (!releaseMutation) return;
-  scheduledPlaylistSyncRunning = true;
-  try {
-    const automatedPlaylistIds = [...new Set((await listDownloadRules())
-      .filter((rule) => rule.enabled)
-      .flatMap((rule) => rule.playlist_ids))];
-    const automatedSql = automatedPlaylistIds.length
-      ? ` OR cp.playlist_id IN (${automatedPlaylistIds.map(() => "?").join(",")})`
-      : "";
-    const playlist = await database.prepare(`
-      SELECT cp.playlist_id
-      FROM channel_playlists cp
-      JOIN channels c ON c.channel_id = cp.channel_id
-      WHERE c.manual_status = 'active'
-        AND (EXISTS (SELECT 1 FROM user_followed_playlists ufp WHERE ufp.playlist_id = cp.playlist_id)${automatedSql})
-      ORDER BY COALESCE(cp.sync_attempted_at, cp.last_synced_at, '1970-01-01') ASC, cp.playlist_id ASC
-      LIMIT 1
-    `).get(...automatedPlaylistIds) as { playlist_id: string } | null;
-    if (!playlist) {
-      log.info("playlist.sync.skipped", { reason: "no_eligible_followed_playlists", followedByStatus: await followedChannelStatusCounts() });
-      return;
-    }
-    const startedAt = Date.now();
-    try {
-      const result = await syncPlaylist(playlist.playlist_id);
-      log.info("playlist.sync.complete", { playlistId: playlist.playlist_id, added: result.added, ms: Date.now() - startedAt });
-    } catch (error) {
-      log.warn("playlist.sync.failed", { playlistId: playlist.playlist_id, error: error instanceof Error ? error.message : String(error), ms: Date.now() - startedAt });
-    }
-  } finally {
-    scheduledPlaylistSyncRunning = false;
-    releaseMutation();
-  }
-}
+export const liveStatusRefreshIsRunning = () => liveRefreshing;
 
 /**
  * Check live status for all followed channels. Runs on a short interval
@@ -1289,6 +1246,10 @@ export async function refreshAllLiveStatuses(): Promise<void> {
   }
   if (liveRefreshing) {
     log.info("live.refresh_skipped", { reason: "already_in_progress" });
+    return;
+  }
+  if (channelSyncJobIsRunning()) {
+    log.info("live.refresh_skipped", { reason: "channel_sync_job_in_progress" });
     return;
   }
   const releaseMutation = beginMutation();
@@ -1320,6 +1281,10 @@ export async function refreshAllLiveStatuses(): Promise<void> {
       } catch (e) {
         errors++;
         log.error("live.refresh_failed", { channelId: channel_id, error: e instanceof Error ? e.message : String(e) });
+        if (isYouTubeRateLimitError(e)) {
+          log.warn("live.refresh_halted", { reason: "youtube_rate_limit" });
+          break;
+        }
       }
       await Bun.sleep(800);
     }

@@ -17,7 +17,10 @@ import { SUBTITLE_LANGUAGES, subtitleLanguageLabel } from "../subtitleLanguages"
 import { Badge, Button, ButtonAnchor, EmptyState, IconButton, Input, Menu, MenuHeader, MenuItem, MenuLabel, MenuSeparator, MenuStatus, Popover, ScrollArea, SectionHeader, SplitButton, Tabs } from "../components/ui";
 import { formatAppDate, parseAppTimestamp } from "../dateTime";
 import ChannelRefreshScheduleDialog from "../components/ChannelRefreshScheduleDialog";
+import ChannelSyncDialog from "../components/ChannelSyncDialog";
 import { markYouTubeUrl } from "../youtubeUrl";
+import { isChannelSyncRateLimitMessage } from "../channelSync";
+import { useChannelSyncActivity } from "../useChannelSyncActivity";
 
 type Tab = "videos" | "shorts" | "playlists" | "processing";
 
@@ -49,6 +52,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [membersOnlyVisibility, setMembersOnlyVisibility] = useState<MembersOnlyVisibility>("default");
   const [technicalOpen, setTechnicalOpen] = useState(false);
   const [refreshScheduleOpen, setRefreshScheduleOpen] = useState(false);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [startedSyncJobId, setStartedSyncJobId] = useState<string | null>(null);
   const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "members">("root");
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
@@ -70,6 +75,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [processingLoadingMore, setProcessingLoadingMore] = useState(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | undefined>(undefined);
+  const completedSyncJobsRef = useRef(new Set<string>());
+  const { job: backgroundSyncJob, busy: backgroundSyncBusy } = useChannelSyncActivity();
 
   useEffect(() => {
     if (!id) return;
@@ -263,6 +270,21 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
     api.channelAbout(id).then((about) => { setAbout(about); emit("channels-changed"); }).catch(console.error);
   };
 
+  useEffect(() => {
+    if (!id || !backgroundSyncJob || backgroundSyncJob.id !== startedSyncJobId || backgroundSyncJob.status === "running" || completedSyncJobsRef.current.has(backgroundSyncJob.id)) return;
+    const item = backgroundSyncJob.channels.find((channel) => channel.channelId === id);
+    if (!item) return;
+    completedSyncJobsRef.current.add(backgroundSyncJob.id);
+    setSyncMsg(item.status === "completed"
+      ? item.added > 0 ? formatAddedVideos(item.added, language) : t("noNewVideos")
+      : isChannelSyncRateLimitMessage(item.error) ? t("channelSyncRateLimitError") : t("syncError"));
+    loadAbout();
+    api.channelLive(id).then((live) => setLiveStreams(live.videos)).catch(console.error);
+    if (item.added > 0) reload();
+    const timer = window.setTimeout(() => setSyncMsg(null), 6_000);
+    return () => window.clearTimeout(timer);
+  }, [backgroundSyncJob?.id, backgroundSyncJob?.status, id, startedSyncJobId]);
+
   const openPlaylist = (playlistId: string) => navigate(`/playlist/${playlistId}`);
 
   const toggleTag = async (tag: Tag) => {
@@ -295,19 +317,16 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   };
 
   const handleSync = async () => {
-    if (!id || syncing || manualStatus !== "active") return;
+    if (!id || syncing || backgroundSyncBusy || manualStatus !== "active") return;
     setSyncing(true);
     setSyncMsg(null);
     try {
-      const r = await api.syncChannel(id);
-      setSyncMsg(r.added > 0 ? formatAddedVideos(r.added, language) : t("noNewVideos"));
-      loadAbout();
-      api.channelLive(id).then((live) => setLiveStreams(live.videos)).catch(console.error);
-      if (r.added > 0) {
-        reload();
-      }
-    } catch {
+      const result = await api.syncChannel(id);
+      setStartedSyncJobId(result.job.id);
+      setSyncMsg(t("channelSyncStarted"));
+    } catch (error) {
       setSyncMsg(t("syncError"));
+      throw error;
     } finally {
       setSyncing(false);
       setTimeout(() => setSyncMsg(null), 4000);
@@ -439,8 +458,8 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         </div>
         <div className="channel-header-actions">
           <SplitButton
-            onClick={handleSync}
-            disabled={syncing || manualStatus !== "active"}
+            onClick={() => setSyncDialogOpen(true)}
+            disabled={syncing || backgroundSyncBusy || manualStatus !== "active"}
             title={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("syncTitle")}
             menuLabel={t("moreActions")}
             menu={<>
@@ -449,7 +468,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             </>}
           >
             <RefreshCw size={15} className={syncing ? "channel-spin" : ""} />
-            {syncing ? t("syncing") : syncMsg ?? t("syncChannel")}
+            {syncing ? t("syncing") : backgroundSyncBusy ? t("channelSyncAlreadyRunning") : syncMsg ?? t("syncChannel")}
           </SplitButton>
           <Button
             variant={followed ? "danger" : "primary"}
@@ -635,7 +654,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         (videosLoading ? (
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
-          <EmptyState title={t("channelVideosEmpty")} description={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("channelVideosEmptyHint")} action={manualStatus === "active" && <Button variant="primary" onClick={handleSync} disabled={syncing}>
+          <EmptyState title={t("channelVideosEmpty")} description={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("channelVideosEmptyHint")} action={manualStatus === "active" && <Button variant="primary" onClick={() => setSyncDialogOpen(true)} disabled={syncing || backgroundSyncBusy}>
               <RefreshCw size={15} className={syncing ? "channel-spin" : undefined} />
               {syncing ? t("syncing") : t("syncChannelVideos")}
             </Button>} />
@@ -711,6 +730,14 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           {(tab === "processing" ? processingHasMore : hasMore) && <div ref={loadMoreRef} style={{ height: 1 }} />}
         </>
       )}
+      <ChannelSyncDialog
+        channels={id ? [{ channel_id: id, title: about?.title || id, url: `https://www.youtube.com/channel/${id}`, thumbnail: about?.avatar || "", handle: about?.handle, manual_status: manualStatus, tags: channelTags }] : []}
+        open={syncDialogOpen}
+        onOpenChange={setSyncDialogOpen}
+        jobRunning={backgroundSyncBusy}
+        initialChannelIds={id ? [id] : []}
+        onStart={handleSync}
+      />
     </>
   );
 }

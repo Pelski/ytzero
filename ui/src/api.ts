@@ -20,6 +20,7 @@ import {
   type ChannelManualStatus,
   type ChannelRefreshScheduleDetails,
   type ChannelSearchResult,
+  type ChannelSyncJob,
   type ChildConfig,
   type ChildGrant,
   type ChildLockStatus,
@@ -86,7 +87,6 @@ export class ApiError extends Error {
     this.name = "ApiError";
   }
 }
-
 async function http<T>(path: string, init?: RequestInit, options?: { suppressAuthenticationNavigation?: boolean }): Promise<T> {
   const res = await apiFetch(`/api${path}`, {
     headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
@@ -98,7 +98,6 @@ async function http<T>(path: string, init?: RequestInit, options?: { suppressAut
   }
   return decodeApiTitles(await res.json()) as T;
 }
-
 export const api = {
   databaseStatus: () => http<DatabaseStatus>("/database/status"),
   migrateDatabaseToPostgres: (target_url: string) => http<{ receiptId: string; tables: number; rows: number; next: string }>("/database/migration/sqlite-to-postgres", { method: "POST", body: JSON.stringify({ target_url }) }),
@@ -309,12 +308,13 @@ export const api = {
     http(`/videos/${id}/tags`, { method: "POST", body: JSON.stringify({ tag_id }) }),
   untagVideo: (id: string, tagId: number) =>
     http(`/videos/${id}/tags/${tagId}`, { method: "DELETE" }),
-
   channels: () => http<{ channels: Channel[]; instance_has_data: boolean }>("/channels"),
   channel: (id: string) => http<{ channel: Channel }>(`/channels/${id}`),
   recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null })[] }>("/channels/recent"),
   topChannels: () => http<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("/channels/top"),
-  syncChannel: (id: string) => http<{ added: number }>(`/channels/${id}/sync`, { method: "POST" }),
+  syncChannel: (id: string) => http<{ job: ChannelSyncJob }>(`/channels/${id}/sync`, { method: "POST" }),
+  channelSyncJob: () => http<{ job: ChannelSyncJob | null; busy: boolean }>("/channels/sync"),
+  startChannelSync: (channelIds: string[]) => http<{ job: ChannelSyncJob }>("/channels/sync", { method: "POST", body: JSON.stringify({ channel_ids: channelIds }) }),
   addChannel: (url: string, customName?: string) =>
     http<{ channel_id: string; title: string }>("/channels", { method: "POST", body: JSON.stringify({ url, custom_name: customName || undefined }) }),
   renameChannel: (id: string, customTitle: string | null) =>

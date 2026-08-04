@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createAppEventBus } from "./appEvents";
+import { appEventVisibleToUser, createAppEventBus } from "./appEvents";
 
 describe("application event bus", () => {
   test("publishes events and stops after unsubscribe", () => {
@@ -19,5 +19,11 @@ describe("application event bus", () => {
     bus.subscribe(() => { received = true; });
     bus.publish({ topic: "downloads" });
     expect(received).toBe(true);
+  });
+
+  test("scopes targeted events to their profile while keeping shared events visible", () => {
+    expect(appEventVisibleToUser({ topic: "channel-sync", userId: 4 }, 4)).toBe(true);
+    expect(appEventVisibleToUser({ topic: "channel-sync", userId: 4 }, 5)).toBe(false);
+    expect(appEventVisibleToUser({ topic: "live" }, 5)).toBe(true);
   });
 });

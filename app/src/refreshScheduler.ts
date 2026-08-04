@@ -6,11 +6,9 @@ import {
   refreshAllLiveStatuses,
   refreshAvatarsBatch,
   refreshVideoMetadataBatch,
-  syncNextFollowedPlaylist,
-  syncNextSubscribedChannel,
 } from "./refresher";
+import { syncNextFollowedPlaylist, syncNextSubscribedChannel } from "./scheduledSync";
 import { runAutomaticUpdateChecks } from "./updates";
-
 const FEED_REFRESH_BATCH_SIZE = 10;
 const FEED_REFRESH_FAIRNESS_SLOTS = 2;
 

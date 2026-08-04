@@ -1,6 +1,6 @@
 import type { Locale } from "../types";
 import { plural } from "../format";
-import { watchTogetherMessages } from "./watchTogether";
+import { featureMessages } from "./featureMessages";
 export const de: Locale = {
   messages: {
     navToday: "Start",
@@ -77,7 +77,7 @@ export const de: Locale = {
     socialSettingsHowHint: "Profile dieser Installation können Videos aus der Bibliothek teilen, mit beliebigen Emojis reagieren, sie in lokal gelikten Kommentaren besprechen und Profile mit @Benutzername erwähnen. Administrative Einstellungen gelten für alle, Benachrichtigungen nur für dein Profil.",
     socialResetHint: "Setzt die Standardwerte zurück und entfernt dauerhaft alle Social-Beiträge, Kommentare, Reaktionen, Likes und Erwähnungen.",
     socialResetConfirm: "Social zurücksetzen und alle geteilten Beiträge, Kommentare, Reaktionen, Kommentar-Likes und Erwähnungen aller Profile dauerhaft löschen?",
-    ...watchTogetherMessages.de,
+    ...featureMessages.de,
     insightsEyebrow: "Einblicke ins Sehverhalten",
     insightsTitle: "Puls",
     insightsView: "Ansicht",

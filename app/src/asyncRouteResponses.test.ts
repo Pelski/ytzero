@@ -44,6 +44,25 @@ describe("async database route response shapes", () => {
     expect(result.instanceHasDataIsBoolean).toBe(true);
     expect(result.recentChannelsStatus).toBe(200);
     expect(result.recentChannelsIsArray).toBe(true);
+    expect(result.channelSyncStatusCode).toBe(200);
+    expect(result.channelSyncInitialJob).toBeNull();
+    expect(result.channelSyncInitiallyBusy).toBe(false);
+    expect(result.emptyChannelSyncStatus).toBe(400);
+    expect(result.unavailableChannelSyncStatus).toBe(400);
+    expect(result.disabledChannelSyncStatus).toBe(409);
+    expect(result.acceptedChannelSyncStatus).toBe(202);
+    expect(result.acceptedChannelSyncInitialStatus).toBe("running");
+    expect(result.haltedChannelSyncStatus).toBe("halted");
+    expect(result.haltedChannelSyncSkipped).toBe(0);
+    expect(result.haltedChannelSyncFailed).toBe(1);
+    expect(result.secondaryActiveJob).toBeNull();
+    expect(result.secondaryActiveBusy).toBe(true);
+    expect(result.secondaryConflictStatus).toBe(409);
+    expect(result.secondaryConflictJob).toBeNull();
+    expect(result.secondaryTerminalJob).toBeNull();
+    expect(result.secondaryTerminalBusy).toBe(false);
+    expect(result.acceptedSingleChannelSyncStatus).toBe(202);
+    expect(result.haltedSingleChannelSyncStatus).toBe("halted");
   });
 
   test("serializes download data instead of unresolved promises", () => {

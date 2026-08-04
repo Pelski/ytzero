@@ -105,6 +105,7 @@ export interface Channel {
   manual_status_updated_at?: string | null;
   tags: Tag[];
 }
+export type { ChannelSyncChannelStatus, ChannelSyncJob, ChannelSyncJobChannel } from "./channelSyncTypes";
 
 export interface Rule {
   id: number;

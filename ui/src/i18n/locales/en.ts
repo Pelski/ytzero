@@ -1,5 +1,5 @@
 import { plural } from "../format";
-import { watchTogetherMessages } from "./watchTogether";
+import { featureMessages } from "./featureMessages";
 // English defines the message keys; `pl` and `de` are type-checked against them.
 export const en = {
   messages: {
@@ -77,7 +77,7 @@ export const en = {
     socialSettingsHowHint: "Profiles on this installation can share library videos, add any emoji reaction, discuss them with locally liked comments, and mention profiles by typing @username. Administrative controls apply to everyone; notification preferences apply only to your profile.",
     socialResetHint: "Restore defaults and permanently remove all Social posts, comments, reactions, likes and mentions.",
     socialResetConfirm: "Reset Social and permanently delete every shared post, comment, reaction, comment like and mention for all profiles?",
-    ...watchTogetherMessages.en,
+    ...featureMessages.en,
     insightsEyebrow: "Viewing insights",
     insightsTitle: "Pulse",
     insightsView: "View",

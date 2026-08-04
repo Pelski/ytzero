@@ -1,6 +1,6 @@
 import { probeApiAuthentication } from "./apiTransport";
 
-export type ServerEventTopic = "child-status" | "child-watching" | "child-requests" | "downloads" | "live" | "notifications" | "social";
+export type ServerEventTopic = "channel-sync" | "child-status" | "child-watching" | "child-requests" | "downloads" | "live" | "notifications" | "social";
 export type ServerEventData = Record<string, unknown> | undefined;
 
 const listeners = new Map<ServerEventTopic, Set<(data: ServerEventData) => void>>();

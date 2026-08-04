@@ -127,12 +127,3 @@ jobs:
             --verify-tag \
             "ytzero-${GITHUB_REF_NAME}.tar.gz" \
             "ytzero-${GITHUB_REF_NAME}.tar.gz.sha256"
-
-  publish-website:
-    name: Publish the project website
-    needs: release
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml

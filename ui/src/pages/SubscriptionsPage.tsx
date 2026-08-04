@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./SubscriptionsPage.css";
 import { Link } from "react-router-dom";
-import { Plus, Search, Users } from "lucide-react";
-import { api, type Channel, type Tag } from "../api";
+import { AlertTriangle, Clock3, LoaderCircle, Plus, RefreshCw, Search, Users, XCircle } from "lucide-react";
+import { api, type Channel, type ChannelSyncJob, type ChannelSyncJobChannel, type Tag } from "../api";
 import { img } from "../img";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
@@ -12,11 +12,73 @@ import TagFilterBar from "../components/TagFilterBar";
 import TagPickerMenu from "../components/TagPickerMenu";
 import { TableSkeleton } from "../components/LoadingState";
 import ChannelSearchPicker from "../components/ChannelSearchPicker";
-import { Button, EmptyState, IconButton, PageHeader, Popover, SelectMenu, useHorizontalDragScroll } from "../components/ui";
+import ChannelSyncDialog from "../components/ChannelSyncDialog";
+import { Badge, Button, EmptyState, IconButton, PageHeader, Popover, ProgressBar, SelectMenu, useHorizontalDragScroll } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
-import { emit } from "../events";
+import { emit, emitToast } from "../events";
+import { channelCanSync, isChannelSyncRateLimitMessage } from "../channelSync";
+import { useChannelSyncActivity } from "../useChannelSyncActivity";
 
 type SubscriptionSort = "name-asc" | "name-desc" | "latest-video" | "subscribed-recent" | "subscribers-desc" | "videos-desc";
+const SYNC_SUMMARY_AUTO_DISMISS_MS = 8_000;
+
+function ChannelSyncSummary({ job }: { job: ChannelSyncJob }) {
+  const { t } = useI18n();
+  const running = job.status === "running";
+  const complete = job.status === "completed";
+  const completeWithErrors = complete && job.failed > 0;
+  const rateLimited = job.channels.some((channel) => isChannelSyncRateLimitMessage(channel.error));
+  const title = running ? t("channelSyncRunning") : completeWithErrors ? t("channelSyncCompletedWithErrors") : complete ? t("channelSyncCompleted") : t("channelSyncHalted");
+
+  return <section className={`subs-sync-summary subs-sync-summary--${job.status}${completeWithErrors ? " subs-sync-summary--errors" : ""}`} aria-live="polite">
+    <div className="subs-sync-summary__header">
+      <div className="subs-sync-summary__title">
+        {running ? <LoaderCircle className="spin" /> : !complete ? <AlertTriangle /> : null}
+        <strong>{title}</strong>
+      </div>
+    </div>
+    {running && job.currentChannelTitle && <div className="subs-sync-summary__current">{t("channelSyncCurrentChannel", { channel: job.currentChannelTitle })}</div>}
+    <ProgressBar
+      className={complete && !completeWithErrors ? "subs-sync-summary__progress--success" : undefined}
+      value={job.processed}
+      max={Math.max(1, job.total)}
+      label={t("channelSyncProgressLabel")}
+    />
+    <div className="subs-sync-summary__result">
+      <span>{t("channelSyncResultSucceeded", { count: job.succeeded })}</span>
+      <span>{t("channelSyncResultFailed", { count: job.failed })}</span>
+      <span>{t("channelSyncResultSkipped", { count: job.skipped })}</span>
+      <span>{t("channelSyncResultAdded", { count: job.added })}</span>
+    </div>
+    {job.status === "halted" && <div className="subs-sync-summary__reason">{rateLimited ? t("channelSyncRateLimitError") : t("channelSyncHaltedReason")}</div>}
+  </section>;
+}
+
+function ChannelSyncCardStatus({ channel }: { channel: ChannelSyncJobChannel }) {
+  const { t } = useI18n();
+  if (channel.status === "completed") return null;
+
+  const copy = channel.status === "pending" ? t("channelSyncStatusPending")
+    : channel.status === "running" ? t("channelSyncStatusRunning")
+    : channel.status === "failed" ? t("channelSyncStatusFailed")
+    : t("channelSyncStatusSkipped");
+  const variant = channel.status === "failed" ? "danger"
+    : channel.status === "skipped" ? "warning"
+    : channel.status === "running" ? "accent"
+    : "neutral";
+  const icon = channel.status === "running" ? <LoaderCircle className="spin" />
+    : channel.status === "failed" ? <XCircle />
+    : channel.status === "skipped" ? <AlertTriangle />
+    : <Clock3 />;
+
+  const error = channel.status === "failed" && channel.error
+    ? isChannelSyncRateLimitMessage(channel.error) ? t("channelSyncRateLimitError") : channel.error
+    : null;
+  return <div className="subs-card-sync-result">
+    <Badge className="subs-card-sync-status" size="sm" variant={variant}>{icon}{copy}</Badge>
+    {error && <span className="subs-card-sync-error">{error}</span>}
+  </div>;
+}
 
 function subscriberNumber(value: string | null | undefined): number {
   if (!value) return 0;
@@ -120,6 +182,17 @@ export default function SubscriptionsPage() {
   // silently hide newly-followed channels that have no tags yet, making them
   // look "missing" from subscriptions. Always start unfiltered.
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
+  const [syncDialogOpen, setSyncDialogOpen] = useState(false);
+  const [syncDialogChannelIds, setSyncDialogChannelIds] = useState<string[] | undefined>();
+  const { job: syncJob, busy: syncBusy, loading: syncActivityLoading, start: startChannelSync } = useChannelSyncActivity();
+  const [dismissedSyncJobId, setDismissedSyncJobId] = useState<string | null>(null);
+  const syncRunning = syncJob?.status === "running";
+  const syncFinishedAt = Date.parse(syncJob?.finishedAt ?? "");
+  const syncSummaryExpired = syncJob?.status === "completed" && syncJob.failed === 0
+    && Number.isFinite(syncFinishedAt) && Date.now() - syncFinishedAt >= SYNC_SUMMARY_AUTO_DISMISS_MS;
+  const channelSyncStates = useMemo(() => new Map(syncJob?.channels.map((channel) => [channel.channelId, channel]) ?? []), [syncJob]);
+  const refreshedTerminalJobsRef = useRef(new Set<string>());
+  const refreshingTerminalJobsRef = useRef(new Set<string>());
 
   const load = useCallback(() => {
     setLoading(true);
@@ -135,6 +208,51 @@ export default function SubscriptionsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const refreshChannelsAfterSync = useCallback(async () => {
+    const response = await api.channels();
+    setChannels(response.channels.filter((channel) => channel.followed !== 0));
+    emit("channels-changed");
+  }, []);
+
+  useEffect(() => {
+    if (!syncJob || syncJob.status === "running" || refreshedTerminalJobsRef.current.has(syncJob.id) || refreshingTerminalJobsRef.current.has(syncJob.id)) return;
+    // A terminal snapshot may arrive live or be recovered after reconnect. In
+    // both cases refresh derived counts/latest metadata once, without replacing
+    // the page with a loading skeleton or looping on subsequent SSE snapshots.
+    const jobId = syncJob.id;
+    refreshingTerminalJobsRef.current.add(jobId);
+    let cancelled = false;
+    let retryTimer = 0;
+    let attempts = 0;
+    const refresh = () => {
+      attempts++;
+      void refreshChannelsAfterSync().then(() => {
+        refreshedTerminalJobsRef.current.add(jobId);
+        refreshingTerminalJobsRef.current.delete(jobId);
+      }).catch((error) => {
+        console.error(error);
+        if (!cancelled && attempts < 3) retryTimer = window.setTimeout(refresh, 3_000);
+        else refreshingTerminalJobsRef.current.delete(jobId);
+      });
+    };
+    refresh();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retryTimer);
+      refreshingTerminalJobsRef.current.delete(jobId);
+    };
+  }, [refreshChannelsAfterSync, syncJob?.id, syncJob?.status]);
+
+  useEffect(() => {
+    if (!syncJob || syncJob.status !== "completed" || syncJob.failed > 0) return;
+    const finishedAt = Date.parse(syncJob.finishedAt ?? "");
+    const remaining = Number.isFinite(finishedAt)
+      ? Math.max(0, SYNC_SUMMARY_AUTO_DISMISS_MS - (Date.now() - finishedAt))
+      : SYNC_SUMMARY_AUTO_DISMISS_MS;
+    const timer = window.setTimeout(() => setDismissedSyncJobId(syncJob.id), remaining);
+    return () => window.clearTimeout(timer);
+  }, [syncJob?.failed, syncJob?.finishedAt, syncJob?.id, syncJob?.status]);
 
   const filteredChannels = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -186,9 +304,28 @@ export default function SubscriptionsPage() {
       });
   };
 
+  const startSync = async (channelIds: string[]) => {
+    await startChannelSync(channelIds);
+    emitToast(t("channelSyncStarted"), "scheduled");
+  };
+
+  const openSyncDialog = (channelIds?: string[]) => {
+    setSyncDialogChannelIds(channelIds);
+    setSyncDialogOpen(true);
+  };
+  const setSyncDialogVisibility = (open: boolean) => {
+    setSyncDialogOpen(open);
+    if (!open) setSyncDialogChannelIds(undefined);
+  };
+
   return (
     <>
-      <PageHeader title={t("subscriptions")} description={t("followedChannelsCount", { n: channels.length })} actions={<ChannelSearchPicker onAdded={load} />} />
+      <PageHeader className="subscriptions-page-header" title={t("subscriptions")} description={t("followedChannelsCount", { n: channels.length })} actions={<>
+        <Button leadingIcon={<RefreshCw />} disabled={loading || syncActivityLoading || channels.every((channel) => !channelCanSync(channel)) || syncBusy} onClick={() => openSyncDialog()}>{syncRunning ? t("channelSyncRunning") : syncBusy ? t("channelSyncAlreadyRunning") : t("channelSyncChannels")}</Button>
+        <ChannelSearchPicker onAdded={load} />
+      </>} />
+
+      {syncJob && !syncSummaryExpired && syncJob.id !== dismissedSyncJobId && <ChannelSyncSummary job={syncJob} />}
 
       <div className="subs-toolbar">
         <div className="subs-search">
@@ -242,26 +379,44 @@ export default function SubscriptionsPage() {
         )
       ) : (
         <div className="subs-grid">
-          {filteredChannels.map((ch) => (
-            <div key={ch.channel_id} className="subs-card">
-              <Link to={`/channel/${ch.channel_id}`} className="subs-card-main">
-                {ch.thumbnail ? (
-                  <img className="subs-card-avatar" src={img(ch.thumbnail)} alt="" loading="lazy" />
-                ) : (
-                  <div className="subs-card-avatar subs-card-avatar-fallback">
-                    {(ch.title || ch.channel_id).charAt(0).toUpperCase()}
+          {filteredChannels.map((ch) => {
+            const syncState = channelSyncStates.get(ch.channel_id);
+            const syncEnabled = channelCanSync(ch);
+            const title = ch.title || ch.channel_id;
+            return <div key={ch.channel_id} className="subs-card">
+              <div className="subs-card-head">
+                <Link to={`/channel/${ch.channel_id}`} className="subs-card-main">
+                  {ch.thumbnail ? (
+                    <img className="subs-card-avatar" src={img(ch.thumbnail)} alt="" loading="lazy" />
+                  ) : (
+                    <div className="subs-card-avatar subs-card-avatar-fallback">
+                      {title.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="subs-card-body">
+                    <div className="subs-card-title">{title}</div>
+                    {ch.subscriber_count && <div className="subs-card-meta">{ch.subscriber_count} {t("subscribers")}</div>}
                   </div>
-                )}
-                <div className="subs-card-body">
-                  <div className="subs-card-title">{ch.title || ch.channel_id}</div>
-                  {ch.subscriber_count && <div className="subs-card-meta">{ch.subscriber_count} {t("subscribers")}</div>}
-                </div>
-              </Link>
+                </Link>
+                <IconButton
+                  className="subs-card-sync-button"
+                  size="sm"
+                  variant="ghost"
+                  label={t("channelSyncCardAction", { channel: title })}
+                  title={!syncEnabled ? t("channelStatusSyncDisabled") : syncBusy ? t("channelSyncAlreadyRunningHint") : t("channelSyncCardAction", { channel: title })}
+                  icon={<RefreshCw className={syncState?.status === "running" ? "spin" : undefined} />}
+                  disabled={!syncEnabled || syncActivityLoading || syncBusy}
+                  onClick={() => openSyncDialog([ch.channel_id])}
+                />
+              </div>
+              {syncState && <ChannelSyncCardStatus channel={syncState} />}
               <ChannelTagsRow channel={ch} tags={tags} onApply={(nextTags) => applyChannelTags(ch, nextTags)} onTagCreated={(tag) => setTags((current) => current.some((item) => item.id === tag.id) ? current : [...current, tag])} />
-            </div>
-          ))}
+            </div>;
+          })}
         </div>
       )}
+
+      <ChannelSyncDialog channels={channels} open={syncDialogOpen} onOpenChange={setSyncDialogVisibility} jobRunning={syncBusy} initialChannelIds={syncDialogChannelIds} onStart={startSync} />
     </>
   );
 }

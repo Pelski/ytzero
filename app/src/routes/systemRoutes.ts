@@ -1,6 +1,6 @@
 import type { Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import { publishAppEvent, subscribeToAppEvents } from "../appEvents";
+import { appEventVisibleToUser, publishAppEvent, subscribeToAppEvents } from "../appEvents";
 import { database } from "../database";
 import { log, readRecentLogs, subscribeToLogs } from "../logger";
 import { checkLatestRelease } from "../updates";
@@ -34,7 +34,7 @@ api.get("/events", (c) => {
       if (stopped) return;
       writes = writes.then(() => stream.writeSSE({ event, data: JSON.stringify(data), id: String(id++) }));
     };
-    const unsubscribe = subscribeToAppEvents((event) => enqueue("app", event));
+    const unsubscribe = subscribeToAppEvents((event) => { if (appEventVisibleToUser(event, currentUserId(c))) enqueue("app", { topic: event.topic, data: event.data }); });
     enqueue("ready", {});
     await new Promise<void>((resolveStream) => {
       const heartbeat = setInterval(() => enqueue("ping", { at: Date.now() }), 15_000);

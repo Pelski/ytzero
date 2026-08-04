@@ -1,0 +1,6 @@
+.ui-progress { background: var(--surface-3); border-radius: 999px; height: 5px; overflow: hidden; width: 100%; }
+.ui-progress__fill { background: var(--accent); border-radius: inherit; display: block; height: 100%; min-width: 0; transition: width .25s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-progress__fill { transition: none; }
+}

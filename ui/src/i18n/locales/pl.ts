@@ -1,6 +1,6 @@
 import type { Locale } from "../types";
 import { plural } from "../format";
-import { watchTogetherMessages } from "./watchTogether";
+import { featureMessages } from "./featureMessages";
 const videoForms = { one: "film", few: "filmy", many: "filmów", other: "filmów" };
 export const pl: Locale = {
   messages: {
@@ -78,7 +78,7 @@ export const pl: Locale = {
     socialSettingsHowHint: "Profile w tej instalacji mogą udostępniać filmy z biblioteki, dodawać dowolne reakcje emoji, rozmawiać w komentarzach z lokalnymi polubieniami i oznaczać profile przez @nazwa. Ustawienia administracyjne dotyczą wszystkich, a powiadomienia tylko Twojego profilu.",
     socialResetHint: "Przywraca wartości domyślne i trwale usuwa wszystkie posty, komentarze, reakcje, polubienia i oznaczenia Social.",
     socialResetConfirm: "Zresetować Social i trwale usunąć wszystkie udostępnione posty, komentarze, reakcje, polubienia komentarzy i oznaczenia wszystkich profili?",
-    ...watchTogetherMessages.pl,
+    ...featureMessages.pl,
     insightsEyebrow: "Wnioski z oglądania",
     insightsTitle: "Puls",
     insightsView: "Widok",

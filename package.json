@@ -11,14 +11,16 @@
     "build:ui": "cd ui && bun run build:prepared",
     "hooks:install": "git config core.hooksPath .githooks",
     "check:large-files": "bun scripts/check-large-files.ts",
-    "check:precommit": "bun run check:large-files",
+    "check:precommit": "bun run check:validate",
     "test": "bun run test:app && bun run test:ui",
     "test:app": "cd app && bun run test",
+    "test:app:random": "cd app && bun run test:random",
     "test:ui": "cd ui && bun run test",
     "typecheck": "bun run typecheck:app && bun run typecheck:ui",
     "typecheck:app": "cd app && bun run typecheck",
     "typecheck:ui": "cd ui && bun run typecheck",
-    "check": "bun run check:large-files && bun run typecheck && bun run test && bun run build:ui",
+    "check:validate": "bun run check:large-files && bun run typecheck && bun run test:app && bun run test:app:random && bun run test:ui && bun run build:ui",
+    "check": "bun run check:validate",
     "start": "bash ./scripts/start.sh"
   }
 }

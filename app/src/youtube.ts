@@ -2,6 +2,7 @@ import { XMLParser } from "fast-xml-parser";
 import { createRequire } from "module";
 import { decodeHtmlEntities } from "./htmlEntities";
 import { createYoutubeSearch } from "./youtubeSearch";
+import { isYouTubeRateLimitError, readYouTubeResponse } from "./youtubeRateLimit";
 const _require = createRequire(import.meta.url);
 const InnerTubeClient = _require("innertube.js");
 const _yt = new InnerTubeClient();
@@ -46,8 +47,7 @@ function asArray<T>(v: T | T[] | undefined): T[] {
 export async function fetchChannelFeed(channelId: string): Promise<ChannelFeed> {
   const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
   const res = await fetch(url, { headers: RSS_HEADERS });
-  if (!res.ok) throw new Error(`RSS fetch failed (${res.status}) for ${channelId}`);
-  const doc = xml.parse(await res.text());
+  const doc = xml.parse(await readYouTubeResponse(res, `RSS fetch failed for ${channelId}`));
   const feed = doc.feed ?? {};
   const videos: FeedVideo[] = asArray(feed.entry).map((e: any) => {
     const community = e["media:group"]?.["media:community"];
@@ -459,8 +459,7 @@ async function fetchPlaylistContinuation(token: string, config: { apiKey: string
       continuation: token,
     }),
   });
-  if (!res.ok) throw new Error(`playlist continuation fetch failed (${res.status})`);
-  return res.json();
+  return JSON.parse(await readYouTubeResponse(res, "playlist continuation fetch failed"));
 }
 
 export async function fetchChannelPlaylists(channelId: string, force = false): Promise<PlaylistInfo[]> {
@@ -472,17 +471,15 @@ export async function fetchChannelPlaylists(channelId: string, force = false): P
   const res = await fetch(`https://www.youtube.com/channel/${channelId}/playlists`, {
     headers: FETCH_HEADERS,
   });
-  if (!res.ok) throw new Error(`playlists fetch failed (${res.status})`);
-  const html = await res.text();
+  const html = await readYouTubeResponse(res, "playlists fetch failed");
   const data = extractInitialData(html);
   const out: PlaylistInfo[] = [];
   const seen = new Set<string>();
   collectChannelPlaylists(data, out, seen);
 
-  // Channel pages render only the first ~30 playlists. Follow the browse API
-  // continuation tokens so a channel's remaining playlists are not invisible.
   const config = innertubePlaylistConfig(html);
   let token = playlistContinuationToken(data);
+  let complete = true;
   for (let page = 0; config && token && page < MAX_PLAYLIST_CONTINUATION_PAGES; page++) {
     const previousToken = token;
     try {
@@ -490,12 +487,14 @@ export async function fetchChannelPlaylists(channelId: string, force = false): P
       collectChannelPlaylists(continuation, out, seen);
       token = playlistContinuationToken(continuation);
       if (token === previousToken) break;
-    } catch {
-      // Keep the already-collected pages usable if YouTube throttles a later one.
+    } catch (error) {
+      if (isYouTubeRateLimitError(error)) throw error;
+      complete = false;
       break;
     }
   }
-  playlistCache.set(channelId, { at: Date.now(), data: out, complete: true });
+  if (token) complete = false;
+  playlistCache.set(channelId, { at: Date.now(), data: out, complete });
   return out;
 }
 
@@ -547,8 +546,7 @@ export async function fetchPlaylistFeed(playlistId: string, force = false): Prom
 
   const url = `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
   const res = await fetch(url, { headers: RSS_HEADERS });
-  if (!res.ok) throw new Error(`playlist feed fetch failed (${res.status})`);
-  const doc = xml.parse(await res.text());
+  const doc = xml.parse(await readYouTubeResponse(res, "playlist feed fetch failed"));
   const feed = doc.feed ?? {};
   const videos: FeedVideo[] = asArray(feed.entry)
     .map((e: any): FeedVideo => {
@@ -639,8 +637,7 @@ export async function fetchPlaylistSnapshot(playlistId: string, force = false): 
   if (!force && cached && Date.now() - cached.at < ABOUT_TTL) return { videos: cached.videos, complete: cached.complete };
 
   const res = await fetch(`https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`, { headers: FETCH_HEADERS });
-  if (!res.ok) throw new Error(`playlist page fetch failed (${res.status})`);
-  const html = await res.text();
+  const html = await readYouTubeResponse(res, "playlist page fetch failed");
   const data = extractInitialData(html);
   const videos: PlaylistVideo[] = [];
   const seen = new Set<string>();
@@ -655,7 +652,8 @@ export async function fetchPlaylistSnapshot(playlistId: string, force = false): 
       collectPlaylistVideos(continuation, videos, seen);
       token = playlistContinuationToken(continuation);
       if (token === previousToken) { complete = false; break; }
-    } catch {
+    } catch (error) {
+      if (isYouTubeRateLimitError(error)) throw error;
       complete = false;
       break;
     }
@@ -733,15 +731,10 @@ function relativePublishedFromNode(node: any): string | null {
   return parsed ? relativePublishedAt(parsed) : null;
 }
 
-/**
- * Scrape a channel tab to get more video IDs than the RSS feed. YouTube keeps
- * completed livestreams in a separate /streams tab, rather than /videos.
- * Each tab returns up to ~30 recent entries with basic metadata.
- */
+/** Scrape a channel tab for uploads or completed livestreams. */
 async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams"): Promise<ScrapedVideo[]> {
   const res = await fetch(`https://www.youtube.com/channel/${channelId}/${tab}`, { headers: FETCH_HEADERS });
-  if (!res.ok) throw new Error(`channel ${tab} request failed (${res.status})`);
-  const data = extractInitialData(await res.text());
+  const data = extractInitialData(await readYouTubeResponse(res, `channel ${tab} request failed`));
   const out: ScrapedVideo[] = [];
   const seen = new Set<string>();
   for (const r of deepCollect(data, "videoRenderer")) {
@@ -1080,8 +1073,13 @@ export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
 /** Fetch only the exact publish date without requiring a playable video. */
 export async function fetchVideoPublishedAt(videoId: string): Promise<string | null> {
   const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: FETCH_HEADERS });
-  if (!res.ok) return null;
-  const html = await res.text();
+  let html: string;
+  try {
+    html = await readYouTubeResponse(res, "YouTube publication date fetch failed");
+  } catch (error) {
+    if (isYouTubeRateLimitError(error)) throw error;
+    return null;
+  }
   const playerDate = extractVariable(html, "ytInitialPlayerResponse")
     ?.microformat?.playerMicroformatRenderer?.publishDate;
   const raw = typeof playerDate === "string" ? playerDate
