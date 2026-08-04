@@ -15,6 +15,8 @@ insertVideo.run("rule-imported", "UC-rule", "Gameplay imported", "clean", "", 0,
 insertVideo.run("rule-old-upload-newly-discovered", "UC-rule", "Future-scope back catalog", "clean", "", 0, 0);
 insertVideo.run("rule-before-subscription", "UC-rule", "Future-scope before subscription", "clean", "", 0, 0);
 insertVideo.run("rule-new-upload", "UC-rule", "Future-scope fresh upload", "clean", "", 0, 0);
+insertVideo.run("rule-live-archive", "UC-rule", "Gameplay live archive", "clean", "", 0, 0);
+db.prepare("UPDATE videos SET live_status='was_live' WHERE video_id='rule-live-archive'").run();
 db.prepare("UPDATE videos SET published_at=datetime('now','-30 days'), created_at=datetime('now') WHERE video_id='rule-old-upload-newly-discovered'").run();
 db.prepare("UPDATE videos SET published_at=datetime('now','-90 minutes'), created_at=datetime('now') WHERE video_id='rule-before-subscription'").run();
 db.prepare("UPDATE videos SET published_at=datetime('now','-30 minutes'), created_at=datetime('now') WHERE video_id='rule-new-upload'").run();
@@ -65,6 +67,9 @@ await updateDownloadRule(1, created.id, { include_shorts: true });
 const candidatesWithoutShorts = await automaticDownloadCandidates();
 db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'download_shorts','1') ON CONFLICT(user_id,key) DO UPDATE SET value='1'").run();
 const candidatesWithShorts = await automaticDownloadCandidates();
+db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'download_live_archives','1') ON CONFLICT(user_id,key) DO UPDATE SET value='1'").run();
+const liveArchivePreview = await previewDownloadRule(1, input);
+const candidatesWithLiveArchives = await automaticDownloadCandidates();
 const rules = await listDownloadRules(1);
 let invalidRuleError = "";
 try { await createDownloadRule(1, { name: "Invalid", source_mode: "selected" }); }
@@ -77,5 +82,5 @@ db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'download_
 await migrateLegacyDownloadAutomation();
 const legacyRules = await listDownloadRules(1);
 
-console.log("RESULT " + JSON.stringify({ preview, futurePreview, futureSelectedPreview, created, candidates, candidatesWithoutShorts, candidatesWithShorts, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
+console.log("RESULT " + JSON.stringify({ preview, futurePreview, futureSelectedPreview, created, candidates, candidatesWithoutShorts, candidatesWithShorts, liveArchivePreview, candidatesWithLiveArchives, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
 db.close();

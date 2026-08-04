@@ -176,16 +176,16 @@ describe("portable backup classification and restore", () => {
   test("restores downloads settings from backups created before downloads became a core feature", async () => {
     const options = await backup.backupOptions();
     const profile = options.profiles[0];
-    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
+    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
     const current = await backup.createPortableBackup({ preset: "configuration", profiles: [profile.id] });
     const legacy = await asLegacyDownloadsPluginArchive(current);
-    db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key IN ('enabled','compatible_format')").run();
+    db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key IN ('enabled','compatible_format','download_live_archives')").run();
     const analyzed = await backup.analyzePortableBackup(1, legacy);
     const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
     const plan = await backup.planPortableRestore(1, analyzed.sessionId, { mappings, sections: analyzed.manifest.sections.map((section) => section.id), strategy: "merge" });
     await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
-    expect(db.prepare("SELECT key,value FROM download_settings WHERE user_id=1 AND key IN ('enabled','compatible_format') ORDER BY key").all())
-      .toEqual([{ key: "compatible_format", value: "1" }, { key: "enabled", value: "1" }]);
+    expect(db.prepare("SELECT key,value FROM download_settings WHERE user_id=1 AND key IN ('enabled','compatible_format','download_live_archives') ORDER BY key").all())
+      .toEqual([{ key: "compatible_format", value: "1" }, { key: "download_live_archives", value: "1" }, { key: "enabled", value: "1" }]);
   });
 
   test("analyze is read-only and repeated merge restore is idempotent", async () => {
@@ -200,7 +200,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_titles_enabled", "1");
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
-    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
+    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
     await setSetting("downloads_output_template", "portable/{id}");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
     setSetting("timezone", "Europe/London");
@@ -230,7 +230,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_titles_enabled", "0");
     setUserSetting(1, "dearrow_thumbnails_enabled", "0");
     setUserSetting(1, "child_watching_monitor_enabled", "1");
-    db.prepare("DELETE FROM download_settings WHERE user_id=1 AND key='compatible_format'").run();
+    db.prepare("DELETE FROM download_settings WHERE user_id=1 AND key IN ('compatible_format','download_live_archives')").run();
     db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key='enabled'").run();
     await setSetting("downloads_output_template", "changed/{id}");
     setSetting("profile_admin_only_areas", "[]");
@@ -259,6 +259,7 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "dearrow_thumbnails_enabled")).toBe("1");
     expect(getUserSetting(1, "child_watching_monitor_enabled")).toBe("0");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='compatible_format'").get() as { value: string }).value).toBe("1");
+    expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='download_live_archives'").get() as { value: string }).value).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='enabled'").get() as { value: string }).value).toBe("1");
     expect(getSetting("downloads_output_template")).toBe("portable/{id}");
     expect((db.prepare("SELECT value FROM settings WHERE key='profile_admin_only_areas'").get() as { value: string }).value)

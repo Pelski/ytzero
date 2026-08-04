@@ -643,6 +643,7 @@ export const pl: Locale = {
     commentsTopHint: "Najwyżej oceniane komentarze z YouTube",
     commentsLazyHint: "Komentarze wczytają się po przewinięciu do tej sekcji.",
     commentsScrollToLoad: "Przewiń niżej, aby wczytać komentarze.",
+    commentsShow: "Pokaż komentarze",
     commentsLoading: "Wczytywanie komentarzy…",
     commentsCount: "Komentarze: {count}",
     commentsEmpty: "Brak komentarzy do wyświetlenia",

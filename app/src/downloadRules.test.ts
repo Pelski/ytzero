@@ -53,6 +53,12 @@ describe("download automation rules", () => {
     expect(result.candidatesWithShorts.map((candidate: any) => candidate.video_id)).toContain("rule-short");
   });
 
+  test("includes completed live archives only when the profile opts in", () => {
+    expect(result.preview.sample.map((video: any) => video.video_id)).not.toContain("rule-live-archive");
+    expect(result.liveArchivePreview.sample.map((video: any) => video.video_id)).toContain("rule-live-archive");
+    expect(result.candidatesWithLiveArchives.map((candidate: any) => candidate.video_id)).toContain("rule-live-archive");
+  });
+
   test("members-only content requires explicit opt-in", () => {
     expect(result.updatedPreview.matches).toBe(2);
     expect(result.updatedPreview.sample.map((video: any) => video.video_id).sort()).toEqual(["rule-main", "rule-members"]);

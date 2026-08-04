@@ -213,6 +213,10 @@ below.
   Downloads' per-profile **Include Shorts** preference is portable
   configuration. It controls automatic feed and Watch later downloads; manual
   downloads remain an explicit, separate action.
+  The per-profile **Download past live streams** preference is portable
+  configuration and defaults to disabled. When enabled, completed stream
+  archives may be selected by Watch later and automatic download rules;
+  active and upcoming streams remain ineligible.
   The downloads domain section includes the per-profile older-device
   compatibility preference as portable configuration. It affects only future
   files, selecting H.264 video and AAC

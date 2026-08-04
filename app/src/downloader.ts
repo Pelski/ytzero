@@ -10,7 +10,7 @@ import { notifyDownloadFailed } from "./notifications";
 import { createDownloadStreaming } from "./downloadStreaming";
 import { autoDownloadFollowerExistsSql } from "./downloadEligibility";
 import { automaticDownloadCandidates, migrateLegacyDownloadAutomation } from "./downloadRules";
-import { shouldAutoDownloadVideo } from "./downloadContentPolicy";
+import { enqueueScheduledDownloadsForUser } from "./scheduledDownloads";
 import {
   DOWNLOADS_DIR,
   YTDLP,
@@ -540,26 +540,7 @@ async function autoEnqueue() {
 
   const users = await database.prepare("SELECT id FROM users").all() as { id: number }[];
   for (const user of users) {
-    const settings = await dlSettings(user.id);
-    if (!await profileDownloadsEnabled(user.id) || settings.download_scheduled !== 1) continue;
-    // Anything any profile put on a watch-later bucket and hasn't watched yet.
-    // 30-day window keeps a fresh plugin enable from crawling years of
-    // long-forgotten watch-later backlog.
-    const rows = await database.prepare(`
-      SELECT DISTINCT uv.user_id, v.video_id, v.is_short FROM user_videos uv
-      JOIN videos v ON v.video_id = uv.video_id
-      WHERE uv.user_id=? AND uv.status = 'queued'
-        AND v.live_status = 'none'
-        AND v.is_private = 0
-        AND COALESCE(uv.watched, 0) = 0
-        AND COALESCE(uv.queued_at, datetime('now')) >= datetime('now', '-30 days')
-        AND NOT EXISTS (SELECT 1 FROM download_owners owner WHERE owner.user_id=uv.user_id AND owner.video_id=v.video_id)
-      LIMIT 50
-    `).all(user.id) as { user_id: number; video_id: string; is_short: number | null }[];
-    for (const { user_id, video_id, is_short } of rows) {
-      if (!shouldAutoDownloadVideo(is_short, settings.download_shorts === 1)) continue;
-      await enqueueDownload(user_id, video_id, "scheduled", false, true);
-    }
+    await enqueueScheduledDownloadsForUser(user.id, (userId, videoId) => enqueueDownload(userId, videoId, "scheduled", false, true));
   }
 
   for (const candidate of await automaticDownloadCandidates(50)) {

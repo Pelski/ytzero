@@ -54,6 +54,7 @@ export const DL_DEFAULTS = {
   thumb_progress: 1,
   download_scheduled: 1,
   download_feed: 0,
+  download_live_archives: 0,
   feed_max_age_hours: 48,
   feed_min_duration_minutes: 0,
   download_shorts: 0,
@@ -177,6 +178,17 @@ export const DOWNLOADS_SETTINGS: DownloadSettingSource[] = [
     defaultValue: DL_DEFAULTS.download_feed,
   },
   {
+    key: "download_live_archives",
+    type: "toggle",
+    label: { en: "Download past live streams", pl: "Pobieraj zakończone transmisje", de: "Beendete Livestreams laden" },
+    description: {
+      en: "Allows completed live stream archives to be picked up by Watch later and automatic download rules. Active and upcoming streams are still skipped.",
+      pl: "Pozwala pobierać archiwa zakończonych transmisji z „Do obejrzenia” i reguł automatycznych. Trwające i nadchodzące transmisje nadal są pomijane.",
+      de: "Erlaubt automatische Downloads beendeter Livestream-Archive aus Später ansehen und Download-Regeln. Laufende und bevorstehende Streams werden weiterhin übersprungen.",
+    },
+    defaultValue: DL_DEFAULTS.download_live_archives,
+  },
+  {
     key: "feed_max_age_hours",
     type: "slider",
     label: { en: "New upload window (hours)", pl: "Okno nowości (godziny)", de: "Zeitfenster für Neues (Stunden)" },
@@ -272,4 +284,3 @@ export function localizeDownloadSettings(language: string | null | undefined): D
     options: definition.options?.map((option) => ({ value: option.value, label: option.label[selected] })),
   }));
 }
-

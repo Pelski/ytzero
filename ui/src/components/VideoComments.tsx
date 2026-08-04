@@ -322,6 +322,13 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
             </div>
             <div className="lp-bar-knob" style={{ left: `${displayedScrollProgress * 100}%` }} />
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void load()}
+          >
+            {t("commentsShow")}
+          </Button>
         </div>
       )}
       {status === "loading" && (

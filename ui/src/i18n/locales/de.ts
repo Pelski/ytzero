@@ -642,6 +642,7 @@ export const de: Locale = {
     commentsTopHint: "Top-Kommentare von YouTube",
     commentsLazyHint: "Kommentare werden geladen, sobald du diesen Bereich erreichst.",
     commentsScrollToLoad: "Scrolle weiter, um Kommentare zu laden.",
+    commentsShow: "Kommentare anzeigen",
     commentsLoading: "Kommentare werden geladen…",
     commentsCount: "{count} Kommentare",
     commentsEmpty: "Keine Kommentare vorhanden",

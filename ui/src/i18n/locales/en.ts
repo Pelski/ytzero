@@ -642,6 +642,7 @@ export const en = {
     commentsTopHint: "Top comments from YouTube",
     commentsLazyHint: "Comments load when you reach this section.",
     commentsScrollToLoad: "Scroll down to load comments.",
+    commentsShow: "Show comments",
     commentsLoading: "Loading comments…",
     commentsCount: "{count} comments",
     commentsEmpty: "No comments to show",

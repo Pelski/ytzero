@@ -247,6 +247,7 @@ export async function previewDownloadRule(userId: number, value: Partial<Downloa
     params.push(createdAt, userId);
   } else if (rule.backfill_mode === "recent") params.push(`-${rule.lookback_hours} hours`);
 
+  const includeLiveArchives = (await dlSettings(userId)).download_live_archives;
   const rows = await database.prepare(`
     SELECT v.video_id, v.title, v.description, v.thumbnail, v.channel_id,
            COALESCE(NULLIF(c.custom_title, ''), c.title) AS channel_title,
@@ -256,7 +257,7 @@ export async function previewDownloadRule(userId: number, value: Partial<Downloa
     JOIN channels c ON c.channel_id=v.channel_id
     LEFT JOIN downloads d ON d.video_id=v.video_id
     LEFT JOIN download_owners owner ON owner.video_id=v.video_id AND owner.user_id=?
-    WHERE v.live_status='none' AND v.is_private=0 AND v.external=0
+    WHERE (v.live_status='none' OR (v.live_status='was_live' AND ?=1)) AND v.is_private=0 AND v.external=0
       AND (${sourceWhere.join(" OR ")})
       ${timeWhere}
       ${readyOnly ? "AND owner.video_id IS NULL" : ""}
@@ -267,7 +268,7 @@ export async function previewDownloadRule(userId: number, value: Partial<Downloa
       )
     ORDER BY COALESCE(v.published_at, v.created_at) DESC
     LIMIT 2001
-  `).all(userId, ...params, userId) as (DownloadRulePreviewVideo & { description: string; duration: string | null; is_short: number | null; members_only: number })[];
+  `).all(userId, includeLiveArchives, ...params, userId) as (DownloadRulePreviewVideo & { description: string; duration: string | null; is_short: number | null; members_only: number })[];
 
   const matching = rows.filter((row) => {
     if (!rule.include_shorts && row.is_short === 1) return false;
