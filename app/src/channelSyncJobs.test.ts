@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ChannelSyncJobConflictError, createChannelSyncJobManager } from "./channelSyncJobs";
+import { createChannelSyncJobManager } from "./channelSyncJobs";
 
 const targets = [
   { channelId: "UC_one", title: "One" },
@@ -122,18 +122,42 @@ describe("channel sync background jobs", () => {
     expect(instance.current(9)?.skipped).toBe(1);
   });
 
-  test("rejects overlap and releases the mutation lease after completion", async () => {
-    let resolveSync: ((value: { added: number }) => void) | null = null;
+  test("runs jobs for different profiles without globally blocking them", async () => {
+    const resolvers = new Map<string, (value: { added: number }) => void>();
     const { instance, mutations } = manager({
-      syncChannel: () => new Promise((resolve) => { resolveSync = resolve; }),
+      syncChannel: (channelId) => new Promise((resolve) => { resolvers.set(channelId, resolve); }),
     });
     instance.start(3, [targets[0]]);
-    expect(() => instance.start(4, [targets[1]])).toThrow(ChannelSyncJobConflictError);
+    instance.start(4, [targets[1]]);
     await Promise.resolve();
-    expect(mutations()).toBe(1);
-    resolveSync!({ added: 0 });
+    expect(mutations()).toBe(2);
+    resolvers.get("UC_one")!({ added: 0 });
+    resolvers.get("UC_two")!({ added: 0 });
     await instance.waitForIdle();
     expect(mutations()).toBe(0);
+    expect(instance.current(3)?.status).toBe("completed");
+    expect(instance.current(4)?.status).toBe("completed");
+  });
+
+  test("adds a manual request to the active profile job and prioritizes it next", async () => {
+    let releaseFirst: ((value: { added: number }) => void) | null = null;
+    const { instance, calls } = manager({
+      syncChannel: (channelId) => {
+        calls.push(channelId);
+        if (channelId === "UC_one") return new Promise((resolve) => { releaseFirst = resolve; });
+        return Promise.resolve({ added: 1 });
+      },
+    });
+    const original = instance.start(3, targets.slice(0, 2));
+    await Promise.resolve();
+    const expanded = instance.start(3, [targets[2], targets[1]]);
+
+    expect(expanded.id).toBe(original.id);
+    expect(expanded.total).toBe(3);
+    expect(expanded.channels.map((channel) => channel.channelId)).toEqual(["UC_one", "UC_three", "UC_two"]);
+    releaseFirst!({ added: 0 });
+    await instance.waitForIdle();
+    expect(calls).toEqual(["UC_one", "UC_three", "UC_two"]);
   });
 
   test("halts cleanly when maintenance owns the write lease", async () => {

@@ -17,11 +17,10 @@ function manualStatusLabel(channel: Channel, t: ReturnType<typeof useI18n>["t"])
   }
 }
 
-export default function ChannelSyncDialog({ channels, open, onOpenChange, jobRunning, initialChannelIds, onStart }: {
+export default function ChannelSyncDialog({ channels, open, onOpenChange, initialChannelIds, onStart }: {
   channels: Channel[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  jobRunning: boolean;
   initialChannelIds?: string[];
   onStart: (channelIds: string[]) => Promise<unknown>;
 }) {
@@ -52,16 +51,14 @@ export default function ChannelSyncDialog({ channels, open, onOpenChange, jobRun
   };
 
   const start = async () => {
-    if (selectedIds.length === 0 || starting || jobRunning) return;
+    if (selectedIds.length === 0 || starting) return;
     setStarting(true);
     setError("");
     try {
       await onStart(selectedIds);
       onOpenChange(false);
     } catch (reason) {
-      setError(reason instanceof ApiError && reason.status === 409
-        ? t("channelSyncAlreadyRunningHint")
-        : reason instanceof ApiError && reason.status === 429
+      setError(reason instanceof ApiError && reason.status === 429
           ? t("channelSyncRateLimitError")
           : t("channelSyncStartFailed"));
     } finally {
@@ -88,10 +85,10 @@ export default function ChannelSyncDialog({ channels, open, onOpenChange, jobRun
       <Button
         variant="primary"
         leadingIcon={starting ? <LoaderCircle className="spin" /> : <RefreshCw />}
-        disabled={starting || jobRunning || selectedIds.length === 0}
+        disabled={starting || selectedIds.length === 0}
         onClick={() => void start()}
       >
-        {starting ? t("channelSyncStarting") : jobRunning ? t("channelSyncAlreadyRunning") : t("channelSyncStart", { channels: formatChannelCount(selectedIds.length, language) })}
+        {starting ? t("channelSyncStarting") : t("channelSyncStart", { channels: formatChannelCount(selectedIds.length, language) })}
       </Button>
     </div>}
   >
@@ -121,8 +118,8 @@ export default function ChannelSyncDialog({ channels, open, onOpenChange, jobRun
             />
           </InputGroup>
           <div className="channel-sync-dialog__bulk-actions">
-            <Button size="sm" variant="ghost" leadingIcon={<CheckCheck />} disabled={starting || jobRunning || visibleEligibleIds.length === 0 || allVisibleSelected} onClick={selectVisible}>{t("channelSyncSelectVisible")}</Button>
-            <Button size="sm" variant="ghost" leadingIcon={<CircleOff />} disabled={starting || jobRunning || selectedIds.length === 0} onClick={() => setSelectedIds([])}>{t("channelSyncSelectNone")}</Button>
+            <Button size="sm" variant="ghost" leadingIcon={<CheckCheck />} disabled={starting || visibleEligibleIds.length === 0 || allVisibleSelected} onClick={selectVisible}>{t("channelSyncSelectVisible")}</Button>
+            <Button size="sm" variant="ghost" leadingIcon={<CircleOff />} disabled={starting || selectedIds.length === 0} onClick={() => setSelectedIds([])}>{t("channelSyncSelectNone")}</Button>
           </div>
         </div>
 
@@ -145,7 +142,7 @@ export default function ChannelSyncDialog({ channels, open, onOpenChange, jobRun
                     </span>}
                     aria-label={t("channelSyncIncludeChannel", { channel: title })}
                     checked={selected}
-                    disabled={!enabled || starting || jobRunning}
+                    disabled={!enabled || starting}
                     onChange={() => toggle(channel.channel_id)}
                   />
                 </div>;
@@ -155,7 +152,6 @@ export default function ChannelSyncDialog({ channels, open, onOpenChange, jobRun
         </ScrollArea>
       </section>
 
-      {jobRunning && <Alert variant="info">{t("channelSyncAlreadyRunningHint")}</Alert>}
       {error && <Alert variant="danger">{error}</Alert>}
     </div>
   </Dialog>;

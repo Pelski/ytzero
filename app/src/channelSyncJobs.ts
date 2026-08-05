@@ -46,13 +46,6 @@ interface ChannelSyncJobDependencies {
   createId?: () => string;
 }
 
-export class ChannelSyncJobConflictError extends Error {
-  constructor() {
-    super("channel sync already in progress");
-    this.name = "ChannelSyncJobConflictError";
-  }
-}
-
 function snapshot(job: ChannelSyncJob): ChannelSyncJob {
   return {
     ...job,
@@ -73,8 +66,8 @@ export function createChannelSyncJobManager(dependencies: ChannelSyncJobDependen
   const now = dependencies.now ?? (() => new Date());
   const createId = dependencies.createId ?? (() => crypto.randomUUID());
   const latestByUser = new Map<number, ChannelSyncJob>();
-  let active: ChannelSyncJob | null = null;
-  let activeRun: Promise<void> = Promise.resolve();
+  const activeByUser = new Map<number, ChannelSyncJob>();
+  const activeRuns = new Set<Promise<void>>();
   let sequence = 0;
 
   const changed = (job: ChannelSyncJob) => {
@@ -164,7 +157,6 @@ export function createChannelSyncJobManager(dependencies: ChannelSyncJobDependen
 
   return {
     start(userId: number, targets: readonly ChannelSyncJobTarget[]): ChannelSyncJob {
-      if (active?.status === "running") throw new ChannelSyncJobConflictError();
       if (targets.length === 0) throw new Error("at least one channel is required");
 
       const seen = new Set<string>();
@@ -172,6 +164,24 @@ export function createChannelSyncJobManager(dependencies: ChannelSyncJobDependen
         .filter((target) => target.channelId && !seen.has(target.channelId) && seen.add(target.channelId))
         .map((target) => ({ ...target, status: "pending" as const, added: 0 }));
       if (channels.length === 0) throw new Error("at least one channel is required");
+
+      const active = activeByUser.get(userId);
+      if (active?.status === "running") {
+        const requestedIds = new Set(channels.map((channel) => channel.channelId));
+        const runningIndex = active.channels.findIndex((channel) => channel.status === "running");
+        const insertAt = active.processed + (runningIndex >= 0 ? 1 : 0);
+        const existingById = new Map(active.channels.map((channel) => [channel.channelId, channel]));
+        const prioritized = channels.flatMap((channel) => {
+          const existing = existingById.get(channel.channelId);
+          if (!existing) return [channel];
+          return existing.status === "pending" ? [existing] : [];
+        });
+        active.channels = active.channels.filter((channel) => !(channel.status === "pending" && requestedIds.has(channel.channelId)));
+        active.channels.splice(Math.min(insertAt, active.channels.length), 0, ...prioritized);
+        active.total = active.channels.length;
+        changed(active);
+        return snapshot(active);
+      }
 
       const job: ChannelSyncJob = {
         id: createId(),
@@ -191,15 +201,18 @@ export function createChannelSyncJobManager(dependencies: ChannelSyncJobDependen
         finishedAt: null,
         channels,
       };
-      active = job;
+      activeByUser.set(userId, job);
       latestByUser.set(userId, job);
       dependencies.publish(userId);
       dependencies.publishBusy?.();
+      let activeRun!: Promise<void>;
       activeRun = Promise.resolve()
         .then(() => run(job))
         .finally(() => {
-          if (active?.id === job.id) active = null;
+          if (activeByUser.get(userId)?.id === job.id) activeByUser.delete(userId);
+          activeRuns.delete(activeRun);
         });
+      activeRuns.add(activeRun);
       return snapshot(job);
     },
 
@@ -209,11 +222,11 @@ export function createChannelSyncJobManager(dependencies: ChannelSyncJobDependen
     },
 
     isRunning(): boolean {
-      return active?.status === "running";
+      return activeByUser.size > 0;
     },
 
     async waitForIdle(): Promise<void> {
-      await activeRun;
+      while (activeRuns.size > 0) await Promise.all([...activeRuns]);
     },
   };
 }

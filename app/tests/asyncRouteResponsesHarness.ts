@@ -66,13 +66,14 @@ const invalidVideoCardActionsResponse = await api.request("http://localhost/sett
   body: JSON.stringify({ video_card_actions: "surprise" }),
 });
 const originalFetch = globalThis.fetch;
-let resolveRateLimitFetch: ((response: Response) => void) | null = null;
-globalThis.fetch = (() => new Promise<Response>((resolve) => { resolveRateLimitFetch = resolve; })) as unknown as typeof fetch;
+const resolveRateLimitFetches: Array<(response: Response) => void> = [];
+globalThis.fetch = (() => new Promise<Response>((resolve) => { resolveRateLimitFetches.push(resolve); })) as unknown as typeof fetch;
 const acceptedChannelSync = await postJson("/channels/sync", { channel_ids: [activeChannelId] });
-for (let attempt = 0; !resolveRateLimitFetch && attempt < 100; attempt++) await Bun.sleep(1);
+for (let attempt = 0; resolveRateLimitFetches.length < 1 && attempt < 100; attempt++) await Bun.sleep(1);
 const secondaryActiveView = await json("/channels/sync", secondary.id);
-const secondaryConflict = await postJson("/channels/sync", { channel_ids: [secondaryChannelId] }, secondary.id);
-resolveRateLimitFetch?.(new Response("limited", { status: 429 }));
+const secondaryAccepted = await postJson("/channels/sync", { channel_ids: [secondaryChannelId] }, secondary.id);
+for (let attempt = 0; resolveRateLimitFetches.length < 2 && attempt < 100; attempt++) await Bun.sleep(1);
+for (const resolveFetch of resolveRateLimitFetches) resolveFetch(new Response("limited", { status: 429 }));
 let haltedChannelSync = await json("/channels/sync");
 for (let attempt = 0; haltedChannelSync.body.job?.status === "running" && attempt < 100; attempt++) {
   await Bun.sleep(10);
@@ -111,8 +112,8 @@ console.log("RESULT " + JSON.stringify({
   haltedChannelSyncFailed: haltedChannelSync.body.job?.failed,
   secondaryActiveJob: secondaryActiveView.body.job,
   secondaryActiveBusy: secondaryActiveView.body.busy,
-  secondaryConflictStatus: secondaryConflict.status,
-  secondaryConflictJob: secondaryConflict.body.job,
+  secondaryAcceptedStatus: secondaryAccepted.status,
+  secondaryAcceptedJobStatus: secondaryAccepted.body.job?.status,
   secondaryTerminalJob: secondaryTerminalView.body.job,
   secondaryTerminalBusy: secondaryTerminalView.body.busy,
   acceptedSingleChannelSyncStatus: acceptedSingleChannelSync.status,

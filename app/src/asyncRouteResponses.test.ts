@@ -57,9 +57,9 @@ describe("async database route response shapes", () => {
     expect(result.haltedChannelSyncFailed).toBe(1);
     expect(result.secondaryActiveJob).toBeNull();
     expect(result.secondaryActiveBusy).toBe(true);
-    expect(result.secondaryConflictStatus).toBe(409);
-    expect(result.secondaryConflictJob).toBeNull();
-    expect(result.secondaryTerminalJob).toBeNull();
+    expect(result.secondaryAcceptedStatus).toBe(202);
+    expect(result.secondaryAcceptedJobStatus).toBe("running");
+    expect(result.secondaryTerminalJob?.status).toBe("halted");
     expect(result.secondaryTerminalBusy).toBe(false);
     expect(result.acceptedSingleChannelSyncStatus).toBe(202);
     expect(result.haltedSingleChannelSyncStatus).toBe("halted");

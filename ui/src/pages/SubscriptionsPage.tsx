@@ -184,7 +184,7 @@ export default function SubscriptionsPage() {
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [syncDialogOpen, setSyncDialogOpen] = useState(false);
   const [syncDialogChannelIds, setSyncDialogChannelIds] = useState<string[] | undefined>();
-  const { job: syncJob, busy: syncBusy, loading: syncActivityLoading, start: startChannelSync } = useChannelSyncActivity();
+  const { job: syncJob, loading: syncActivityLoading, start: startChannelSync } = useChannelSyncActivity();
   const [dismissedSyncJobId, setDismissedSyncJobId] = useState<string | null>(null);
   const syncRunning = syncJob?.status === "running";
   const syncFinishedAt = Date.parse(syncJob?.finishedAt ?? "");
@@ -321,7 +321,7 @@ export default function SubscriptionsPage() {
   return (
     <>
       <PageHeader className="subscriptions-page-header" title={t("subscriptions")} description={t("followedChannelsCount", { n: channels.length })} actions={<>
-        <Button leadingIcon={<RefreshCw />} disabled={loading || syncActivityLoading || channels.every((channel) => !channelCanSync(channel)) || syncBusy} onClick={() => openSyncDialog()}>{syncRunning ? t("channelSyncRunning") : syncBusy ? t("channelSyncAlreadyRunning") : t("channelSyncChannels")}</Button>
+        <Button leadingIcon={<RefreshCw className={syncRunning ? "spin" : undefined} />} disabled={loading || syncActivityLoading || channels.every((channel) => !channelCanSync(channel))} onClick={() => openSyncDialog()}>{t("channelSyncChannels")}</Button>
         <ChannelSearchPicker onAdded={load} />
       </>} />
 
@@ -403,9 +403,9 @@ export default function SubscriptionsPage() {
                   size="sm"
                   variant="ghost"
                   label={t("channelSyncCardAction", { channel: title })}
-                  title={!syncEnabled ? t("channelStatusSyncDisabled") : syncBusy ? t("channelSyncAlreadyRunningHint") : t("channelSyncCardAction", { channel: title })}
+                  title={!syncEnabled ? t("channelStatusSyncDisabled") : t("channelSyncCardAction", { channel: title })}
                   icon={<RefreshCw className={syncState?.status === "running" ? "spin" : undefined} />}
-                  disabled={!syncEnabled || syncActivityLoading || syncBusy}
+                  disabled={!syncEnabled || syncActivityLoading}
                   onClick={() => openSyncDialog([ch.channel_id])}
                 />
               </div>
@@ -416,7 +416,7 @@ export default function SubscriptionsPage() {
         </div>
       )}
 
-      <ChannelSyncDialog channels={channels} open={syncDialogOpen} onOpenChange={setSyncDialogVisibility} jobRunning={syncBusy} initialChannelIds={syncDialogChannelIds} onStart={startSync} />
+      <ChannelSyncDialog channels={channels} open={syncDialogOpen} onOpenChange={setSyncDialogVisibility} initialChannelIds={syncDialogChannelIds} onStart={startSync} />
     </>
   );
 }

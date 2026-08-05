@@ -79,7 +79,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const prevIdRef = useRef<string | undefined>(undefined);
   const completedSyncJobsRef = useRef(new Set<string>());
-  const { job: backgroundSyncJob, busy: backgroundSyncBusy } = useChannelSyncActivity();
+  const { job: backgroundSyncJob } = useChannelSyncActivity();
   const backgroundChannelSyncActive = backgroundSyncJob?.status === "running"
     && backgroundSyncJob.channels.some((channel) => channel.channelId === id && (channel.status === "pending" || channel.status === "running"));
   const startedChannelSyncActive = Boolean(startedSyncJobId && !completedSyncJobsRef.current.has(startedSyncJobId));
@@ -350,7 +350,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   };
 
   const handleSync = async () => {
-    if (!id || syncing || backgroundSyncBusy || manualStatus !== "active") return;
+    if (!id || syncing || manualStatus !== "active") return;
     setSyncing(true);
     setSyncMsg(null);
     try {
@@ -507,7 +507,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         <div className="channel-header-actions">
           <SplitButton
             onClick={() => void handleSync()}
-            disabled={syncing || backgroundSyncBusy || manualStatus !== "active"}
+            disabled={syncing || manualStatus !== "active"}
             title={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("syncTitle")}
             menuLabel={t("moreActions")}
             menu={<>
@@ -517,7 +517,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
             </>}
           >
             <RefreshCw size={15} className={channelSyncActive ? "channel-spin" : ""} />
-            {channelSyncActive ? t("syncing") : backgroundSyncBusy ? t("channelSyncAlreadyRunning") : syncMsg ?? t("syncChannel")}
+            {channelSyncActive ? t("syncing") : syncMsg ?? t("syncChannel")}
           </SplitButton>
           <Button
             variant={followed ? "danger" : "primary"}
@@ -720,7 +720,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
         (videosLoading ? (
           <VideoGridSkeleton />
         ) : regularVideos.length === 0 ? (
-          <EmptyState title={t("channelVideosEmpty")} description={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("channelVideosEmptyHint")} action={manualStatus === "active" && <Button variant="primary" onClick={() => void handleSync()} disabled={syncing || backgroundSyncBusy}>
+          <EmptyState title={t("channelVideosEmpty")} description={manualStatus !== "active" ? t("channelStatusSyncDisabled") : t("channelVideosEmptyHint")} action={manualStatus === "active" && <Button variant="primary" onClick={() => void handleSync()} disabled={syncing}>
               <RefreshCw size={15} className={channelSyncActive ? "channel-spin" : undefined} />
               {channelSyncActive ? t("syncing") : t("syncChannelVideos")}
             </Button>} />
