@@ -1,5 +1,5 @@
-import { decodeApiTitles } from "./htmlEntities";
 import { apiFetch } from "./apiTransport";
+import { http, sharedGet } from "./apiHttp";
 import type { EmojiSkinTone } from "./emojiSkinTone";
 import { createSocialWatchPartyApi } from "./socialWatchPartyApi";
 import {
@@ -83,23 +83,7 @@ import {
 } from "./apiTypes";
 import type { ChannelPost } from "./channelPostTypes";
 export * from "./apiTypes";
-export class ApiError extends Error {
-  constructor(message: string, public readonly status: number, public readonly code?: string, public readonly detail?: string) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-async function http<T>(path: string, init?: RequestInit, options?: { suppressAuthenticationNavigation?: boolean }): Promise<T> {
-  const res = await apiFetch(`/api${path}`, {
-    headers: init?.body instanceof FormData ? undefined : { "Content-Type": "application/json" },
-    ...init,
-  }, options);
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError((body as any).error ?? `HTTP ${res.status}`, res.status, (body as any).code, (body as any).detail);
-  }
-  return decodeApiTitles(await res.json()) as T;
-}
+export { ApiError } from "./apiHttp";
 export const api = {
   databaseStatus: () => http<DatabaseStatus>("/database/status"),
   migrateDatabaseToPostgres: (target_url: string) => http<{ receiptId: string; tables: number; rows: number; next: string }>("/database/migration/sqlite-to-postgres", { method: "POST", body: JSON.stringify({ target_url }) }),
@@ -148,7 +132,7 @@ export const api = {
     if (p.processing) qs.set("processing", "1");
     if (p.limit) qs.set("limit", String(p.limit));
     if (p.sort === "arrival") qs.set("sort", "arrival");
-    return http<{ videos: Video[] }>(`/feed?${qs}`);
+    return sharedGet<{ videos: Video[] }>(`feed:${qs}`, `/feed?${qs}`);
   },
   feedAdjacent: (videoId: string, direction: "oldest" | "newest", opts: { tags?: number[]; showAll?: boolean; sort?: "published" | "arrival" } = {}) => {
     const qs = new URLSearchParams({ video_id: videoId, direction });
@@ -168,9 +152,9 @@ export const api = {
       body: JSON.stringify({ filter, action, exclude_video_ids: excludeVideoIds }),
     }),
   cleanupUndo: () => http<{ restored: number }>("/cleanup/undo", { method: "POST", body: "{}" }),
-  inProgress: () => http<{ videos: Video[] }>("/in-progress"),
+  inProgress: () => sharedGet<{ videos: Video[] }>("in-progress", "/in-progress"),
   youtubeSearch: (q: string) => http<{ results: SearchResult[]; channels: ChannelSearchResult[] }>(`/search/youtube?q=${encodeURIComponent(q)}`),
-  plugins: () => http<{ plugins: PluginManifest[] }>("/plugins"),
+  plugins: () => sharedGet<{ plugins: PluginManifest[] }>("plugins", "/plugins"),
   updatePlugin: (id: string, enabled: boolean) =>
     http<{ plugins: PluginManifest[] }>(`/plugins/${id}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
   pluginSettings: (id: string) =>
@@ -218,8 +202,8 @@ export const api = {
   removeDownloadCookies: () => http<{ configured: boolean }>("/downloads/cookies", { method: "DELETE" }),
   downloads: (scope: "mine" | "all" = "mine") => http<DownloadsResponse>(`/downloads${scope === "all" ? "?scope=all" : ""}`),
   cancelDownloadQueue: () => http<{ ok: true; cancelled: number }>("/downloads/queue", { method: "DELETE" }),
-  downloadSummary: () => http<DownloadSummary>("/downloads/summary"),
-  downloadConfig: () => http<DownloadConfigResponse>("/downloads/config"),
+  downloadSummary: () => sharedGet<DownloadSummary>("downloads-summary", "/downloads/summary"),
+  downloadConfig: () => sharedGet<DownloadConfigResponse>("downloads-config", "/downloads/config"),
   updateDownloadConfig: (patch: { enabled?: boolean; settings?: Record<string, DownloadSettingValue> }) =>
     http<DownloadConfigResponse>("/downloads/config", { method: "PUT", body: JSON.stringify(patch) }),
   downloadRules: () => http<{ rules: DownloadRule[]; can_manage: boolean }>("/downloads/automation"),
@@ -264,15 +248,15 @@ export const api = {
     return response.json() as Promise<AppChangelog>;
   },
   checkUpdates: () => http<UpdateCheck>("/updates/check", { method: "POST", body: "{}" }),
-  notifications: () => http<{ notifications: AppNotification[]; unread: number }>("/notifications"),
+  notifications: () => sharedGet<{ notifications: AppNotification[]; unread: number }>("notifications", "/notifications"),
   readNotification: (id: number) => http<{ ok: true }>(`/notifications/${id}/read`, { method: "POST", body: "{}" }),
   readAllNotifications: () => http<{ ok: true }>("/notifications/read-all", { method: "POST", body: "{}" }),
   live: () => http<{ videos: Video[] }>("/live"),
   channelLive: (id: string) => http<{ videos: Video[] }>(`/channels/${id}/live`),
-  video: (id: string) => http<{ video: Video; related: Video[] }>(`/videos/${id}`),
+  video: (id: string) => sharedGet<{ video: Video; related: Video[] }>(`video:${id}`, `/videos/${id}`),
   videoComments: (id: string, refresh = false) =>
     http<VideoCommentsResponse>(`/videos/${id}/comments${refresh ? "?refresh=1" : ""}`),
-  watchlist: () => http<{ videos: Video[] }>("/watchlist"),
+  watchlist: () => sharedGet<{ videos: Video[] }>("watchlist", "/watchlist"),
   archive: (page = 0) => http<{ videos: Video[] }>(`/archive?page=${page}`),
   history: (page = 0) => http<{ videos: Video[]; page: number; has_more: boolean }>(`/history?page=${page}`),
   removeFromHistory: (historyId: number) => http<{ ok: true }>(`/history/${historyId}`, { method: "DELETE" }),
@@ -294,8 +278,8 @@ export const api = {
     }),
   queue: (id: string, bucket: Bucket) =>
     http(`/videos/${id}/queue`, { method: "POST", body: JSON.stringify({ bucket }) }),
-  saveProgress: (id: string, position: number, duration: number) =>
-    http(`/videos/${id}/progress`, { method: "PUT", body: JSON.stringify({ position, duration }) }),
+  saveProgress: (id: string, position: number, duration: number, keepalive = false) =>
+    http(`/videos/${id}/progress`, { method: "PUT", body: JSON.stringify({ position, duration }), keepalive }),
   clearProgress: (id: string) => http(`/videos/${id}/progress`, { method: "DELETE" }),
   dequeue: (id: string) => http(`/videos/${id}/dequeue`, { method: "POST" }),
   archiveVideo: (id: string) => http(`/videos/${id}/archive`, { method: "POST" }),
@@ -309,10 +293,10 @@ export const api = {
     http(`/videos/${id}/tags`, { method: "POST", body: JSON.stringify({ tag_id }) }),
   untagVideo: (id: string, tagId: number) =>
     http(`/videos/${id}/tags/${tagId}`, { method: "DELETE" }),
-  channels: () => http<{ channels: Channel[]; instance_has_data: boolean }>("/channels"),
+  channels: () => sharedGet<{ channels: Channel[]; instance_has_data: boolean }>("channels", "/channels"),
   channel: (id: string) => http<{ channel: Channel }>(`/channels/${id}`),
-  recentChannels: () => http<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null })[] }>("/channels/recent"),
-  topChannels: () => http<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("/channels/top"),
+  recentChannels: () => sharedGet<{ channels: (Channel & { latest_thumbnail: string | null; latest_video_id: string | null; watched: number; watch_position: number | null; watch_duration: number | null })[] }>("channels-recent", "/channels/recent"),
+  topChannels: () => sharedGet<{ channels: (Channel & { watch_count: number; is_live: number })[] }>("channels-top", "/channels/top"),
   syncChannel: (id: string) => http<{ job: ChannelSyncJob }>(`/channels/${id}/sync`, { method: "POST" }),
   channelSyncJob: () => http<{ job: ChannelSyncJob | null; busy: boolean }>("/channels/sync"),
   startChannelSync: (channelIds: string[]) => http<{ job: ChannelSyncJob }>("/channels/sync", { method: "POST", body: JSON.stringify({ channel_ids: channelIds }) }),
@@ -340,7 +324,7 @@ export const api = {
   importCommit: (payload: ImportCommitPayload) =>
     http<ImportCommitResult>("/import/commit", { method: "POST", body: JSON.stringify(payload) }),
 
-  tags: () => http<{ tags: Tag[] }>("/tags"),
+  tags: () => sharedGet<{ tags: Tag[] }>("tags", "/tags"),
   addTag: (name: string, color: string) =>
     http<{ tag: Tag }>("/tags", { method: "POST", body: JSON.stringify({ name, color }) }),
   updateTag: (id: number, patch: { name?: string; color?: string; filter_only?: number }) =>
@@ -363,12 +347,12 @@ export const api = {
 
   refresh: () => http<{ channels: number; added: number; errors: string[] }>("/refresh", { method: "POST" }),
 
-  settings: () => http<{ settings: AppSettings }>("/settings"),
-  bootstrapSettings: () => http<{ settings: AppSettings }>("/settings", undefined, { suppressAuthenticationNavigation: true }),
+  settings: () => sharedGet<{ settings: AppSettings }>("settings", "/settings"),
+  bootstrapSettings: () => sharedGet<{ settings: AppSettings }>("bootstrap-settings", "/settings", { suppressAuthenticationNavigation: true }),
   updateSettings: (s: Partial<AppSettings>) =>
     http("/settings", { method: "PUT", body: JSON.stringify(s) }),
-  childLock: () => http<{ child_lock: ChildLockStatus }>("/child-lock"),
-  profilePermissions: () => http<{ permissions: ProfilePermissions }>("/profile-permissions"),
+  childLock: () => sharedGet<{ child_lock: ChildLockStatus }>("child-lock", "/child-lock"),
+  profilePermissions: () => sharedGet<{ permissions: ProfilePermissions }>("profile-permissions", "/profile-permissions"),
   updateProfilePermissions: (adminOnlyAreas: ProfilePermissionArea[]) =>
     http<{ permissions: ProfilePermissions }>("/profile-permissions", { method: "PUT", body: JSON.stringify({ admin_only_areas: adminOnlyAreas }) }),
   enableChildLock: (pin: string) =>
@@ -417,7 +401,7 @@ export const api = {
 
   userPlaylists: (videoId?: string) => {
     const qs = videoId ? `?video_id=${encodeURIComponent(videoId)}` : "";
-    return http<{ playlists: UserPlaylist[] }>(`/playlists${qs}`);
+    return sharedGet<{ playlists: UserPlaylist[] }>(`user-playlists:${videoId ?? "all"}`, `/playlists${qs}`);
   },
   createUserPlaylist: (p: { name: string; icon?: string }) =>
     http<{ playlist: UserPlaylist }>("/playlists", { method: "POST", body: JSON.stringify(p) }),
@@ -438,13 +422,13 @@ export const api = {
   applyUserPlaylistRules: (id: number) =>
     http<{ matched: number }>(`/playlists/${id}/rules/apply`, { method: "POST" }),
 
-  chapters: (videoId: string) => http<{ chapters: VideoChapter[] }>(`/videos/${videoId}/chapters`),
+  chapters: (videoId: string) => sharedGet<{ chapters: VideoChapter[] }>(`video-chapters:${videoId}`, `/videos/${videoId}/chapters`),
   videoPlaylists: (videoId: string) =>
-    http<{ playlists: VideoChannelPlaylist[] }>(`/videos/${videoId}/playlists`),
+    sharedGet<{ playlists: VideoChannelPlaylist[] }>(`video-playlists:${videoId}`, `/videos/${videoId}/playlists`),
   videoCreators: (videoId: string) =>
     http<{ creators: VideoCreator[] }>(`/videos/${videoId}/creators`),
 
-  profiles: () => http<{ profiles: Profile[]; active_id: number; oidc_mapping: { claim: string; required: boolean } | null; can_create: boolean; hide_other_profiles: boolean }>("/profiles"),
+  profiles: () => sharedGet<{ profiles: Profile[]; active_id: number; oidc_mapping: { claim: string; required: boolean } | null; can_create: boolean; hide_other_profiles: boolean }>("profiles", "/profiles"),
   createProfile: (p: { name: string; avatar_color?: string; pin?: string; oidc_identity?: string; is_child?: boolean }) =>
     http<{ profile: Profile; temporary_credentials?: Omit<TemporaryProfileCredential, "id" | "name"> | null }>("/profiles", { method: "POST", body: JSON.stringify(p) }),
   updateProfile: (id: number, p: { name?: string; avatar_color?: string; pin?: string | null; oidc_identity?: string; is_child?: boolean; child_config?: Partial<ChildConfig> }) =>
@@ -467,19 +451,19 @@ export const api = {
   resetProfilePin: (id: number) => http<{ profile: Profile }>(`/profiles/${id}/reset-pin`, { method: "POST" }),
 
   // ---------- child profiles (time limits & requests) ----------
-  childStatus: () => http<ChildStatus>("/child/status"),
+  childStatus: () => sharedGet<ChildStatus>("child-status", "/child/status"),
   childNowWatching: () => http<{ watching: ChildNowWatching[] }>("/child/now-watching"),
   stopChildWatching: (userId: number) =>
     http<{ ok: boolean }>(`/child/now-watching/${userId}/stop`, { method: "POST" }),
   childTimeRequest: (videoId?: string | null) =>
     http<{ ok: boolean; id: number }>("/child/time-request", { method: "POST", body: JSON.stringify({ video_id: videoId ?? null }) }),
-  childTimeRequests: () => http<{ requests: ChildTimeRequest[] }>("/child/time-requests"),
+  childTimeRequests: () => sharedGet<{ requests: ChildTimeRequest[] }>("child-time-requests", "/child/time-requests"),
   resolveChildTimeRequest: (id: number, action: "dismiss" | "approve", grant?: ChildGrant, pin?: string) =>
     http<{ ok: boolean }>(`/child/time-requests/${id}/resolve`, { method: "POST", body: JSON.stringify({ action, grant, pin }) }),
 
-  config: () => http<{ app_url: string }>("/config"),
+  config: () => sharedGet<{ app_url: string }>("config", "/config"),
   // ---------- authentication ----------
-  authStatus: () => http<AuthStatus>("/auth/status"),
+  authStatus: () => sharedGet<AuthStatus>("auth-status", "/auth/status"),
   passwordLogin: (username: string, password: string) =>
     http<{ ok: true; active_id?: number }>("/auth/password/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   passkeyLoginOptions: () => http<{ options: any; flowId: string }>("/auth/passkey/login/options", { method: "POST", body: "{}" }),

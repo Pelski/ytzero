@@ -10,6 +10,7 @@ import { img } from "../img";
 import { Badge, EmptyState, PageHeader, SectionHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { subscribeServerEvent } from "../serverEvents";
+import { loadLiveVideos } from "../liveActivity";
 
 export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const { t } = useI18n();
@@ -18,8 +19,7 @@ export default function LivePage({ onPlay }: { onPlay: (v: Video) => void }) {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
-    api
-      .live()
+    loadLiveVideos()
       .then((r) => {
         setVideos(r.videos);
         setLoading(false);

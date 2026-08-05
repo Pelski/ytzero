@@ -27,10 +27,10 @@ export function childLimitSeconds(userId: number): number | null {
 
 // ---------- watch-time log (all profiles) ----------
 
-// Progress saves arrive ~1 s apart while a video actually plays, so wall-clock
-// deltas between ticks are a good watch-time measure; a gap wider than 15 s
-// means pause/navigation and is not counted. Memory-only state — a restart
-// just skips one delta.
+// Progress heartbeats arrive up to ~10 s apart while a video actually plays,
+// so wall-clock deltas between ticks are a good watch-time measure; a gap wider
+// than 15 s means pause/navigation and is not counted. Memory-only state — a
+// restart just skips one delta.
 const lastTick = new Map<number, { at: number; videoId: string }>();
 const lastChildEvent = new Map<number, number>();
 const childIdleTimers = new Map<number, ReturnType<typeof setTimeout>>();

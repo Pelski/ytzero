@@ -15,6 +15,7 @@ function notify(topic: ServerEventTopic, data?: ServerEventData) {
 function connect() {
   if (source || listeners.size === 0) return;
   source = new EventSource("/api/events");
+  let readySeen = false;
   source.addEventListener("app", (event) => {
     try {
       const message = JSON.parse((event as MessageEvent<string>).data) as { topic: ServerEventTopic; data?: ServerEventData };
@@ -22,6 +23,12 @@ function connect() {
     } catch {}
   });
   source.addEventListener("ready", () => {
+    // Every subscriber loads its initial snapshot itself. Only refresh after
+    // EventSource reconnects, because events may have been missed offline.
+    if (!readySeen) {
+      readySeen = true;
+      return;
+    }
     for (const topic of listeners.keys()) notify(topic);
   });
   source.addEventListener("error", () => {

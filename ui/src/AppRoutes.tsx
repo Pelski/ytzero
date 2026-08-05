@@ -35,6 +35,7 @@ type AppRoutesProps = {
   isAdmin: boolean;
   onPlay: (video: Video, playbackQueue?: PlaybackQueueContext) => void;
   profilePermissions: ProfilePermissions;
+  showTopChannels: boolean;
   showToast: (message: string, variant?: ToastVariant) => void;
 };
 
@@ -45,12 +46,13 @@ export default function AppRoutes({
   isAdmin,
   onPlay,
   profilePermissions,
+  showTopChannels,
   showToast,
 }: AppRoutesProps) {
   return (
     <Suspense fallback={<DelayedPageSkeleton delay={200} />}>
       <Routes>
-        <Route path="/" element={<FeedPage onPlay={onPlay} showToast={showToast} feedSort={feedSort} />} />
+        <Route path="/" element={<FeedPage onPlay={onPlay} showToast={showToast} feedSort={feedSort} showTopChannels={showTopChannels} />} />
         <Route path="/search" element={<SearchPage onPlay={onPlay} hideExternalSearch={childStatus?.local_only ?? false} />} />
         <Route path="/recommendations" element={enabledPluginRoutes?.has("/recommendations")
           ? <RecommendationsPage onPlay={onPlay} loadRecommendations={api.recommendations} />

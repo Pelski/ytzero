@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveActiveLivestreams } from "./liveStatus";
+import { liveStatusChanged, resolveActiveLivestreams } from "./liveStatus";
 
 const primary = {
   videoId: "primary0001",
@@ -32,5 +32,15 @@ describe("live status discovery", () => {
 
   test("can end old statuses after an authoritative no-live result", () => {
     expect(resolveActiveLivestreams(null, undefined)).toEqual({ active: [], canDemoteMissing: true });
+  });
+
+  test("emits updates only when the stored active state actually changes", () => {
+    const before = [
+      { video_id: "one", live_status: "live" },
+      { video_id: "two", live_status: "upcoming" },
+    ];
+    expect(liveStatusChanged(before, [...before].reverse())).toBe(false);
+    expect(liveStatusChanged(before, [{ ...before[0], live_status: "upcoming" }, before[1]])).toBe(true);
+    expect(liveStatusChanged(before, before.slice(0, 1))).toBe(true);
   });
 });

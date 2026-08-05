@@ -47,6 +47,11 @@ test("server events share one SSE connection and dispatch by topic", () => {
     expect(childEvents).toBe(1);
 
     source.emit("ready");
+    expect(childEvents).toBe(1);
+    expect(downloadEvents).toBe(0);
+    expect(channelSyncEvents).toBe(1);
+
+    source.emit("ready");
     expect(childEvents).toBe(2);
     expect(downloadEvents).toBe(1);
     expect(channelSyncEvents).toBe(2);

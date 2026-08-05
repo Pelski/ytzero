@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import confetti from "canvas-confetti";
 import { emit, emitToast, subscribe } from "../events";
 import { scheduleSettingWrite } from "../settingsWriteQueue";
-import { queueProgressWrite } from "../progressWriteQueue";
+import { flushProgressWrite, queueProgressWrite } from "../progressWriteQueue";
 import { isIncognitoMode } from "../incognitoMode";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, type AppSettings, type Bucket, type PlaylistVideo, type SponsorSegment, type UserPlaylist, type Video, type VideoChapter, type VideoChannelPlaylist, type VideoCreator, type VideoInfo } from "../api";
@@ -187,6 +187,7 @@ export function useWatchPageController() {
   const disabledSegsRef = useRef<Set<string>>(new Set());
   const recordedSbSegsRef = useRef<Set<string>>(new Set());
   const endedHandledRef = useRef<string | null>(null);
+  const watchedVisitRef = useRef<string | null>(null);
 
   const showShortcutFeedback = useCallback((kind: WatchShortcutKind, seconds?: number, category?: string) => {
     if (shortcutFeedbackTimerRef.current) window.clearTimeout(shortcutFeedbackTimerRef.current);
@@ -474,7 +475,9 @@ export function useWatchPageController() {
   useEffect(() => {
     setChapters([]);
     setVideoPlaylists([]);
-    if (!id) return;
+    // Wait for the matching video snapshot. Otherwise this runs once with an
+    // unknown privacy state and again as soon as the video request resolves.
+    if (!id || video?.video_id !== id) return;
     let cancelled = false;
     Promise.allSettled([video?.is_private === 1 ? Promise.resolve({ chapters: [] }) : api.chapters(id), api.videoPlaylists(id)]).then(([chapterResult, playlistResult]) => {
       if (cancelled) return;
@@ -482,7 +485,7 @@ export function useWatchPageController() {
       setVideoPlaylists(playlistResult.status === "fulfilled" ? playlistResult.value.playlists : []);
     });
     return () => { cancelled = true; };
-  }, [id, video?.is_private]);
+  }, [id, video?.video_id, video?.is_private]);
 
   useEffect(() => {
     if (!playlistId) { setPlaylistVideos([]); return; }
@@ -626,7 +629,12 @@ export function useWatchPageController() {
           console.error(e);
         }
       });
-    if (!isIncognitoMode()) api.watch(id).catch(() => {});
+    // React StrictMode re-runs effects in development. Record one visit per
+    // actual route transition instead of inserting duplicate history rows.
+    if (!isIncognitoMode() && watchedVisitRef.current !== id) {
+      watchedVisitRef.current = id;
+      api.watch(id).catch(() => {});
+    }
   }, [id]);
 
   // When a video finishes: record completion, advance the playlist if any.
@@ -716,6 +724,8 @@ export function useWatchPageController() {
     // not the full video — persisting progress or auto-archiving off that ratio
     // would be wrong. The saved download handles resume on the next visit.
     const isStream = playerKind === "stream";
+    let wasPlaying = false;
+    let lastLifecycleFlushAt = 0;
 
     const startSeconds = sharedStartSeconds || (
       video?.watch_position && video?.watch_duration && video.watch_duration > 0 &&
@@ -744,12 +754,21 @@ export function useWatchPageController() {
           } catch {}
         }
         const isPlaying = enhancedState ? !enhancedState.paused && !enhancedState.ended : p.getPlayerState?.() === 1;
-        if (!isPlaying) return;
+        if (!isPlaying) {
+          if (wasPlaying && !isStream) {
+            queueProgressWrite(id, position, playerDuration);
+            flushProgressWrite(id);
+          }
+          wasPlaying = false;
+          return;
+        }
+        wasPlaying = true;
         if (!isStream) {
           queueProgressWrite(id, position, playerDuration);
           if (!isIncognitoMode() && canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
             queueProgressWrite(id, playerDuration, playerDuration);
+            flushProgressWrite(id);
             api.complete(id).catch(() => {});
             api.archiveVideo(id).catch(() => {});
           }
@@ -775,12 +794,35 @@ export function useWatchPageController() {
       } catch {}
     };
 
-    const saveOnExit = () => {
+    const saveCurrentProgress = (keepalive: boolean) => {
       if (progressRef.current && !archivedRef.current) {
         const { position, duration } = progressRef.current;
         queueProgressWrite(id, position, duration);
-        progressRef.current = null;
+        flushProgressWrite(id, keepalive);
       }
+    };
+
+    const flushForPageLifecycle = () => {
+      const now = Date.now();
+      if (now - lastLifecycleFlushAt < 1_000) return;
+      lastLifecycleFlushAt = now;
+      saveCurrentProgress(true);
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") flushForPageLifecycle();
+    };
+
+    const attachPageLifecycle = () => {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+      window.addEventListener("pagehide", flushForPageLifecycle);
+    };
+
+    const saveOnExit = () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", flushForPageLifecycle);
+      if (Date.now() - lastLifecycleFlushAt >= 1_000) saveCurrentProgress(true);
+      progressRef.current = null;
     };
 
     if (membersOnlyNotice) return;
@@ -790,6 +832,7 @@ export function useWatchPageController() {
       // In "stream" mode the duration is unknown, so poll() self-skips progress
       // saving and auto-archive — SponsorBlock/resume just wait for the download.
       const pollInterval = setInterval(poll, 1_000);
+      attachPageLifecycle();
       return () => {
         clearInterval(pollInterval);
         saveOnExit();
@@ -801,6 +844,7 @@ export function useWatchPageController() {
 
     const wrap = ytWrapRef.current;
     if (!wrap) return;
+    attachPageLifecycle();
 
     const playerVars: Record<string, any> = {
       autoplay: watchTogetherRoomId ? 0 : 1,

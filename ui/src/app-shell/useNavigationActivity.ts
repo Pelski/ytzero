@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { api, type DownloadSummary } from "../api";
 import { getNewCompletedDownloads, observeDownloadSummary } from "../downloadActivity";
 import { subscribeServerEvent } from "../serverEvents";
+import { loadLiveVideos } from "../liveActivity";
 
 const EMPTY_DOWNLOAD_SUMMARY: DownloadSummary = {
   enabled: false,
@@ -21,7 +22,7 @@ export function useNavigationActivity() {
   const downloadsPageActiveRef = useRef(location.pathname === "/downloads");
 
   useEffect(() => {
-    const load = () => api.live()
+    const load = () => loadLiveVideos()
       .then((result) => setLiveCount(result.videos.filter((video) => video.live_status === "live").length))
       .catch(() => {});
     load();

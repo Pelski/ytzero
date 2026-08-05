@@ -85,13 +85,13 @@ export default function AppShell({ isAdmin }: { isAdmin: boolean }) {
             />
             <main className="main">
               <div className="content">
-                <AppRoutes
-                  childStatus={profile.childStatus}
+                <AppRoutes childStatus={profile.childStatus}
                   enabledPluginRoutes={plugins.enabledPluginRoutes}
                   feedSort={preferences.feedSort}
                   isAdmin={isAdmin}
                   onPlay={play}
                   profilePermissions={preferences.profilePermissions}
+                  showTopChannels={preferences.appSettings?.show_top_channels !== "0"}
                   showToast={showToast}
                 />
               </div>

@@ -7,6 +7,17 @@ export type ActiveLivestream = {
   status: "live" | "upcoming";
 };
 
+export type StoredLiveStatus = { video_id: string; live_status: string };
+
+/** Compare active DB state without depending on query/result ordering. */
+export function liveStatusChanged(before: StoredLiveStatus[], after: StoredLiveStatus[]): boolean {
+  const snapshot = (rows: StoredLiveStatus[]) => rows
+    .map((row) => `${row.video_id}:${row.live_status}`)
+    .sort()
+    .join("\n");
+  return snapshot(before) !== snapshot(after);
+}
+
 /**
  * Combine the single /live result with the complete /streams listing.
  * `undefined` means that a source failed, while `null` means /live

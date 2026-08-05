@@ -1,7 +1,7 @@
 import type { Context, Hono } from "hono";
 import { mkdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
-import { publishAppEvent } from "../appEvents";
+import { publishAppEvent, publishAppEventForUser } from "../appEvents";
 import { database } from "../database";
 import { getSetting, getUserSetting } from "../db";
 import { type ChannelAbout, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelSubscriberCountFromWatch, fetchChannelVideosDurations, resolveChannelId } from "../youtube";
@@ -125,7 +125,7 @@ api.post("/channels", async (c) => {
   await database.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(info.channelId);
   const customTitle = typeof custom_name === "string" ? custom_name.trim() : "";
   if (customTitle) await database.prepare("UPDATE channels SET custom_title = ? WHERE channel_id = ?").run(customTitle, info.channelId);
-  log.info("channel.added", { channelId: info.channelId, title: info.title, inserted: inserted.changes > 0, userId: uid });
+  log.info("channel.added", { channelId: info.channelId, title: info.title, inserted: inserted.changes > 0, userId: uid }); publishAppEventForUser("live", uid);
   refreshChannel(info.channelId)
     .then(() => refreshLiveStatus(info.channelId))
     .catch((e) => log.error("channel.initial_refresh_failed", { channelId: info.channelId, error: e instanceof Error ? e.message : String(e) }));
@@ -146,7 +146,7 @@ api.post("/channels/assign-all", async (c) => {
     `INSERT OR IGNORE INTO user_channels (user_id, channel_id, followed)
      SELECT ?, channel_id, 1 FROM channels WHERE external = 0`
   ).run(uid);
-  log.info("channels.assigned_all", { user_id: uid, added: res.changes });
+  log.info("channels.assigned_all", { user_id: uid, added: res.changes }); if (res.changes > 0) publishAppEventForUser("live", uid);
   return c.json({ ok: true, added: res.changes });
 });
 
@@ -154,7 +154,7 @@ api.post("/channels/assign-all", async (c) => {
 // follow it; the refresher stops touching it once nobody does).
 api.delete("/channels/:id", async (c) => {
   const uid = currentUserId(c);
-  await database.prepare("DELETE FROM user_channels WHERE user_id = ? AND channel_id = ?").run(uid, c.req.param("id"));
+  const result = await database.prepare("DELETE FROM user_channels WHERE user_id = ? AND channel_id = ?").run(uid, c.req.param("id")); if (result.changes > 0) publishAppEventForUser("live", uid);
   return c.json({ ok: true });
 });
 
@@ -442,7 +442,7 @@ api.put("/channels/:id/follow", async (c) => {
     `INSERT INTO user_channels (user_id, channel_id, followed) VALUES (?, ?, ?)
      ON CONFLICT(user_id, channel_id) DO UPDATE SET followed = excluded.followed`
   ).run(uid, channelId, followed ? 1 : 0);
-  if (followed) await database.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(channelId);
+  if (followed) await database.prepare("UPDATE channels SET external = 0 WHERE channel_id = ?").run(channelId); publishAppEventForUser("live", uid);
   return c.json({ ok: true });
 });
 

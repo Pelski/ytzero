@@ -78,13 +78,12 @@ export function useAppPreferences() {
       .catch(() => {})
       .finally(() => setPermissionsReady(true));
   }, []);
-  useEffect(() => subscribe("app-name-changed", loadSettings), [loadSettings]);
-  useEffect(() => subscribe("sidebar-nav-changed", loadSettings), [loadSettings]);
-  useEffect(() => subscribe("watched-style-changed", loadSettings), [loadSettings]);
-  useEffect(() => subscribe("video-card-size-changed", loadSettings), [loadSettings]);
-  useEffect(() => subscribe("video-card-actions-changed", loadSettings), [loadSettings]);
-  useEffect(() => subscribe("player-settings-changed", loadSettings), [loadSettings]);
-  useEffect(() => subscribe("child-watching-settings-changed", loadSettings), [loadSettings]);
+  useEffect(() => {
+    const events = ["app-name-changed", "sidebar-nav-changed", "watched-style-changed", "video-card-size-changed",
+      "video-card-actions-changed", "player-settings-changed", "child-watching-settings-changed", "top-channels-changed"];
+    const unsubscribes = events.map((event) => subscribe(event, loadSettings));
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  }, [loadSettings]);
 
   useEffect(() => {
     const href = `/favicon.svg?color=${encodeURIComponent(appIconColor)}`;

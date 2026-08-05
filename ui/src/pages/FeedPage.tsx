@@ -118,10 +118,12 @@ export default function FeedPage({
   onPlay,
   showToast,
   feedSort,
+  showTopChannels,
 }: {
   onPlay: PlayVideo;
   showToast: (m: string) => void;
   feedSort: FeedSort;
+  showTopChannels: boolean;
 }) {
   const { t } = useI18n();
   useDocumentTitle();
@@ -140,7 +142,6 @@ export default function FeedPage({
   const [refreshing, setRefreshing] = useState(false);
   const refreshingRef = useRef(false);
   const [gridSize, setGridSize] = useState<GridSize>(readGridSize);
-  const [showTopChannels, setShowTopChannels] = useState(true);
   const [inProgressExpanded, setInProgressExpanded] = useState(false);
   const [queuedExpanded, setQueuedExpanded] = useState(false);
   const [hasSubscriptions, setHasSubscriptions] = useState<boolean | null>(null);
@@ -245,14 +246,8 @@ export default function FeedPage({
     return subscribe("channels-changed", loadSubscriptionState);
   }, [loadSubscriptionState]);
 
-  const loadTopChannelsSetting = useCallback(() =>
-    api.settings().then((r) => setShowTopChannels(r.settings.show_top_channels !== "0")).catch(() => {}), []);
-
-  useEffect(() => { loadTopChannelsSetting(); }, [loadTopChannelsSetting]);
-
   useEffect(() => subscribe("tags-changed", loadTags), [loadTags]);
   useEffect(() => subscribe("queue-changed", loadQueued), [loadQueued]);
-  useEffect(() => subscribe("top-channels-changed", loadTopChannelsSetting), [loadTopChannelsSetting]);
 
   // Infinite scroll
   useEffect(() => {
@@ -332,7 +327,6 @@ export default function FeedPage({
         loadQueued(),
         loadInProgress(),
         loadSubscriptionState(),
-        loadTopChannelsSetting(),
       ]);
     } catch (error) {
       console.error(error);
@@ -340,7 +334,7 @@ export default function FeedPage({
       refreshingRef.current = false;
       emit("feed-refresh-finished");
     }
-  }, [load, loadTags, loadQueued, loadInProgress, loadSubscriptionState, loadTopChannelsSetting]);
+  }, [load, loadTags, loadQueued, loadInProgress, loadSubscriptionState]);
 
   useEffect(() => subscribe("feed-view-reload-requested", () => { void reloadView(); }), [reloadView]);
 

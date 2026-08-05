@@ -13,7 +13,7 @@ import { estimateUploadCadenceMs, selectRefreshBatch, targetRefreshIntervalMs, t
 import { publishAppEventSoon } from "./appEvents";
 import { configuredTimeZone } from "./timeZone";
 import { manualScheduleIsDue, nextScheduleOccurrenceMs, parseManualRefreshSchedule } from "./channelRefreshSchedule";
-import { resolveActiveLivestreams } from "./liveStatus";
+import { liveStatusChanged, resolveActiveLivestreams, type StoredLiveStatus } from "./liveStatus";
 import { channelSyncJobIsRunning } from "./channelSyncRuntime";
 import { isYouTubeRateLimitError } from "./youtubeRateLimit";
 
@@ -600,7 +600,11 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
   return result;
 }
 
-export async function refreshLiveStatus(channelId: string) {
+export async function refreshLiveStatus(channelId: string, options: { notify?: boolean } = {}): Promise<boolean> {
+  const activeStatusRows = () => database.prepare(
+    "SELECT video_id, live_status FROM videos WHERE channel_id = ? AND live_status IN ('live', 'upcoming')"
+  ).all(channelId) as Promise<StoredLiveStatus[]>;
+  const before = await activeStatusRows();
   const [primaryResult, streamsResult] = await Promise.allSettled([
     fetchLiveInfo(channelId),
     fetchChannelStreams(channelId),
@@ -644,7 +648,9 @@ export async function refreshLiveStatus(channelId: string) {
       log.info("live.video_added", { channelId, videoId: live.videoId, status: live.status, title: live.title });
     }
   }
-  publishAppEventSoon("live", 1_200);
+  const changed = liveStatusChanged(before, await activeStatusRows());
+  if (changed && options.notify !== false) publishAppEventSoon("live", 1_200);
+  return changed;
 }
 
 /**
@@ -1198,6 +1204,7 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
     const markSucceeded = database.prepare("UPDATE channels SET feed_refresh_failures = 0 WHERE channel_id = ?");
     const markFailed = database.prepare("UPDATE channels SET feed_refresh_failures = feed_refresh_failures + 1 WHERE channel_id = ?");
     let added = 0;
+    let liveChanged = false;
     const errors: string[] = [];
     for (let index = 0; index < channels.length; index++) {
       const channel = channels[index];
@@ -1206,7 +1213,7 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
       try {
         const r = await refreshChannel(channelId);
         added += r.added;
-        await refreshLiveStatus(channelId);
+        if (await refreshLiveStatus(channelId, { notify: false })) liveChanged = true;
         await markSucceeded.run(channelId);
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
@@ -1223,6 +1230,7 @@ export async function refreshAll(options: { force?: boolean; manualOnly?: boolea
     // Resolve any remaining unchecked videos (e.g. rows from before the
     // shorts column existed).
     if (!options.manualOnly) await backfillShorts();
+    if (liveChanged) publishAppEventSoon("live", 1_200);
     log.info("refresh.complete", { channels: channels.length, added, errors: errors.length, ms: Date.now() - startedAt });
     return { channels: channels.length, added, errors };
   } finally {
@@ -1275,9 +1283,10 @@ export async function refreshAllLiveStatuses(): Promise<void> {
 
     log.info("live.refresh_start", { channels: channels.length });
     let errors = 0;
+    let changed = false;
     for (const { channel_id } of channels) {
       try {
-        await refreshLiveStatus(channel_id);
+        if (await refreshLiveStatus(channel_id, { notify: false })) changed = true;
       } catch (e) {
         errors++;
         log.error("live.refresh_failed", { channelId: channel_id, error: e instanceof Error ? e.message : String(e) });
@@ -1288,6 +1297,7 @@ export async function refreshAllLiveStatuses(): Promise<void> {
       }
       await Bun.sleep(800);
     }
+    if (changed) publishAppEventSoon("live", 1_200);
     log.info("live.refresh_complete", { channels: channels.length, errors, ms: Date.now() - startedAt });
   } finally {
     liveRefreshing = false;
