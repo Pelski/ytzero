@@ -16,11 +16,12 @@ import { markYouTubeUrl } from "../youtubeUrl";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
-import { isPlaybackQueueContext, nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
+import { isPlaybackQueueContext, type PlaybackQueueContext } from "../playbackQueue";
 import { restoreSidebarVisibility } from "../app-shell/sidebarVisibility";
 import { loadYouTubeApi, resolveShareTimestamp } from "./watchRuntime";
 import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
 import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTubeKeyboardShortcuts";
+import { useUpNextQueue } from "./useUpNextQueue";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
@@ -166,8 +167,21 @@ export function useWatchPageController() {
   // "Autoplay my feed" (#55): the next video in the main feed, prefetched so
   // it's ready the instant the current one ends. Only populated when we got
   // here from the Feed (feedContext) and the setting is on.
-  const nextInQueueRef = useRef<Video | null>(null);
-  const [upNextVideo, setUpNextVideo] = useState<Video | null>(null);
+  const {
+    dismiss: dismissUpNextVideo,
+    hasPrefetched: hasNextQueueVideo,
+    loadingNext: upNextLoadingNext,
+    play: goToUpNextVideo,
+    playPrefetched: playNextQueueVideo,
+    show: showUpNextVideo,
+    skip: skipUpNextVideo,
+    video: upNextVideo,
+  } = useUpNextQueue({
+    currentVideoId: id,
+    direction: settings?.feed_autoplay_direction === "newest" ? "newest" : "oldest",
+    navigate,
+    queue: playbackQueue,
+  });
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
@@ -497,6 +511,8 @@ export function useWatchPageController() {
   }, [playlistId]);
 
   const playlistIndex = playlistId ? playlistVideos.findIndex((v) => v.videoId === id) : -1;
+  const nextPlaylistVideo = playlistIndex >= 0 ? playlistVideos[playlistIndex + 1] : undefined;
+  const nextPlaylistPath = nextPlaylistVideo ? `/watch/${nextPlaylistVideo.videoId}/playlist/${playlistId}` : null;
 
   useEffect(() => {
     const container = playlistItemsRef.current;
@@ -538,30 +554,8 @@ export function useWatchPageController() {
 
   // Keep the "next video" target in sync for the player's end-of-video handler.
   useEffect(() => {
-    const next = playlistIndex >= 0 ? playlistVideos[playlistIndex + 1] : undefined;
-    nextInPlaylistRef.current = next ? `/watch/${next.videoId}/playlist/${playlistId}` : null;
-  }, [playlistIndex, playlistVideos, playlistId]);
-
-  // Resolve the next entry from the list that opened this watch page. Feed is
-  // server-backed so it spans unloaded pages; finite shelves carry a snapshot
-  // of their exact visible order in router state.
-  useEffect(() => {
-    nextInQueueRef.current = null;
-    setUpNextVideo(null);
-    if (!id || !playbackQueue) return;
-    let cancelled = false;
-    const direction = settings?.feed_autoplay_direction === "newest" ? "newest" : "oldest";
-    const request = playbackQueue.kind === "feed"
-      ? api.feedAdjacent(id, direction, { tags: playbackQueue.tags, showAll: playbackQueue.showAll, sort: playbackQueue.sort })
-      : (() => {
-          const nextId = nextSnapshotVideoId(playbackQueue, id, direction);
-          return nextId ? api.video(nextId).then((result) => ({ video: result.video })) : Promise.resolve({ video: null });
-        })();
-    request
-      .then((r) => { if (!cancelled) nextInQueueRef.current = r.video; })
-      .catch(() => { if (!cancelled) nextInQueueRef.current = null; });
-    return () => { cancelled = true; };
-  }, [id, playbackQueue, settings?.feed_autoplay_direction]);
+    nextInPlaylistRef.current = nextPlaylistPath;
+  }, [nextPlaylistPath]);
 
   useEffect(() => {
     if (!video || settings?.sponsorblock_enabled !== "1") {
@@ -647,13 +641,17 @@ export function useWatchPageController() {
     // place instead of silently navigating the host away from every guest.
     if (watchTogetherRoomId) return;
     if (nextInPlaylistRef.current) navigate(nextInPlaylistRef.current);
-    else if (settings?.feed_autoplay_enabled === "1" && nextInQueueRef.current) setUpNextVideo(nextInQueueRef.current);
-  }, [id, navigate, settings?.feed_autoplay_enabled, watchTogetherRoomId]);
+    else if (settings?.feed_autoplay_enabled === "1") showUpNextVideo();
+  }, [id, navigate, settings?.feed_autoplay_enabled, showUpNextVideo, watchTogetherRoomId]);
 
-  const goToUpNextVideo = useCallback(() => {
-    if (!upNextVideo) return;
-    navigate(`/watch/${upNextVideo.video_id}`, playbackQueue ? { state: { playbackQueue } } : undefined);
-  }, [upNextVideo, playbackQueue, navigate]);
+  const playNextVideo = useCallback(() => {
+    if (watchTogetherRoomId) return;
+    if (nextPlaylistPath) navigate(nextPlaylistPath);
+    else playNextQueueVideo();
+  }, [navigate, nextPlaylistPath, playNextQueueVideo, watchTogetherRoomId]);
+  const canPlayNextVideo = !watchTogetherRoomId && Boolean(
+    nextPlaylistPath || (settings?.feed_autoplay_enabled === "1" && hasNextQueueVideo),
+  );
 
   const toggleFeedAutoplay = useCallback((next: boolean) => {
     const behavior = next ? "autoplay" : "prompt";
@@ -1371,6 +1369,7 @@ export function useWatchPageController() {
     appUrl,
     backgroundDownload,
     cancelOrRemoveDownload,
+    canPlayNextVideo,
     captionsDefaultLang,
     captionsDefaultOn,
     changeSpeed,
@@ -1394,6 +1393,7 @@ export function useWatchPageController() {
     downloadStatus,
     downloadSubtitleLanguages,
     downloadsEnabled,
+    dismissUpNextVideo,
     exitStreaming,
     goToUpNextVideo,
     handleEnded,
@@ -1412,6 +1412,7 @@ export function useWatchPageController() {
     playerKind,
     playerRef,
     playerWrapRef,
+    playNextVideo,
     playlistId,
     playlistIndex,
     playlistItemsRef,
@@ -1449,7 +1450,6 @@ export function useWatchPageController() {
     setSocialShareOpen,
     setSourceChoice,
     setSpeedOpen,
-    setUpNextVideo,
     settings,
     shareLink,
     shareOpen,
@@ -1459,6 +1459,7 @@ export function useWatchPageController() {
     showComments,
     showRelated,
     showShortcutFeedback,
+    skipUpNextVideo,
     socialEnabled,
     socialShareOpen,
     speed,
@@ -1472,6 +1473,7 @@ export function useWatchPageController() {
     togglePlaylist,
     toggleRelatedSchedule,
     upNextVideo,
+    upNextLoadingNext,
     usingLocal,
     video,
     videoCreators,

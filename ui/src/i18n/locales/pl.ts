@@ -624,6 +624,8 @@ export const pl: Locale = {
     upNextLabel: "Następny",
     upNextPlayNow: "Odtwórz teraz",
     upNextPlayingIn: "Odtwarzanie za {n}s",
+    nextVideo: "Następny",
+    upNextSkip: "Pomiń",
     upNextDismiss: "Zamknij",
     hideMembersOnlyFromFeed: "Ukrywaj filmy dla wspierających na głównym feedzie",
     hideMembersOnlyFromFeedHint: "Nie pokazuje ich na głównym feedzie. Nadal znajdziesz je na stronie kanału, gdzie możesz też ustawić wyjątek dla konkretnego twórcy.",

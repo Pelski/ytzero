@@ -25,6 +25,7 @@ import {
   Pause,
   Play,
   Share2,
+  SkipForward,
   Star,
   ThumbsUp,
   Trash2,
@@ -65,6 +66,7 @@ export default function WatchPage() {
     appUrl,
     backgroundDownload,
     cancelOrRemoveDownload,
+    canPlayNextVideo,
     captionsDefaultLang,
     captionsDefaultOn,
     changeSpeed,
@@ -88,6 +90,7 @@ export default function WatchPage() {
     downloadStatus,
     downloadSubtitleLanguages,
     downloadsEnabled,
+    dismissUpNextVideo,
     exitStreaming,
     goToUpNextVideo,
     handleEnded,
@@ -106,6 +109,7 @@ export default function WatchPage() {
     playerKind,
     playerRef,
     playerWrapRef,
+    playNextVideo,
     playlistId,
     playlistIndex,
     playlistItemsRef,
@@ -143,7 +147,6 @@ export default function WatchPage() {
     setSocialShareOpen,
     setSourceChoice,
     setSpeedOpen,
-    setUpNextVideo,
     settings,
     shareLink,
     shareOpen,
@@ -153,6 +156,7 @@ export default function WatchPage() {
     showComments,
     showRelated,
     showShortcutFeedback,
+    skipUpNextVideo,
     socialEnabled,
     socialShareOpen,
     speed,
@@ -166,6 +170,7 @@ export default function WatchPage() {
     togglePlaylist,
     toggleRelatedSchedule,
     upNextVideo,
+    upNextLoadingNext,
     usingLocal,
     video,
     videoCreators,
@@ -382,9 +387,11 @@ export default function WatchPage() {
                 <UpNextOverlay
                   video={upNextVideo}
                   autoplayEnabled={settings?.feed_autoplay_behavior !== "prompt"}
+                  loadingNext={upNextLoadingNext}
                   onToggleAutoplay={toggleFeedAutoplay}
                   onPlayNow={goToUpNextVideo}
-                  onDismiss={() => setUpNextVideo(null)}
+                  onSkip={skipUpNextVideo}
+                  onDismiss={dismissUpNextVideo}
                 />
               )}
             </div>
@@ -404,6 +411,18 @@ export default function WatchPage() {
                 <span className="watch-local-source-icon" aria-label={t("watchLocalPlaybackTooltip")} tabIndex={0}>
                   <HardDrive size={15} aria-hidden="true" />
                 </span>
+              </Tooltip>
+            )}
+            {canPlayNextVideo && !upNextVideo && (
+              <Tooltip text={t("nextVideo")} pos="top">
+                <IconButton
+                  variant="ghost"
+                  size="sm"
+                  className="watch-next-video"
+                  label={t("nextVideo")}
+                  icon={<SkipForward />}
+                  onClick={playNextVideo}
+                />
               </Tooltip>
             )}
           </div>

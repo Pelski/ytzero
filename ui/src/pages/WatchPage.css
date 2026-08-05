@@ -226,6 +226,7 @@
 }
 .watch-title { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 19px; font-weight: 700; line-height: 1.35; letter-spacing: -0.2px; }
 .watch-local-source-tooltip { margin-right: 8px; }
+.watch-next-video { color: var(--text-2); }
 .watch-local-source-icon {
   display: inline-flex;
   flex: 0 0 auto;

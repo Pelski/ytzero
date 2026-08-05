@@ -623,6 +623,8 @@ export const de: Locale = {
     upNextLabel: "Als Nächstes",
     upNextPlayNow: "Jetzt abspielen",
     upNextPlayingIn: "Wiedergabe in {n}s",
+    nextVideo: "Nächstes Video",
+    upNextSkip: "Überspringen",
     upNextDismiss: "Schließen",
     hideMembersOnlyFromFeed: "Videos nur für Mitglieder im Hauptfeed ausblenden",
     hideMembersOnlyFromFeedHint: "Blendet sie im Hauptfeed aus. Auf der Kanalseite bleiben sie sichtbar; dort kannst du auch eine Ausnahme für einzelne Kanäle festlegen.",

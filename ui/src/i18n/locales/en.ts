@@ -623,6 +623,8 @@ export const en = {
     upNextLabel: "Up next",
     upNextPlayNow: "Play now",
     upNextPlayingIn: "Playing in {n}s",
+    nextVideo: "Next",
+    upNextSkip: "Skip",
     upNextDismiss: "Dismiss",
     hideMembersOnlyFromFeed: "Hide members-only videos from the main feed",
     hideMembersOnlyFromFeedHint: "Keeps them out of the main feed. They remain available on the channel page, where you can also set an exception for a specific creator.",
