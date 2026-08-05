@@ -133,7 +133,6 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
   const [settingsLoadError, setSettingsLoadError] = useState("");
   const [addingChannel, setAddingChannel] = useState(false);
   const [updatingChannelId, setUpdatingChannelId] = useState<string | null>(null);
-  const [updatingChannelStatusId, setUpdatingChannelStatusId] = useState<string | null>(null);
   const [addingTag, setAddingTag] = useState(false);
   const [externalVideos, setExternalVideos] = useState<Video[]>([]);
   const [loadingExternal, setLoadingExternal] = useState(false);
@@ -254,22 +253,6 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
       showToast(`${t("error")}: ${error instanceof Error ? error.message : error}`);
     } finally {
       setUpdatingChannelId(null);
-    }
-  };
-
-  const updateChannelStatus = async (channel: Channel, status: ChannelManualStatus) => {
-    if (updatingChannelStatusId) return;
-    const previous = channel.manual_status ?? "active";
-    setUpdatingChannelStatusId(channel.channel_id);
-    setChannels((current) => current.map((item) => item.channel_id === channel.channel_id ? { ...item, manual_status: status } : item));
-    try {
-      await api.setChannelStatus(channel.channel_id, status);
-      showToast(status === "active" ? t("channelStatusRestored") : t("channelStatusUpdated"));
-    } catch (error) {
-      setChannels((current) => current.map((item) => item.channel_id === channel.channel_id ? { ...item, manual_status: previous } : item));
-      showToast(error instanceof Error ? error.message : String(error));
-    } finally {
-      setUpdatingChannelStatusId(null);
     }
   };
 
@@ -1370,14 +1353,12 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     toggleWatchRelated,
     unlockPin,
     unlockSettings,
-    updateChannelStatus,
     updateCheck,
     updateCheckError,
     updateCheckInterval,
     updatePluginBlockedTerms,
     updatePluginSetting,
     updatingChannelId,
-    updatingChannelStatusId,
     watchShowComments,
     watchShowRelated,
     watchedStyle,

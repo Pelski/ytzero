@@ -242,7 +242,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   child_lock_pin_hash: "",
   // Portable, non-secret policy defining which areas non-admin profiles may
   // not change. This is independent from the temporary PIN-based child lock.
-  profile_admin_only_areas: '{"version":3,"adminOnlyAreas":["channels","followed_playlists","imports","appearance","feed","navigation","playback","plugins","profiles"]}',
+  profile_admin_only_areas: '{"version":3,"adminOnlyAreas":["imports","appearance","feed","navigation","playback","plugins","profiles"]}',
   app_name: "YT Zero",
   app_icon_color: "#0a5fff",
   // One instance-wide IANA timezone drives logs, daily rotation, child limits,

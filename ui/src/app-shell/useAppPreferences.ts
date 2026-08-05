@@ -9,7 +9,7 @@ import { applyWatchedStyle, parseWatchedStyle } from "../watchedStyle";
 import { applyVideoCardActionsMode } from "../videoCardActions";
 
 const DEFAULT_PROFILE_PERMISSIONS: ProfilePermissions = {
-  admin_only_areas: ["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"],
+  admin_only_areas: ["imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"],
 };
 
 export function useAppPreferences() {

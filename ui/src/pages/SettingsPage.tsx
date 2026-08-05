@@ -4,8 +4,8 @@ import { useSettingsPageController } from "./useSettingsPageController";
 import { SettingsDisplayView } from "../components/settings/SettingsDisplayView";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, LoaderCircle, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
-import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildLockStatus, type FilterRule, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
+import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, LoaderCircle, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
+import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChildLockStatus, type FilterRule, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
@@ -34,6 +34,7 @@ import ProfilesSettings, { ProfilePasswordSettings } from "../components/setting
 import { ChannelOwnership, FilterRuleGroups, PlaylistSettingsItem, PluginMultiselect, RuleRow, SidebarNavEditor, TagRow } from "../components/settings/SettingsEditors";
 import { ChangelogNote, LogLine, SettingsLoadingState } from "../components/settings/SettingsSupport";
 import { SettingsSearch } from "../components/settings/SettingsSearch";
+import ChannelSettingsDialog, { hasCustomChannelSettings } from "../components/settings/ChannelSettingsDialog";
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -59,7 +60,7 @@ const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
 ];
 
 const DISPLAY_PERMISSION_AREAS: ProfilePermissionArea[] = ["appearance", "feed", "navigation", "playback"];
-const DEFAULT_ADMIN_ONLY_AREAS: ProfilePermissionArea[] = ["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"];
+const DEFAULT_ADMIN_ONLY_AREAS: ProfilePermissionArea[] = ["imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"];
 const GITHUB_RELEASES_URL = "https://github.com/Pelski/ytzero/releases";
 const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"]);
 
@@ -98,6 +99,7 @@ function isFeedMaxAgeUnit(value: unknown): value is FeedMaxAgeUnit {
 
 export default function SettingsPage({ showToast }: { showToast: (m: string) => void }) {
   const [pluginSearchTarget, setPluginSearchTarget] = useState<string | null>(null);
+  const [settingsChannel, setSettingsChannel] = useState<Channel | null>(null);
   const controller = useSettingsPageController({ showToast });
   const {
     activeAuthMethod,
@@ -131,7 +133,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     channelCustomName,
     channelQuery,
     channelStatusLabel,
-    channelStatusOptions,
     channelSubTab,
     channelUrl,
     channels,
@@ -301,14 +302,12 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     toggleWatchRelated,
     unlockPin,
     unlockSettings,
-    updateChannelStatus,
     updateCheck,
     updateCheckError,
     updateCheckInterval,
     updatePluginBlockedTerms,
     updatePluginSetting,
     updatingChannelId,
-    updatingChannelStatusId,
     watchShowComments,
     watchShowRelated,
     watchedStyle,
@@ -640,16 +639,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                             <TagCreateForm title={t("newTag")} name={newChannelTagName} color={newChannelTagColor} placeholder={t("tagNamePlaceholder")} submitLabel={t("addTag")} onNameChange={setNewChannelTagName} onColorChange={setNewChannelTagColor} onSubmit={() => createAndAddChannelTag(ch.channel_id)} />
                           </TagPickerMenu>
                         </Popover>
-                        <SelectMenu
-                          label={t("channelStatus")}
-                          value={ch.manual_status ?? "active"}
-                          options={channelStatusOptions}
-                          size="sm"
-                          floating
-                          disabled={updatingChannelStatusId !== null}
-                          className="channel-status-select"
-                          onChange={(status) => void updateChannelStatus(ch, status)}
-                        />
                         </div>
                       </td>
                       <td className="shrink">
@@ -666,14 +655,23 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         </Button>
                       </td>
                       <td className="shrink">
-                        <Popconfirm
-                          message={t("confirmDelete", { name: ch.title })}
-                          onConfirm={() => api.removeChannel(ch.channel_id).then(load)}
-                        >
-                          <IconButton label={t("deleteChannel")}>
-                            <Trash2 />
-                          </IconButton>
-                        </Popconfirm>
+                        <div className="channel-row-actions">
+                          <IconButton
+                            variant="ghost"
+                            className={hasCustomChannelSettings(ch) ? "channel-settings-button channel-settings-button--customized" : "channel-settings-button"}
+                            label={t("channelTechnicalSettings")}
+                            icon={<SlidersHorizontal />}
+                            onClick={() => setSettingsChannel(ch)}
+                          />
+                          <Popconfirm
+                            message={t("confirmDelete", { name: ch.title })}
+                            onConfirm={() => api.removeChannel(ch.channel_id).then(load)}
+                          >
+                            <IconButton label={t("deleteChannel")}>
+                              <Trash2 />
+                            </IconButton>
+                          </Popconfirm>
+                        </div>
                       </td>
                     </tr>
                     ))}
@@ -1323,6 +1321,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </SettingsSection>
       )}
         </div>
+        <ChannelSettingsDialog channel={settingsChannel} open={settingsChannel !== null} onOpenChange={(open) => { if (!open) setSettingsChannel(null); }} onSaved={() => void load()} />
       </div>
     </>
   );

@@ -13,6 +13,7 @@ describe("profile administrator permissions", () => {
     expect(parseAdminOnlyAreas(null)).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
     expect(parseAdminOnlyAreas("not-json")).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
     expect(parseAdminOnlyAreas('["unknown"]')).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
+    expect(DEFAULT_ADMIN_ONLY_AREAS).toEqual(["imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"]);
   });
 
   test("accepts explicit v3 delegation and normalizes order and duplicates", () => {

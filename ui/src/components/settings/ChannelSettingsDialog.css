@@ -1,0 +1,12 @@
+.channel-settings-dialog { width: 620px; }
+.channel-settings-button { position: relative; }
+.channel-settings-button--customized::after { background: var(--accent); border: 2px solid var(--surface); border-radius: 50%; content: ""; height: 8px; position: absolute; right: 4px; top: 4px; width: 8px; }
+.channel-settings-dialog .ui-settings-section { background: var(--surface); margin-bottom: 8px; padding: 10px 14px; }
+.channel-settings-dialog .ui-select-menu__trigger { min-width: 190px; }
+.channel-settings-dialog__loading { align-items: center; color: var(--text-3); display: flex; gap: 8px; justify-content: center; min-height: 180px; }
+.channel-settings-dialog__loading svg { height: 18px; width: 18px; }
+
+@media (max-width: 560px) {
+  .channel-settings-dialog .ui-setting-row { align-items: stretch; }
+  .channel-settings-dialog .ui-select-menu__trigger { max-width: none; width: 100%; }
+}

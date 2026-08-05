@@ -16,12 +16,10 @@ export const PROFILE_PERMISSION_AREAS = [
 export type ProfilePermissionArea = (typeof PROFILE_PERMISSION_AREAS)[number];
 export const PROFILE_PERMISSIONS_VERSION = 3;
 
-// Safe household default: personal organization remains open, while changes
-// affecting subscriptions, application behaviour, plugins and profiles stay
-// with the administrator until explicitly delegated.
+// Safe household default: subscriptions and personal organization remain open,
+// while imports, application behaviour, plugins and profiles stay with the
+// administrator until explicitly delegated.
 export const DEFAULT_ADMIN_ONLY_AREAS: readonly ProfilePermissionArea[] = [
-  "channels",
-  "followed_playlists",
   "imports",
   "appearance",
   "feed",

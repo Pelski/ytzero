@@ -27,7 +27,7 @@ function nextUnusedTime(times: string[]) {
   return times[0] ?? "12:02";
 }
 
-export default function ChannelRefreshScheduleDialog({ channelId, open, onOpenChange }: { channelId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
+export default function ChannelRefreshScheduleDialog({ channelId, open, onOpenChange, onSaved }: { channelId: string; open: boolean; onOpenChange: (open: boolean) => void; onSaved?: () => void }) {
   const { t, locale } = useI18n();
   const [details, setDetails] = useState<ChannelRefreshScheduleDetails | null>(null);
   const [mode, setMode] = useState<"adaptive" | "manual">("adaptive");
@@ -54,7 +54,7 @@ export default function ChannelRefreshScheduleDialog({ channelId, open, onOpenCh
     setSaving(true); setError("");
     try {
       const value = await api.setChannelRefreshSchedule(channelId, { mode, days, times: [...new Set(times)].sort() });
-      setDetails(value); onOpenChange(false);
+      setDetails(value); onSaved?.(); onOpenChange(false);
     } catch { setError(t("channelRefreshSaveFailed")); }
     finally { setSaving(false); }
   };

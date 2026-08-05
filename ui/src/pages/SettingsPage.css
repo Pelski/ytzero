@@ -684,7 +684,7 @@
 tr:hover .channel-rename-btn, .channel-rename-btn:focus-visible { opacity: 1; }
 .channel-original-name { font-size: 11.5px; color: var(--text-3); margin-top: 1px; }
 .channel-row-controls { display: flex; align-items: center; gap: 6px; }
-.channel-status-select { max-width: 130px; }
+.channel-row-actions { align-items: center; display: flex; gap: 2px; }
 .channel-rename-row { display: flex; align-items: center; gap: 4px; }
 .channel-rename-row input {
   background: var(--bg);

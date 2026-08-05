@@ -35,7 +35,7 @@ describe("administrator-only profile permissions", () => {
     expect(result.enableStatus).toBe(200);
     expect(result.adminLocked).toBe(false);
     expect(result.secondaryLocked).toBe(true);
-    expect(result.defaultAreas).toEqual(["channels", "followed_playlists", "imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"]);
+    expect(result.defaultAreas).toEqual(["imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"]);
     expect(result.adminSettingsStatus).toBe(200);
     expect(result.restrictedSettingsStatus).toBe(403);
     expect(result.defaultTagStatus).toBe(200);

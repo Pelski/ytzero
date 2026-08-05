@@ -69,7 +69,7 @@ async function channelSyncIsDisabled(channelId: string): Promise<boolean> {
 api.get("/channels", async (c) => {
   const uid = currentUserId(c);
   const channels = await database.prepare(
-    `SELECT ch.*, uc.added_at AS subscribed_at,
+    `SELECT ch.*, uc.added_at AS subscribed_at, uc.playback_speed, uc.caption_mode, uc.caption_language, uc.members_only_visibility, uc.shorts_feed_visibility,
        (SELECT MAX(v.published_at) FROM videos v WHERE v.channel_id = ch.channel_id) AS latest_video_at,
        (SELECT COUNT(*) FROM videos v WHERE v.channel_id = ch.channel_id) AS video_count
      FROM channels ch
