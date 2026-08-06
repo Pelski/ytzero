@@ -7,6 +7,7 @@ import { applySQLiteMigrations } from "./sqliteMigrations";
 import { database, databaseConfig } from "./database";
 import { ensureChannelPostsPostgresSchema } from "./channelPostsSchema";
 import { migrateSQLiteToPostgres } from "./postgresMigration";
+import { applyDatabaseMigrations } from "./databaseMigrations";
 export const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
 export const db = new Database(DB_PATH, { create: true });
@@ -542,9 +543,7 @@ if (databaseConfig.engine === "postgres") {
     }
     await migrateSQLiteToPostgres(DB_PATH, databaseConfig.url);
   }
-  // Existing PostgreSQL installations predate delegated profile admins. This
-  // authorization flag is intentionally migrated in place and is not portable.
-  await database.exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin INTEGER NOT NULL DEFAULT 0");
+  await applyDatabaseMigrations(database);
   await database.exec("CREATE TABLE IF NOT EXISTS download_settings (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (user_id, key))");
   await ensureChannelPostsPostgresSchema();
   // Social was added after the first PostgreSQL migration path shipped. Keep
@@ -610,5 +609,6 @@ if (databaseConfig.engine === "postgres") {
   runtimeSettingsReady = true;
   await reloadSettingCache();
 } else {
+  await applyDatabaseMigrations(database);
   runtimeSettingsReady = true;
 }

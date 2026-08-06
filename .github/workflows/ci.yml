@@ -32,6 +32,9 @@ jobs:
       - name: Prevent large files from growing
         run: bun run check:large-files
 
+      - name: Require SQLite and PostgreSQL migrations
+        run: bun run check:database-migrations
+
       - name: Check server types
         working-directory: app
         run: bun run typecheck

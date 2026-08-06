@@ -11,6 +11,7 @@
     "build:ui": "cd ui && bun run build:prepared",
     "hooks:install": "git config core.hooksPath .githooks",
     "check:large-files": "bun scripts/check-large-files.ts",
+    "check:database-migrations": "bun scripts/check-database-migrations.ts",
     "check:precommit": "bun run check:validate",
     "test": "bun run test:app && bun run test:ui",
     "test:app": "cd app && bun run test",
@@ -19,7 +20,7 @@
     "typecheck": "bun run typecheck:app && bun run typecheck:ui",
     "typecheck:app": "cd app && bun run typecheck",
     "typecheck:ui": "cd ui && bun run typecheck",
-    "check:validate": "bun run check:large-files && bun run typecheck && bun run test:app && bun run test:app:random && bun run test:ui && bun run build:ui",
+    "check:validate": "bun run check:large-files && bun run check:database-migrations && bun run typecheck && bun run test:app && bun run test:app:random && bun run test:ui && bun run build:ui",
     "check": "bun run check:validate",
     "start": "bash ./scripts/start.sh"
   }
