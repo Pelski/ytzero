@@ -6,6 +6,7 @@ import { log } from "../logger";
 import { syncPlaylist } from "../refresher";
 import { videoSelect, type VideoRow } from "../videoRoutesSupport";
 import { profileDownloadsEnabled } from "../downloadConfig";
+import { normalizePlaylistSort, sortPlaylistItems } from "../playlistSort";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -22,7 +23,6 @@ export function registerChannelPlaylistRoutes(
   const { currentUserId, attachTags, playlistChannelSyncIsDisabled } = access;
 
 // ---------- followed YouTube playlists ----------
-
 api.get("/channel-playlists/:id", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
@@ -65,7 +65,7 @@ api.get("/channel-playlists/:id/videos", async (c) => {
     JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
     WHERE cpv.playlist_id = ?
     ORDER BY cpv.position ASC`).all(id) as VideoRow[];
-  const attached = await attachTags(uid, rows);
+  const attached = sortPlaylistItems(await attachTags(uid, rows), normalizePlaylistSort(c.req.query("sort")), (video) => ({ title: video.title, publishedAt: video.published_at }));
   return c.json({
     videos: attached.filter((video) => video.published_at != null && video.published_at !== ""),
     processing: attached.filter((video) => video.published_at == null || video.published_at === ""),

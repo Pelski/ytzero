@@ -6,6 +6,7 @@ import { useI18n } from "../../i18n";
 import { img } from "../../img";
 import { VideoThumbnail, watchProgress } from "../VideoThumbnail";
 import "./WatchPlaylistPanel.css";
+import { playlistSortSearch, type PlaylistSort } from "../../playlistSort";
 
 export default function WatchPlaylistPanel({
   activeItemRef,
@@ -13,6 +14,7 @@ export default function WatchPlaylistPanel({
   itemsRef,
   playlistId,
   playlistIndex,
+  sort,
   videos,
 }: {
   activeItemRef: RefObject<HTMLAnchorElement>;
@@ -20,6 +22,7 @@ export default function WatchPlaylistPanel({
   itemsRef: RefObject<HTMLDivElement>;
   playlistId: string;
   playlistIndex: number;
+  sort: PlaylistSort;
   videos: PlaylistVideo[];
 }) {
   const { t } = useI18n();
@@ -39,7 +42,7 @@ export default function WatchPlaylistPanel({
             <Link
               ref={active ? activeItemRef : undefined}
               key={video.videoId}
-              to={`/watch/${video.videoId}/playlist/${playlistId}`}
+              to={`/watch/${video.videoId}/playlist/${playlistId}${playlistSortSearch(sort)}`}
               className={`playlist-item${active ? " active" : ""}`}
               title={video.title}
             >

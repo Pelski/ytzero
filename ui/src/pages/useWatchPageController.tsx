@@ -22,6 +22,7 @@ import { loadYouTubeApi, resolveShareTimestamp } from "./watchRuntime";
 import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
 import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTubeKeyboardShortcuts";
 import { useUpNextQueue } from "./useUpNextQueue";
+import { normalizePlaylistSort, playlistSortSearch } from "../playlistSort";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
@@ -38,6 +39,7 @@ export function useWatchPageController() {
   const feedTags = searchParams.get("tags") ?? "";
   const feedShowAll = searchParams.get("show_all") === "1";
   const feedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
+  const playlistSort = normalizePlaylistSort(searchParams.get("sort"));
   const watchTogetherRoomId = searchParams.get("room")?.trim() || null;
   const playbackQueue = useMemo<PlaybackQueueContext | null>(() => {
     const stateQueue = (location.state as { playbackQueue?: unknown } | null)?.playbackQueue;
@@ -504,15 +506,15 @@ export function useWatchPageController() {
   useEffect(() => {
     if (!playlistId) { setPlaylistVideos([]); return; }
     let cancelled = false;
-    api.playlistVideos(playlistId)
+    api.playlistVideos(playlistId, playlistSort)
       .then((r) => { if (!cancelled) setPlaylistVideos(r.videos); })
       .catch(() => { if (!cancelled) setPlaylistVideos([]); });
     return () => { cancelled = true; };
-  }, [playlistId]);
+  }, [playlistId, playlistSort]);
 
   const playlistIndex = playlistId ? playlistVideos.findIndex((v) => v.videoId === id) : -1;
   const nextPlaylistVideo = playlistIndex >= 0 ? playlistVideos[playlistIndex + 1] : undefined;
-  const nextPlaylistPath = nextPlaylistVideo ? `/watch/${nextPlaylistVideo.videoId}/playlist/${playlistId}` : null;
+  const nextPlaylistPath = nextPlaylistVideo ? `/watch/${nextPlaylistVideo.videoId}/playlist/${playlistId}${playlistSortSearch(playlistSort)}` : null;
 
   useEffect(() => {
     const container = playlistItemsRef.current;
@@ -1417,6 +1419,7 @@ export function useWatchPageController() {
     playlistIndex,
     playlistItemsRef,
     playlistOpen,
+    playlistSort,
     playlistVideos,
     playlists,
     playlistsLoading,

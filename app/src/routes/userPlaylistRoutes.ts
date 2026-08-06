@@ -6,6 +6,8 @@ import { log } from "../logger";
 import { refreshDiscoveryInBackground } from "../plugins";
 import { applyPlaylistRuleToAllVideos, applyPlaylistRulesForPlaylist } from "../userPlaylists";
 import { videoPlaylistsForUser } from "../channelPlaylists";
+import { normalizePlaylistSort } from "../playlistSort";
+import { sortFetchedPlaylistVideos } from "../playlistVideoOrder";
 import { fetchPlaylistVideos } from "../youtube";
 import { importPlaylistVideos } from "../refresher";
 import type { VideoRow } from "../videoRoutesSupport";
@@ -25,11 +27,9 @@ export function registerUserPlaylistRoutes(
   },
 ): void {
   const { currentUserId, videoSelect, attachTags, attachWatchedState, profileDownloadsEnabled } = access;
-
   async function ownsPlaylist(uid: number, id: number | string) {
     return Boolean(await database.prepare("SELECT 1 FROM user_playlists WHERE id = ? AND user_id = ?").get(id, uid));
   }
-
   api.get("/playlists", async (c) => {
     const uid = currentUserId(c);
     const videoId = c.req.query("video_id");
@@ -45,7 +45,6 @@ export function registerUserPlaylistRoutes(
     ).all(...(videoId ? [videoId] : []), uid);
     return c.json({ playlists: rows });
   });
-
   api.post("/playlists", async (c) => {
     const uid = currentUserId(c);
     const { name, icon = "ListMusic" } = await c.req.json();
@@ -172,11 +171,12 @@ export function registerUserPlaylistRoutes(
     try {
       const id = c.req.param("id");
       const videos = await fetchPlaylistVideos(id);
+      const sorted = await sortFetchedPlaylistVideos(videos, normalizePlaylistSort(c.req.query("sort")));
       importPlaylistVideos(id).catch((error) => log.error("playlist.import.failed", {
         playlistId: id,
         error: error instanceof Error ? error.message : String(error),
       }));
-      return c.json({ videos: await attachWatchedState(currentUserId(c), videos, (video) => video.videoId) });
+      return c.json({ videos: await attachWatchedState(currentUserId(c), sorted, (video) => video.videoId) });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
     }

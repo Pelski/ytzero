@@ -218,7 +218,6 @@ export interface VideoCommentsResponse {
   fetchedAt: string;
   cached: boolean;
 }
-
 export interface PlaylistVideo {
   videoId: string;
   title: string;
@@ -226,6 +225,7 @@ export interface PlaylistVideo {
   channelTitle: string;
   duration: string;
   index: number;
+  publishedAt: string | null;
   watched: number;
   watch_position: number | null;
   watch_duration: number | null;

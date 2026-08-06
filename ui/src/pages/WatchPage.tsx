@@ -114,6 +114,7 @@ export default function WatchPage() {
     playlistIndex,
     playlistItemsRef,
     playlistOpen,
+    playlistSort,
     playlistVideos,
     playlists,
     playlistsLoading,
@@ -915,6 +916,7 @@ export default function WatchPage() {
             itemsRef={playlistItemsRef}
             playlistId={playlistId}
             playlistIndex={playlistIndex}
+            sort={playlistSort}
             videos={playlistVideos}
           />
         )}

@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import "./ChannelPlaylistPage.css";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Download, FileClock, ListMinus, ListPlus, RefreshCw } from "lucide-react";
 import { api, type FollowedPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import { Button, EmptyState, LocalToast, SectionHeader } from "../components/ui";
+import { Button, EmptyState, LocalToast, SectionHeader, SelectMenu } from "../components/ui";
 import Popconfirm from "../components/Popconfirm";
 import ChannelPlaylistHero from "../components/ChannelPlaylistHero";
+import { normalizePlaylistSort, playlistSortSearch, type PlaylistSort } from "../playlistSort";
 
 export default function ChannelPlaylistPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sort = normalizePlaylistSort(searchParams.get("sort"));
   const { t } = useI18n();
   const [playlist, setPlaylist] = useState<FollowedPlaylist | null>(null);
   useDocumentTitle(playlist?.title);
@@ -26,11 +29,15 @@ export default function ChannelPlaylistPage() {
 
   const load = useCallback(async () => {
     if (!id) return;
-    const [details, contents] = await Promise.all([api.channelPlaylist(id), api.channelPlaylistVideos(id)]);
+    const [details, contents] = await Promise.all([api.channelPlaylist(id), api.channelPlaylistVideos(id, sort)]);
     setPlaylist(details.playlist);
     setVideos(contents.videos);
     setProcessingVideos(contents.processing);
-  }, [id]);
+  }, [id, sort]);
+
+  const changeSort = (next: PlaylistSort) => {
+    setSearchParams({ sort: next }, { replace: true });
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -72,6 +79,18 @@ export default function ChannelPlaylistPage() {
 
   return <>
     <ChannelPlaylistHero playlist={playlist} actions={<>
+          <SelectMenu
+            floating
+            label={t("playlistSort")}
+            value={sort}
+            onChange={changeSort}
+            options={[
+              { value: "oldest", label: t("playlistSortOldest") },
+              { value: "newest", label: t("playlistSortNewest") },
+              { value: "title-asc", label: t("playlistSortTitleAsc") },
+              { value: "title-desc", label: t("playlistSortTitleDesc") },
+            ]}
+          />
           <Button onClick={sync} disabled={pending} leadingIcon={<RefreshCw className={pending ? "spin" : undefined} />}>{t("syncPlaylist")}</Button>
           <Button variant={playlist.followed ? "danger" : "primary"} onClick={toggleFollow} disabled={pending} leadingIcon={playlist.followed ? <ListMinus /> : <ListPlus />}>
             {playlist.followed ? t("unfollowPlaylist") : t("followPlaylist")}
@@ -82,10 +101,10 @@ export default function ChannelPlaylistPage() {
           {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
         </>} />
     {loading ? <VideoGridSkeleton gridSize="sm" /> : videos.length === 0 && processingVideos.length === 0 ? <EmptyState title={t("playlistIsEmpty")} /> : videos.length > 0 ?
-      <div className="video-grid video-grid--sm">{videos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}`)} onChanged={load} />)}</div> : null}
+      <div className="video-grid video-grid--sm">{videos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}${playlistSortSearch(sort)}`)} onChanged={load} />)}</div> : null}
     {!loading && processingVideos.length > 0 && <section className="channel-playlist-processing">
       <SectionHeader title={t("processing")} icon={<FileClock />} />
-      <div className="video-grid video-grid--sm">{processingVideos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}`)} onChanged={load} />)}</div>
+      <div className="video-grid video-grid--sm">{processingVideos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}${playlistSortSearch(sort)}`)} onChanged={load} />)}</div>
     </section>}
   </>;
 }
