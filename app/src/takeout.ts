@@ -259,6 +259,34 @@ export function parseSubscriptionsCsv(content: string): TakeoutChannel[] {
   return channels;
 }
 
+/**
+ * Parse NewPipe's subscription-export JSON. Service id 0 is YouTube; entries
+ * for other NewPipe services are intentionally ignored because YT Zero cannot
+ * resolve them. Current exports may also contain app_version fields, while
+ * older/minimal exports contain only the subscriptions object.
+ */
+export function parseNewPipeSubscriptionsJson(content: string): TakeoutChannel[] {
+  let data: unknown;
+  try { data = JSON.parse(content); } catch { return []; }
+  if (!data || typeof data !== "object" || !Array.isArray((data as any).subscriptions)) return [];
+
+  const channels: TakeoutChannel[] = [];
+  const seen = new Set<string>();
+  for (const item of (data as any).subscriptions) {
+    if (item?.service_id !== 0 || typeof item?.url !== "string") continue;
+    let url: URL;
+    try { url = new URL(item.url); } catch { continue; }
+    const host = url.hostname.toLowerCase();
+    if (host !== "youtube.com" && !host.endsWith(".youtube.com")) continue;
+    const channelId = url.pathname.match(/^\/channel\/(UC[\w-]{22})(?:\/|$)/)?.[1];
+    if (!channelId || seen.has(channelId)) continue;
+    seen.add(channelId);
+    const title = typeof item.name === "string" ? decodeHtmlEntities(item.name).trim() : "";
+    channels.push({ channelId, title });
+  }
+  return channels;
+}
+
 /** True for files worth extracting from a Takeout zip (classified further by content). */
 export function isRelevantEntryName(name: string): boolean {
   const base = (name.split(/[\\/]/).pop() ?? name).toLowerCase();
@@ -290,9 +318,15 @@ export function parseTakeoutFiles(files: { name: string; content: string }[]): T
         if (playlist.videoIds.length > 0) bundle.playlists.push(playlist);
       }
     } else if (base.endsWith(".json") || base.endsWith(".html")) {
-      const entries = base.endsWith(".json")
-        ? parseWatchHistoryJson(file.content)
-        : parseWatchHistoryHtml(file.content);
+      if (base.endsWith(".json")) {
+        for (const ch of parseNewPipeSubscriptionsJson(file.content)) {
+          if (!seenChannels.has(ch.channelId)) {
+            seenChannels.add(ch.channelId);
+            bundle.channels.push(ch);
+          }
+        }
+      }
+      const entries = base.endsWith(".json") ? parseWatchHistoryJson(file.content) : parseWatchHistoryHtml(file.content);
       for (const entry of entries) {
         // The same watch event can appear in both a .json and an .html upload.
         const key = `${entry.videoId}@${entry.watchedAt ?? "?"}`;

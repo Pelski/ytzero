@@ -9,7 +9,7 @@ export { BACKUP_LIMITS, createZip, readPortableZip } from "./portableArchive";
 import { acquireMaintenance } from "./maintenance";
 import { isChannelManualStatus } from "./channelStatus";
 import { parseAdminOnlyAreas, serializeAdminOnlyAreas } from "./profilePermissions";
-import { DEFAULT_TIME_ZONE, isValidTimeZone } from "./timeZone";
+import { configuredTimeZone, DEFAULT_TIME_ZONE, isValidTimeZone } from "./timeZone";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "./scheduleTime";
 import { parseManualRefreshSchedule } from "./channelRefreshSchedule";
 import { listDownloadRules } from "./downloadRules";
@@ -420,7 +420,7 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
     }); await tx();
     await reloadSettingCache();
     if (selected.has("instance.settings")) {
-      const timeZone = getSetting("timezone") ?? DEFAULT_TIME_ZONE;
+      const timeZone = configuredTimeZone();
       const now = new Date();
       for (const bucket of SCHEDULE_BUCKETS) await database.prepare("UPDATE user_videos SET show_from=? WHERE status='queued' AND bucket=?").run(computeShowFrom(bucket, now, timeZone), bucket);
     }

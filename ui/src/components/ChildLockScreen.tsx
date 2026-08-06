@@ -4,6 +4,7 @@ import { Hourglass, Lock, ShieldAlert, X } from "lucide-react";
 import { api, type ChildStatus, type Profile } from "../api";
 import { useI18n } from "../i18n";
 import { ProfileAvatar } from "./ProfileMenu";
+import { rememberProfile } from "../profilePreference";
 import { Button, IconButton, Input } from "./ui";
 
 // Full-screen overlay shown to a child profile whose daily watch time ran out
@@ -44,7 +45,8 @@ export default function ChildLockScreen({ status }: { status: ChildStatus }) {
 
   const doSwitch = async (p: Profile, enteredPin?: string, enteredChildLockPin?: string) => {
     try {
-      await api.switchProfile(p.id, enteredPin, enteredChildLockPin);
+      const result = await api.switchProfile(p.id, enteredPin, enteredChildLockPin);
+      rememberProfile(result.active_id);
       window.location.reload();
     } catch {
       setPinError(true);

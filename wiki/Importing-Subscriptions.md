@@ -8,6 +8,7 @@ You add channels in **Settings → Channels**.
 - A channel ID URL, for example `https://www.youtube.com/channel/UC...`
 - OPML files from tools such as NewPipe, FreeTube, or Invidious
 - Google Takeout `subscriptions.csv`
+- NewPipe subscription-export JSON through **Settings → Import data**
 
 ## Exporting from Google Takeout
 

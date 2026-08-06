@@ -13,6 +13,7 @@ import Tooltip from "./Tooltip";
 import { ENHANCE_EXTENSION_STATUS } from "../enhanceBridge";
 import { setIncognitoMode } from "../incognitoMode";
 import { clearDownloadActivity } from "../downloadActivity";
+import { rememberProfile } from "../profilePreference";
 
 /** Round avatar: uploaded image, or a colored circle with the name initial. */
 export function ProfileAvatar({ profile, size = 32 }: { profile: Pick<Profile, "name" | "avatar" | "avatar_color">; size?: number }) {
@@ -78,7 +79,8 @@ export default function ProfileMenu({ isAdmin, isChildProfile, profilePermission
 
   const doSwitch = async (p: Profile, enteredPin?: string, enteredChildLockPin?: string) => {
     try {
-      await api.switchProfile(p.id, enteredPin, enteredChildLockPin);
+      const result = await api.switchProfile(p.id, enteredPin, enteredChildLockPin);
+      rememberProfile(result.active_id);
       setIncognitoMode(false);
       clearDownloadActivity();
       // Full reload so feed, sidebar, settings and language all re-resolve.

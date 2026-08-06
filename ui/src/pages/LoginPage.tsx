@@ -7,6 +7,7 @@ import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, ButtonAnchor, Input } from "../components/ui";
 import LoginBackdrop from "./LoginBackdrop";
+import { rememberProfile } from "../profilePreference";
 
 /**
  * Full-screen sign-in shown when `auth/status` reports the request is not
@@ -31,7 +32,8 @@ export default function LoginPage({ status }: { status: AuthStatus }) {
     setBusy(true);
     setError(null);
     try {
-      await api.passwordLogin(username, password);
+      const result = await api.passwordLogin(username, password);
+      if (result.active_id) rememberProfile(result.active_id);
       done();
     } catch {
       setError(t("loginInvalid"));
@@ -45,7 +47,8 @@ export default function LoginPage({ status }: { status: AuthStatus }) {
     try {
       const { options, flowId } = await api.passkeyLoginOptions();
       const response = await startAuthentication({ optionsJSON: options });
-      await api.passkeyLoginVerify(flowId, response);
+      const result = await api.passkeyLoginVerify(flowId, response);
+      if (result.active_id) rememberProfile(result.active_id);
       done();
     } catch {
       setError(t("loginError"));

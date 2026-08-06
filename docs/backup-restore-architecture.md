@@ -181,6 +181,10 @@ below.
   displayed dates, scheduling, local log timestamps, daily rotation, child
   limits, and Insights/Pulse day and hour aggregation without depending on the
   host or browser timezone.
+  When the machine-bound `TZ` environment variable contains a valid IANA zone,
+  it overrides this portable value at runtime and the saved value remains
+  dormant for a future start without `TZ`. The environment override itself is
+  never exported or restored.
   The administrator-only profile permission areas are portable configuration.
   Enabling Child Lock and its PIN remain local and are never exported.
 - `user_settings`: registered settings for selected profiles.
@@ -326,6 +330,11 @@ below.
 
 ### Secrets and machine-bound data — excluded in v1
 
+- The last active profile id stored in browser `localStorage` is a
+  machine-bound presentation convenience. It is scoped to that browser and
+  origin, is validated against the current profile list before use, and is
+  never included in a portable or exact server-side backup.
+
 - passwords and PIN hashes
 - OIDC client secret and active authentication configuration, including the
   instance-local choice to hide other profile names in the authenticated
@@ -387,8 +396,8 @@ as opaque database values.
 
 ### 1. Upload
 
-Accept `.zip`/`.ytzero-backup` archives. Keep this separate from the Google
-Takeout `/import` wizard: Takeout imports external YouTube data, while restore
+Accept `.zip`/`.ytzero-backup` archives. Keep this separate from the external
+data `/import` wizard: Google Takeout and NewPipe import external YouTube data, while restore
 applies trusted YT Zero domain state and has different permissions and conflict
 rules.
 

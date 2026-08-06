@@ -16,6 +16,16 @@ export function isValidTimeZone(value: unknown): value is string {
   }
 }
 
+/** A valid TZ environment value is an operator-owned, machine-bound override. */
+export function environmentTimeZone(): string | null {
+  const value = process.env.TZ?.trim();
+  return isValidTimeZone(value) ? value : null;
+}
+
+export function timeZoneIsEnvironmentLocked(): boolean {
+  return environmentTimeZone() !== null;
+}
+
 export function configuredTimeZone(): string {
   let value = DEFAULT_TIME_ZONE;
   try { value = timeZoneProvider(); } catch {}

@@ -60,7 +60,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 ## Features
 
 - **Subscription inbox** — all new videos from followed channels in one feed.
-- **Channel import** — add channels manually, import OPML, or import `subscriptions.csv` from Google Takeout.
+- **Channel import** — add channels manually, import OPML, NewPipe subscription JSON, or `subscriptions.csv` from Google Takeout.
 - **Live and upcoming streams** — dedicated live view with automatic status refresh, plus a per-profile option to keep live and Upcoming entries out of the main feed.
 - **Watch later buckets** — schedule videos for Today, Tonight, Tomorrow, Tomorrow evening, or Weekend.
 - **Archive flow** — reject videos, restore them later, and keep the main feed clean.

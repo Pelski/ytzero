@@ -96,7 +96,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     subSize,
     t,
     tab,
-    timeZone,
+    timeZone, timeZoneLocked,
     toggleFeedAutoplay,
     toggleLiveFromFeed,
     toggleSb,
@@ -149,9 +149,9 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
                 </div>
               </SettingRow>
 
-              <SettingRow label={t("timeZoneLabel")} description={t("timeZoneHint")}>
+              <SettingRow label={t("timeZoneLabel")} description={timeZoneLocked ? t("timeZoneEnvHint") : t("timeZoneHint")}>
                 <SelectMenu
-                  searchable
+                  searchable disabled={timeZoneLocked}
                   label={t("timeZoneLabel")}
                   value={timeZone}
                   options={[...new Set([timeZone, ...TIME_ZONES])].map((zone) => ({ value: zone, label: zone }))}

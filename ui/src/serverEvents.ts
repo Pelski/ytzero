@@ -5,6 +5,9 @@ export type ServerEventData = Record<string, unknown> | undefined;
 
 const listeners = new Map<ServerEventTopic, Set<(data: ServerEventData) => void>>();
 let source: EventSource | null = null;
+let worker: SharedWorker | null = null;
+let workerSubscribed = false;
+let lifecycleListenersInstalled = false;
 
 function notify(topic: ServerEventTopic, data?: ServerEventData) {
   for (const listener of listeners.get(topic) ?? []) {
@@ -12,8 +15,51 @@ function notify(topic: ServerEventTopic, data?: ServerEventData) {
   }
 }
 
+function dispatchWorkerMessage(event: MessageEvent<{ type: "app" | "ready" | "error"; data?: string }>) {
+  if (event.data.type === "app") {
+    try {
+      const message = JSON.parse(event.data.data ?? "") as { topic: ServerEventTopic; data?: ServerEventData };
+      if (listeners.has(message.topic)) notify(message.topic, message.data);
+    } catch {}
+  } else if (event.data.type === "ready") {
+    for (const topic of listeners.keys()) notify(topic);
+  } else if (event.data.type === "error") {
+    void probeApiAuthentication();
+  }
+}
+
+function connectSharedWorker(): boolean {
+  if (!("SharedWorker" in globalThis)) return false;
+  try {
+    if (!worker) {
+      worker = new SharedWorker(new URL("./serverEventsWorker.ts", import.meta.url), { type: "module", name: "ytzero-server-events" });
+      worker.port.addEventListener("message", dispatchWorkerMessage);
+      worker.port.start();
+    }
+    if (!workerSubscribed) {
+      worker.port.postMessage({ type: "subscribe" });
+      workerSubscribed = true;
+    }
+    if (!lifecycleListenersInstalled && typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      lifecycleListenersInstalled = true;
+      window.addEventListener("pagehide", (event) => {
+        if (event.persisted || !worker) return;
+        worker.port.postMessage({ type: "disconnect" });
+        worker = null;
+        workerSubscribed = false;
+      });
+    }
+    return true;
+  } catch {
+    worker = null;
+    workerSubscribed = false;
+    return false;
+  }
+}
+
 function connect() {
-  if (source || listeners.size === 0) return;
+  if (listeners.size === 0 || source || workerSubscribed) return;
+  if (connectSharedWorker()) return;
   source = new EventSource("/api/events");
   let readySeen = false;
   source.addEventListener("app", (event) => {
@@ -45,8 +91,13 @@ export function subscribeServerEvent(topic: ServerEventTopic, listener: (data: S
     topicListeners.delete(listener);
     if (topicListeners.size === 0) listeners.delete(topic);
     if (listeners.size === 0) {
-      source?.close();
-      source = null;
+      if (worker && workerSubscribed) {
+        worker.port.postMessage({ type: "unsubscribe" });
+        workerSubscribed = false;
+      } else {
+        source?.close();
+        source = null;
+      }
     }
   };
 }

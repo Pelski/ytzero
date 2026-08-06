@@ -30,7 +30,7 @@ export function registerImportRoutes(
   currentUserId: (context: ApiContext) => number,
 ): void {
 
-// ---------- Google Takeout import wizard ----------
+// ---------- Google Takeout and NewPipe import wizard ----------
 // Two phases: /import/analyze parses the upload (zip or loose files) and holds
 // it in an in-memory session; /import/commit applies only what the user picked.
 

@@ -5,7 +5,7 @@ import { getSetting, getUserSetting, GLOBAL_SETTING_KEYS, SETTING_DEFAULTS, setS
 import { isVideoCardActionMode } from "../videoCardActions";
 import { isProfilePermissionArea, serializeAdminOnlyAreas, type ProfilePermissionArea } from "../profilePermissions";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "../scheduleTime";
-import { isValidTimeZone } from "../timeZone";
+import { configuredTimeZone, isValidTimeZone, timeZoneIsEnvironmentLocked } from "../timeZone";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -119,16 +119,16 @@ api.get("/settings", (c) => {
       ? (getSetting(key) ?? SETTING_DEFAULTS[key])
       : (getUserSetting(uid, key) ?? SETTING_DEFAULTS[key]);
   }
-  return c.json({ settings });
+  settings.timezone = configuredTimeZone();
+  return c.json({ settings, settings_meta: { timezone_locked: timeZoneIsEnvironmentLocked() } });
 });
 
 api.put("/settings", async (c) => {
   const uid = currentUserId(c);
   const primary = isAdmin(c);
   const body = await c.req.json();
-  if ("timezone" in body && !isValidTimeZone(body.timezone)) {
-    return c.json({ error: "invalid timezone" }, 400);
-  }
+  if ("timezone" in body && timeZoneIsEnvironmentLocked()) return c.json({ error: "timezone is controlled by the TZ environment variable" }, 409);
+  if ("timezone" in body && !isValidTimeZone(body.timezone)) return c.json({ error: "invalid timezone" }, 400);
   if ("video_card_actions" in body && !isVideoCardActionMode(body.video_card_actions)) {
     return c.json({ error: "invalid video card action mode" }, 400);
   }

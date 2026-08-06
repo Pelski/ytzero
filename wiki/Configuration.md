@@ -3,14 +3,16 @@ YT Zero is configured through environment variables. All of them are optional an
 The application timezone is configured inside **Settings → Appearance → Timezone**
 using an IANA name such as `Europe/London`. It controls dates and times across
 the UI, scheduling, logs, Insights/Pulse, backups, imports, cleanup boundaries,
-and child daily limits. It does not depend on the browser timezone or the
-container's `TZ` environment variable.
+and child daily limits. It does not depend on the browser timezone. When `TZ`
+is set to a valid IANA name, it becomes the instance timezone and the timezone
+picker is read-only until `TZ` is removed and the instance restarted.
 
 ## Environment variables
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `3001` | HTTP server port. |
+| `TZ` | _(unset)_ | Optional IANA timezone (for example `Europe/Warsaw`). When set, it overrides the saved timezone and prevents changes from the UI. |
 | `IDLE_TIMEOUT_SECONDS` | `120` | HTTP idle timeout. Manual channel sync can take longer than Bun's 10-second default when playlist scanning is enabled. |
 | `DB_PATH` | `./data/db/ytzero.db` | SQLite database path. |
 | `SQLITE_BUSY_TIMEOUT_MS` | `5000` | How long SQLite waits for another process to release a database lock before returning `SQLITE_BUSY` (`0`–`60000`). |

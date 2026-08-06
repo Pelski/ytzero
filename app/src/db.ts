@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { configureTimeZoneProvider, DEFAULT_TIME_ZONE } from "./timeZone";
+import { configureTimeZoneProvider, DEFAULT_TIME_ZONE, environmentTimeZone } from "./timeZone";
 import { configureSQLiteConnection, optimizeSQLite } from "./sqliteMaintenance";
 import { applySQLiteMigrations } from "./sqliteMigrations";
 import { database, databaseConfig } from "./database";
@@ -359,7 +359,7 @@ export function getSetting(key: string): string | null {
   return settingCache.get(key) ?? null;
 }
 
-configureTimeZoneProvider(() => getSetting("timezone") ?? DEFAULT_TIME_ZONE);
+configureTimeZoneProvider(() => environmentTimeZone() ?? getSetting("timezone") ?? DEFAULT_TIME_ZONE);
 
 export function setSetting(key: string, value: string): Promise<void> {
   if (databaseConfig.engine === "sqlite" || !runtimeSettingsReady) {

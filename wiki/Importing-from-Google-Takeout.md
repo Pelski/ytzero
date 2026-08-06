@@ -1,4 +1,12 @@
-YT Zero has an import wizard that brings your YouTube data over from a [Google Takeout](https://takeout.google.com) export: **channel subscriptions**, **playlists**, and **watch history**. Open it from **Settings → Import data**, or from the button on the empty home feed.
+YT Zero has an import wizard that brings in **NewPipe subscriptions** or YouTube data from a [Google Takeout](https://takeout.google.com) export: **channel subscriptions**, **playlists**, and **watch history**. Open it from **Settings → Import data**, or from the button on the empty home feed.
+
+## Exporting subscriptions from NewPipe
+
+From NewPipe's subscriptions screen, choose **Import / Export → Export to** and
+upload the resulting JSON file to YT Zero. Both the complete export (including
+`app_version` metadata) and a minimal document containing only
+`subscriptions` are supported. Only YouTube entries (`service_id: 0`) are
+imported; subscriptions for other NewPipe services are skipped.
 
 ## Exporting from Google Takeout
 
@@ -9,7 +17,7 @@ YT Zero has an import wizard that brings your YouTube data over from a [Google T
 
 ## Importing
 
-1. Drop the whole `.zip` onto the import page — or loose files: `subscriptions.csv`, playlist CSVs, `watch-history.json` or `.html`. You can keep adding files before analyzing.
+1. Drop a NewPipe subscription JSON or the whole Takeout `.zip` onto the import page. Loose Takeout files also work: `subscriptions.csv`, playlist CSVs, `watch-history.json` or `.html`. You can combine files from both sources before analyzing.
 2. Click **Analyze files**. YT Zero recognizes the contents (localized exports work too — file names and dates in Polish or German are handled).
 3. Pick what to import: toggle whole sections, deselect individual channels or playlists.
 4. For watch history, choose **Everything** or **From date**. Entries are matched by video and marked as watched. They remain available in history and the library, but do not appear in the feed as unwatched videos later.

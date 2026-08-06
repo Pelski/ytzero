@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { deflateRawSync } from "node:zlib";
-import { classifyCsv, isPlaylistCsvName, isZip, parseTakeoutFiles, parseTakeoutPlaylistCsv, parseWatchHistoryHtml, parseWatchHistoryJson, unzipEntries } from "./takeout";
+import { classifyCsv, isPlaylistCsvName, isZip, parseNewPipeSubscriptionsJson, parseTakeoutFiles, parseTakeoutPlaylistCsv, parseWatchHistoryHtml, parseWatchHistoryJson, unzipEntries } from "./takeout";
 
 describe("parseTakeoutPlaylistCsv", () => {
   test("strips the localized -filmy suffix from Polish exports", () => {
@@ -157,6 +157,41 @@ describe("classifyCsv + parseTakeoutFiles", () => {
     expect(bundle.channels).toEqual([{ channelId: "UCuAXFkgsw1L7xaCfnd5JJOw", title: "Rick Astley" }]);
     expect(bundle.playlists).toEqual([{ name: "Ulubione", videoIds: ["dQw4w9WgXcQ"] }]);
     expect(bundle.history).toHaveLength(1);
+  });
+});
+
+describe("parseNewPipeSubscriptionsJson", () => {
+  const youtubeId = "UCIm38XbFgUFykYVQXPSpxTw";
+
+  test("accepts minimal and versioned NewPipe subscription exports", () => {
+    const minimal = JSON.stringify({ subscriptions: [{
+      service_id: 0,
+      url: `https://www.youtube.com/channel/${youtubeId}`,
+      name: "#RestartThinking",
+    }] });
+    expect(parseNewPipeSubscriptionsJson(minimal)).toEqual([{ channelId: youtubeId, title: "#RestartThinking" }]);
+    expect(parseNewPipeSubscriptionsJson(JSON.stringify({ app_version: "0.28.4", app_version_int: 1000, ...JSON.parse(minimal) })))
+      .toEqual([{ channelId: youtubeId, title: "#RestartThinking" }]);
+  });
+
+  test("ignores other services, malformed URLs and duplicate channels", () => {
+    const valid = { service_id: 0, url: `https://youtube.com/channel/${youtubeId}`, name: "One" };
+    const parsed = parseNewPipeSubscriptionsJson(JSON.stringify({ subscriptions: [
+      valid,
+      { ...valid, name: "Duplicate" },
+      { service_id: 1, url: `https://youtube.com/channel/${youtubeId}`, name: "Other service" },
+      { service_id: 0, url: `https://example.com/channel/${youtubeId}`, name: "Wrong host" },
+      { service_id: 0, url: "not a URL", name: "Broken" },
+    ] }));
+    expect(parsed).toEqual([{ channelId: youtubeId, title: "One" }]);
+  });
+
+  test("combines NewPipe and Takeout subscriptions without duplicates", () => {
+    const bundle = parseTakeoutFiles([
+      { name: "newpipe-subscriptions.json", content: JSON.stringify({ subscriptions: [{ service_id: 0, url: `https://www.youtube.com/channel/${youtubeId}`, name: "NewPipe title" }] }) },
+      { name: "subscriptions.csv", content: `Channel Id,Channel Url,Channel Title\n${youtubeId},https://www.youtube.com/channel/${youtubeId},Takeout title\n` },
+    ]);
+    expect(bundle.channels).toEqual([{ channelId: youtubeId, title: "NewPipe title" }]);
   });
 });
 

@@ -170,6 +170,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
   const [appName, setAppName] = useState("YT Zero");
   const [appNameInput, setAppNameInput] = useState("YT Zero");
   const [appIconColor, setAppIconColor] = useState("#0a5fff");
+  const [timeZoneLocked, setTimeZoneLocked] = useState(false);
   // App-wide settings (app name, icon color, timezone, child lock) are owned by the
   // primary profile; other profiles see them read-only.
   const [isPrimary, setIsPrimary] = useState(false);
@@ -444,6 +445,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
       setAppName(name);
       setAppNameInput(name);
       setAppIconColor(r.settings.app_icon_color || "#0a5fff");
+      setTimeZoneLocked(Boolean(r.settings_meta?.timezone_locked));
       setUpdateCheckInterval(r.settings.update_check_interval || "off");
       setShortsFeedMode(r.settings.show_shorts === "1" || r.settings.show_shorts === "selected" ? r.settings.show_shorts : "0");
       setShowTopChannels(r.settings.show_top_channels !== "0");
@@ -1339,6 +1341,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     tagSubTab,
     tags,
     timeZone,
+    timeZoneLocked,
     toggleAdminOnlyArea,
     toggleChannelFollow, toggleChannelPostsTab,
     toggleChannelTag,

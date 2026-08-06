@@ -66,3 +66,36 @@ test("server events share one SSE connection and dispatch by topic", () => {
     (globalThis as any).EventSource = original;
   }
 });
+
+test("server events use SharedWorker when available", () => {
+  const originalWorker = globalThis.SharedWorker;
+  const originalEventSource = globalThis.EventSource;
+  const posted: string[] = [];
+  class FakePort {
+    listener: ((event: MessageEvent) => void) | null = null;
+    addEventListener(name: string, listener: (event: MessageEvent) => void) { if (name === "message") this.listener = listener; }
+    start() {}
+    postMessage(message: { type: string }) { posted.push(message.type); }
+    emit(data: unknown) { this.listener?.({ data } as MessageEvent); }
+  }
+  class FakeSharedWorker {
+    static instances: FakeSharedWorker[] = [];
+    port = new FakePort();
+    constructor() { FakeSharedWorker.instances.push(this); }
+  }
+  (globalThis as any).SharedWorker = FakeSharedWorker;
+  (globalThis as any).EventSource = class { constructor() { throw new Error("fallback should not open"); } };
+  try {
+    let events = 0;
+    const unsubscribe = subscribeServerEvent("downloads", () => { events++; });
+    expect(FakeSharedWorker.instances.length).toBe(1);
+    expect(posted).toEqual(["subscribe"]);
+    FakeSharedWorker.instances[0].port.emit({ type: "app", data: JSON.stringify({ topic: "downloads" }) });
+    expect(events).toBe(1);
+    unsubscribe();
+    expect(posted).toEqual(["subscribe", "unsubscribe"]);
+  } finally {
+    (globalThis as any).SharedWorker = originalWorker;
+    (globalThis as any).EventSource = originalEventSource;
+  }
+});

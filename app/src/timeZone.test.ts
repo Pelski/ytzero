@@ -1,10 +1,25 @@
 import { describe, expect, test } from "bun:test";
-import { addCalendarDays, formatZonedTimestamp, isValidTimeZone, zonedDateTimeToUtc, zonedDayHour } from "./timeZone";
+import { addCalendarDays, environmentTimeZone, formatZonedTimestamp, isValidTimeZone, timeZoneIsEnvironmentLocked, zonedDateTimeToUtc, zonedDayHour } from "./timeZone";
 
 describe("configured timezone", () => {
   test("validates IANA timezone names", () => {
     expect(isValidTimeZone("Europe/London")).toBe(true);
     expect(isValidTimeZone("not/a-timezone")).toBe(false);
+  });
+
+  test("uses only valid TZ environment values as an operator lock", () => {
+    const previous = process.env.TZ;
+    try {
+      process.env.TZ = "Europe/Warsaw";
+      expect(environmentTimeZone()).toBe("Europe/Warsaw");
+      expect(timeZoneIsEnvironmentLocked()).toBe(true);
+      process.env.TZ = "not/a-timezone";
+      expect(environmentTimeZone()).toBeNull();
+      expect(timeZoneIsEnvironmentLocked()).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
   });
 
   test("formats timestamps with the timezone's DST offset", () => {
