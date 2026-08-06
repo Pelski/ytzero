@@ -295,6 +295,8 @@ export const de: Locale = {
     originalChannelName: "Originalname: {name}",
     followWithCustomName: "Mit eigenem Namen folgen",
     subtitles: "Untertitel",
+    transcript: "Transkript",
+    transcriptUnavailable: "Für die ausgewählte Sprache sind keine Untertitel verfügbar.",
     subtitlesOff: "Aus",
     subtitlesDownloaded: "Heruntergeladen",
     subtitlesAllLanguages: "Alle Sprachen",

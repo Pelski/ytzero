@@ -226,6 +226,8 @@ export const api = {
   videoSubtitles: (id: string) => http<{ subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`),
   downloadSubtitle: (id: string, lang: string) =>
     http<{ ok: boolean; downloaded: boolean; subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`, { method: "POST", body: JSON.stringify({ lang }) }),
+  videoTranscript: (id: string, language: string) =>
+    http<{ language: string; transcript: string }>(`/videos/${id}/transcript`, { method: "POST", body: JSON.stringify({ language }) }),
   downloadFileUrl: (id: string) => `/api/videos/${id}/file`,
   discoveryRecommendations: (refresh = false) => http<{ enabled: boolean; recommendations: DiscoveryRecommendation[] }>(`/discovery/recommendations${refresh ? "?refresh=1" : ""}`),
   dismissDiscoveryRecommendation: (id: string) =>

@@ -295,6 +295,8 @@ export const en = {
     originalChannelName: "Original name: {name}",
     followWithCustomName: "Follow with a custom name",
     subtitles: "Subtitles",
+    transcript: "Transcript",
+    transcriptUnavailable: "Subtitles are not available in the selected language.",
     subtitlesOff: "Off",
     subtitlesDownloaded: "Downloaded",
     subtitlesAllLanguages: "All languages",

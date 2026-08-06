@@ -1,0 +1,33 @@
+.transcript-dialog {
+  width: min(720px, calc(100vw - 32px));
+}
+
+.transcript-dialog__language {
+  min-width: 180px;
+  justify-content: space-between;
+}
+
+.transcript-dialog .ui-floating-popover__trigger {
+  justify-self: start;
+  width: fit-content;
+}
+
+.transcript-dialog__loading {
+  min-height: 180px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: var(--text-2);
+}
+
+.transcript-dialog__alert,
+.transcript-dialog__result {
+  margin-top: 16px;
+}
+
+.transcript-dialog__text {
+  width: 100%;
+  min-height: min(52vh, 420px);
+  resize: none;
+}

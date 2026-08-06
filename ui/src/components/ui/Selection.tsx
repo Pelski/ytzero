@@ -8,14 +8,14 @@ import { Popover } from "./Popover";
 import { ScrollArea } from "./ScrollArea";
 import "./Selection.css";
 
-export function SelectMenu<T extends string | number>({ value, options, onChange, label, size = "md", disabled, searchable = false, searchPlaceholder = "Search…", emptyLabel = "—", className, floating = false }: { value: T; options: readonly { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean; searchText?: string }[]; onChange: (value: T) => void; label: string; size?: ButtonSize; disabled?: boolean; searchable?: boolean; searchPlaceholder?: string; emptyLabel?: ReactNode; className?: string; /** Render above clipping ancestors. */ floating?: boolean }) {
+export function SelectMenu<T extends string | number>({ value, options, onChange, label, size = "md", disabled, searchable = false, searchPlaceholder = "Search…", emptyLabel = "—", placeholder, className, floating = false, align = "end" }: { value: T; options: readonly { value: T; label: ReactNode; icon?: ReactNode; disabled?: boolean; searchText?: string }[]; onChange: (value: T) => void; label: string; size?: ButtonSize; disabled?: boolean; searchable?: boolean; searchPlaceholder?: string; emptyLabel?: ReactNode; placeholder?: ReactNode; className?: string; /** Render above clipping ancestors. */ floating?: boolean; align?: "start" | "center" | "end" }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selected = options.find((option) => option.value === value);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleOptions = normalizedQuery ? options.filter((option) => (option.searchText ?? (typeof option.label === "string" ? option.label : String(option.value))).toLocaleLowerCase().includes(normalizedQuery)) : options;
   const onOpenChange = (next: boolean) => { setOpen(next); if (!next) setQuery(""); };
-  const trigger = <Button type="button" size={size} variant="secondary" disabled={disabled} className={cx("ui-select-menu__trigger", className)} aria-label={label} trailingIcon={<ChevronDown />}><span className="ui-select-menu__value">{selected?.label ?? value}</span></Button>;
+  const trigger = <Button type="button" size={size} variant="secondary" disabled={disabled} className={cx("ui-select-menu__trigger", className)} aria-label={label} trailingIcon={<ChevronDown />}><span className="ui-select-menu__value">{selected?.label ?? placeholder ?? value}</span></Button>;
   const content = <>
     {searchable && <input className="ui-input ui-input--sm ui-select-menu__search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={searchPlaceholder} autoFocus />}
     <ScrollArea viewportClassName="ui-select-menu__options">
@@ -25,8 +25,8 @@ export function SelectMenu<T extends string | number>({ value, options, onChange
     </ScrollArea>
   </>;
   return floating
-    ? <FloatingPopover open={open} onOpenChange={onOpenChange} align="end" className="ui-select-menu__popover" trigger={trigger}>{content}</FloatingPopover>
-    : <Popover open={open} onOpenChange={onOpenChange} align="end" className="ui-select-menu__popover" trigger={trigger}>{content}</Popover>;
+    ? <FloatingPopover open={open} onOpenChange={onOpenChange} align={align} className="ui-select-menu__popover" trigger={trigger}>{content}</FloatingPopover>
+    : <Popover open={open} onOpenChange={onOpenChange} align={align} className="ui-select-menu__popover" trigger={trigger}>{content}</Popover>;
 }
 
 /** Like SelectMenu, but for choosing any number of options at once (checkmarks instead of a single active row). */

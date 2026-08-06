@@ -41,6 +41,7 @@ import { registerChannelPlaylistRoutes } from "./routes/channelPlaylistRoutes";
 import { playlistChannelSyncIsDisabled, registerChannelRoutes } from "./routes/channelRoutes";
 import { registerVideoActionRoutes } from "./routes/videoActionRoutes";
 import { registerVideoRoutes } from "./routes/videoRoutes";
+import { registerTranscriptRoutes } from "./routes/transcriptRoutes";
 import {
   attachTags as attachVideoTags,
   attachWatchedState,
@@ -49,7 +50,6 @@ import {
 } from "./videoRoutesSupport";
 export { importTakeoutHistory } from "./routes/importRoutes";
 await migrateDownloadsFromPlugin();
-
 export const api = new Hono<{ Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } }>();
 registerRequestDiagnostics(api);
 
@@ -355,6 +355,7 @@ registerSocialWatchPartyRoutes(api, {
 registerDownloadRoutes(api, { currentUserId, isAdmin });
 
 registerVideoRoutes(api, { currentUserId, isAdmin, attachTags });
+registerTranscriptRoutes(api, currentUserId);
 
 registerVideoActionRoutes(api, currentUserId);
 

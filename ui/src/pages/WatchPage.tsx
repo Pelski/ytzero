@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { lazy, Suspense, useState, type CSSProperties } from "react";
 import "./WatchPage.css";
 import { emitToast } from "../events";
 import { Link } from "react-router-dom";
@@ -14,6 +14,7 @@ import {
   Clock,
   Clapperboard,
   Copy,
+  Captions,
   EllipsisVertical,
   ExternalLink,
   Eye,
@@ -58,7 +59,10 @@ import { colonDurationToSeconds, formatWatchTime } from "./watchRuntime";
 import { useWatchPageController } from "./useWatchPageController";
 import WatchPlayerFeedback from "./WatchPlayerFeedback";
 
+const TranscriptDialog = lazy(() => import("../components/TranscriptDialog"));
+
 export default function WatchPage() {
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
   const controller = useWatchPageController();
   if (!controller) return null;
   const {
@@ -644,6 +648,12 @@ export default function WatchPage() {
                           <Undo2 /> {t("restoreRejectedVideo")}
                         </button>
                       )}
+                      <div className="more-menu-section">
+                        <MenuSeparator />
+                        <button className="more-item-always" onClick={() => { setTranscriptOpen(true); setMoreOpen(false); }}>
+                          <Captions /> {t("transcript")}
+                        </button>
+                      </div>
                       {downloadsEnabled && !isChildProfile && video.is_private !== 1 && video.live_status !== "live" && video.live_status !== "upcoming" && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
                         <div className="more-menu-section">
                           <MenuSeparator />
@@ -732,6 +742,12 @@ export default function WatchPage() {
             ))}
           </div>
         )}
+        {video && transcriptOpen && <Suspense fallback={null}><TranscriptDialog
+          videoId={video.video_id}
+          title={video.title}
+          languages={[...new Set([captionsDefaultLang, ...downloadSubtitleLanguages])].filter(Boolean)}
+          onClose={() => setTranscriptOpen(false)}
+        /></Suspense>}
         {video && <div className={`watch-download-feedback-region${downloadFeedbackVisible ? " is-open" : ""}`} aria-hidden={!downloadFeedbackVisible}>
           <div className="watch-download-feedback-region-inner">
             <div className={`watch-download-feedback watch-download-feedback--${downloadFeedbackKind}`} role={downloadFeedbackVisible ? "status" : undefined} aria-live={downloadFeedbackVisible ? "polite" : undefined}>
