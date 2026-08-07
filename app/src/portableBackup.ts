@@ -15,7 +15,7 @@ import { parseManualRefreshSchedule } from "./channelRefreshSchedule";
 import { listDownloadRules } from "./downloadRules";
 import { normalizeSocialReaction } from "./social";
 import { optimizeProfileAvatar, optimizedProfileAvatarToken, removeStoredProfileAvatar } from "./profileAvatars";
-import { DOWNLOAD_BACKUP_SCHEMA_VERSION, exportDownloadInstanceSettings, exportDownloadPreferences, restoreDownloadInstanceSettings, restoreDownloadPreferences } from "./downloadBackup";
+import { DOWNLOAD_INSTANCE_BACKUP_SCHEMA_VERSION, DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, exportDownloadInstanceSettings, exportDownloadPreferences, restoreDownloadInstanceSettings, restoreDownloadPreferences } from "./downloadBackup";
 import { normalizeVideoCardActionMode } from "./videoCardActions";
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -40,12 +40,12 @@ const profilePath = (name: string) => (uuid = "") => `profiles/${uuid}/${name}`;
 export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "instance.settings", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/settings.json" },
   { id: "instance.plugins", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/plugins.jsonl" },
-  { id: "instance.downloads", schemaVersion: DOWNLOAD_BACKUP_SCHEMA_VERSION, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/downloads.json" },
+  { id: "instance.downloads", schemaVersion: DOWNLOAD_INSTANCE_BACKUP_SCHEMA_VERSION, scope: "instance", sensitivity: "normal", dependencies: [], category: "configuration", path: () => "instance/downloads.json" },
   { id: "instance.channels", schemaVersion: 4, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
   { id: "profiles.index", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "profiles", path: () => "profiles/index.json" },
   { id: "profile.avatar", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "profiles", optional: true, path: (uuid = "") => `assets/avatars/${uuid}` },
   { id: "profile.settings", schemaVersion: 2, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
-  { id: "profile.downloads", schemaVersion: DOWNLOAD_BACKUP_SCHEMA_VERSION, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "configuration", path: profilePath("downloads.json") },
+  { id: "profile.downloads", schemaVersion: DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "configuration", path: profilePath("downloads.json") },
   { id: "profile.subscriptions", schemaVersion: 2, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("subscriptions.jsonl") },
   { id: "profile.followed-playlists", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("followed-playlists.jsonl") },
   { id: "profile.tags", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "library.referenced-videos"], category: "organization", path: profilePath("tags.jsonl") },

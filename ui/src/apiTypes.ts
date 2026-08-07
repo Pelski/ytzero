@@ -370,7 +370,7 @@ export interface SettingDefinition {
   key: string;
   label: string;
   description: string;
-  type: "slider" | "select" | "toggle" | "text" | "multiselect";
+  type: "slider" | "select" | "toggle" | "text" | "time" | "multiselect";
   min?: number; max?: number; step?: number;
   options?: { value: string; label: string }[];
   defaultValue: SettingValue;
@@ -538,8 +538,8 @@ export interface DownloadConfigResponse {
   admin_setting_keys: string[];
   enabled: boolean;
   cookies_configured: boolean;
+  time_zone: string;
 }
-
 export interface VideoDownload {
   video_id: string;
   status: DownloadStatus;

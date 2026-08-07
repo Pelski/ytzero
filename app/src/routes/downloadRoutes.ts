@@ -8,6 +8,7 @@ import { DOWNLOADS_ADMIN_SETTING_KEYS, downloadCookiesConfigured, downloadSettin
 import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "../downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "../downloadRules";
 import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
+import { configuredTimeZone } from "../timeZone";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -35,6 +36,7 @@ api.get("/downloads/config", async (c) => {
     enabled: await profileDownloadsEnabled(uid),
     ...(await downloadSettings(uid, getUserSetting(uid, "language"))),
     cookies_configured: downloadCookiesConfigured(uid),
+    time_zone: configuredTimeZone(),
   });
 });
 
@@ -53,7 +55,7 @@ api.put("/downloads/config", async (c) => {
     : await downloadSettings(uid, getUserSetting(uid, "language"));
   const enabled = await profileDownloadsEnabled(uid);
   publishAppEvent("downloads", { enabled, config: true, userId: uid });
-  return c.json({ can_manage: true, can_manage_admin_settings: isAdmin(c), admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS], enabled, ...settings, cookies_configured: downloadCookiesConfigured(uid) });
+  return c.json({ can_manage: true, can_manage_admin_settings: isAdmin(c), admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS], enabled, ...settings, cookies_configured: downloadCookiesConfigured(uid), time_zone: configuredTimeZone() });
 });
 
 api.get("/downloads/automation", async (c) => {

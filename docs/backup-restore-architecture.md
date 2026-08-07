@@ -224,6 +224,13 @@ below.
   Downloads' per-profile **Include Shorts** preference is portable
   configuration. It controls automatic feed and Watch later downloads; manual
   downloads remain an explicit, separate action.
+  The per-profile download schedule (enabled state, selected start weekdays,
+  start time, and end time) is portable configuration in
+  `profile.downloads` schema v2. It uses the instance's portable IANA timezone
+  at runtime. Queue membership and active download progress remain transient;
+  older schema v1 archives leave an existing target schedule unchanged during
+  merge, while a fresh or replace restore uses the disabled default with all
+  weekdays and the `23:00`–`07:00` window.
   The per-profile **Download past live streams** preference is portable
   configuration and defaults to disabled. When enabled, completed stream
   archives may be selected by Watch later and automatic download rules;

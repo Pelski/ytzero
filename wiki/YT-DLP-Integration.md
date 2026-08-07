@@ -48,6 +48,19 @@ whole instance.
 | **Progress bar on thumbnails** | on | Shows queue and download progress on video cards. |
 | **Download scheduled videos** | on | Automatically downloads videos placed in a watch-later bucket by this profile. |
 
+### Download schedule
+
+Each profile can optionally choose weekdays plus a start and end time under
+**Downloads → Configuration**. Items may enter the queue at any time, but the
+worker starts them only while at least one owning profile is inside its allowed
+window. The schedule uses the instance timezone from **Settings → Appearance**.
+
+Weekdays identify the day on which a window starts. For example, Monday with
+`23:00`–`07:00` permits downloads from Monday 23:00 until Tuesday 07:00. Windows
+that do not cross midnight work normally. A download already running when the
+window closes is allowed to finish; RSS refresh, browsing, queueing, and the
+rest of YT Zero remain available throughout.
+
 ### Files, storage, and access
 
 The filename template defaults to `{playlist}/{id}`. Available tokens include
@@ -90,7 +103,7 @@ files with no remaining owner are removed. Treat it as destructive.
 
 ## How it works
 
-- Downloads run on the server one at a time with automatic retries (3 attempts with backoff) and crash recovery on restart. Waiting viewers, manual requests, automation, and scheduled items receive different queue priorities.
+- Downloads run on the server one at a time with automatic retries (3 attempts with backoff) and crash recovery on restart. Waiting viewers, manual requests, automation, and scheduled items receive different queue priorities, while per-profile download windows determine which queued item may start.
 - Paths are rendered from the configured filename template inside `DOWNLOADS_DIR`; the video ID is added when necessary to keep names unique and cleanup-safe. Files use HTTP Range playback, so seeking does not restart the transfer.
 - Every completed download also receives a small recovery sidecar grouped with the media file, for example `Channel - Title [videoId].ytz.json`. It records the YouTube video ID, the relative media-file name, and its size. Existing healthy downloads from versions that predate sidecars receive a missing sidecar during maintenance, without downloading the media again. When `DOWNLOADS_DIR` is moved, YT Zero scans these sidecars before cleanup and reconnects known downloads automatically; older `<videoId>.ytz.json` names remain supported and are regrouped when found. Legacy YT Zero media without a sidecar is recovered when its filename contains one unambiguous known video ID, and receives a new sidecar. Files that cannot be identified are left untouched rather than deleted.
 - An item removed from the queue or the Downloads tab leaves a tombstone: automatic policies treat it as rejected and never bring it back. A manual download request clears the tombstone.

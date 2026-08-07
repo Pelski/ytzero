@@ -2,7 +2,7 @@ import { SUBTITLE_LANGUAGES } from "./subtitleLanguages";
 
 export type DownloadLanguage = "en" | "pl" | "de";
 export type DownloadSettingValue = number | string;
-export type DownloadSettingType = "slider" | "select" | "toggle" | "text" | "multiselect";
+export type DownloadSettingType = "slider" | "select" | "toggle" | "text" | "time" | "multiselect";
 type LocalizedText = Record<DownloadLanguage, string>;
 
 export interface DownloadSettingSource {
@@ -58,6 +58,10 @@ export const DL_DEFAULTS = {
   feed_max_age_hours: 48,
   feed_min_duration_minutes: 0,
   download_shorts: 0,
+  download_schedule_enabled: 0,
+  download_schedule_days: "0,1,2,3,4,5,6",
+  download_schedule_start: "23:00",
+  download_schedule_end: "07:00",
   retention_days: 14,
   delete_watched: 1,
   delete_watched_hours: 24,
@@ -210,6 +214,35 @@ export const DOWNLOADS_SETTINGS: DownloadSettingSource[] = [
     label: { en: "Include Shorts", pl: "Pobieraj Shorts", de: "Shorts einschließen" },
     description: { en: "Allow automatic downloads of Shorts, including videos in Watch later. Manual downloads are unaffected.", pl: "Zezwalaj na automatyczne pobieranie Shorts, także filmów z „Do obejrzenia”. Ręczne pobieranie pozostaje bez zmian.", de: "Automatische Downloads von Shorts erlauben, auch aus Später ansehen. Manuelle Downloads bleiben unverändert." },
     defaultValue: DL_DEFAULTS.download_shorts,
+  },
+  {
+    key: "download_schedule_enabled",
+    type: "toggle",
+    label: { en: "Download schedule", pl: "Harmonogram pobierania", de: "Download-Zeitplan" },
+    description: { en: "Only starts queued downloads during the selected window.", pl: "Uruchamia pobieranie z kolejki tylko w wybranym oknie.", de: "Startet Downloads aus der Warteschlange nur im ausgewählten Zeitfenster." },
+    defaultValue: DL_DEFAULTS.download_schedule_enabled,
+  },
+  {
+    key: "download_schedule_days",
+    type: "multiselect",
+    label: { en: "Days", pl: "Dni", de: "Tage" },
+    description: { en: "Days on which the download window starts.", pl: "Dni, w których rozpoczyna się okno pobierania.", de: "Tage, an denen das Download-Zeitfenster beginnt." },
+    options: Array.from({ length: 7 }, (_, day) => ({ value: String(day), label: { en: String(day), pl: String(day), de: String(day) } })),
+    defaultValue: DL_DEFAULTS.download_schedule_days,
+  },
+  {
+    key: "download_schedule_start",
+    type: "time",
+    label: { en: "Start", pl: "Początek", de: "Start" },
+    description: { en: "Local start time.", pl: "Lokalna godzina rozpoczęcia.", de: "Lokale Startzeit." },
+    defaultValue: DL_DEFAULTS.download_schedule_start,
+  },
+  {
+    key: "download_schedule_end",
+    type: "time",
+    label: { en: "End", pl: "Koniec", de: "Ende" },
+    description: { en: "Local end time.", pl: "Lokalna godzina zakończenia.", de: "Lokale Endzeit." },
+    defaultValue: DL_DEFAULTS.download_schedule_end,
   },
   {
     key: "retention_days",

@@ -2,7 +2,8 @@ import { database } from "./database";
 import { DOWNLOADS_ADMIN_SETTING_KEYS, downloadSettings, profileDownloadsEnabled, setDownloadSettings, setProfileDownloadsEnabled } from "./downloadConfig";
 import { listDownloadRules, restoreDownloadRules } from "./downloadRules";
 
-export const DOWNLOAD_BACKUP_SCHEMA_VERSION = 1;
+export const DOWNLOAD_INSTANCE_BACKUP_SCHEMA_VERSION = 1;
+export const DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION = 2;
 
 export async function exportDownloadInstanceSettings() {
   const settings = (await downloadSettings(0)).settings;

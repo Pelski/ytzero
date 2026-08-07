@@ -14,6 +14,10 @@ function normalizeDownloadSetting(raw: unknown, definition: DownloadSettingSourc
     const value = typeof raw === "string" ? raw.trim() : "";
     return value || definition.defaultValue;
   }
+  if (type === "time") {
+    const value = typeof raw === "string" ? raw.trim() : "";
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : definition.defaultValue;
+  }
   if (type === "multiselect") {
     const valid = new Set((definition.options ?? []).map((option) => option.value));
     const picked = typeof raw === "string"
@@ -135,4 +139,3 @@ export async function dlEnabled(userId?: number): Promise<boolean> {
   if (userId != null) return profileDownloadsEnabled(userId);
   return Boolean(await database.prepare("SELECT 1 AS enabled FROM download_settings WHERE key='enabled' AND value='1' LIMIT 1").get());
 }
-

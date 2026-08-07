@@ -27,6 +27,7 @@ import {
   type DlSettings,
 } from "./downloadConfig";
 import { DOWNLOAD_MANIFEST_SUFFIX, recoverDownloadsFromDisk, writeDownloadManifest } from "./downloadRecovery";
+import { downloadScheduleAllowsNow } from "./downloadSchedule";
 export {
   DL_DEFAULTS,
   dlSettings,
@@ -634,15 +635,32 @@ function pruneAllEmptyDirs(dir: string, isRoot = true) {
 
 // ---------- the download itself ----------
 
-async function pickNext(): Promise<string | null> {
-  const row = await database.prepare(`
-    SELECT d.video_id FROM downloads d
+async function pickNext(): Promise<{ videoId: string; userId: number; settings: DlSettings } | null> {
+  const rows = await database.prepare(`
+    SELECT d.video_id, d.requested_by_user_id FROM downloads d
     JOIN videos v ON v.video_id = d.video_id
     WHERE d.status = 'queued' AND v.is_private = 0
     ORDER BY d.priority DESC, CASE d.source WHEN 'manual' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END, d.created_at ASC
-    LIMIT 1
-  `).get() as { video_id: string } | null;
-  return row?.video_id ?? null;
+  `).all() as { video_id: string; requested_by_user_id: number | null }[];
+  const settingsByUser = new Map<number, DlSettings>();
+  for (const row of rows) {
+    const owners = await database.prepare(`
+      SELECT owner.user_id
+      FROM download_owners owner
+      JOIN download_settings enabled ON enabled.user_id=owner.user_id AND enabled.key='enabled' AND enabled.value='1'
+      WHERE owner.video_id=?
+      ORDER BY CASE WHEN owner.user_id=? THEN 0 ELSE 1 END, owner.created_at, owner.user_id
+    `).all(row.video_id, row.requested_by_user_id) as { user_id: number }[];
+    for (const owner of owners) {
+      let settings = settingsByUser.get(owner.user_id);
+      if (!settings) {
+        settings = await dlSettings(owner.user_id);
+        settingsByUser.set(owner.user_id, settings);
+      }
+      if (downloadScheduleAllowsNow(settings)) return { videoId: row.video_id, userId: owner.user_id, settings };
+    }
+  }
+  return null;
 }
 
 const PROGRESS_RE = /\[download\]\s+([\d.]+)%(?:\s+of\s+~?\s*([\d.]+)(K|M|G)iB)?(?:.*?at\s+(\S+))?/;
@@ -877,16 +895,9 @@ async function tick() {
       const next = await pickNext();
       // Fire and forget: `active` guards concurrency, ticks keep flowing.
       if (next) {
-        const owner = await database.prepare("SELECT requested_by_user_id AS user_id FROM downloads WHERE video_id=?").get(next) as { user_id: number | null } | null;
-        const fallbackOwner = owner?.user_id == null
-          ? await database.prepare("SELECT id AS user_id FROM users ORDER BY id LIMIT 1").get() as { user_id: number } | null
-          : null;
-        const userId = owner?.user_id ?? fallbackOwner?.user_id;
-        if (userId == null) return;
-        const jobSettings = await dlSettings(userId);
         const runRelease = beginMutation();
-        if (runRelease) runDownload(userId, next, jobSettings)
-          .catch((e) => log.error("downloads.run_failed", { videoId: next, error: e instanceof Error ? e.message : String(e) }))
+        if (runRelease) runDownload(next.userId, next.videoId, next.settings)
+          .catch((e) => log.error("downloads.run_failed", { videoId: next.videoId, error: e instanceof Error ? e.message : String(e) }))
           .finally(runRelease);
       }
     }
