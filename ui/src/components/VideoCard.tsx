@@ -31,6 +31,7 @@ import { useDeArrowBranding } from "../dearrow";
 import { readAppliedVideoCardActionsMode } from "../videoCardActions";
 import "./VideoGrid.css";
 import "./VideoCard.css";
+import "./VideoCardActionsBar.css";
 import "./VideoCardMetadata.css";
 
 export { BUCKET_ICONS } from "./VideoScheduleActions";
@@ -189,6 +190,7 @@ function VideoCard({
   const blockNextThumbClickRef = useRef(false);
   const blockClickAfterDragRef = useRef(false);
   const appliedActionsMode = readAppliedVideoCardActionsMode();
+  const actionsInBar = appliedActionsMode === "bar_always";
   const actionsOpen = actionsPinned || actionsHovered || actionProximity > 0.52;
 
   const exitLeft = () => {
@@ -320,7 +322,7 @@ function VideoCard({
   const updateActionProximity = (e: PointerEvent<HTMLDivElement>) => {
     if (e.pointerType !== "mouse") return;
     const mode = readAppliedVideoCardActionsMode();
-    if (mode === "off" || mode === "always" || mode === "on_demand") return;
+    if (mode === "off" || mode === "always" || mode === "bar_always" || mode === "on_demand") return;
     if ((e.target as HTMLElement).closest(".thumb-actions")) {
       setActionsHovered(true);
       return;
@@ -612,7 +614,7 @@ function VideoCard({
             >
               <VideoScheduleActions
                 video={video}
-                variant="overlay"
+                variant={actionsInBar ? "bar" : "overlay"}
                 onToggle={(e, bucket, active) => act(
                   e,
                   () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, bucket)),
@@ -626,27 +628,27 @@ function VideoCard({
                   </button>
                 )}
                 {video.is_private !== 1 && canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
-                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")}>
+                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")} portal={actionsInBar}>
                     <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")} onClick={requestLocalDownload}>
                       <ArrowDownToLine />
                     </button>
                   </Tooltip>
                 )}
                 {allowReject && video.status !== "archived" && (
-                  <Tooltip text={t("reject")}>
+                  <Tooltip text={t("reject")} portal={actionsInBar}>
                     <button className="action-btn" aria-label={t("reject")} onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
                       <Archive />
                     </button>
                   </Tooltip>
                 )}
                 {allowMarkWatched && watched ? (
-                  <Tooltip text={t("markUnwatched")}>
+                  <Tooltip text={t("markUnwatched")} portal={actionsInBar}>
                     <button className="action-btn" aria-label={t("markUnwatched")} onClick={(e) => act(e, markUnwatched, "unwatched")}>
                         <EyeOff />
                     </button>
                   </Tooltip>
                 ) : allowMarkWatched && video.status !== "archived" ? (
-                  <Tooltip text={t("markWatched")}>
+                  <Tooltip text={t("markWatched")} portal={actionsInBar}>
                     <button className="action-btn" aria-label={t("markWatched")} onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
                       <Eye />
                     </button>

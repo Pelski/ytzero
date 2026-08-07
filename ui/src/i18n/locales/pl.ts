@@ -507,6 +507,7 @@ export const pl: Locale = {
     videoCardActionsHint: "Wybierz, kiedy na kartach pojawiają się przyciski planowania, odrzucania, oznaczania jako obejrzane i pozostałe akcje.",
     videoCardActionsHover: "Po najechaniu",
     videoCardActionsAlways: "Zawsze widoczne",
+    videoCardActionsBarAlways: "Pasek pod miniaturą — zawsze",
     videoCardActionsOnDemand: "Na żądanie",
     videoCardActionsDelay: "Z opóźnieniem 3 sekund",
     videoCardActionsOff: "Wyłączone",

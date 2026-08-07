@@ -197,7 +197,8 @@ below.
   on demand; they do not overwrite library metadata or become portable profile data.
   The video-card action visibility mode is portable per-profile presentation
   configuration. It defaults to the historical hover behaviour and may instead
-  keep actions visible, require the overflow button, delay hover activation by
+  keep actions visible over the thumbnail, show them in an always-visible bar
+  below the thumbnail, require the overflow button, delay hover activation by
   three seconds, or leave actions to the video page.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,

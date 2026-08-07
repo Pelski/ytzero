@@ -1,21 +1,19 @@
-import type { I18nKey } from "./i18n";
-
-export type VideoCardActionsMode = "hover" | "always" | "on_demand" | "delay" | "off";
+export type VideoCardActionsMode = "hover" | "always" | "bar_always" | "on_demand" | "delay" | "off";
 
 export const DEFAULT_VIDEO_CARD_ACTIONS_MODE: VideoCardActionsMode = "hover";
 
-export const VIDEO_CARD_ACTIONS_MODES: { id: VideoCardActionsMode; labelKey: I18nKey }[] = [
-  { id: "hover", labelKey: "videoCardActionsHover" },
-  { id: "always", labelKey: "videoCardActionsAlways" },
-  { id: "on_demand", labelKey: "videoCardActionsOnDemand" },
-  { id: "delay", labelKey: "videoCardActionsDelay" },
-  { id: "off", labelKey: "videoCardActionsOff" },
-];
-
 export function parseVideoCardActionsMode(value: unknown): VideoCardActionsMode {
-  return VIDEO_CARD_ACTIONS_MODES.some((mode) => mode.id === value)
-    ? value as VideoCardActionsMode
-    : DEFAULT_VIDEO_CARD_ACTIONS_MODE;
+  switch (value) {
+    case "hover":
+    case "always":
+    case "bar_always":
+    case "on_demand":
+    case "delay":
+    case "off":
+      return value;
+    default:
+      return DEFAULT_VIDEO_CARD_ACTIONS_MODE;
+  }
 }
 
 export function applyVideoCardActionsMode(value: unknown) {

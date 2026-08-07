@@ -6,7 +6,7 @@ import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE } from "../../playerScreenshot";
 import { scheduleSettingWrite } from "../../settingsWriteQueue";
 import "./SettingsDisplayView.css";
 import { WATCHED_STYLES } from "../../watchedStyle";
-import { VIDEO_CARD_ACTIONS_MODES, type VideoCardActionsMode } from "../../videoCardActions";
+import { VIDEO_CARD_ACTIONS_MODES, type VideoCardActionsMode } from "../../videoCardActionOptions";
 import { useSettingsPageController } from "../../pages/useSettingsPageController";
 import Popconfirm from "../Popconfirm";
 import { Button, ColorPicker, Divider, Inline, Input, InputGroup, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Text } from "../ui";

@@ -3,8 +3,8 @@ import { parseVideoCardActionsMode } from "../src/videoCardActions";
 
 describe("video card action modes", () => {
   test("accepts every supported mode", () => {
-    expect(["hover", "always", "on_demand", "delay", "off"].map(parseVideoCardActionsMode))
-      .toEqual(["hover", "always", "on_demand", "delay", "off"]);
+    expect(["hover", "always", "bar_always", "on_demand", "delay", "off"].map(parseVideoCardActionsMode))
+      .toEqual(["hover", "always", "bar_always", "on_demand", "delay", "off"]);
   });
 
   test("falls back to hover for missing and unsupported values", () => {

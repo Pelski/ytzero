@@ -506,6 +506,7 @@ export const de: Locale = {
     videoCardActionsHint: "Lege fest, wann Planung, Ablehnen, Als angesehen markieren und weitere Aktionen auf Videokarten erscheinen.",
     videoCardActionsHover: "Beim Darüberfahren",
     videoCardActionsAlways: "Immer sichtbar",
+    videoCardActionsBarAlways: "Leiste unter dem Vorschaubild — immer",
     videoCardActionsOnDemand: "Bei Bedarf",
     videoCardActionsDelay: "Mit 3 Sekunden Verzögerung",
     videoCardActionsOff: "Aus",

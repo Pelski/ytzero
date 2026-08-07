@@ -43,12 +43,16 @@ export function VideoScheduleActions({
   onToggle,
 }: {
   video: Pick<Video, "bucket">;
-  variant: "overlay" | "compact";
+  variant: "overlay" | "compact" | "bar";
   onToggle: (event: MouseEvent<HTMLButtonElement>, bucket: Bucket, active: boolean) => void;
 }) {
   const { t, bucketLabel } = useI18n();
   return (
-    <div className={variant === "overlay" ? "thumb-actions-row thumb-actions-row--schedule" : "related-schedule-actions"}>
+    <div className={variant === "overlay"
+      ? "thumb-actions-row thumb-actions-row--schedule"
+      : variant === "bar"
+        ? "thumb-actions-row thumb-actions-row--schedule thumb-actions-row--bar"
+        : "related-schedule-actions"}>
       {BUCKET_GROUPS.map((group) => (
         <div
           key={group.labelKey}
@@ -60,7 +64,7 @@ export function VideoScheduleActions({
               const Icon = BUCKET_ICONS[bucket];
               const active = video.bucket === bucket;
               return (
-                <Tooltip key={bucket} text={active ? t("removeFromQueue") : bucketLabel(bucket)}>
+                <Tooltip key={bucket} text={active ? t("removeFromQueue") : bucketLabel(bucket)} portal={variant === "bar"}>
                   <button
                     type="button"
                     className={`action-btn${active ? " active" : ""}`}

@@ -506,6 +506,7 @@ export const en = {
     videoCardActionsHint: "Choose when scheduling, reject, watched, and other buttons appear on video cards.",
     videoCardActionsHover: "On hover",
     videoCardActionsAlways: "Always visible",
+    videoCardActionsBarAlways: "Bar below thumbnail — always",
     videoCardActionsOnDemand: "On demand",
     videoCardActionsDelay: "With 3-second delay",
     videoCardActionsOff: "Off",
