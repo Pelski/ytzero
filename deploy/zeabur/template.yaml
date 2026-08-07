@@ -1,0 +1,37 @@
+apiVersion: zeabur.com/v1
+kind: Template
+metadata:
+  name: YT Zero
+spec:
+  description: Self-hosted YouTube subscriptions reader without recommendations.
+  icon: https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/icon.png
+  variables:
+    - key: PUBLIC_DOMAIN
+      type: DOMAIN
+      name: Domain
+      description: Public domain for your YT Zero instance.
+  tags:
+    - Tool
+  readme: |-
+    # YT Zero
+
+    This template deploys the official image with persistent storage at `/data`.
+    Keep the service at one replica while using the default SQLite database.
+  services:
+    - name: YT Zero
+      icon: https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/icon.png
+      template: PREBUILT
+      domainKey: PUBLIC_DOMAIN
+      spec:
+        source:
+          image: ghcr.io/pelski/ytzero:latest
+        ports:
+          - id: web
+            port: 3001
+            type: HTTP
+        volumes:
+          - id: data
+            dir: /data
+        env:
+          PORT:
+            default: "3001"

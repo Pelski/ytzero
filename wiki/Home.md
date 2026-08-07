@@ -7,6 +7,7 @@ YT Zero reads public YouTube RSS feeds, stores videos in your own SQLite or Post
 ## Start here
 
 - **[Installation](Installation)** — run with Docker or locally with Bun.
+- **[Cloud Deployment](Cloud-Deployment)** — one-click and managed-platform deployment.
 - **[Configuration](Configuration)** — environment variables and Docker Compose settings.
 - **[Features](Features)** — everything the app does, with screens.
 - **[Settings](Settings)** — the current settings layout, sections, and access rules.

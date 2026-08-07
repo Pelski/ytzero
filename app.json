@@ -1,0 +1,34 @@
+{
+  "name": "YT Zero",
+  "description": "Self-hosted YouTube subscriptions reader without recommendations.",
+  "repository": "https://github.com/Pelski/ytzero",
+  "logo": "https://raw.githubusercontent.com/Pelski/ytzero/main/docs/assets/icon.png",
+  "keywords": ["youtube", "subscriptions", "self-hosted"],
+  "stack": "container",
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0"
+    }
+  ],
+  "env": {
+    "DATABASE_STATE_PATH": {
+      "value": "/tmp/ytzero/database-state.json"
+    },
+    "DB_PATH": {
+      "value": "/tmp/ytzero/db/ytzero.db"
+    },
+    "IMG_CACHE_DIR": {
+      "value": "/tmp/ytzero/imgcache"
+    },
+    "DOWNLOADS_DIR": {
+      "value": "/tmp/ytzero/downloads"
+    },
+    "AVATAR_DIR": {
+      "value": "/tmp/ytzero/avatars"
+    },
+    "LOG_PATH": {
+      "value": "/tmp/ytzero/logs/ytzero.log"
+    }
+  },
+  "success_url": "/"
+}

@@ -109,7 +109,22 @@ That means:
 ## Quick start
 
 YT Zero can run as a regular Docker container, an Unraid Community App, a
-native systemd service, or in its own Proxmox LXC:
+native systemd service, in its own Proxmox LXC, or on a cloud platform.
+
+### One-click cloud deploy
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/Pelski/ytzero/tree/main)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Pelski/ytzero)
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=docker&image=ghcr.io%2Fpelski%2Fytzero%3Alatest&name=ytzero&service_type=web&instance_type=small&regions=fra&ports=3001%3Bhttp%3B%2F&env%5BPORT%5D=3001)
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/Pelski/ytzero)
+
+Render provisions a persistent `/data` disk. DigitalOcean provisions PostgreSQL
+for application state, but App Platform has no persistent filesystem, so
+downloads, avatars, logs, and caches are ephemeral there. Heroku has the same
+file limitation and provisions PostgreSQL. Koyeb requires a volume mounted at
+`/data` to be added manually after the initial deployment.
+See **[Cloud Deployment](https://github.com/Pelski/ytzero/wiki/Cloud-Deployment)**
+before choosing a provider.
 
 | Method | Best for | How it runs |
 | --- | --- | --- |
@@ -117,6 +132,7 @@ native systemd service, or in its own Proxmox LXC:
 | Unraid | Unraid users who prefer DockerMan / Community Apps | The same GHCR image with persistent appdata |
 | Proxmox VE | Homelabs managed from a PVE host | Unprivileged Debian LXC, without Docker inside |
 | Debian / Ubuntu | LXC, VM or bare-metal Linux | Native Bun application managed by systemd |
+| Cloud | Render, Railway, DigitalOcean, Koyeb, Heroku, Fly.io, Zeabur, Kubernetes and Docker PaaS | One-click templates or repository manifests |
 
 ### Docker
 
@@ -184,6 +200,7 @@ only.
 Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)**:
 
 - **[Installation](https://github.com/Pelski/ytzero/wiki/Installation)** — Docker, Unraid, Proxmox, native Linux, and local development.
+- **[Cloud Deployment](https://github.com/Pelski/ytzero/wiki/Cloud-Deployment)** — one-click buttons and guides for hosted platforms.
 - **[Configuration](https://github.com/Pelski/ytzero/wiki/Configuration)** — environment variables.
 - **[Features](https://github.com/Pelski/ytzero/wiki/Features)** — everything the app does, with screens.
 - **[Settings](https://github.com/Pelski/ytzero/wiki/Settings)** — current navigation, sections, and administrator-only access.

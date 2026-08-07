@@ -1,5 +1,13 @@
 Run YT Zero with Docker (recommended), natively on Debian/Ubuntu, in a Proxmox LXC, or locally with Bun.
 
+For Render, Railway, DigitalOcean, Koyeb, Heroku, Fly.io, Zeabur, Kubernetes, Coolify and
+similar platforms, see [Cloud Deployment](Cloud-Deployment).
+
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/Pelski/ytzero/tree/main)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Pelski/ytzero)
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=docker&image=ghcr.io%2Fpelski%2Fytzero%3Alatest&name=ytzero&service_type=web&instance_type=small&regions=fra&ports=3001%3Bhttp%3B%2F&env%5BPORT%5D=3001)
+[![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/Pelski/ytzero)
+
 ## Requirements
 
 ### Docker

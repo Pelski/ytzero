@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: ytzero
+    runtime: docker
+    repo: https://github.com/Pelski/ytzero
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    autoDeploy: false
+    healthCheckPath: /api/health
+    envVars:
+      - key: PORT
+        value: "3001"
+    disk:
+      name: ytzero-data
+      mountPath: /data
+      sizeGB: 10

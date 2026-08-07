@@ -1,0 +1,26 @@
+spec:
+  name: ytzero
+  services:
+    - name: ytzero
+      git:
+        branch: main
+        repo_clone_url: https://github.com/Pelski/ytzero.git
+      source_dir: /
+      dockerfile_path: ./Dockerfile
+      http_port: 3001
+      instance_count: 1
+      instance_size_slug: apps-s-1vcpu-1gb
+      health_check:
+        http_path: /api/health
+        initial_delay_seconds: 20
+        period_seconds: 30
+        timeout_seconds: 5
+      envs:
+        - key: DATABASE_URL
+          scope: RUN_TIME
+          value: ${ytzero-db.DATABASE_URL}
+        - key: DATABASE_STATE_PATH
+          scope: RUN_TIME
+          value: /tmp/ytzero-database-state.json
+  databases:
+    - name: ytzero-db
