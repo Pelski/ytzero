@@ -25,4 +25,13 @@ Same line
 `;
     expect(webVttToTranscript(vtt)).toBe("[00:01] Same line");
   });
+
+  test("decodes entities exactly once", () => {
+    const vtt = `WEBVTT
+
+00:00:01.000 --> 00:00:02.000
+Literal &amp;lt;tag&amp;gt; and &lt;text&gt;
+`;
+    expect(webVttToTranscript(vtt)).toBe("[00:01] Literal &lt;tag&gt; and <text>");
+  });
 });

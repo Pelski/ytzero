@@ -13,13 +13,15 @@ export class TranscriptError extends Error {
 }
 
 function decodeEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#39;/g, "'");
+  const entities: Record<string, string> = {
+    "&nbsp;": " ",
+    "&amp;": "&",
+    "&lt;": "<",
+    "&gt;": ">",
+    "&quot;": "\"",
+    "&#39;": "'",
+  };
+  return value.replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (entity) => entities[entity]);
 }
 
 function shortTimestamp(value: string): string {
