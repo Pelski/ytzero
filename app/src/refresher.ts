@@ -16,20 +16,9 @@ import { manualScheduleIsDue, nextScheduleOccurrenceMs, parseManualRefreshSchedu
 import { liveStatusChanged, resolveActiveLivestreams, type StoredLiveStatus } from "./liveStatus";
 import { channelSyncJobIsRunning } from "./channelSyncRuntime";
 import { isYouTubeRateLimitError } from "./youtubeRateLimit";
+import { RSS_VIDEO_UPSERT_SQL } from "./videoUpserts";
 
-const upsertVideo = database.prepare(`
-  INSERT INTO videos (video_id, channel_id, title, description, thumbnail, published_at, views, likes)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  ON CONFLICT(video_id) DO UPDATE SET
-    title = excluded.title,
-    description = excluded.description,
-    thumbnail = CASE WHEN TRIM(excluded.thumbnail) != '' THEN excluded.thumbnail ELSE videos.thumbnail END,
-    published_at = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN excluded.published_at ELSE videos.published_at END,
-    published_at_approximate = CASE WHEN excluded.published_at IS NOT NULL AND excluded.published_at != '' THEN 0 ELSE videos.published_at_approximate END,
-    views = COALESCE(excluded.views, videos.views),
-    likes = COALESCE(excluded.likes, videos.likes),
-    is_private = 0
-`);
+const upsertVideo = database.prepare(RSS_VIDEO_UPSERT_SQL);
 
 const videoExists = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 
