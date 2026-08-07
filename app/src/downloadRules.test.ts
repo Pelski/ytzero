@@ -46,6 +46,7 @@ describe("download automation rules", () => {
 
   test("uses the same result to feed automatic queue candidates", () => {
     expect(result.candidates).toEqual([{ video_id: "rule-main", rule_id: result.created.id, user_id: 1 }]);
+    expect(result.pendingExcludedFromPreview).toBe(true);
   });
 
   test("requires the profile preference before rules can auto-download Shorts", () => {

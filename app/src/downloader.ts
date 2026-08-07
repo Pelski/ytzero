@@ -11,6 +11,7 @@ import { createDownloadStreaming } from "./downloadStreaming";
 import { autoDownloadFollowerExistsSql } from "./downloadEligibility";
 import { automaticDownloadCandidates, migrateLegacyDownloadAutomation } from "./downloadRules";
 import { enqueueScheduledDownloadsForUser } from "./scheduledDownloads";
+import { shouldAutoDownloadVideo } from "./downloadContentPolicy";
 import {
   DOWNLOADS_DIR,
   YTDLP,
@@ -256,6 +257,12 @@ async function claimDownload(userId: number, videoId: string, source: "manual" |
 }
 
 export async function enqueueDownload(userId: number, videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean; automationRuleId?: number | null } = {}): Promise<boolean> {
+  if (source !== "manual") {
+    // Re-check at the queue boundary as classification may have changed since
+    // the scheduler selected its candidates.
+    const video = await database.prepare("SELECT is_short FROM videos WHERE video_id=? AND is_private=0").get(videoId) as { is_short: number | null } | null;
+    if (!video || !shouldAutoDownloadVideo(video.is_short, (await dlSettings(userId)).download_shorts === 1)) return false;
+  }
   const row = await database.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
   if (row) {
     await claimDownload(userId, videoId, source, context.automationRuleId);

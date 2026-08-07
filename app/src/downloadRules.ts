@@ -271,7 +271,7 @@ export async function previewDownloadRule(userId: number, value: Partial<Downloa
   `).all(userId, includeLiveArchives, ...params, userId) as (DownloadRulePreviewVideo & { description: string; duration: string | null; is_short: number | null; members_only: number })[];
 
   const matching = rows.filter((row) => {
-    if (!rule.include_shorts && row.is_short === 1) return false;
+    if (!rule.include_shorts && row.is_short !== 0) return false;
     if (!rule.include_members_only && row.members_only === 1) return false;
     const seconds = parseDurationSeconds(row.duration);
     if (rule.min_duration_seconds > 0 && (seconds == null || seconds < rule.min_duration_seconds)) return false;

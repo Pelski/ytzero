@@ -3,14 +3,15 @@ const { enqueueDownload } = await import("../src/downloader");
 const { enqueueScheduledDownloadsForUser } = await import("../src/scheduledDownloads");
 
 db.prepare("INSERT INTO channels(channel_id,title,url) VALUES('UC-live-downloads','Live downloads','')").run();
-const insertVideo = db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail,live_status) VALUES(?,'UC-live-downloads',?,'',?)");
-for (const [videoId, liveStatus] of [
-  ["scheduled-regular", "none"],
-  ["scheduled-live", "live"],
-  ["scheduled-upcoming", "upcoming"],
-  ["scheduled-live-archive", "was_live"],
+const insertVideo = db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail,live_status,is_short) VALUES(?,'UC-live-downloads',?,'',?,?)");
+for (const [videoId, liveStatus, isShort] of [
+  ["scheduled-regular", "none", 0],
+  ["scheduled-pending", "none", null],
+  ["scheduled-live", "live", 0],
+  ["scheduled-upcoming", "upcoming", 0],
+  ["scheduled-live-archive", "was_live", 0],
 ] as const) {
-  insertVideo.run(videoId, videoId, liveStatus);
+  insertVideo.run(videoId, videoId, liveStatus, isShort);
   db.prepare("INSERT INTO user_videos(user_id,video_id,status,queued_at) VALUES(1,?,'queued',datetime('now'))").run(videoId);
 }
 db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1') ON CONFLICT(user_id,key) DO UPDATE SET value='1'").run();

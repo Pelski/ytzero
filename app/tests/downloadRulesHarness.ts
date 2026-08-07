@@ -7,6 +7,7 @@ const insertVideo = db.prepare("INSERT INTO videos(video_id,channel_id,title,des
 insertVideo.run("rule-main", "UC-rule", "Gameplay episode", "clean", "", 0, 0);
 insertVideo.run("rule-trailer", "UC-rule", "Gameplay trailer", "clean", "", 0, 0);
 insertVideo.run("rule-short", "UC-rule", "Gameplay short", "clean", "", 1, 0);
+insertVideo.run("rule-pending", "UC-rule", "Gameplay pending classification", "clean", "", null, 0);
 insertVideo.run("rule-members", "UC-rule", "Gameplay bonus", "clean", "", 0, 1);
 insertVideo.run("rule-other", "UC-other", "Gameplay episode", "clean", "", 0, 0);
 insertVideo.run("rule-watched", "UC-rule", "Gameplay watched", "clean", "", 0, 0);
@@ -61,6 +62,7 @@ const futureSelectedPreview = await previewDownloadRule(1, {
 } as typeof input & { created_at: string });
 const created = await createDownloadRule(1, input);
 const candidates = await automaticDownloadCandidates();
+const pendingExcludedFromPreview = !preview.sample.some((video: { video_id: string }) => video.video_id === "rule-pending");
 const updated = await updateDownloadRule(1, created.id, { include_members_only: true });
 const updatedPreview = await previewDownloadRule(1, updated!);
 await updateDownloadRule(1, created.id, { include_shorts: true });
@@ -82,5 +84,5 @@ db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'download_
 await migrateLegacyDownloadAutomation();
 const legacyRules = await listDownloadRules(1);
 
-console.log("RESULT " + JSON.stringify({ preview, futurePreview, futureSelectedPreview, created, candidates, candidatesWithoutShorts, candidatesWithShorts, liveArchivePreview, candidatesWithLiveArchives, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
+console.log("RESULT " + JSON.stringify({ preview, pendingExcludedFromPreview, futurePreview, futureSelectedPreview, created, candidates, candidatesWithoutShorts, candidatesWithShorts, liveArchivePreview, candidatesWithLiveArchives, updatedPreview, rules, invalidRuleError, subscriptionExceptions, legacyRules }));
 db.close();

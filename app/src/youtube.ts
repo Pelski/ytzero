@@ -1148,12 +1148,6 @@ export async function classifyIsShort(videoId: string, title: string): Promise<b
   }
 }
 
-/** Backwards-compatible best-effort check used by metadata maintenance. New
- * recommendation imports use classifyIsShort directly and reject `null`. */
-export async function checkIsShort(videoId: string, title: string): Promise<boolean> {
-  return (await classifyIsShort(videoId, title)) ?? false;
-}
-
 /** Parse an OPML export (e.g. from NewPipe/FreeTube) into channel IDs. */
 export function parseOpml(content: string): { channelId: string; title: string }[] {
   const doc = xml.parse(content);

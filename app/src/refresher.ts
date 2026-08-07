@@ -1,5 +1,5 @@
 import { database } from "./database";
-import { checkIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchPlaylistSnapshot, fetchVideoInfo, fetchVideoPublishedAt, isPrivateVideoError } from "./youtube";
+import { classifyIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchPlaylistSnapshot, fetchVideoInfo, fetchVideoPublishedAt, isPrivateVideoError } from "./youtube";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -450,8 +450,8 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
 
 /**
  * Resolve is_short for videos that haven't been checked yet (is_short IS NULL).
- * Limited per call to stay polite to YouTube; unknowns are treated as regular
- * videos until resolved.
+ * Limited per call to stay polite to YouTube; unknowns remain pending so an
+ * automatic job cannot mistake them for regular videos.
  */
 export async function backfillShorts(videoIds?: string[], limit = 50) {
   let rows: { video_id: string; title: string }[];
@@ -472,8 +472,8 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
   }
   const setShort = database.prepare("UPDATE videos SET is_short = ? WHERE video_id = ?");
   for (const r of rows) {
-    const short = await checkIsShort(r.video_id, r.title);
-    await setShort.run(short ? 1 : 0, r.video_id);
+    const short = await classifyIsShort(r.video_id, r.title);
+    if (short !== null) await setShort.run(short ? 1 : 0, r.video_id);
     log.info("video.short_checked", { videoId: r.video_id, isShort: short });
     await Bun.sleep(120);
   }
@@ -574,8 +574,8 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
 
       if (row.is_short == null) {
         try {
-          const isShort = await checkIsShort(row.video_id, row.title);
-          if ((await saveShort.run(isShort ? 1 : 0, row.video_id)).changes > 0) {
+          const isShort = await classifyIsShort(row.video_id, row.title);
+          if (isShort !== null && (await saveShort.run(isShort ? 1 : 0, row.video_id)).changes > 0) {
             shorts++;
             updatedVideos.add(row.video_id);
           }
