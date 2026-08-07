@@ -83,6 +83,61 @@
   font-size: 14px; font-weight: 600; margin-bottom: 14px; color: var(--text-2);
 }
 
+/* ---------- empty feed onboarding ---------- */
+.feed-onboarding {
+  width: min(680px, 100%);
+  min-height: 440px;
+  margin: clamp(28px, 8vh, 92px) auto 0;
+  padding: clamp(28px, 5vw, 52px);
+  border: 1px solid var(--surface-3);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 47%),
+    var(--surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.feed-onboarding-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+  color: var(--accent);
+}
+.feed-onboarding-icon svg { width: 25px; height: 25px; stroke-width: 1.65; }
+.feed-onboarding-copy { max-width: 470px; margin-top: 20px; }
+.feed-onboarding-eyebrow { color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.feed-onboarding-copy h1 { margin: 8px 0 9px; font-size: clamp(23px, 3vw, 30px); line-height: 1.15; letter-spacing: -.025em; }
+.feed-onboarding-copy p { margin: 0; color: var(--text-2); font-size: 14px; line-height: 1.55; }
+.feed-onboarding-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 25px; }
+.feed-onboarding-actions .ui-button { min-height: 38px; }
+.feed-onboarding-steps {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 40px;
+  color: var(--text-2);
+}
+.feed-onboarding-steps > div { display: flex; align-items: center; gap: 7px; }
+.feed-onboarding-step-number { width: 20px; height: 20px; flex: 0 0 20px; display: grid; place-items: center; padding: 0 0 1px; border-radius: 50%; background: var(--surface-3); color: var(--text); font-size: 11px; font-weight: 700; line-height: 1; }
+.feed-onboarding-steps p { margin: 0; font-size: 12px; white-space: nowrap; }
+.feed-onboarding-steps > svg { width: 14px; height: 14px; color: var(--text-3); }
+
+@media (max-width: 560px) {
+  .feed-onboarding { min-height: 0; margin-top: 24px; padding: 32px 22px; }
+  .feed-onboarding-actions { width: 100%; flex-direction: column; }
+  .feed-onboarding-actions .ui-button { justify-content: center; }
+  .feed-onboarding-steps { align-items: flex-start; flex-direction: column; gap: 10px; padding: 28px 0 0 10px; }
+  .feed-onboarding-steps > svg { display: none; }
+}
+
 /* ---------- continue watching ---------- */
 .continue-watching-section { margin-bottom: 24px; }
 .continue-title {
