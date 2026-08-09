@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { isAllowedRemoteImageUrl, isValidImagePayload, videoIdFromThumbnailUrl } from "./imageCachePolicy";
+import { isAllowedRemoteImageUrl, isValidImagePayload, shouldExposeImageCacheMiss, videoIdFromThumbnailUrl } from "./imageCachePolicy";
 
 describe("image cache policy", () => {
+  test("exposes cache misses only when a caller explicitly requests an error", () => {
+    expect(shouldExposeImageCacheMiss("error")).toBe(true);
+    expect(shouldExposeImageCacheMiss(undefined)).toBe(false);
+    expect(shouldExposeImageCacheMiss("redirect")).toBe(false);
+  });
+
   test("accepts supported YouTube image hosts and rejects lookalikes", () => {
     expect(isAllowedRemoteImageUrl("https://i.ytimg.com/vi/id/hqdefault.jpg")).toBe(true);
     expect(isAllowedRemoteImageUrl("https://yt3.ggpht.com/example=s900")).toBe(true);

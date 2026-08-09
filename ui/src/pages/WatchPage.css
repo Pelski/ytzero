@@ -494,15 +494,9 @@
   transition: background 0.4s ease;
 }
 
-/* Ambient glow — blurred thumbnail colours behind the player */
-@keyframes glow-drift {
-  0%   { background-position: 50% 50%; filter: blur(60px) saturate(2.5) brightness(0.65) hue-rotate(0deg); }
-  25%  { background-position: 52% 49%; filter: blur(60px) saturate(2.6) brightness(0.67) hue-rotate(6deg); }
-  50%  { background-position: 50% 51%; filter: blur(60px) saturate(2.5) brightness(0.65) hue-rotate(12deg); }
-  75%  { background-position: 48% 50%; filter: blur(60px) saturate(2.4) brightness(0.63) hue-rotate(6deg); }
-  100% { background-position: 50% 50%; filter: blur(60px) saturate(2.5) brightness(0.65) hue-rotate(0deg); }
-}
-
+/* Ambient glow — blurred thumbnail colours behind the player. Keep this
+   static: animating a large filtered layer makes Firefox repaint it while the
+   embedded video is composited, which can severely reduce playback FPS. */
 .player-glow {
   position: absolute;
   inset: -60px;
@@ -513,7 +507,6 @@
   z-index: -1;
   pointer-events: none;
   transition: opacity 0.4s ease;
-  animation: glow-drift 14s ease-in-out infinite;
 }
 
 /* Cinema: strip content padding so theater player spans full width and sits flush under topbar */

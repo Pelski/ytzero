@@ -6,7 +6,7 @@ import {
   parseTakeoutCsv,
 } from "./youtube";
 import { getCachedImage } from "./imgcache";
-import { isAllowedRemoteImageUrl } from "./imageCachePolicy";
+import { isAllowedRemoteImageUrl, shouldExposeImageCacheMiss } from "./imageCachePolicy";
 import { refreshAll } from "./refresher";
 import { log } from "./logger";
 import { registerRequestDiagnostics } from "./requestDiagnostics";
@@ -410,8 +410,7 @@ api.get("/img", async (c) => {
   if (!url) return c.json({ error: "u required" }, 400);
   if (!isAllowedRemoteImageUrl(url)) return c.json({ error: "unsupported image origin" }, 400);
   const img = await getCachedImage(url);
-  // Nothing cached and origin failed: redirect so the browser can try directly.
-  if (!img) return c.redirect(url, 302);
+  if (!img) return shouldExposeImageCacheMiss(c.req.query("onMiss")) ? c.text("", 404) : c.redirect(url, 302);
   return new Response(Bun.file(img.path), {
     headers: {
       "Content-Type": img.contentType,

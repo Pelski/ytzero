@@ -21,7 +21,7 @@ export default function SidebarPlaylists() {
   const load = useCallback(() => {
     api.userPlaylists()
       .then((result) => setPlaylists(result.playlists))
-      .catch(() => {})
+      .catch((error) => console.error("Unable to load sidebar playlists", error))
       .finally(() => setLoading(false));
   }, []);
 

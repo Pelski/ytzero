@@ -1,5 +1,9 @@
 const ALLOWED_IMAGE_HOSTS = ["ytimg.com", "ggpht.com", "googleusercontent.com", "youtube.com", "dearrow-thumb.ajay.app"];
 
+export function shouldExposeImageCacheMiss(value: string | undefined): boolean {
+  return value === "error";
+}
+
 export function isAllowedRemoteImageUrl(value: string): boolean {
   try {
     const url = new URL(value);

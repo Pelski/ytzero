@@ -5,6 +5,10 @@ export function diagnosticRequestPath(path: string): string {
   return path.replace(/^(\/api)?(\/social\/watch-parties)\/[^/]+(?=\/|$)/, "$1$2/:id");
 }
 
+export function isExpectedRequestMiss(path: string, status: number, imageMissMode: string | undefined): boolean {
+  return path === "/api/img" && status === 404 && imageMissMode === "error";
+}
+
 /** Install the shared error and slow-request diagnostics before auth middleware. */
 export function registerRequestDiagnostics(api: any): void {
   api.onError((err: Error, c: any) => {
@@ -25,8 +29,9 @@ export function registerRequestDiagnostics(api: any): void {
       ms,
       userId: c.get("userId") || undefined,
     };
+    const expectedMiss = isExpectedRequestMiss(c.req.path, c.res.status, c.req.query("onMiss"));
     if (c.res.status >= 500) log.error("api.request_failed", meta);
-    else if (c.res.status >= 400) log.warn("api.request_failed", meta);
-    else if (ms >= 2_000) log.warn("api.request_slow", meta);
+    else if (c.res.status >= 400 && !expectedMiss) log.warn("api.request_failed", meta);
+    else if (ms >= 2_000 && !expectedMiss) log.warn("api.request_slow", meta);
   });
 }

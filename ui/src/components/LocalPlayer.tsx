@@ -7,6 +7,7 @@ import { subtitleLanguageLabel } from "../subtitleLanguages";
 import { useI18n } from "../i18n";
 import SubtitlePicker from "./SubtitlePicker";
 import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../playerScreenshot";
+import { enforceLocalPlayerVolume } from "../localPlayerVolume";
 import "./LocalPlayer.css";
 import "./LocalPlayerTransportLock.css";
 
@@ -301,7 +302,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     setDuration(Number.isFinite(v.duration) ? v.duration : 0);
     if (startSeconds > 0 && startSeconds < v.duration - 5) v.currentTime = startSeconds;
     v.playbackRate = playbackRate;
-    v.volume = volume;
+    enforceLocalPlayerVolume(v, volume);
     v.muted = muted;
     setBuffering(false);
   };
@@ -374,7 +375,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
 
   useEffect(() => {
     const v = videoRef.current;
-    if (v) { v.volume = volume; v.muted = muted; }
+    if (v) { enforceLocalPlayerVolume(v, volume); v.muted = muted; }
     localStorage.setItem(VOLUME_KEY, String(volume));
     localStorage.setItem(MUTED_KEY, muted ? "1" : "0");
   }, [volume, muted]);
@@ -709,7 +710,14 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         onWaiting={() => setBuffering(true)}
         onPlaying={() => setBuffering(false)}
         onCanPlay={() => setBuffering(false)}
-        onTimeUpdate={(e) => { setCurrentTime(e.currentTarget.currentTime); updateBuffered(); }}
+        onTimeUpdate={(e) => {
+          // The custom slider is the source of truth. In particular, preserve
+          // it across Firefox seeks/media transitions near the end of a file.
+          enforceLocalPlayerVolume(e.currentTarget, volume);
+          setCurrentTime(e.currentTarget.currentTime);
+          updateBuffered();
+        }}
+        onVolumeChange={(e) => enforceLocalPlayerVolume(e.currentTarget, volume)}
         onProgress={updateBuffered}
         onDurationChange={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)}
         onEnded={() => {

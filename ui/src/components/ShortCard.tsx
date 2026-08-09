@@ -36,7 +36,7 @@ export default function ShortCard({
 
   const thumbSrc = portraitFailed
     ? img(video.thumbnail)
-    : img(`https://i.ytimg.com/vi/${video.video_id}/oardefault.jpg`);
+    : img(`https://i.ytimg.com/vi/${video.video_id}/oardefault.jpg`, { onMiss: "error" });
 
   const videoHref = `/watch/${video.video_id}`;
 

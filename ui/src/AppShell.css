@@ -349,9 +349,13 @@ body.sidebar-hidden .sidebar { width: 0; padding: 0; }
   border-top: 1px solid var(--surface-2);
   padding-top: 6px;
   display: flex;
-  flex: 1;
+  /* Reserve room for the heading and playlist rows. Without a flex basis the
+     preceding navigation and subscriptions can shrink this nested scroller to
+     zero height even though its playlist links are rendered. The outer
+     sidebar already scrolls when the whole column is taller than the viewport. */
+  flex: 1 0 132px;
   flex-direction: column;
-  min-height: 0;
+  min-height: 132px;
 }
 .sidebar-playlists-scroll-wrap {
   position: relative;
