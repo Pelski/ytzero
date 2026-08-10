@@ -1,8 +1,5 @@
 .ui-settings-nav { min-width: 0; }
-.ui-settings-nav__desktop { display: grid; gap: 0; max-height: calc(100vh - 150px); max-height: calc(100dvh - 150px); overflow-y: auto; overscroll-behavior-y: contain; padding: 2px 8px 12px 0; position: sticky; scrollbar-color: var(--surface-3) transparent; scrollbar-gutter: stable; scrollbar-width: thin; top: 12px; }
-.ui-settings-nav__desktop::-webkit-scrollbar { width: 7px; }
-.ui-settings-nav__desktop::-webkit-scrollbar-track { background: transparent; }
-.ui-settings-nav__desktop::-webkit-scrollbar-thumb { background: var(--surface-3); border: 2px solid transparent; border-radius: 999px; background-clip: padding-box; }
+.ui-settings-nav__desktop { display: grid; gap: 0; padding: 2px 8px 12px 0; }
 .ui-settings-nav__group { display: grid; gap: 5px; }
 .ui-settings-nav__group + .ui-settings-nav__group { border-top: 1px solid var(--surface-3); margin-top: 15px; padding-top: 15px; }
 .ui-settings-nav__group-label { color: var(--text-3); font-size: 11px; font-weight: 700; letter-spacing: .045em; padding: 0 11px 4px; text-transform: uppercase; }

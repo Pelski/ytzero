@@ -241,7 +241,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
     setUserSetting(1, "channel_posts_tab", "1");
-    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1'),(1,'download_schedule_enabled','1'),(1,'download_schedule_days','1,3,5'),(1,'download_schedule_start','23:00'),(1,'download_schedule_end','07:00') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
+    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1'),(1,'prefetch_next_playlist_video','1'),(1,'download_schedule_enabled','1'),(1,'download_schedule_days','1,3,5'),(1,'download_schedule_start','23:00'),(1,'download_schedule_end','07:00') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
     await setSetting("downloads_output_template", "portable/{id}");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
     setSetting("timezone", "Europe/London");
@@ -273,7 +273,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_thumbnails_enabled", "0");
     setUserSetting(1, "child_watching_monitor_enabled", "1");
     setUserSetting(1, "channel_posts_tab", "0");
-    db.prepare("DELETE FROM download_settings WHERE user_id=1 AND key IN ('compatible_format','download_live_archives','download_schedule_enabled','download_schedule_days','download_schedule_start','download_schedule_end')").run();
+    db.prepare("DELETE FROM download_settings WHERE user_id=1 AND key IN ('compatible_format','download_live_archives','prefetch_next_playlist_video','download_schedule_enabled','download_schedule_days','download_schedule_start','download_schedule_end')").run();
     db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key='enabled'").run();
     await setSetting("downloads_output_template", "changed/{id}");
     setSetting("profile_admin_only_areas", "[]");
@@ -305,6 +305,7 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "channel_posts_tab")).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='compatible_format'").get() as { value: string }).value).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='download_live_archives'").get() as { value: string }).value).toBe("1");
+    expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='prefetch_next_playlist_video'").get() as { value: string }).value).toBe("1");
     expect(db.prepare("SELECT key,value FROM download_settings WHERE user_id=1 AND key IN ('download_schedule_days','download_schedule_enabled','download_schedule_end','download_schedule_start') ORDER BY key").all()).toEqual([
       { key: "download_schedule_days", value: "1,3,5" },
       { key: "download_schedule_enabled", value: "1" },

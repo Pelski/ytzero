@@ -22,13 +22,11 @@ import { loadYouTubeApi, resolveShareTimestamp } from "./watchRuntime";
 import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
 import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTubeKeyboardShortcuts";
 import { useUpNextQueue } from "./useUpNextQueue";
+import { usePlaylistDownloadPrefetch } from "./usePlaylistDownloadPrefetch";
 import { normalizePlaylistSort, playlistSortSearch } from "../playlistSort";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
-
-
-
 export function useWatchPageController() {
   const { t, language, locale, timeZone } = useI18n();
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
@@ -73,6 +71,7 @@ export function useWatchPageController() {
   const showRelated = settings ? settings.watch_show_related !== "0" : false;
   const showComments = settings?.watch_show_comments === "1";
   const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
+  const [prefetchNextPlaylistVideo, setPrefetchNextPlaylistVideo] = useState(false);
 
   useEffect(() => {
     const loadSocial = async () => {
@@ -178,6 +177,7 @@ export function useWatchPageController() {
     loadingNext: upNextLoadingNext,
     play: goToUpNextVideo,
     playPrefetched: playNextQueueVideo,
+    prefetched: prefetchedQueueVideo,
     show: showUpNextVideo,
     skip: skipUpNextVideo,
     video: upNextVideo,
@@ -248,6 +248,7 @@ export function useWatchPageController() {
       }
       const experimentalStreaming = downloadsEnabled && Number(downloadConfig?.settings.experimental_streaming) === 1;
       if (cancelled) return;
+      setPrefetchNextPlaylistVideo(downloadsEnabled && Number(downloadConfig?.settings.prefetch_next_playlist_video) === 1);
       setDownloadSubtitleLanguages(subtitleLanguages);
       setPlaybackPolicy({
         ready: true,
@@ -518,6 +519,7 @@ export function useWatchPageController() {
   const playlistIndex = playlistId ? playlistVideos.findIndex((v) => v.videoId === id) : -1;
   const nextPlaylistVideo = playlistIndex >= 0 ? playlistVideos[playlistIndex + 1] : undefined;
   const nextPlaylistPath = nextPlaylistVideo ? `/watch/${nextPlaylistVideo.videoId}/playlist/${playlistId}${playlistSortSearch(playlistSort)}` : null;
+  usePlaylistDownloadPrefetch({ enabled: prefetchNextPlaylistVideo, playlistId, routeNextVideoId: nextPlaylistVideo?.videoId, queue: playbackQueue, queueNextVideoId: prefetchedQueueVideo?.video_id });
 
   useEffect(() => {
     const container = playlistItemsRef.current;

@@ -71,5 +71,5 @@ export function useUpNextQueue({ currentVideoId, direction, navigate, queue }: {
     setVideo(null);
   }, []);
 
-  return { dismiss, hasPrefetched: Boolean(prefetched), loadingNext, play, playPrefetched, show, skip, video };
+  return { dismiss, hasPrefetched: Boolean(prefetched), loadingNext, play, playPrefetched, prefetched, show, skip, video };
 }

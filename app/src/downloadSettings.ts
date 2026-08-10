@@ -33,6 +33,7 @@ export const DL_DEFAULTS = {
   quality: "1080",
   compatible_format: 0,
   watch_source_mode: "youtube",
+  prefetch_next_playlist_video: 0,
   // HEAVILY EXPERIMENTAL: play a not-yet-downloaded video immediately by piping
   // yt-dlp straight into ffmpeg and streaming a fragmented MP4 to the browser as
   // it is produced (see startLiveStream). Off by default.
@@ -98,6 +99,17 @@ export const DOWNLOADS_SETTINGS: DownloadSettingSource[] = [
       { value: "download", label: { en: "Always wait for the download", pl: "Zawsze czekaj na pobranie", de: "Immer auf den Download warten" } },
     ],
     defaultValue: DL_DEFAULTS.watch_source_mode,
+  },
+  {
+    key: "prefetch_next_playlist_video",
+    type: "toggle",
+    label: { en: "Pre-download the next playlist video", pl: "Pobieraj następny film z playlisty z wyprzedzeniem", de: "Nächstes Playlist-Video vorab herunterladen" },
+    description: {
+      en: "While a playlist video is playing, queue only the next video for download.",
+      pl: "Podczas oglądania filmu z playlisty dodaje do pobierania tylko następny film.",
+      de: "Während ein Playlist-Video läuft, wird nur das nächste Video zum Download vorgemerkt.",
+    },
+    defaultValue: DL_DEFAULTS.prefetch_next_playlist_video,
   },
   {
     key: "output_template",

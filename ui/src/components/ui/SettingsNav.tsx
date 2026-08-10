@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { Button } from "./Button";
 import { Menu, MenuItem, MenuLabel, MenuSeparator } from "./Menu";
@@ -31,8 +31,6 @@ export function SettingsNav<T extends string>({
   className?: string;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const desktopRef = useRef<HTMLDivElement>(null);
-  const activeDesktopItemRef = useRef<HTMLButtonElement>(null);
   const items = groups.flatMap((group) => group.items);
   const activeItem = items.find((item) => item.value === value) ?? items[0];
   const select = (next: T) => {
@@ -40,22 +38,8 @@ export function SettingsNav<T extends string>({
     setMobileOpen(false);
   };
 
-  useEffect(() => {
-    const scroller = desktopRef.current;
-    const active = activeDesktopItemRef.current;
-    if (!scroller || !active || scroller.scrollHeight <= scroller.clientHeight) return;
-    const scrollerRect = scroller.getBoundingClientRect();
-    const activeRect = active.getBoundingClientRect();
-    const inset = 12;
-    if (activeRect.top < scrollerRect.top + inset) {
-      scroller.scrollTop -= scrollerRect.top + inset - activeRect.top;
-    } else if (activeRect.bottom > scrollerRect.bottom - inset) {
-      scroller.scrollTop += activeRect.bottom - (scrollerRect.bottom - inset);
-    }
-  }, [value]);
-
   return <nav className={cx("ui-settings-nav", className)} aria-label={label}>
-    <div className="ui-settings-nav__desktop" ref={desktopRef}>
+    <div className="ui-settings-nav__desktop">
       {groups.map((group) => <div className="ui-settings-nav__group" key={String(group.label)}>
         <div className="ui-settings-nav__group-label">{group.label}</div>
         <div className="ui-settings-nav__items">
@@ -64,7 +48,6 @@ export function SettingsNav<T extends string>({
             className={cx("ui-settings-nav__item", item.value === value && "ui-settings-nav__item--active")}
             aria-current={item.value === value ? "page" : undefined}
             onClick={() => select(item.value)}
-            ref={item.value === value ? activeDesktopItemRef : undefined}
             key={item.value}
           >
             <span>{item.label}</span>

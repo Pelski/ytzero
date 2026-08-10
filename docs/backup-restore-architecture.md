@@ -244,6 +244,11 @@ below.
   configuration and defaults to disabled. When enabled, completed stream
   archives may be selected by Watch later and automatic download rules;
   active and upcoming streams remain ineligible.
+  The per-profile **Pre-download the next playlist video** preference is
+  portable configuration in `profile.downloads` schema v3 and defaults to
+  disabled. While watching either a personal playlist or a YouTube playlist,
+  it queues only the immediately following video; it does not persist the
+  playback queue or export download queue membership.
   The downloads domain section includes the per-profile older-device
   compatibility preference as portable configuration. It affects only future
   files, selecting H.264 video and AAC
