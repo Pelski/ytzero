@@ -6,7 +6,7 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { EmptyState, PageHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
-import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
+import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 
 export default function ArchivePage({ onPlay }: { onPlay: PlayVideo }) {
   const { t } = useI18n();
@@ -25,7 +25,7 @@ export default function ArchivePage({ onPlay }: { onPlay: PlayVideo }) {
   }, []);
 
   useEffect(load, [load]);
-  const playbackQueue = snapshotPlaybackQueue(videos, t("navArchive"));
+  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "archive" };
 
   return (
     <>

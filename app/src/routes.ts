@@ -1,10 +1,7 @@
 import { Hono } from "hono";
 import { database } from "./database";
 import { getSetting } from "./db";
-import {
-  parseOpml,
-  parseTakeoutCsv,
-} from "./youtube";
+import { parseOpml, parseTakeoutCsv } from "./youtube";
 import { getCachedImage } from "./imgcache";
 import { isAllowedRemoteImageUrl, shouldExposeImageCacheMiss } from "./imageCachePolicy";
 import { refreshAll } from "./refresher";
@@ -40,6 +37,7 @@ import { migrateDownloadsFromPlugin, profileDownloadsEnabled } from "./downloadC
 import { registerChannelPlaylistRoutes } from "./routes/channelPlaylistRoutes";
 import { playlistChannelSyncIsDisabled, registerChannelRoutes } from "./routes/channelRoutes";
 import { registerVideoActionRoutes } from "./routes/videoActionRoutes";
+import { registerPlaybackRoutes } from "./routes/playbackRoutes";
 import { registerVideoRoutes } from "./routes/videoRoutes";
 import { registerTranscriptRoutes } from "./routes/transcriptRoutes";
 import {
@@ -358,6 +356,7 @@ registerVideoRoutes(api, { currentUserId, isAdmin, attachTags });
 registerTranscriptRoutes(api, currentUserId);
 
 registerVideoActionRoutes(api, currentUserId);
+registerPlaybackRoutes(api, currentUserId);
 
 registerHistoryRoutes(api, { currentUserId, attachTags });
 

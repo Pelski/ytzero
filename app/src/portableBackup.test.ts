@@ -111,6 +111,39 @@ describe("portable backup classification and restore", () => {
     expect((db.prepare("SELECT shorts_feed_visibility FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").get() as any)?.shorts_feed_visibility).toBe("show");
   });
 
+  test("round-trips resume playback context with portable tag identifiers", async () => {
+    const options = await backup.backupOptions();
+    const profile = options.profiles[0];
+    const tagUuid = crypto.randomUUID();
+    const tagId = Number(db.prepare("INSERT INTO tags(name,color,user_id,portable_uuid) VALUES(?,?,1,?) RETURNING id").run("Portable resume tag", "#7c5cff", tagUuid).lastInsertRowid);
+    const context = { version: 1, kind: "feed", tags: [tagId], showAll: false, sort: "arrival" };
+    db.prepare(`INSERT INTO user_videos(user_id,video_id,playback_context_json) VALUES(1,'portable001',?)
+      ON CONFLICT(user_id,video_id) DO UPDATE SET playback_context_json=excluded.playback_context_json`)
+      .run(JSON.stringify(context));
+
+    const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
+    const entries = backup.readPortableZip(zip);
+    const manifest = JSON.parse(decoder.decode(entries.get("manifest.json")!));
+    const section = manifest.sections.find((item: any) => item.id === "profile.video-state" && item.profileId === profile.id);
+    const exported = decoder.decode(entries.get(section.path)!).trim().split("\n").map((line) => JSON.parse(line))
+      .find((row) => row.video_id === "portable001");
+    expect(exported.playbackContext).toEqual({ version: 1, kind: "feed", tagUuids: [tagUuid], showAll: false, sort: "arrival" });
+    expect(JSON.stringify(exported)).not.toContain(`\"tags\":[${tagId}]`);
+
+    db.prepare("UPDATE user_videos SET playback_context_json=NULL WHERE user_id=1 AND video_id='portable001'").run();
+    const analyzed = await backup.analyzePortableBackup(1, zip);
+    const mappings = { [profile.id]: { action: "merge" as const, targetProfileId: 1 } };
+    const plan = await backup.planPortableRestore(1, analyzed.sessionId, {
+      mappings,
+      sections: analyzed.manifest.sections.map((item) => item.id),
+      strategy: "merge",
+    });
+    await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
+
+    const restored = db.prepare("SELECT playback_context_json FROM user_videos WHERE user_id=1 AND video_id='portable001'").get() as { playback_context_json: string };
+    expect(JSON.parse(restored.playback_context_json)).toEqual(context);
+  });
+
   test("configuration export excludes authentication values and runtime tables", async () => {
     setSetting("auth_oidc_client_secret", "DO-NOT-EXPORT-THIS");
     setSetting("auth_shared_password_hash", "HASH-DO-NOT-EXPORT");

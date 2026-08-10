@@ -15,7 +15,7 @@ import { VideoGridSkeleton } from "../components/LoadingState";
 import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gridSize";
 import { Button, ButtonLink, Divider, EmptyState, IconButton, RevealRegion } from "../components/ui";
 import { parseAppTimestamp } from "../dateTime";
-import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
+import type { PlaybackQueueContext, PlayVideo } from "../playbackQueue";
 
 type TopChannel = Channel & { watch_count: number; is_live: number };
 type FeedSort = "published" | "arrival";
@@ -161,6 +161,7 @@ export default function FeedPage({
   // queued/in-progress rows are different lists, so "next" there wouldn't
   // match what /feed/adjacent (and thus the autoplay setting) expects.
   const handleFeedPlay = useCallback((v: Video) => onPlay(v, {
+    version: 1,
     kind: "feed",
     tags: selectedTags,
     showAll,
@@ -386,8 +387,8 @@ export default function FeedPage({
   const feedVideos = videos.filter((video) => !inProgressIds.has(video.video_id));
   const showQueuedSection = dueQueuedVideos.length > 0 && selectedTags.length === 0;
   const showFeedPreludeDivider = inProgress.length > 0 || showQueuedSection;
-  const inProgressQueue = snapshotPlaybackQueue(inProgress, t("continueWatching"));
-  const dueQueuedQueue = snapshotPlaybackQueue(dueQueuedVideos, t("navWatchlist"));
+  const inProgressQueue: PlaybackQueueContext = { version: 1, kind: "in-progress" };
+  const dueQueuedQueue: PlaybackQueueContext = { version: 1, kind: "watchlist", sort: "schedule", dueOnly: true };
 
   if (!loading && !subscriptionStateLoading && instanceHasData === false) {
     return (
@@ -439,7 +440,7 @@ export default function FeedPage({
             >
               {inProgress.map((v) => (
                 <div key={v.video_id} className="h-scroll-card" style={{ width: hCardWidth }}>
-                  <VideoCard video={v} onPlay={(video) => onPlay(video, inProgressQueue)} onChanged={handleInProgressChanged} />
+                  <VideoCard video={v} onPlay={(video) => onPlay(video, video.playback_context ?? inProgressQueue)} onChanged={handleInProgressChanged} />
                 </div>
               ))}
             </div>

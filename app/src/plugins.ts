@@ -941,11 +941,26 @@ export interface RecommendationFeedOptions {
   downloadsOnly?: boolean;
 }
 
+async function rankedRecommendationQueue(uid: number, options: Pick<RecommendationFeedOptions, "downloadsOnly"> = {}): Promise<DiscoveryRecommendation[]> {
+  if (!pluginEnabled("discovery")) return [];
+  const settings = await discoverySettings(uid);
+  const local = await localRecommendations(uid, 300, settings, {
+    allowExternal: false,
+    downloadsOnly: options.downloadsOnly,
+  });
+  return mixRecommendations(local, 300, settings);
+}
+
+export async function recommendationQueueVideoIds(uid: number, options: Pick<RecommendationFeedOptions, "downloadsOnly"> = {}): Promise<string[]> {
+  return (await rankedRecommendationQueue(uid, options))
+    .map((recommendation) => recommendation.video?.video_id)
+    .filter((videoId): videoId is string => Boolean(videoId));
+}
+
 /** Read-only recommendations from videos already owned by the instance. */
 export async function recommendationFeed(uid: number, options: RecommendationFeedOptions = {}) {
   const page = Math.max(0, Math.floor(options.page ?? 0));
   const limit = Math.min(60, Math.max(1, Math.floor(options.limit ?? 40)));
-  const settings = await discoverySettings(uid);
   const enabled = pluginEnabled("discovery");
   if (!enabled) return {
     enabled: false, external_enabled: false, recommendations: [], page, limit,
@@ -955,11 +970,7 @@ export async function recommendationFeed(uid: number, options: RecommendationFee
   // Rank and diversify the complete bounded pool before slicing pages. This
   // keeps page boundaries deterministic and lets lower-ranked channels fill
   // slots left by the per-channel cap.
-  const local = await localRecommendations(uid, 300, settings, {
-    allowExternal: false,
-    downloadsOnly: options.downloadsOnly,
-  });
-  const ranked = mixRecommendations(local, 300, settings);
+  const ranked = await rankedRecommendationQueue(uid, { downloadsOnly: options.downloadsOnly });
   const offset = page * limit;
   const recommendations = ranked.slice(offset, offset + limit);
   return {

@@ -1,28 +1,32 @@
-import type { Video } from "./api";
+import type { Video } from "./apiTypes";
+
+export const WATCHLIST_SORTS = ["schedule", "duration-asc", "duration-desc", "title-asc", "channel-asc"] as const;
+export type WatchlistSort = (typeof WATCHLIST_SORTS)[number];
+const PLAYLIST_SORTS = ["oldest", "newest", "title-asc", "title-desc"] as const;
 
 export type PlaybackQueueContext =
-  | { kind: "feed"; tags: number[]; showAll: boolean; sort: "published" | "arrival" }
-  | { kind: "snapshot"; videoIds: string[]; label: string };
+  | { version: 1; kind: "feed"; tags: number[]; showAll: boolean; sort: "published" | "arrival" }
+  | { version: 1; kind: "liked"; showShorts: boolean }
+  | { version: 1; kind: "history" }
+  | { version: 1; kind: "archive" }
+  | { version: 1; kind: "user-playlist"; playlistUuid: string }
+  | { version: 1; kind: "channel-playlist"; playlistId: string; sort: (typeof PLAYLIST_SORTS)[number] }
+  | { version: 1; kind: "watchlist"; sort: WatchlistSort; dueOnly: boolean }
+  | { version: 1; kind: "recommendations" }
+  | { version: 1; kind: "in-progress" };
 
 export type PlayVideo = (video: Video, queue?: PlaybackQueueContext) => void;
-
-export function snapshotPlaybackQueue(videos: readonly Video[], label: string): PlaybackQueueContext {
-  return { kind: "snapshot", videoIds: videos.map((video) => video.video_id), label };
-}
-
-export function nextSnapshotVideoId(
-  queue: Extract<PlaybackQueueContext, { kind: "snapshot" }>,
-  currentVideoId: string,
-  direction: "oldest" | "newest",
-): string | null {
-  const index = queue.videoIds.indexOf(currentVideoId);
-  if (index < 0) return null;
-  return queue.videoIds[index + (direction === "newest" ? 1 : -1)] ?? null;
-}
 
 export function isPlaybackQueueContext(value: unknown): value is PlaybackQueueContext {
   if (!value || typeof value !== "object") return false;
   const queue = value as Partial<PlaybackQueueContext>;
-  if (queue.kind === "feed") return Array.isArray(queue.tags) && (queue.sort === "published" || queue.sort === "arrival");
-  return queue.kind === "snapshot" && Array.isArray(queue.videoIds) && queue.videoIds.every((id) => typeof id === "string");
+  if (queue.version !== 1) return false;
+  if (queue.kind === "feed") return Array.isArray(queue.tags) && queue.tags.every((tag) => Number.isSafeInteger(tag) && tag > 0)
+    && typeof queue.showAll === "boolean" && (queue.sort === "published" || queue.sort === "arrival");
+  if (queue.kind === "liked") return typeof queue.showShorts === "boolean";
+  if (queue.kind === "user-playlist") return typeof queue.playlistUuid === "string" && queue.playlistUuid.length > 0;
+  if (queue.kind === "channel-playlist") return typeof queue.playlistId === "string" && queue.playlistId.length > 0
+    && (PLAYLIST_SORTS as readonly unknown[]).includes(queue.sort);
+  if (queue.kind === "watchlist") return typeof queue.dueOnly === "boolean" && (WATCHLIST_SORTS as readonly unknown[]).includes(queue.sort);
+  return queue.kind === "history" || queue.kind === "archive" || queue.kind === "recommendations" || queue.kind === "in-progress";
 }

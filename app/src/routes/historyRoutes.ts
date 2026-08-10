@@ -34,7 +34,7 @@ export function registerHistoryRoutes(
                 v.video_id, v.channel_id, v.title, v.description, v.duration,
                 v.thumbnail, v.published_at, v.published_at_approximate, v.members_only,
                 v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket,
-                uv.watch_position, uv.watch_duration, uv.watched,
+                uv.watch_position, uv.watch_duration, uv.watched, uv.playback_context_json,
                 COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail
          FROM latest_history h JOIN videos v ON v.video_id = h.video_id
          JOIN channels c ON c.channel_id = v.channel_id

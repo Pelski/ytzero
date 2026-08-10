@@ -34,13 +34,13 @@ export function registerUserPlaylistRoutes(
     const uid = currentUserId(c);
     const videoId = c.req.query("video_id");
     const rows = await database.prepare(
-      `SELECT p.id, p.name, p.icon, p.sort_order, p.created_at,
+      `SELECT p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at,
               COUNT(pv.video_id) AS video_count
               ${videoId ? ", EXISTS(SELECT 1 FROM user_playlist_videos cpv WHERE cpv.playlist_id = p.id AND cpv.video_id = ?) AS has_video" : ""}
        FROM user_playlists p
        LEFT JOIN user_playlist_videos pv ON pv.playlist_id = p.id
        WHERE p.user_id = ?
-       GROUP BY p.id, p.name, p.icon, p.sort_order, p.created_at
+       GROUP BY p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at
        ORDER BY p.sort_order ASC, p.name COLLATE NOCASE`,
     ).all(...(videoId ? [videoId] : []), uid);
     return c.json({ playlists: rows });
@@ -51,7 +51,7 @@ export function registerUserPlaylistRoutes(
     if (!name?.trim()) return c.json({ error: "name required" }, 400);
     const nextOrder = await database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS sort_order FROM user_playlists WHERE user_id = ?").get(uid) as { sort_order: number };
     const row = await database.prepare(
-      "INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, name, icon, sort_order, created_at",
+      "INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, portable_uuid, name, icon, sort_order, created_at",
     ).get(name.trim(), String(icon || "ListMusic").trim() || "ListMusic", nextOrder.sort_order, uid, crypto.randomUUID());
     return c.json({ playlist: row });
   });
@@ -66,7 +66,7 @@ export function registerUserPlaylistRoutes(
     const icon = typeof body.icon === "string" && body.icon.trim() ? body.icon.trim() : current.icon;
     const sortOrder = Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : current.sort_order;
     const row = await database.prepare(
-      "UPDATE user_playlists SET name = ?, icon = ?, sort_order = ? WHERE id = ? RETURNING id, name, icon, sort_order, created_at",
+      "UPDATE user_playlists SET name = ?, icon = ?, sort_order = ? WHERE id = ? RETURNING id, portable_uuid, name, icon, sort_order, created_at",
     ).get(name, icon, sortOrder, id);
     return c.json({ playlist: row });
   });
@@ -81,11 +81,11 @@ export function registerUserPlaylistRoutes(
     const uid = currentUserId(c);
     const id = Number(c.req.param("id"));
     const playlist = await database.prepare(
-      `SELECT p.id, p.name, p.icon, p.sort_order, p.created_at, COUNT(pv.video_id) AS video_count
+      `SELECT p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, COUNT(pv.video_id) AS video_count
        FROM user_playlists p
        LEFT JOIN user_playlist_videos pv ON pv.playlist_id = p.id
        WHERE p.id = ? AND p.user_id = ?
-       GROUP BY p.id, p.name, p.icon, p.sort_order, p.created_at`,
+       GROUP BY p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at`,
     ).get(id, uid) as any;
     if (!playlist) return c.json({ error: "not found" }, 404);
     const rows = await database.prepare(

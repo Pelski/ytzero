@@ -176,14 +176,12 @@ CREATE TABLE IF NOT EXISTS discovery_recommendations (
 );
 CREATE INDEX IF NOT EXISTS idx_discovery_recommendations_user_rank ON discovery_recommendations(user_id, rank);
 CREATE INDEX IF NOT EXISTS idx_discovery_recommendations_generated ON discovery_recommendations(generated_at DESC);
-
 CREATE TABLE IF NOT EXISTS history (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   video_id   TEXT NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
   watched_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_history_watched ON history(watched_at DESC);
-
 CREATE TABLE IF NOT EXISTS user_playlists (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL,
@@ -297,6 +295,7 @@ CREATE TABLE IF NOT EXISTS user_videos (
   watch_duration REAL,
   watched        INTEGER,
   liked          INTEGER,
+  playback_context_json TEXT,
   PRIMARY KEY (user_id, video_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_videos_video ON user_videos(video_id);

@@ -1,8 +1,8 @@
 import type { I18nKey } from "./i18n";
 import type { EmojiSkinTone } from "./emojiSkinTone";
+import type { PlaybackQueueContext } from "./playbackQueue";
 // YouTube-supported playback rates, shared by the settings, watch and channel UIs.
 export const PLAYBACK_SPEEDS = ["0.25", "0.5", "0.75", "1", "1.25", "1.5", "1.75", "2"] as const;
-
 export interface Tag {
   id: number;
   name: string;
@@ -12,7 +12,6 @@ export interface Tag {
   video_count?: number;
   channel_count?: number;
 }
-
 export interface Video {
   video_id: string;
   channel_id: string;
@@ -53,6 +52,7 @@ export interface Video {
   watched_at?: string;
   source_playlist_title?: string | null;
   source_playlist_id?: string | null;
+  playback_context?: PlaybackQueueContext | null;
 }
 
 export interface DeArrowBranding {
@@ -233,13 +233,13 @@ export interface PlaylistVideo {
 
 export interface UserPlaylist {
   id: number;
+  portable_uuid: string;
   name: string;
   icon: string;
   sort_order: number;
   video_count: number;
   has_video?: 0 | 1;
 }
-
 export interface UserPlaylistRule {
   id: number;
   playlist_id: number;

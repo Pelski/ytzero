@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NavigateFunction } from "react-router-dom";
 import { api, type Video } from "../api";
-import { nextSnapshotVideoId, type PlaybackQueueContext } from "../playbackQueue";
+import type { PlaybackQueueContext } from "../playbackQueue";
 
 type Direction = "oldest" | "newest";
 
 async function resolveNextVideo(queue: PlaybackQueueContext, videoId: string, direction: Direction) {
-  if (queue.kind === "feed") {
-    return api.feedAdjacent(videoId, direction, { tags: queue.tags, showAll: queue.showAll, sort: queue.sort });
-  }
-  const nextId = nextSnapshotVideoId(queue, videoId, direction);
-  return nextId ? api.video(nextId).then((result) => ({ video: result.video })) : { video: null };
+  const result = await api.playbackAdjacent(videoId, direction, queue);
+  return result.video_id ? api.video(result.video_id).then((videoResult) => ({ video: videoResult.video })) : { video: null };
 }
 
 export function useUpNextQueue({ currentVideoId, direction, navigate, queue }: {

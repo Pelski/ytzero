@@ -35,9 +35,11 @@ afterAll(() => rmSync(root, { recursive: true, force: true }));
 describe("HTTP route manifest", () => {
   test("keeps every registered method and path stable while routers are extracted", () => {
     const transcriptRoute = "POST /videos/:id/transcript";
-    expect(routes).toHaveLength(220);
+    const playbackAdjacentRoute = "POST /playback/adjacent";
+    expect(routes).toHaveLength(221);
     expect(routes).toContain(transcriptRoute);
-    const legacyRoutes = routes.filter((route) => route !== transcriptRoute);
+    expect(routes).toContain(playbackAdjacentRoute);
+    const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute);
     expect(createHash("sha256").update(legacyRoutes.join("\n")).digest("hex"))
       .toBe("a4c50f8ef2c8577849cc7fadfa11bbfc3460c10180c23696b19212f1882f2c9e");
   });

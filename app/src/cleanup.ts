@@ -78,6 +78,7 @@ interface VideoStateSnapshot {
   bucket: string | null;
   show_from: string | null;
   watched: number | null;
+  playback_context_json: string | null;
 }
 
 const CLEANUP_SQL_BATCH_SIZE = 400;
@@ -93,15 +94,15 @@ export async function snapshotUserVideoState(uid: number, videoIds: string[]): P
   const rows = (await Promise.all(chunks(videoIds).map(async (batch) => {
     const ph = batch.map(() => "?").join(",");
     return await database.prepare(
-      `SELECT video_id, status, bucket, show_from, watched FROM user_videos WHERE user_id = ? AND video_id IN (${ph})`
-    ).all(uid, ...batch) as { video_id: string; status: string; bucket: string | null; show_from: string | null; watched: number | null }[];
+      `SELECT video_id, status, bucket, show_from, watched, playback_context_json FROM user_videos WHERE user_id = ? AND video_id IN (${ph})`
+    ).all(uid, ...batch) as { video_id: string; status: string; bucket: string | null; show_from: string | null; watched: number | null; playback_context_json: string | null }[];
   }))).flat();
   const existing = new Map(rows.map((r) => [r.video_id, r]));
   return videoIds.map((id) => {
     const row = existing.get(id);
     return row
-      ? { video_id: id, existed: true, status: row.status, bucket: row.bucket, show_from: row.show_from, watched: row.watched }
-      : { video_id: id, existed: false, status: null, bucket: null, show_from: null, watched: null };
+      ? { video_id: id, existed: true, status: row.status, bucket: row.bucket, show_from: row.show_from, watched: row.watched, playback_context_json: row.playback_context_json }
+      : { video_id: id, existed: false, status: null, bucket: null, show_from: null, watched: null, playback_context_json: null };
   });
 }
 
@@ -113,8 +114,8 @@ export async function applyCleanupAction(uid: number, videoIds: string[], action
       const rowSql = action === "archive" ? "(?, ?, 'archived')" : "(?, ?, 'archived', 1)";
       const columns = action === "archive" ? "user_id, video_id, status" : "user_id, video_id, status, watched";
       const update = action === "archive"
-        ? "status = 'archived', bucket = NULL, show_from = NULL"
-        : "status = 'archived', watched = 1, bucket = NULL, show_from = NULL";
+        ? "status = 'archived', bucket = NULL, show_from = NULL, playback_context_json = NULL"
+        : "status = 'archived', watched = 1, bucket = NULL, show_from = NULL, playback_context_json = NULL";
       const params = batch.flatMap((id) => [uid, id]);
       await database.prepare(
         `INSERT INTO user_videos (${columns}) VALUES ${batch.map(() => rowSql).join(",")}
@@ -126,14 +127,14 @@ export async function applyCleanupAction(uid: number, videoIds: string[], action
 }
 
 const restoreExisting = database.prepare(
-  `UPDATE user_videos SET status = ?, bucket = ?, show_from = ?, watched = ? WHERE user_id = ? AND video_id = ?`
+  `UPDATE user_videos SET status = ?, bucket = ?, show_from = ?, watched = ?, playback_context_json = ? WHERE user_id = ? AND video_id = ?`
 );
 const deleteRow = database.prepare(`DELETE FROM user_videos WHERE user_id = ? AND video_id = ?`);
 
 export async function restoreUserVideoState(uid: number, snapshot: VideoStateSnapshot[]) {
   const run = database.transaction(async (items: VideoStateSnapshot[]) => {
     for (const item of items) {
-      if (item.existed) await restoreExisting.run(item.status, item.bucket, item.show_from, item.watched, uid, item.video_id);
+      if (item.existed) await restoreExisting.run(item.status, item.bucket, item.show_from, item.watched, item.playback_context_json, uid, item.video_id);
       else await deleteRow.run(uid, item.video_id);
     }
   });

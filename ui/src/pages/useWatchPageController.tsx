@@ -41,18 +41,21 @@ export function useWatchPageController() {
   const feedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
   const playlistSort = normalizePlaylistSort(searchParams.get("sort"));
   const watchTogetherRoomId = searchParams.get("room")?.trim() || null;
-  const playbackQueue = useMemo<PlaybackQueueContext | null>(() => {
+  const routePlaybackQueue = useMemo<PlaybackQueueContext | null>(() => {
     const stateQueue = (location.state as { playbackQueue?: unknown } | null)?.playbackQueue;
     if (isPlaybackQueueContext(stateQueue)) return stateQueue;
+    if (playlistId) return { version: 1, kind: "channel-playlist", playlistId, sort: playlistSort };
     if (!feedContext) return null;
     return {
+      version: 1,
       kind: "feed",
       tags: feedTags ? feedTags.split(",").map(Number).filter(Boolean) : [],
       showAll: feedShowAll,
       sort: feedSort,
     };
-  }, [location.state, feedContext, feedTags, feedShowAll, feedSort]);
+  }, [location.state, playlistId, playlistSort, feedContext, feedTags, feedShowAll, feedSort]);
   const [video, setVideo] = useState<Video | null>(null);
+  const playbackQueue = routePlaybackQueue ?? video?.playback_context ?? null;
   const [videoMissing, setVideoMissing] = useState(false);
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [related, setRelated] = useState<Video[]>([]);
@@ -182,7 +185,7 @@ export function useWatchPageController() {
     currentVideoId: id,
     direction: settings?.feed_autoplay_direction === "newest" ? "newest" : "oldest",
     navigate,
-    queue: playbackQueue,
+    queue: playlistId ? null : playbackQueue,
   });
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
@@ -629,7 +632,7 @@ export function useWatchPageController() {
     // actual route transition instead of inserting duplicate history rows.
     if (!isIncognitoMode() && watchedVisitRef.current !== id) {
       watchedVisitRef.current = id;
-      api.watch(id).catch(() => {});
+      api.watch(id, routePlaybackQueue ?? undefined).catch(() => {});
     }
   }, [id]);
 

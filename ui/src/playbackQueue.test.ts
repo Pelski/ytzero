@@ -1,28 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { isPlaybackQueueContext, nextSnapshotVideoId, snapshotPlaybackQueue } from "./playbackQueue";
-
-const videos = ["a", "b", "c"].map((video_id) => ({ video_id })) as any[];
+import { isPlaybackQueueContext } from "./playbackQueue";
 
 describe("playback queue context", () => {
-  test("preserves the exact visible list order", () => {
-    expect(JSON.stringify(snapshotPlaybackQueue(videos, "Scheduled"))).toBe(JSON.stringify({
-      kind: "snapshot",
-      videoIds: ["a", "b", "c"],
-      label: "Scheduled",
-    }));
+  test("accepts every durable source descriptor", () => {
+    const contexts = [
+      { version: 1, kind: "feed", tags: [1, 2], sort: "arrival", showAll: false },
+      { version: 1, kind: "liked", showShorts: true },
+      { version: 1, kind: "history" },
+      { version: 1, kind: "archive" },
+      { version: 1, kind: "user-playlist", playlistUuid: "playlist-uuid" },
+      { version: 1, kind: "channel-playlist", playlistId: "PL1234567890", sort: "title-desc" },
+      { version: 1, kind: "watchlist", sort: "duration-desc", dueOnly: false },
+      { version: 1, kind: "recommendations" },
+      { version: 1, kind: "in-progress" },
+    ];
+    for (const context of contexts) expect(isPlaybackQueueContext(context)).toBe(true);
   });
 
-  test("walks forward or in reverse without wrapping", () => {
-    const queue = snapshotPlaybackQueue(videos, "Scheduled");
-    if (queue.kind !== "snapshot") throw new Error("snapshot expected");
-    expect(nextSnapshotVideoId(queue, "b", "newest")).toBe("c");
-    expect(nextSnapshotVideoId(queue, "b", "oldest")).toBe("a");
-    expect(nextSnapshotVideoId(queue, "c", "newest")).toBe(null);
-    expect(nextSnapshotVideoId(queue, "a", "oldest")).toBe(null);
-  });
-
-  test("rejects malformed router state", () => {
-    expect(isPlaybackQueueContext({ kind: "snapshot", videoIds: ["a", 2] })).toBe(false);
-    expect(isPlaybackQueueContext({ kind: "feed", tags: [], sort: "arrival", showAll: false })).toBe(true);
+  test("rejects snapshots and malformed filters", () => {
+    expect(isPlaybackQueueContext({ version: 1, kind: "snapshot", videoIds: ["a", "b"] })).toBe(false);
+    expect(isPlaybackQueueContext({ version: 1, kind: "feed", tags: [0], sort: "arrival", showAll: false })).toBe(false);
+    expect(isPlaybackQueueContext({ version: 1, kind: "watchlist", sort: "random", dueOnly: false })).toBe(false);
+    expect(isPlaybackQueueContext({ kind: "history" })).toBe(false);
   });
 });

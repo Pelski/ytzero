@@ -12,7 +12,7 @@ import { formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { Button, EmptyState, IconButton, Input, LocalToast, PageHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
-import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
+import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 
 export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   const { t, language } = useI18n();
@@ -81,7 +81,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
 
   if (!playlist && loading) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return null;
-  const playbackQueue = snapshotPlaybackQueue(videos, playlist.name);
+  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "user-playlist", playlistUuid: playlist.portable_uuid };
 
   return (
     <>

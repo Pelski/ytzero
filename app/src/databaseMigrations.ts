@@ -53,6 +53,20 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "add-column", table: "user_channels", column: "shorts_feed_visibility", definition: "TEXT" },
     ],
   },
+  {
+    version: 3,
+    name: "resume-playback-context",
+    schemaHashes: {
+      "app/src/schema.sql": "a0e8fea9bc340532d0f77b0879eb07207efe2daa6ef5f67366cd6242d6367dcd",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+    },
+    sqlite: [
+      { kind: "add-column", table: "user_videos", column: "playback_context_json", definition: "TEXT" },
+    ],
+    postgres: [
+      { kind: "add-column", table: "user_videos", column: "playback_context_json", definition: "TEXT" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

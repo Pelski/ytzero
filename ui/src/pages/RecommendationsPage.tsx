@@ -21,7 +21,7 @@ import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { readGridSize, type GridSize } from "../gridSize";
 import { mergeRecommendationVideos, prepareRecommendationVideos } from "./recommendationsPageLogic";
-import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
+import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 
 const PAGE_SIZE = 40;
 
@@ -118,7 +118,7 @@ export default function RecommendationsPage({ onPlay, loadRecommendations }: Rec
 
   const pulseTags = summary?.top_tags.filter((tag) => tag.seconds > 0).slice(0, 5) ?? [];
   const pulseChannels = summary?.top_channels.filter((channel) => channel.seconds > 0).slice(0, 4) ?? [];
-  const playbackQueue = snapshotPlaybackQueue(videos, title);
+  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "recommendations" };
 
   return (
     <div className="recommendations-page">

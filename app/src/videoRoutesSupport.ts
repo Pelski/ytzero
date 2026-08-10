@@ -1,9 +1,8 @@
 import { database } from "./database";
 import { isChildUser } from "./childTime";
 import { activeDownloadProgress } from "./downloader";
-
+import { parsePlaybackContext } from "./playbackContext";
 export const videoExistsStmt = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
-
 export interface VideoRow {
   video_id: string;
   channel_id: string;
@@ -23,10 +22,10 @@ export interface VideoRow {
   likes: number | null;
   liked: number | null;
   watched: number | null;
+  playback_context_json?: string | null;
   in_history: number;
   channel_title: string;
 }
-
 export async function attachWatchedState<T>(uid: number, items: T[], videoId: (item: T) => string | null | undefined) {
   const ids = [...new Set(items.map(videoId).filter((id): id is string => !!id))];
   if (ids.length === 0) return items.map((item) => ({ ...item, watched: 0, watch_position: null, watch_duration: null }));
@@ -99,7 +98,8 @@ export async function attachTags(uid: number, videos: VideoRow[], profileDownloa
     const download_progress = (v as any).download_status === "downloading" && dlProgress?.video_id === v.video_id
       ? dlProgress.percent
       : null;
-    return { ...v, downloads_enabled: downloadsEnabled, downloads_allowed: downloadsAllowed, download_progress, tags: [...own, ...inherited, ...playlistInherited] };
+    const { playback_context_json, ...video } = v;
+    return { ...video, playback_context: parsePlaybackContext(playback_context_json), downloads_enabled: downloadsEnabled, downloads_allowed: downloadsAllowed, download_progress, tags: [...own, ...inherited, ...playlistInherited] };
   });
 }
 
@@ -112,7 +112,7 @@ export function videoSelect(uid: number) {
          v.published_at, v.created_at AS found_at, v.published_at_approximate, v.members_only, v.is_private,
          v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
          v.is_short, v.views, v.likes, uv.liked, uv.watched,
-         v.duration, uv.watch_position, uv.watch_duration, v.external,
+         v.duration, uv.watch_position, uv.watch_duration, uv.playback_context_json, v.external,
          (SELECT cp.title
           FROM channel_playlist_videos cpv
           JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id

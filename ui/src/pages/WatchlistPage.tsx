@@ -14,7 +14,7 @@ import { EmptyState, IconButton, LocalToast, PageHeader, SectionHeader, SelectMe
 import EmptyArt from "../components/illustrations/EmptyArt";
 import { img } from "../img";
 import { addCalendarDays, appDayKey, formatAppDate, formatAppTime, parseAppTimestamp } from "../dateTime";
-import { snapshotPlaybackQueue } from "../playbackQueue";
+import type { PlaybackQueueContext, WatchlistSort } from "../playbackQueue";
 
 const BUCKET_ORDER: Bucket[] = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 const BUCKET_SECTIONS: { id: string; labelKey: I18nKey; Icon: typeof Sun; buckets: Bucket[] }[] = [
@@ -26,7 +26,6 @@ const BUCKET_SECTIONS: { id: string; labelKey: I18nKey; Icon: typeof Sun; bucket
 type TranslateFn = ReturnType<typeof useI18n>["t"];
 
 const WATCHLIST_SORTS = ["schedule", "duration-asc", "duration-desc", "title-asc", "channel-asc"] as const;
-type WatchlistSort = (typeof WATCHLIST_SORTS)[number];
 
 function formatShowFrom(showFrom: string, t: TranslateFn, locale: string, timeZone: string): string {
   const targetDay = appDayKey(showFrom, timeZone);
@@ -91,7 +90,7 @@ export default function WatchlistPage() {
     ...section,
     items: sortScheduled(videos.filter((v) => v.bucket && section.buckets.includes(v.bucket))),
   })).filter((section) => section.items.length > 0);
-  const playbackQueue = snapshotPlaybackQueue(sections.flatMap((section) => section.items), t("navWatchlist"));
+  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "watchlist", sort, dueOnly: false };
 
   return (
     <>

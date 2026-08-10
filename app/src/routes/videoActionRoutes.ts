@@ -6,14 +6,12 @@ import { recordSchedulingSignal } from "../contentSignals";
 import { refreshDiscoveryInBackground } from "../plugins";
 import { cancelAutoDownloadIfUnwanted } from "../downloader";
 import { videoExistsStmt } from "../videoRoutesSupport";
+import { savePlaybackContext } from "./playbackRoutes";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
 type ApiContext = Context<ApiEnvironment>;
-
 export function registerVideoActionRoutes(api: Api, currentUserId: (context: ApiContext) => number): void {
-// ---------- video actions ----------
-
 const BUCKETS = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
 
 api.post("/videos/:id/queue", async (c) => {
@@ -39,7 +37,7 @@ api.post("/videos/:id/archive", async (c) => {
   if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
   await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, status) VALUES (?, ?, 'archived')
-     ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'archived', bucket = NULL, show_from = NULL`
+     ON CONFLICT(user_id, video_id) DO UPDATE SET status = 'archived', bucket = NULL, show_from = NULL, playback_context_json = NULL`
   ).run(uid, id);
   // Rejecting a video also stops a pending auto download nobody else waits for.
   await cancelAutoDownloadIfUnwanted(uid, id);
@@ -71,6 +69,8 @@ api.post("/videos/:id/watch", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
   if (await videoExistsStmt.get(id)) {
+    const body = await c.req.json().catch(() => ({})) as { playback_context?: unknown };
+    if (body.playback_context !== undefined) await savePlaybackContext(uid, id, body.playback_context);
     await database.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
     refreshDiscoveryInBackground(uid);
   }
@@ -83,7 +83,7 @@ api.post("/videos/:id/complete", async (c) => {
   if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
   await database.prepare(
     `INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
-     ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1`
+     ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1, playback_context_json = NULL`
   ).run(uid, id);
   await database.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
   refreshDiscoveryInBackground(uid);
@@ -102,7 +102,7 @@ api.delete("/videos/:id/complete", async (c) => {
       `INSERT INTO user_videos (user_id, video_id, status, watched) VALUES (?, ?, 'inbox', NULL)
        ON CONFLICT(user_id, video_id) DO UPDATE SET
          status = 'inbox', watched = NULL, watch_position = NULL, watch_duration = NULL,
-         bucket = NULL, queued_at = NULL, show_from = NULL`
+         bucket = NULL, queued_at = NULL, show_from = NULL, playback_context_json = NULL`
     ).run(uid, id);
     // Completing a video creates one history entry. Remove only the newest one
     // so undoing an accidental click does not erase older, legitimate watches.
@@ -150,7 +150,7 @@ api.put("/videos/:id/progress", async (c) => {
 api.delete("/videos/:id/progress", async (c) => {
   const uid = currentUserId(c);
   await database.prepare(
-    "UPDATE user_videos SET watch_position = NULL, watch_duration = NULL WHERE user_id = ? AND video_id = ?"
+    "UPDATE user_videos SET watch_position = NULL, watch_duration = NULL, playback_context_json = NULL WHERE user_id = ? AND video_id = ?"
   ).run(uid, c.req.param("id"));
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
@@ -180,5 +180,4 @@ api.delete("/videos/:id/tags/:tagId", async (c) => {
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
-
 }

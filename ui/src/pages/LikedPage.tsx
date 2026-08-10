@@ -7,7 +7,7 @@ import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { Button, Chip, EmptyState, PageHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
-import { snapshotPlaybackQueue, type PlayVideo } from "../playbackQueue";
+import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 
 export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
   const { t } = useI18n();
@@ -42,7 +42,7 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
     setVideos([]);
     setShowShorts((prev) => !prev);
   };
-  const playbackQueue = snapshotPlaybackQueue(videos, t("navLiked"));
+  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "liked", showShorts };
 
   return (
     <>

@@ -286,7 +286,11 @@ below.
 ### Portable personal state (opt-in)
 
 - `user_videos`: queue/archive state, bucket, show time, progress, watched, and
-  liked state.
+  liked state. This also includes the versioned resume-playback context: a
+  source descriptor and its filters, never a captured list of video IDs.
+  Portable contexts reference tags and personal playlists by stable UUID;
+  restore drops a context whose referenced source cannot be mapped rather than
+  broadening it to a different queue.
 - `history`.
 - Social activity is portable personal state in the optional, versioned
   `plugin.social.activity` domain section. It contains stable post and comment

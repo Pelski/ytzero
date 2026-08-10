@@ -3,6 +3,7 @@ import { http, sharedGet } from "./apiHttp";
 import type { EmojiSkinTone } from "./emojiSkinTone";
 import { createSocialWatchPartyApi } from "./socialWatchPartyApi";
 import type { PlaylistSort } from "./playlistSort";
+import type { PlaybackQueueContext } from "./playbackQueue";
 import {
   BUCKET_LABELS, PLAYBACK_SPEEDS, SB_CATEGORIES,
   type AppChangelog,
@@ -134,13 +135,6 @@ export const api = {
     if (p.limit) qs.set("limit", String(p.limit));
     if (p.sort === "arrival") qs.set("sort", "arrival");
     return sharedGet<{ videos: Video[] }>(`feed:${qs}`, `/feed?${qs}`);
-  },
-  feedAdjacent: (videoId: string, direction: "oldest" | "newest", opts: { tags?: number[]; showAll?: boolean; sort?: "published" | "arrival" } = {}) => {
-    const qs = new URLSearchParams({ video_id: videoId, direction });
-    if (opts.tags?.length) qs.set("tags", opts.tags.join(","));
-    if (opts.showAll) qs.set("show_all", "1");
-    if (opts.sort === "arrival") qs.set("sort", "arrival");
-    return http<{ video: Video | null }>(`/feed/adjacent?${qs}`);
   },
   cleanupPreview: (filter: CleanupFilter, side: "clean" | "remain", opts: { excludeVideoIds?: string[]; page?: number } = {}) =>
     http<CleanupPreviewResult>("/cleanup/preview", {
@@ -287,7 +281,9 @@ export const api = {
   dequeue: (id: string) => http(`/videos/${id}/dequeue`, { method: "POST" }),
   archiveVideo: (id: string) => http(`/videos/${id}/archive`, { method: "POST" }),
   restore: (id: string) => http(`/videos/${id}/restore`, { method: "POST" }),
-  watch: (id: string) => http(`/videos/${id}/watch`, { method: "POST" }),
+  watch: (id: string, playbackContext?: PlaybackQueueContext) => http(`/videos/${id}/watch`, { method: "POST", body: JSON.stringify(playbackContext ? { playback_context: playbackContext } : {}) }),
+  playbackAdjacent: (id: string, direction: "oldest" | "newest", context: PlaybackQueueContext) =>
+    http<{ video_id: string | null }>("/playback/adjacent", { method: "POST", body: JSON.stringify({ video_id: id, direction, context }) }),
   complete: (id: string) => http(`/videos/${id}/complete`, { method: "POST" }),
   markUnwatched: (id: string) => http(`/videos/${id}/complete`, { method: "DELETE" }),
   likeVideo: (id: string, liked: boolean) =>
