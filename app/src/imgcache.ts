@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, renameSync, statSync, unlinkSync } from "node:fs
 import { resolve } from "node:path";
 import { database } from "./database";
 import { isAllowedRemoteImageUrl, isValidImagePayload, videoIdFromThumbnailUrl } from "./imageCachePolicy";
+import { imageCacheTableSql, POSTGRES_IMAGE_CACHE_TIMESTAMP_MIGRATION } from "./imageCacheSchema";
 
 const IMG_DIR = process.env.IMG_CACHE_DIR ?? resolve(import.meta.dir, "../../data/imgcache");
 mkdirSync(IMG_DIR, { recursive: true });
@@ -18,18 +19,9 @@ const RETRY_AFTER_MS = 30 * 60_000;
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MIN_IMAGE_BYTES = 32;
 
-await database.exec(`
-CREATE TABLE IF NOT EXISTS image_cache (
-  url           TEXT PRIMARY KEY,
-  path          TEXT NOT NULL,
-  content_type  TEXT NOT NULL DEFAULT 'image/jpeg',
-  fetched_at    INTEGER NOT NULL,
-  last_try_at   INTEGER NOT NULL DEFAULT 0,
-  last_error_at INTEGER NOT NULL DEFAULT 0
-);
-`);
+await database.exec(imageCacheTableSql(database.engine));
 if (database.engine === "postgres") {
-  await database.exec("ALTER TABLE image_cache ADD COLUMN IF NOT EXISTS last_error_at INTEGER NOT NULL DEFAULT 0");
+  await database.exec(POSTGRES_IMAGE_CACHE_TIMESTAMP_MIGRATION);
 } else {
   try { await database.exec("ALTER TABLE image_cache ADD COLUMN last_error_at INTEGER NOT NULL DEFAULT 0"); } catch {}
 }
