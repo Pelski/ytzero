@@ -11,6 +11,16 @@
 
 .video-card-hover-preview.is-ready { opacity: 1; }
 
+.video-card-hover-preview__open-video {
+  bottom: 59px;
+  cursor: pointer;
+  left: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
+  z-index: 2;
+}
+
 .video-card-hover-preview iframe,
 .video-card-hover-preview__youtube,
 .video-card-hover-preview video {

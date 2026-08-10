@@ -653,6 +653,16 @@ export function VideoCard({
             unmuteLabel={t("playerUnmute")}
             videoId={video.video_id}
           /></Suspense>}
+          {previewActive && downloadStatus !== "done" && (
+            <Link
+              to={videoHref}
+              className="video-card-hover-preview__open-video"
+              onClick={playFromLink}
+              onDragStart={(event) => event.preventDefault()}
+              aria-hidden="true"
+              tabIndex={-1}
+            />
+          )}
           {processing && <span className="video-card-processing" role="status" aria-label={t("processing")}><span className="video-card-processing__spinner" /></span>}
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
