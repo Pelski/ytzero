@@ -12,7 +12,6 @@ export const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../da
 mkdirSync(dirname(DB_PATH), { recursive: true });
 export const db = new Database(DB_PATH, { create: true });
 configureSQLiteConnection(db);
-
 db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
 db.exec(readFileSync(new URL("./channelPostsSchema.sql", import.meta.url), "utf8"));
 
@@ -236,6 +235,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // Portable per-profile UI preference; hover preserves the historical behaviour.
   video_card_actions: "hover",
   video_card_action_buttons: '{"version":1,"actions":[{"id":"schedule","hidden":false},{"id":"playlist","hidden":true},{"id":"download","hidden":true},{"id":"archive","hidden":false},{"id":"watched","hidden":false},{"id":"restore","hidden":false},{"id":"remove","hidden":false}]}', // Portable ordered card controls.
+  video_card_swipe_devices: '{"version":1,"devices":["desktop","tablet","mobile"]}', // Portable per-device swipe availability.
   // Portable per-profile presentation preference for the child activity
   // shortcut. Live viewing activity remains transient and is never exported.
   child_watching_monitor_enabled: "1",

@@ -209,6 +209,11 @@ below.
   Watch-later scheduling is always visible and fixed in first position. Restore
   and remove cannot be hidden but may be reordered; playlist and local-download
   actions are hidden by default.
+  The versioned video-card swipe-device configuration is portable per-profile
+  presentation configuration. It independently enables the reject/mark-watched
+  gesture on desktop, tablet, and mobile devices, with all three enabled by
+  default to preserve the historical interaction. It stores no detected device
+  data; device classification is computed locally by the browser.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The

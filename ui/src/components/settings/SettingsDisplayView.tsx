@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Check, Play } from "lucide-react";
 import { PLAYBACK_SPEEDS, SB_CATEGORIES, type ShortsFeedMode } from "../../api";
 import { emit } from "../../events";
@@ -11,7 +12,7 @@ import { useSettingsPageController } from "../../pages/useSettingsPageController
 import Popconfirm from "../Popconfirm";
 import { Button, ColorPicker, Divider, Inline, Input, InputGroup, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Text } from "../ui";
 import { SidebarNavEditor, VideoCardActionEditor } from "./SettingsEditors";
-
+const VideoCardSwipeSetting = lazy(() => import("./VideoCardSwipeSetting").then((module) => ({ default: module.VideoCardSwipeSetting })));
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
   const supported = intl.supportedValuesOf?.("timeZone") ?? [
@@ -26,7 +27,6 @@ const FEED_MAX_AGE_UNITS: Exclude<FeedMaxAgeUnit, "off">[] = ["days", "weeks", "
 const FEED_MAX_AGE_VALUES = Array.from({ length: 30 }, (_, index) => String(index + 1));
 
 type SettingsController = ReturnType<typeof useSettingsPageController>;
-
 export function SettingsDisplayView({ controller, showToast }: { controller: SettingsController; showToast: (message: string) => void }) {
   const {
     appIconColor,
@@ -273,7 +273,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           <SettingRow label={t("videoCardActionsLabel")} align="start" className="video-card-action-setting">
             <VideoCardActionEditor value={videoCardActionConfig} mode={videoCardActions} onChange={changeVideoCardActionConfig} />
           </SettingRow>
-
+          <Suspense fallback={<SettingRow label={t("videoCardSwipeLabel")}><span /></SettingRow>}><VideoCardSwipeSetting showToast={showToast} /></Suspense>
           <SettingRow label={t("watchShowRelated")} description={t("watchShowRelatedHint")}>
             <Switch checked={watchShowRelated} onCheckedChange={() => toggleWatchRelated()} />
           </SettingRow>

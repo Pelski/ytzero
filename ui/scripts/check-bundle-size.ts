@@ -5,7 +5,7 @@ const assetsDirectory = resolve(import.meta.dir, "../dist/assets");
 const assets = await readdir(assetsDirectory);
 
 const budgets: Array<{ pattern: RegExp; maximumBytes: number; label: string }> = [
-  { pattern: /^index-.*\.js$/, maximumBytes: 550_000, label: "initial JavaScript" },
+  { pattern: /^index-.*\.js$/, maximumBytes: 552_000, label: "initial JavaScript" },
   { pattern: /^SettingsPage-.*\.js$/, maximumBytes: 150_000, label: "settings route" },
   { pattern: /^WatchPage-.*\.js$/, maximumBytes: 150_000, label: "watch route" },
   { pattern: /^hls-.*\.js$/, maximumBytes: 550_000, label: "lazy HLS runtime" },

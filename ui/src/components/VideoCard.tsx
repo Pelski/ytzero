@@ -30,6 +30,7 @@ import { VideoCardPlaylistAction } from "./VideoCardPlaylistAction";
 import { Badge } from "./ui";
 import { useDeArrowBranding } from "../dearrow";
 import { readAppliedVideoCardActionsMode, type VideoCardActionsMode } from "../videoCardActions";
+import { videoCardSwipeEnabled } from "../videoCardSwipeRuntime";
 import { useAppliedVideoCardActionConfig, type VideoCardActionConfig, type VideoCardActionId } from "../videoCardActionConfig";
 import "./VideoGrid.css";
 import "./VideoCard.css";
@@ -199,6 +200,7 @@ export function VideoCard({
   const blockNextThumbClickRef = useRef(false);
   const blockClickAfterDragRef = useRef(false);
   const appliedActionsMode = readAppliedVideoCardActionsMode();
+  const swipeEnabledForDevice = videoCardSwipeEnabled();
   const appliedActionConfig = useAppliedVideoCardActionConfig();
   const actionConfig = actionPreview?.config ?? appliedActionConfig;
   const actionsInBar = (actionPreview?.mode ?? appliedActionsMode) === "bar_always";
@@ -289,7 +291,7 @@ export function VideoCard({
       filterTaps: true,
       from: [0, 0],
       pointer: { capture: true },
-      enabled: appliedActionsMode !== "off" && !selectable && !readOnly && (allowReject || allowMarkWatched),
+      enabled: swipeEnabledForDevice && appliedActionsMode !== "off" && !selectable && !readOnly && (allowReject || allowMarkWatched),
     }
   );
 

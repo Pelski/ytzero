@@ -7,11 +7,10 @@ import { queueSettingWrite } from "../settingsWriteQueue";
 import { applyVideoCardSize } from "../videoCardSize";
 import { applyWatchedStyle, parseWatchedStyle } from "../watchedStyle";
 import { applyVideoCardActionsMode } from "../videoCardActions";
-
+import { applyVideoCardSwipeConfig } from "../videoCardSwipeRuntime";
 const DEFAULT_PROFILE_PERMISSIONS: ProfilePermissions = {
   admin_only_areas: ["imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"],
 };
-
 export function useAppPreferences() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -34,6 +33,7 @@ export function useAppPreferences() {
       emit("video-card-size-applied");
       applyWatchedStyle(parseWatchedStyle(settings.watched_style));
       applyVideoCardActionsMode(settings.video_card_actions);
+      applyVideoCardSwipeConfig(settings.video_card_swipe_devices);
       document.documentElement.dataset.videoCardActionButtons = settings.video_card_action_buttons;
       emit("card-actions");
       const rawNavConfig = settings.sidebar_nav;

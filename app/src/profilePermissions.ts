@@ -35,7 +35,9 @@ const LEGACY_PERMISSION_AREAS = ["channels", "followed_playlists", "imports", "t
 const SETTING_PERMISSION_AREAS: Readonly<Record<string, ProfilePermissionArea>> = {
   language: "appearance",
   grid_size: "appearance",
-  video_card_actions: "feed",
+  video_card_actions: "playback",
+  video_card_action_buttons: "playback",
+  video_card_swipe_devices: "playback",
   watched_style: "appearance",
   app_name: "appearance",
   app_icon_color: "appearance",

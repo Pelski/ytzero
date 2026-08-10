@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import { publishAppEvent } from "../appEvents";
 import { database } from "../database";
 import { getSetting, getUserSetting, GLOBAL_SETTING_KEYS, SETTING_DEFAULTS, setSetting, setUserSetting } from "../db";
-import { isVideoCardActionMode, normalizeVideoCardActionConfig, parseVideoCardActionConfig } from "../videoCardActions";
+import { normalizeVideoCardSetting, validateVideoCardSettings } from "../videoCardActions";
 import { isProfilePermissionArea, serializeAdminOnlyAreas, type ProfilePermissionArea } from "../profilePermissions";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "../scheduleTime";
 import { configuredTimeZone, isValidTimeZone, timeZoneIsEnvironmentLocked } from "../timeZone";
@@ -129,8 +129,8 @@ api.put("/settings", async (c) => {
   const body = await c.req.json();
   if ("timezone" in body && timeZoneIsEnvironmentLocked()) return c.json({ error: "timezone is controlled by the TZ environment variable" }, 409);
   if ("timezone" in body && !isValidTimeZone(body.timezone)) return c.json({ error: "invalid timezone" }, 400);
-  if ("video_card_actions" in body && !isVideoCardActionMode(body.video_card_actions)) return c.json({ error: "invalid video card action mode" }, 400);
-  if ("video_card_action_buttons" in body && !parseVideoCardActionConfig(body.video_card_action_buttons)) return c.json({ error: "invalid video card action buttons" }, 400);
+  const videoCardSettingsError = validateVideoCardSettings(body);
+  if (videoCardSettingsError) return c.json({ error: videoCardSettingsError }, 400);
   if ("show_shorts" in body && body.show_shorts !== "0" && body.show_shorts !== "selected" && body.show_shorts !== "1") {
     return c.json({ error: "invalid Shorts feed mode" }, 400);
   }
@@ -141,7 +141,7 @@ api.put("/settings", async (c) => {
       // Only an administrator owns app-wide settings (name, icon, timezone).
       if (primary) await setSetting(key, String(body[key]));
     } else {
-      const value = key === "video_card_action_buttons" ? normalizeVideoCardActionConfig(body[key]) : String(body[key]);
+      const value = normalizeVideoCardSetting(key, body[key]);
       await setUserSetting(uid, key, value);
     }
   }

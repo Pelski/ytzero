@@ -16,7 +16,7 @@ import { listDownloadRules } from "./downloadRules";
 import { normalizeSocialReaction } from "./social";
 import { optimizeProfileAvatar, optimizedProfileAvatarToken, removeStoredProfileAvatar } from "./profileAvatars";
 import { DOWNLOAD_INSTANCE_BACKUP_SCHEMA_VERSION, DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, exportDownloadInstanceSettings, exportDownloadPreferences, restoreDownloadInstanceSettings, restoreDownloadPreferences } from "./downloadBackup";
-import { normalizeVideoCardActionConfig, normalizeVideoCardActionMode } from "./videoCardActions";
+import { normalizeVideoCardSetting } from "./videoCardActions";
 import { exportPlaybackContext, restorePlaybackContext } from "./playbackContextBackup";
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -75,8 +75,7 @@ function portableGlobalSettingValue(key: string, value: unknown): string {
   return String(value);
 }
 function portableUserSettingValue(key: string, value: unknown): string {
-  if (key === "video_card_actions") return normalizeVideoCardActionMode(value);
-  if (key === "video_card_action_buttons") return normalizeVideoCardActionConfig(value);
+  if (key.startsWith("video_card_")) return normalizeVideoCardSetting(key, value);
   if (key === "show_shorts") return value === "1" || value === "selected" ? value : "0";
   return String(value);
 }

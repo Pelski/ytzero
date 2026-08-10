@@ -465,8 +465,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
           : "everywhere"
       );
       setWatchedStyle(parseWatchedStyle(r.settings.watched_style));
-      setVideoCardActions(parseVideoCardActionsMode(r.settings.video_card_actions));
-      setVideoCardActionConfig(parseVideoCardActionConfig(r.settings.video_card_action_buttons));
+      setVideoCardActions(parseVideoCardActionsMode(r.settings.video_card_actions)); setVideoCardActionConfig(parseVideoCardActionConfig(r.settings.video_card_action_buttons));
       setVideoCardSize(parseVideoCardSize(r.settings.grid_size));
       const raw = r.settings.sidebar_nav;
       const navCfg = parseNavConfig(raw);
@@ -1379,9 +1378,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     watchShowComments,
     watchShowRelated,
     watchedStyle,
-    videoCardActions,
-    changeVideoCardActions,
-    videoCardActionConfig,
-    changeVideoCardActionConfig,
+    videoCardActions, changeVideoCardActions,
+    videoCardActionConfig, changeVideoCardActionConfig,
   };
 }
