@@ -6,8 +6,6 @@ import { parseNavConfig, type NavConfigEntry } from "../nav";
 import { queueSettingWrite } from "../settingsWriteQueue";
 import { applyVideoCardSize } from "../videoCardSize";
 import { applyWatchedStyle, parseWatchedStyle } from "../watchedStyle";
-import { applyVideoCardActionsMode } from "../videoCardActions";
-import { applyVideoCardSwipeConfig } from "../videoCardSwipeRuntime";
 const DEFAULT_PROFILE_PERMISSIONS: ProfilePermissions = {
   admin_only_areas: ["imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"],
 };
@@ -32,8 +30,9 @@ export function useAppPreferences() {
       applyVideoCardSize(settings.grid_size);
       emit("video-card-size-applied");
       applyWatchedStyle(parseWatchedStyle(settings.watched_style));
-      applyVideoCardActionsMode(settings.video_card_actions);
-      applyVideoCardSwipeConfig(settings.video_card_swipe_devices);
+      document.documentElement.dataset.videoCardActions = ["always", "bar_always", "on_demand", "delay", "off"].includes(settings.video_card_actions) ? settings.video_card_actions : "hover";
+      document.documentElement.dataset.videoCardPreview = ["off", "downloaded"].includes(settings.video_card_preview) ? settings.video_card_preview : "all";
+      document.documentElement.dataset.videoCardSwipeDevices = settings.video_card_swipe_devices || '{"version":1,"devices":["desktop","tablet","mobile"]}';
       document.documentElement.dataset.videoCardActionButtons = settings.video_card_action_buttons;
       emit("card-actions");
       const rawNavConfig = settings.sidebar_nav;

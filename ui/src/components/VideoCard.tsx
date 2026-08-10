@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import type { CSSProperties, MouseEvent, PointerEvent, ReactNode } from "react";
-import { memo, useEffect, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
 import { api, type Video } from "../api";
@@ -32,10 +32,13 @@ import { useDeArrowBranding } from "../dearrow";
 import { readAppliedVideoCardActionsMode, type VideoCardActionsMode } from "../videoCardActions";
 import { videoCardSwipeEnabled } from "../videoCardSwipeRuntime";
 import { useAppliedVideoCardActionConfig, type VideoCardActionConfig, type VideoCardActionId } from "../videoCardActionConfig";
+import { claimVideoCardPreview, readVideoCardPreviewMode, releaseVideoCardPreview } from "../videoCardPreview";
 import "./VideoGrid.css";
 import "./VideoCard.css";
 import "./VideoCardActionsBar.css";
 import "./VideoCardMetadata.css";
+
+const VideoCardHoverPreview = lazy(() => import("./VideoCardHoverPreview").then((module) => ({ default: module.VideoCardHoverPreview })));
 
 export { BUCKET_ICONS } from "./VideoScheduleActions";
 const SWIPE_THRESHOLD = 90;
@@ -44,6 +47,7 @@ const SWIPE_MAX_DRAG = 160;
 const SWIPE_FEEDBACK_MS = 720;
 const FINAL_EXIT_MS = 280;
 const ACTION_HOVER_DELAY_MS = 3_000;
+const VIDEO_PREVIEW_HOVER_DELAY_MS = 700;
 export type CardFeedback = "watched" | "unwatched" | "rejected" | "restored" | "scheduled" | "unscheduled" | "removed";
 
 /** Duration in seconds for sorting/comparing; null when the string is unparseable. */
@@ -191,12 +195,14 @@ export function VideoCard({
   const [committedDir, setCommittedDir] = useState<"left" | "right" | null>(null);
   const [committedFeedback, setCommittedFeedback] = useState<CardFeedback | null>(null);
   const [loadedThumbnailSrc, setLoadedThumbnailSrc] = useState<string | null>(null);
+  const [previewActive, setPreviewActive] = useState(false);
   const canDownloadLocally = video.live_status !== "live" && video.live_status !== "upcoming";
   const publishedTime = formatTimeAgo(video.published_at, language);
   const foundTime = formatTimeAgo(video.found_at ? `${video.found_at.replace(" ", "T")}Z` : null, language);
   const cardRef = useRef<HTMLDivElement>(null);
   const lastProximityRef = useRef(0);
   const delayedActionsTimerRef = useRef<number | null>(null);
+  const previewTimerRef = useRef<number | null>(null);
   const blockNextThumbClickRef = useRef(false);
   const blockClickAfterDragRef = useRef(false);
   const appliedActionsMode = readAppliedVideoCardActionsMode();
@@ -205,6 +211,29 @@ export function VideoCard({
   const actionConfig = actionPreview?.config ?? appliedActionConfig;
   const actionsInBar = (actionPreview?.mode ?? appliedActionsMode) === "bar_always";
   const actionsOpen = Boolean(actionPreview) || actionsPinned || actionsHovered || actionProximity > 0.52;
+  const previewStartSeconds = video.watch_position && video.watch_duration && video.watch_position / video.watch_duration < 0.9
+    ? Math.max(0, video.watch_position)
+    : 0;
+
+  const stopPreview = useCallback(() => {
+    if (previewTimerRef.current != null) window.clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = null;
+    releaseVideoCardPreview(stopPreview);
+    setPreviewActive(false);
+  }, []);
+
+  const schedulePreview = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== "mouse" || previewTimerRef.current != null || previewActive) return;
+    const mode = readVideoCardPreviewMode();
+    const downloaded = downloadStatus === "done";
+    if (mode === "off" || (mode === "downloaded" && !downloaded) || selectable || readOnly || actionPreview
+      || processing || video.is_private === 1 || video.live_status === "live" || video.live_status === "upcoming") return;
+    previewTimerRef.current = window.setTimeout(() => {
+      previewTimerRef.current = null;
+      claimVideoCardPreview(stopPreview);
+      setPreviewActive(true);
+    }, VIDEO_PREVIEW_HOVER_DELAY_MS);
+  };
 
   const exitLeft = () => {
     const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
@@ -386,7 +415,8 @@ export function VideoCard({
 
   useEffect(() => () => {
     if (delayedActionsTimerRef.current != null) window.clearTimeout(delayedActionsTimerRef.current);
-  }, []);
+    stopPreview();
+  }, [stopPreview]);
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -568,8 +598,9 @@ export function VideoCard({
         <div
           className={`thumb-wrap${actionsOpen ? " controls-near" : ""}${processing ? " thumb-wrap--processing" : ""}`}
           style={{ "--actions-proximity": actionProximity } as CSSProperties}
+          onPointerEnter={selectable || readOnly ? undefined : schedulePreview}
           onPointerMove={selectable || readOnly ? undefined : updateActionProximity}
-          onPointerLeave={selectable || readOnly ? undefined : resetActionProximity}
+          onPointerLeave={selectable || readOnly ? undefined : (event) => { resetActionProximity(event); stopPreview(); }}
         >
           {selectable && (
             <button
@@ -612,6 +643,16 @@ export function VideoCard({
                 </VideoThumbnail>
               </span>
           </Link>
+          {previewActive && <Suspense fallback={null}><VideoCardHoverPreview
+            downloaded={downloadStatus === "done"}
+            durationSeconds={parseVideoDurationSeconds(video.duration) ?? 0}
+            muteLabel={t("playerMute")}
+            onUnavailable={stopPreview}
+            progressLabel={t("watchedStyleProgress")}
+            startSeconds={previewStartSeconds}
+            unmuteLabel={t("playerUnmute")}
+            videoId={video.video_id}
+          /></Suspense>}
           {processing && <span className="video-card-processing" role="status" aria-label={t("processing")}><span className="video-card-processing__spinner" /></span>}
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>

@@ -214,6 +214,12 @@ below.
   gesture on desktop, tablet, and mobile devices, with all three enabled by
   default to preserve the historical interaction. It stores no detected device
   data; device classification is computed locally by the browser.
+  The video-card hover-preview mode is portable per-profile presentation
+  configuration in `profile.settings` schema v4. It selects disabled,
+  downloaded-only, or all-video previews and defaults to all videos. Active
+  hover state, media buffers, and YouTube player instances are transient and
+  never exported. Older backups retain the target value on merge and use the
+  application default after a replace restore.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The

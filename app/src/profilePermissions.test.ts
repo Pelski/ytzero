@@ -51,7 +51,7 @@ describe("profile administrator permissions", () => {
     expect(permissionAreasForSettings({ show_shorts: "1", channel_posts_tab: "1" })).toEqual(["feed"]);
     expect(permissionAreasForSettings({ sidebar_nav: "[]" })).toEqual(["navigation"]);
     expect(permissionAreasForSettings({ player_speed: "1.5", sponsorblock_enabled: "1" })).toEqual(["playback"]);
-    expect(permissionAreasForSettings({ video_card_actions: "hover", video_card_action_buttons: "{}", video_card_swipe_devices: "{}" })).toEqual(["playback"]);
+    expect(permissionAreasForSettings({ video_card_actions: "hover", video_card_action_buttons: "{}", video_card_swipe_devices: "{}", video_card_preview: "all" })).toEqual(["playback"]);
     expect(permissionAreasForSettings({ dearrow_titles_enabled: "1", dearrow_thumbnails_enabled: "1" })).toEqual(["playback"]);
     expect(permissionAreasForSettings({ child_watching_monitor_enabled: "0" })).toEqual(["profiles"]);
     expect(permissionAreasForSettings({ language: "pl", player_speed: "1.5" })).toEqual(["appearance", "playback"]);

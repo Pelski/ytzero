@@ -1,5 +1,11 @@
 export const VIDEO_CARD_ACTION_MODES = ["hover", "always", "bar_always", "on_demand", "delay", "off"] as const;
 export type VideoCardActionMode = (typeof VIDEO_CARD_ACTION_MODES)[number];
+export const VIDEO_CARD_PREVIEW_MODES = ["off", "downloaded", "all"] as const;
+export type VideoCardPreviewMode = (typeof VIDEO_CARD_PREVIEW_MODES)[number];
+
+export function isVideoCardPreviewMode(value: unknown): value is VideoCardPreviewMode {
+  return typeof value === "string" && (VIDEO_CARD_PREVIEW_MODES as readonly string[]).includes(value);
+}
 
 export function isVideoCardActionMode(value: unknown): value is VideoCardActionMode {
   return typeof value === "string" && (VIDEO_CARD_ACTION_MODES as readonly string[]).includes(value);
@@ -67,6 +73,7 @@ export function normalizeVideoCardSwipeConfig(value: unknown): string {
 
 export function validateVideoCardSettings(body: Record<string, unknown>): string | null {
   if ("video_card_actions" in body && !isVideoCardActionMode(body.video_card_actions)) return "invalid video card action mode";
+  if ("video_card_preview" in body && !isVideoCardPreviewMode(body.video_card_preview)) return "invalid video card preview mode";
   if ("video_card_action_buttons" in body && !parseVideoCardActionConfig(body.video_card_action_buttons)) return "invalid video card action buttons";
   if ("video_card_swipe_devices" in body && !parseVideoCardSwipeConfig(body.video_card_swipe_devices)) return "invalid video card swipe devices";
   return null;
@@ -74,6 +81,7 @@ export function validateVideoCardSettings(body: Record<string, unknown>): string
 
 export function normalizeVideoCardSetting(key: string, value: unknown): string {
   if (key === "video_card_actions") return normalizeVideoCardActionMode(value);
+  if (key === "video_card_preview") return isVideoCardPreviewMode(value) ? value : "all";
   if (key === "video_card_action_buttons") return normalizeVideoCardActionConfig(value);
   if (key === "video_card_swipe_devices") return normalizeVideoCardSwipeConfig(value);
   return String(value);

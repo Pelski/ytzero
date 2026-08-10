@@ -36,6 +36,7 @@ const SETTING_PERMISSION_AREAS: Readonly<Record<string, ProfilePermissionArea>> 
   language: "appearance",
   grid_size: "appearance",
   video_card_actions: "playback",
+  video_card_preview: "playback",
   video_card_action_buttons: "playback",
   video_card_swipe_devices: "playback",
   watched_style: "appearance",

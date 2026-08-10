@@ -6,6 +6,7 @@ import { scheduleSettingWrite } from "../../settingsWriteQueue";
 import { parseVideoCardSwipeConfig, serializeVideoCardSwipeConfig, type VideoCardSwipeDevice } from "../../videoCardSwipeConfig";
 import { applyVideoCardSwipeConfig, readVideoCardSwipeConfig } from "../../videoCardSwipeRuntime";
 import { Chip, Inline, SettingRow } from "../ui";
+import { VideoCardPreviewSetting } from "./VideoCardPreviewSetting";
 import "./VideoCardSwipeSetting.css";
 
 const DEVICE_OPTIONS: Array<{ value: VideoCardSwipeDevice; labelKey: I18nKey; icon: typeof Monitor }> = [
@@ -32,9 +33,12 @@ export function VideoCardSwipeSetting({ showToast }: { showToast: (message: stri
       },
     });
   };
-  return <SettingRow label={t("videoCardSwipeLabel")} description={t("videoCardSwipeHint")} align="start">
-    <Inline gap={2} className="video-card-swipe-options" role="group" aria-label={t("videoCardSwipeLabel")}>
-      {DEVICE_OPTIONS.map(({ value: device, labelKey, icon: Icon }) => <Chip key={device} className="video-card-swipe-chip" active={value.includes(device)} onClick={() => toggle(device)}><Icon size={14} />{t(labelKey)}</Chip>)}
-    </Inline>
-  </SettingRow>;
+  return <>
+    <SettingRow label={t("videoCardSwipeLabel")} description={t("videoCardSwipeHint")} align="start">
+      <Inline gap={2} className="video-card-swipe-options" role="group" aria-label={t("videoCardSwipeLabel")}>
+        {DEVICE_OPTIONS.map(({ value: device, labelKey, icon: Icon }) => <Chip key={device} className="video-card-swipe-chip" active={value.includes(device)} onClick={() => toggle(device)}><Icon size={14} />{t(labelKey)}</Chip>)}
+      </Inline>
+    </SettingRow>
+    <VideoCardPreviewSetting showToast={showToast} />
+  </>;
 }

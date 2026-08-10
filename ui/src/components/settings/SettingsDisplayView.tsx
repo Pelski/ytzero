@@ -270,7 +270,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
             />
           </SettingRow>
 
-          <SettingRow label={t("videoCardActionsLabel")} align="start" className="video-card-action-setting">
+          <SettingRow label={t("itemOrder")} description={t("itemOrderHint")} align="start" className="video-card-action-setting">
             <VideoCardActionEditor value={videoCardActionConfig} mode={videoCardActions} onChange={changeVideoCardActionConfig} />
           </SettingRow>
           <Suspense fallback={<SettingRow label={t("videoCardSwipeLabel")}><span /></SettingRow>}><VideoCardSwipeSetting showToast={showToast} /></Suspense>
@@ -540,8 +540,8 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
 
           <div className="sidebar-order-head">
             <div>
-              <div className="switch-label">{t("sidebarOrderTitle")}</div>
-              <div className="ui-control-description">{t("sidebarOrderHint")}</div>
+              <div className="switch-label">{t("itemOrder")}</div>
+              <div className="ui-control-description">{t("itemOrderHint")}</div>
             </div>
             <Popconfirm message={t("resetOrderConfirm")} onConfirm={resetNavConfig}>
               <Button>{t("resetOrder")}</Button>

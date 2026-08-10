@@ -252,6 +252,8 @@ Thanks to [Green-Kite](https://github.com/Green-Kite) for help with the German l
 
 Thanks to [baldemar-wuda](https://github.com/baldemar-wuda) for extensive testing, great suggestions, and finding bugs.
 
+Thanks to [@Taruvi](https://github.com/Taruvi) for helping with issues, testing the app, and coming up with interesting feature ideas.
+
 ## Development note
 
 AI-assisted coding tools have been used selectively to support development tasks such as code exploration, prototyping, and review. Project direction, architectural decisions, validation, and responsibility for the final code remain with the maintainers.

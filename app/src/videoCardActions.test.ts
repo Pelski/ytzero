@@ -1,10 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { isVideoCardActionMode, normalizeVideoCardActionConfig, normalizeVideoCardActionMode, normalizeVideoCardSwipeConfig, parseVideoCardActionConfig, parseVideoCardSwipeConfig, VIDEO_CARD_ACTION_MODES } from "./videoCardActions";
+import { isVideoCardActionMode, isVideoCardPreviewMode, normalizeVideoCardActionConfig, normalizeVideoCardActionMode, normalizeVideoCardSetting, normalizeVideoCardSwipeConfig, parseVideoCardActionConfig, parseVideoCardSwipeConfig, validateVideoCardSettings, VIDEO_CARD_ACTION_MODES } from "./videoCardActions";
 
 describe("video card action modes", () => {
   test("accepts every persisted mode", () => {
     expect(VIDEO_CARD_ACTION_MODES.every(isVideoCardActionMode)).toBe(true);
     expect(isVideoCardActionMode("bar_always")).toBe(true);
+  });
+
+  test("validates and normalizes hover preview modes", () => {
+    expect(["off", "downloaded", "all"].every(isVideoCardPreviewMode)).toBe(true);
+    expect(isVideoCardPreviewMode("local")).toBe(false);
+    expect(normalizeVideoCardSetting("video_card_preview", "downloaded")).toBe("downloaded");
+    expect(normalizeVideoCardSetting("video_card_preview", "invalid")).toBe("all");
+    expect(validateVideoCardSettings({ video_card_preview: "invalid" })).toBe("invalid video card preview mode");
   });
 
   test("normalizes unsupported backup values to hover", () => {

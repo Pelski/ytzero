@@ -43,7 +43,7 @@ const CATALOG: CatalogEntry[] = [
   { view: "display:privacy", label: "sponsorblockEnabled", description: "sponsorblockHint" },
   { view: "display:privacy", label: "sponsorblockCategories" },
   { view: "display:navigation", label: "showTopChannels", description: "showTopChannelsHint" },
-  { view: "display:navigation", label: "sidebarOrderTitle", description: "sidebarOrderHint" },
+  { view: "display:navigation", label: "itemOrder", description: "itemOrderHint" },
   { view: "profiles", label: "childWatchingMonitorEnabled", description: "childWatchingMonitorEnabledHint" },
   { view: "profiles", label: "childLock", description: "childLockHint" },
   { view: "profiles", label: "profilePermissionsTitle", description: "profilePermissionsHint" },
