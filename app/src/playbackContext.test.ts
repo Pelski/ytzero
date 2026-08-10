@@ -8,8 +8,8 @@ describe("persisted playback context", () => {
       { version: 1, kind: "liked", showShorts: false },
       { version: 1, kind: "history" },
       { version: 1, kind: "archive" },
-      { version: 1, kind: "user-playlist", playlistUuid: "123e4567-e89b-42d3-a456-426614174000" },
-      { version: 1, kind: "channel-playlist", playlistId: "PL1234567890", sort: "oldest" },
+      { version: 1, kind: "user-playlist", playlistUuid: "123e4567-e89b-42d3-a456-426614174000", sort: "added-oldest" },
+      { version: 1, kind: "channel-playlist", playlistId: "PL1234567890", sort: "playlist-order" },
       { version: 1, kind: "watchlist", sort: "channel-asc", dueOnly: true },
       { version: 1, kind: "recommendations" },
       { version: 1, kind: "in-progress" },
@@ -20,6 +20,8 @@ describe("persisted playback context", () => {
       expect(JSON.stringify(parsed)).not.toContain("videoIds");
     }
     expect(parsePlaybackContext(contexts[0])).toEqual({ version: 1, kind: "feed", tags: [2, 5], sort: "published", showAll: true });
+    expect(parsePlaybackContext({ version: 1, kind: "user-playlist", playlistUuid: "123e4567-e89b-42d3-a456-426614174000" }))
+      .toEqual({ version: 1, kind: "user-playlist", playlistUuid: "123e4567-e89b-42d3-a456-426614174000", sort: "added-newest" });
   });
 
   test("rejects unversioned, oversized and snapshot contexts", () => {

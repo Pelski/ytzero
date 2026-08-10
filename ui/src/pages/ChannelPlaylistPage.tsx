@@ -65,7 +65,7 @@ export default function ChannelPlaylistPage() {
     if (![...videos, ...processingVideos].some((video) => video.downloads_enabled)) { navigate("/downloads?view=configuration"); return; }
     setDownloadPending(true); setDownloadFeedback("");
     try {
-      const result = await api.downloadChannelPlaylist(id);
+      const result = await api.downloadChannelPlaylist(id, sort);
       setDownloadFeedback(result.queued > 0 ? t("playlistDownloadQueued", { count: result.queued }) : t("playlistDownloadNone"));
       await load();
     } catch { setDownloadFeedback(t("playlistDownloadFailed")); }
@@ -85,6 +85,7 @@ export default function ChannelPlaylistPage() {
             value={sort}
             onChange={changeSort}
             options={[
+              { value: "playlist-order", label: t("playlistSortOrder") },
               { value: "oldest", label: t("playlistSortOldest") },
               { value: "newest", label: t("playlistSortNewest") },
               { value: "title-asc", label: t("playlistSortTitleAsc") },

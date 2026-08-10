@@ -218,6 +218,11 @@ below.
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The
   active playback queue itself is transient router state and is never exported.
+- Personal playlist membership is portable organization data. Its source
+  addition timestamp and stable playlist position are included in
+  `profile.playlists` schema v2. Older schema v1 archives restore membership in
+  their serialized order, while existing target membership remains unchanged
+  during a merge.
 - `profile_admin_only_areas` is portable instance configuration. Its versioned document uses schema v3; restore normalizes legacy `settings` access into separate appearance, feed, navigation, and playback permissions. On a fresh instance, channel subscriptions, followed YouTube playlists, tags, feed filters, and personal playlists are delegated to every profile; changing this default never rewrites an explicitly stored policy.
   This includes the player screenshot format, quality, and filename template;
   they are portable presentation preferences and contain no captured image data.

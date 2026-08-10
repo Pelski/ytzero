@@ -11,6 +11,7 @@ import { sortFetchedPlaylistVideos } from "../playlistVideoOrder";
 import { fetchPlaylistVideos } from "../youtube";
 import { importPlaylistVideos } from "../refresher";
 import type { VideoRow } from "../videoRoutesSupport";
+import { downloadableUserPlaylistVideoIds, sortUserPlaylistRows, type UserPlaylistSortable } from "../userPlaylistSort";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -89,12 +90,14 @@ export function registerUserPlaylistRoutes(
     ).get(id, uid) as any;
     if (!playlist) return c.json({ error: "not found" }, 404);
     const rows = await database.prepare(
-      `${videoSelect(uid)}
-       JOIN user_playlist_videos upv ON upv.video_id = v.video_id
+      `SELECT playlist_video.*, upv.added_at, upv.position
+       FROM (${videoSelect(uid)}) playlist_video
+       JOIN user_playlist_videos upv ON upv.video_id = playlist_video.video_id
        WHERE upv.playlist_id = ?
-       ORDER BY upv.added_at DESC`,
-    ).all(id) as VideoRow[];
-    return c.json({ playlist, videos: await attachTags(uid, rows) });
+       ORDER BY upv.position ASC, upv.video_id ASC`,
+    ).all(id) as Array<VideoRow & UserPlaylistSortable>;
+    const videos = await attachTags(uid, sortUserPlaylistRows(rows, c.req.query("sort")));
+    return c.json({ playlist, videos });
   });
 
   api.post("/playlists/:id/download", async (c) => {
@@ -103,13 +106,7 @@ export function registerUserPlaylistRoutes(
     if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
     const playlist = await database.prepare("SELECT name FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { name: string } | null;
     if (!playlist) return c.json({ error: "not found" }, 404);
-    const videoIds = (await database.prepare(`
-      SELECT v.video_id FROM user_playlist_videos upv
-      JOIN videos v ON v.video_id = upv.video_id
-      WHERE upv.playlist_id = ? AND v.is_private = 0
-        AND v.live_status NOT IN ('live', 'upcoming')
-      ORDER BY upv.added_at ASC
-    `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
+    const videoIds = await downloadableUserPlaylistVideoIds(c.req.param("id"), c.req.query("sort"));
     const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.name);
     log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.name, ...result });
     return c.json(result);
@@ -120,7 +117,9 @@ export function registerUserPlaylistRoutes(
     const { video_id } = await c.req.json();
     if (!video_id) return c.json({ error: "video_id required" }, 400);
     if (!await ownsPlaylist(uid, c.req.param("id"))) return c.json({ error: "not found" }, 404);
-    await database.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)").run(c.req.param("id"), video_id);
+    await database.prepare(`INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id, position)
+      SELECT ?, ?, COALESCE(MAX(position), -1) + 1 FROM user_playlist_videos WHERE playlist_id = ?`)
+      .run(c.req.param("id"), video_id, c.req.param("id"));
     refreshDiscoveryInBackground(uid);
     return c.json({ ok: true });
   });

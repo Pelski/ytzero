@@ -78,13 +78,14 @@ api.post("/channel-playlists/:id/download", async (c) => {
   if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
   const playlist = await database.prepare("SELECT title FROM channel_playlists WHERE playlist_id = ?").get(c.req.param("id")) as { title: string } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
-  const videoIds = (await database.prepare(`
-    SELECT v.video_id FROM channel_playlist_videos cpv
+  const rows = await database.prepare(`
+    SELECT v.video_id, v.title, v.published_at FROM channel_playlist_videos cpv
     JOIN videos v ON v.video_id = cpv.video_id
     WHERE cpv.playlist_id = ? AND v.is_private = 0
       AND v.live_status NOT IN ('live', 'upcoming')
     ORDER BY cpv.position ASC
-  `).all(c.req.param("id")) as { video_id: string }[]).map((row) => row.video_id);
+  `).all(c.req.param("id")) as Array<{ video_id: string; title: string; published_at: string | null }>;
+  const videoIds = sortPlaylistItems(rows, normalizePlaylistSort(c.req.query("sort")), (video) => ({ title: video.title, publishedAt: video.published_at })).map((row) => row.video_id);
   const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.title);
   log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.title, ...result });
   return c.json(result);

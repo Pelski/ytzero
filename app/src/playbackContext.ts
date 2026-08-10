@@ -1,14 +1,16 @@
 export const WATCHLIST_SORTS = ["schedule", "duration-asc", "duration-desc", "title-asc", "channel-asc"] as const;
 export type WatchlistSort = (typeof WATCHLIST_SORTS)[number];
-export const PLAYLIST_SORTS = ["oldest", "newest", "title-asc", "title-desc"] as const;
+export const PLAYLIST_SORTS = ["playlist-order", "oldest", "newest", "title-asc", "title-desc"] as const;
 export type PlaylistSort = (typeof PLAYLIST_SORTS)[number];
+export const USER_PLAYLIST_SORTS = [...PLAYLIST_SORTS, "added-oldest", "added-newest"] as const;
+export type UserPlaylistSort = (typeof USER_PLAYLIST_SORTS)[number];
 
 export type PlaybackContext =
   | { version: 1; kind: "feed"; tags: number[]; showAll: boolean; sort: "published" | "arrival" }
   | { version: 1; kind: "liked"; showShorts: boolean }
   | { version: 1; kind: "history" }
   | { version: 1; kind: "archive" }
-  | { version: 1; kind: "user-playlist"; playlistUuid: string }
+  | { version: 1; kind: "user-playlist"; playlistUuid: string; sort: UserPlaylistSort }
   | { version: 1; kind: "channel-playlist"; playlistId: string; sort: PlaylistSort }
   | { version: 1; kind: "watchlist"; sort: WatchlistSort; dueOnly: boolean }
   | { version: 1; kind: "recommendations" }
@@ -31,7 +33,8 @@ export function parsePlaybackContext(value: unknown): PlaybackContext | null {
   if (context.kind === "liked" && typeof context.showShorts === "boolean") return { version: 1, kind: "liked", showShorts: context.showShorts };
   if (["history", "archive", "recommendations", "in-progress"].includes(context.kind)) return { version: 1, kind: context.kind } as PlaybackContext;
   if (context.kind === "user-playlist" && typeof context.playlistUuid === "string" && UUID.test(context.playlistUuid)) {
-    return { version: 1, kind: "user-playlist", playlistUuid: context.playlistUuid };
+    if (context.sort !== undefined && !(USER_PLAYLIST_SORTS as readonly unknown[]).includes(context.sort)) return null;
+    return { version: 1, kind: "user-playlist", playlistUuid: context.playlistUuid, sort: (context.sort ?? "added-newest") as UserPlaylistSort };
   }
   if (context.kind === "channel-playlist" && typeof context.playlistId === "string" && /^[A-Za-z0-9_-]{10,100}$/.test(context.playlistId)
     && (PLAYLIST_SORTS as readonly unknown[]).includes(context.sort)) {

@@ -2,7 +2,7 @@ import { apiFetch } from "./apiTransport";
 import { http, sharedGet } from "./apiHttp";
 import type { EmojiSkinTone } from "./emojiSkinTone";
 import { createSocialWatchPartyApi } from "./socialWatchPartyApi";
-import type { PlaylistSort } from "./playlistSort";
+import type { PlaylistSort, UserPlaylistSort } from "./playlistSort";
 import type { PlaybackQueueContext } from "./playbackQueue";
 import {
   BUCKET_LABELS, PLAYBACK_SPEEDS, SB_CATEGORIES,
@@ -391,7 +391,7 @@ export const api = {
   syncChannelMetadata: (id: string) => http<{ checked: number; updated: number; dates: number; durations: number; shorts: number; failed: number; remaining: number }>(`/channels/${id}/metadata/sync`, { method: "POST" }),
   channelPlaylist: (id: string) => http<{ playlist: FollowedPlaylist }>(`/channel-playlists/${id}`),
   channelPlaylistVideos: (id: string, sort: PlaylistSort = "oldest") => http<{ videos: Video[]; processing: Video[] }>(`/channel-playlists/${id}/videos?sort=${encodeURIComponent(sort)}`),
-  downloadChannelPlaylist: (id: string) => http<PlaylistDownloadResult>(`/channel-playlists/${id}/download`, { method: "POST", body: "{}" }),
+  downloadChannelPlaylist: (id: string, sort: PlaylistSort = "playlist-order") => http<PlaylistDownloadResult>(`/channel-playlists/${id}/download?sort=${encodeURIComponent(sort)}`, { method: "POST", body: "{}" }),
   followPlaylist: (id: string, followed: boolean) => http<{ followed: boolean }>(`/channel-playlists/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
   syncPlaylist: (id: string) => http<{ added: number }>(`/channel-playlists/${id}/sync`, { method: "POST" }),
   followedPlaylists: () => http<{ playlists: FollowedPlaylist[] }>("/followed-playlists"),
@@ -407,8 +407,8 @@ export const api = {
   updateUserPlaylist: (id: number, p: Partial<Pick<UserPlaylist, "name" | "icon" | "sort_order">>) =>
     http<{ playlist: UserPlaylist }>(`/playlists/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   deleteUserPlaylist: (id: number) => http(`/playlists/${id}`, { method: "DELETE" }),
-  userPlaylist: (id: number) => http<{ playlist: UserPlaylist; videos: Video[] }>(`/playlists/${id}`),
-  downloadUserPlaylist: (id: number) => http<PlaylistDownloadResult>(`/playlists/${id}/download`, { method: "POST", body: "{}" }),
+  userPlaylist: (id: number, sort: UserPlaylistSort = "added-newest") => http<{ playlist: UserPlaylist; videos: Video[] }>(`/playlists/${id}?sort=${encodeURIComponent(sort)}`),
+  downloadUserPlaylist: (id: number, sort: UserPlaylistSort = "added-newest") => http<PlaylistDownloadResult>(`/playlists/${id}/download?sort=${encodeURIComponent(sort)}`, { method: "POST", body: "{}" }),
   addVideoToUserPlaylist: (id: number, video_id: string) =>
     http(`/playlists/${id}/videos`, { method: "POST", body: JSON.stringify({ video_id }) }),
   removeVideoFromUserPlaylist: (id: number, videoId: string) =>

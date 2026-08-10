@@ -9,7 +9,13 @@ export const IMPORTED_CHANNEL_ID = "YTZERO_IMPORTED";
 
 export interface TakeoutPlaylist {
   name: string;
-  videoIds: string[];
+  videos: TakeoutPlaylistVideo[];
+}
+
+export interface TakeoutPlaylistVideo {
+  videoId: string;
+  addedAt: string | null;
+  position: number;
 }
 
 const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -30,14 +36,17 @@ function playlistNameFromFilename(filename: string): string {
 export function parseTakeoutPlaylistCsv(filename: string, content: string): TakeoutPlaylist {
   const lines = content.split(/\r?\n/);
   // A subscriptions export lists channels, not videos — never a playlist.
-  if (lines.some((l) => /channel\s*id/i.test(l))) return { name: playlistNameFromFilename(filename), videoIds: [] };
+  if (lines.some((l) => /channel\s*id/i.test(l))) return { name: playlistNameFromFilename(filename), videos: [] };
 
   let started = false;
+  let timestampColumn = -1;
   const seen = new Set<string>();
-  const videoIds: string[] = [];
+  const videos: TakeoutPlaylistVideo[] = [];
   for (const line of lines) {
-    const first = line.split(",")[0]?.trim() ?? "";
+    const columns = line.split(",");
+    const first = columns[0]?.trim() ?? "";
     if (/video\s*id/i.test(line)) {
+      timestampColumn = columns.findIndex((column) => /(?:playlist\s+video\s+creation\s+)?timestamp/i.test(column));
       started = true; // header row: video rows follow
       continue;
     }
@@ -50,10 +59,11 @@ export function parseTakeoutPlaylistCsv(filename: string, content: string): Take
     if (!started) started = true; // headerless export: first id row starts data
     if (!seen.has(first)) {
       seen.add(first);
-      videoIds.push(first);
+      const rawTimestamp = timestampColumn >= 0 ? columns[timestampColumn]?.trim() : "";
+      videos.push({ videoId: first, addedAt: rawTimestamp ? toSqliteUtc(rawTimestamp) : null, position: videos.length });
     }
   }
-  return { name: playlistNameFromFilename(filename), videoIds };
+  return { name: playlistNameFromFilename(filename), videos };
 }
 
 /** True for entries that look like a per-playlist Takeout CSV (not the index / subscriptions). */
@@ -315,7 +325,7 @@ export function parseTakeoutFiles(files: { name: string; content: string }[]): T
         }
       } else if (kind === "playlist") {
         const playlist = parseTakeoutPlaylistCsv(file.name, file.content);
-        if (playlist.videoIds.length > 0) bundle.playlists.push(playlist);
+        if (playlist.videos.length > 0) bundle.playlists.push(playlist);
       }
     } else if (base.endsWith(".json") || base.endsWith(".html")) {
       if (base.endsWith(".json")) {

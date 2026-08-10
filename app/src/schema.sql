@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS user_playlist_videos (
   playlist_id INTEGER NOT NULL REFERENCES user_playlists(id) ON DELETE CASCADE,
   video_id    TEXT    NOT NULL REFERENCES videos(video_id) ON DELETE CASCADE,
   added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  position    INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (playlist_id, video_id)
 );
 

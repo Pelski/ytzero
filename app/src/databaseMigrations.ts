@@ -67,6 +67,45 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "add-column", table: "user_videos", column: "playback_context_json", definition: "TEXT" },
     ],
   },
+  {
+    version: 4,
+    name: "personal-playlist-position",
+    schemaHashes: {
+      "app/src/schema.sql": "5a747328ebeda58f7cc52ee31c045160ef29f0239d15a1d9de0ebf677399b7e2",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+    },
+    sqlite: [
+      { kind: "add-column", table: "user_playlist_videos", column: "position", definition: "INTEGER NOT NULL DEFAULT 0" },
+      { kind: "sql", statement: `
+        WITH ranked AS (
+          SELECT playlist_id, video_id,
+                 ROW_NUMBER() OVER (PARTITION BY playlist_id ORDER BY added_at ASC, video_id ASC) - 1 AS position
+          FROM user_playlist_videos
+        )
+        UPDATE user_playlist_videos
+        SET position = (
+          SELECT ranked.position FROM ranked
+          WHERE ranked.playlist_id = user_playlist_videos.playlist_id
+            AND ranked.video_id = user_playlist_videos.video_id
+        )
+      ` },
+    ],
+    postgres: [
+      { kind: "add-column", table: "user_playlist_videos", column: "position", definition: "INTEGER NOT NULL DEFAULT 0" },
+      { kind: "sql", statement: `
+        WITH ranked AS (
+          SELECT playlist_id, video_id,
+                 ROW_NUMBER() OVER (PARTITION BY playlist_id ORDER BY added_at ASC, video_id ASC) - 1 AS position
+          FROM user_playlist_videos
+        )
+        UPDATE user_playlist_videos AS target
+        SET position = ranked.position
+        FROM ranked
+        WHERE ranked.playlist_id = target.playlist_id
+          AND ranked.video_id = target.video_id
+      ` },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

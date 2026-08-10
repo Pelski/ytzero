@@ -55,8 +55,7 @@ async function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[])
   const findPlaylist = database.prepare("SELECT id FROM user_playlists WHERE user_id = ? AND name = ? COLLATE NOCASE");
   const createPlaylist = database.prepare("INSERT INTO user_playlists (name, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?) RETURNING id");
   const nextOrder = database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM user_playlists WHERE user_id = ?");
-  const addMembership = database.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)");
-
+  const addMembership = database.prepare("INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id, added_at, position) VALUES (?, ?, COALESCE(?, datetime('now')), ?)");
   let playlistsCreated = 0;
   let videosAdded = 0;
   await database.transaction(async () => {
@@ -68,9 +67,10 @@ async function importTakeoutPlaylists(uid: number, playlists: TakeoutPlaylist[])
         row = await createPlaylist.get(pl.name, order, uid, crypto.randomUUID()) as { id: number };
         playlistsCreated++;
       }
-      for (const videoId of pl.videoIds) {
-        await ensureImportedVideo.run(videoId, IMPORTED_CHANNEL_ID, "", `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`);
-        if ((await addMembership.run(row.id, videoId)).changes > 0) videosAdded++;
+      for (const video of pl.videos) {
+        await ensureImportedVideo.run(video.videoId, IMPORTED_CHANNEL_ID, "", `https://i.ytimg.com/vi/${video.videoId}/hqdefault.jpg`);
+        // Existing memberships stay untouched; this is not a reimport/backfill.
+        if ((await addMembership.run(row.id, video.videoId, video.addedAt, video.position)).changes > 0) videosAdded++;
       }
     }
   })();
@@ -160,7 +160,7 @@ api.post("/import/analyze", async (c) => {
   return c.json({
     sessionId,
     channels: bundle.channels,
-    playlists: bundle.playlists.map((p) => ({ name: p.name, videoCount: p.videoIds.length })),
+    playlists: bundle.playlists.map((p) => ({ name: p.name, videoCount: p.videos.length })),
     history: {
       total: bundle.history.length,
       undated,

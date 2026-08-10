@@ -30,9 +30,10 @@ function ruleMatches(rule: UserPlaylistRule, title: string, description: string)
   return haystacks.some((h) => h.toLowerCase().includes(needle));
 }
 
-const insertPlaylistVideo = database.prepare(
-  "INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id) VALUES (?, ?)"
-);
+const insertPlaylistVideo = database.prepare(`
+  INSERT OR IGNORE INTO user_playlist_videos (playlist_id, video_id, position)
+  SELECT ?, ?, COALESCE(MAX(position), -1) + 1 FROM user_playlist_videos WHERE playlist_id = ?
+`);
 
 export async function applyPlaylistRulesToVideo(videoId: string): Promise<number> {
   const video = await database.prepare("SELECT video_id, title, description FROM videos WHERE video_id = ?").get(videoId) as VideoForRules | null;
@@ -41,7 +42,7 @@ export async function applyPlaylistRulesToVideo(videoId: string): Promise<number
   let count = 0;
   for (const rule of rules) {
     if (ruleMatches(rule, video.title, video.description)) {
-      await insertPlaylistVideo.run(rule.playlist_id, video.video_id);
+      await insertPlaylistVideo.run(rule.playlist_id, video.video_id, rule.playlist_id);
       count++;
     }
   }
@@ -59,7 +60,7 @@ export async function applyPlaylistRuleToAllVideos(ruleId: number): Promise<numb
   let count = 0;
   for (const video of videos) {
     if (ruleMatches(rule, video.title, video.description)) {
-      await insertPlaylistVideo.run(rule.playlist_id, video.video_id);
+      await insertPlaylistVideo.run(rule.playlist_id, video.video_id, rule.playlist_id);
       count++;
     }
   }
@@ -72,7 +73,7 @@ export async function applyPlaylistRulesForPlaylist(playlistId: number): Promise
   let count = 0;
   for (const video of videos) {
     if (rules.some((rule) => ruleMatches(rule, video.title, video.description))) {
-      await insertPlaylistVideo.run(playlistId, video.video_id);
+      await insertPlaylistVideo.run(playlistId, video.video_id, playlistId);
       count++;
     }
   }

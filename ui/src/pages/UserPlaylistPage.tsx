@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import "./UserPlaylistPage.css";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Download, Edit3, Save, Trash2, X } from "lucide-react";
 import { api, type UserPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
@@ -10,14 +10,17 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import { Button, EmptyState, IconButton, Input, LocalToast, PageHeader } from "../components/ui";
+import { Button, EmptyState, IconButton, Input, LocalToast, PageHeader, SelectMenu } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
+import { normalizeUserPlaylistSort, type UserPlaylistSort } from "../playlistSort";
 
 export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   const { t, language } = useI18n();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sort = normalizeUserPlaylistSort(searchParams.get("sort"));
   const playlistId = Number(id);
   const [playlist, setPlaylist] = useState<UserPlaylist | null>(null);
   useDocumentTitle(playlist?.name);
@@ -33,7 +36,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
     if (!playlistId) return;
     setLoading(true);
     try {
-      const r = await api.userPlaylist(playlistId);
+      const r = await api.userPlaylist(playlistId, sort);
       setPlaylist(r.playlist);
       setVideos(r.videos);
       setName(r.playlist.name);
@@ -42,7 +45,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
     } catch (error) {
       console.error(error);
     }
-  }, [playlistId]);
+  }, [playlistId, sort]);
 
   useEffect(() => {
     load();
@@ -67,7 +70,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
     if (!videos.some((video) => video.downloads_enabled)) { navigate("/downloads?view=configuration"); return; }
     setDownloadPending(true); setDownloadFeedback("");
     try {
-      const result = await api.downloadUserPlaylist(playlist.id);
+      const result = await api.downloadUserPlaylist(playlist.id, sort);
       setDownloadFeedback(result.queued > 0 ? t("playlistDownloadQueued", { count: result.queued }) : t("playlistDownloadNone"));
       await load();
     } catch { setDownloadFeedback(t("playlistDownloadFailed")); }
@@ -75,13 +78,28 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   };
 
   const canDownloadPlaylist = videos.length > 0 && videos.some((video) => video.downloads_allowed);
+  const sortAction = <SelectMenu
+    floating
+    label={t("playlistSort")}
+    value={sort}
+    onChange={(next: UserPlaylistSort) => setSearchParams({ sort: next }, { replace: true })}
+    options={[
+      { value: "playlist-order", label: t("playlistSortOrder") },
+      { value: "added-newest", label: t("playlistSortAddedNewest") },
+      { value: "added-oldest", label: t("playlistSortAddedOldest") },
+      { value: "newest", label: t("playlistSortNewest") },
+      { value: "oldest", label: t("playlistSortOldest") },
+      { value: "title-asc", label: t("playlistSortTitleAsc") },
+      { value: "title-desc", label: t("playlistSortTitleDesc") },
+    ]}
+  />;
   const downloadAction = !canDownloadPlaylist ? null : videos.some((video) => video.downloads_enabled)
     ? <Popconfirm message={t("playlistDownloadConfirm", { count: videos.length })} onConfirm={downloadAll}><Button disabled={downloadPending} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button></Popconfirm>
     : videos.length > 0 && videos.some((video) => video.downloads_allowed) ? <Button onClick={downloadAll} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button> : null;
 
   if (!playlist && loading) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return null;
-  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "user-playlist", playlistUuid: playlist.portable_uuid };
+  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "user-playlist", playlistUuid: playlist.portable_uuid, sort };
 
   return (
     <>
@@ -96,6 +114,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
             </div>
           </div>
           <div className="playlist-actions">
+            {sortAction}
             {downloadAction}
             {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
             <Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}>
@@ -108,7 +127,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
           icon={<div className="playlist-icon"><PlaylistIcon icon={playlist.icon} /></div>}
           title={playlist.name}
           description={formatVideoCount(playlist.video_count, language)}
-          actions={<>{downloadAction}{downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}<IconButton variant="ghost" label={t("edit")} icon={<Edit3 />} onClick={() => setEditing(true)} /><Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}><Button variant="danger" leadingIcon={<Trash2 />}>{t("deletePlaylist")}</Button></Popconfirm></>}
+          actions={<>{sortAction}{downloadAction}{downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}<IconButton variant="ghost" label={t("edit")} icon={<Edit3 />} onClick={() => setEditing(true)} /><Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}><Button variant="danger" leadingIcon={<Trash2 />}>{t("deletePlaylist")}</Button></Popconfirm></>}
         />
       )}
 

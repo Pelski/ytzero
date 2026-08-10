@@ -10,23 +10,31 @@ describe("parseTakeoutPlaylistCsv", () => {
   test("reads video ids after the header and names the playlist from the file", () => {
     const csv = "Video Id,Playlist Video Creation Timestamp\ndQw4w9WgXcQ,2021-06-01T12:00:00+00:00\naaaaaaaaaaa,2021-06-02T12:00:00+00:00\n";
     const pl = parseTakeoutPlaylistCsv("Takeout/YouTube and YouTube Music/playlists/Favorites-videos.csv", csv);
-    expect(pl).toEqual({ name: "Favorites", videoIds: ["dQw4w9WgXcQ", "aaaaaaaaaaa"] });
+    expect(pl).toEqual({ name: "Favorites", videos: [
+      { videoId: "dQw4w9WgXcQ", addedAt: "2021-06-01 12:00:00", position: 0 },
+      { videoId: "aaaaaaaaaaa", addedAt: "2021-06-02 12:00:00", position: 1 },
+    ] });
   });
 
   test("handles headerless exports and de-dupes", () => {
     const pl = parseTakeoutPlaylistCsv("Watch later.csv", "dQw4w9WgXcQ\ndQw4w9WgXcQ\nbbbbbbbbbbb\n");
     expect(pl.name).toBe("Watch later");
-    expect(pl.videoIds).toEqual(["dQw4w9WgXcQ", "bbbbbbbbbbb"]);
+    expect(pl.videos).toEqual([
+      { videoId: "dQw4w9WgXcQ", addedAt: null, position: 0 },
+      { videoId: "bbbbbbbbbbb", addedAt: null, position: 1 },
+    ]);
   });
 
   test("skips metadata rows and blank lines", () => {
     const csv = "Playlist Name,My Mix\nPlaylist Description,\n\nVideo Id,Timestamp\nccccccccccc,2020-01-01\n";
-    expect(parseTakeoutPlaylistCsv("x.csv", csv).videoIds).toEqual(["ccccccccccc"]);
+    expect(parseTakeoutPlaylistCsv("x.csv", csv).videos).toEqual([
+      { videoId: "ccccccccccc", addedAt: "2020-01-01 00:00:00", position: 0 },
+    ]);
   });
 
   test("returns no videos for a subscriptions export", () => {
     const csv = "Channel Id,Channel Url,Channel Title\nUC1234567890123456789012,https://...,Some Channel\n";
-    expect(parseTakeoutPlaylistCsv("subscriptions.csv", csv).videoIds).toEqual([]);
+    expect(parseTakeoutPlaylistCsv("subscriptions.csv", csv).videos).toEqual([]);
   });
 });
 
@@ -155,7 +163,9 @@ describe("classifyCsv + parseTakeoutFiles", () => {
       { name: "historia/historia.html", content: html },
     ]);
     expect(bundle.channels).toEqual([{ channelId: "UCuAXFkgsw1L7xaCfnd5JJOw", title: "Rick Astley" }]);
-    expect(bundle.playlists).toEqual([{ name: "Ulubione", videoIds: ["dQw4w9WgXcQ"] }]);
+    expect(bundle.playlists).toEqual([{ name: "Ulubione", videos: [
+      { videoId: "dQw4w9WgXcQ", addedAt: "2021-06-01 00:00:00", position: 0 },
+    ] }]);
     expect(bundle.history).toHaveLength(1);
   });
 });

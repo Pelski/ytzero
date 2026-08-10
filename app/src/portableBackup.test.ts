@@ -250,6 +250,9 @@ describe("portable backup classification and restore", () => {
     const ruleUuid = crypto.randomUUID();
     db.prepare(`INSERT INTO download_rules(portable_uuid,user_id,name,source_mode,channel_ids_json,include_keywords_json,exclude_keywords_json,backfill_mode)
       VALUES(?, 1, 'Portable downloads', 'selected', '["UCportable"]', '["episode"]', '["trailer"]', 'all')`).run(ruleUuid);
+    const playlistUuid = crypto.randomUUID();
+    const playlist = db.prepare("INSERT INTO user_playlists(name,user_id,portable_uuid) VALUES('Portable playlist',1,?) RETURNING id").get(playlistUuid) as { id: number };
+    db.prepare("INSERT INTO user_playlist_videos(playlist_id,video_id,added_at,position) VALUES(?,'portable001','2024-02-03 04:05:06',7)").run(playlist.id);
     const socialPostId = "64f616b4-fda8-4f31-a9da-5646bbf2a311";
     const socialCommentId = "15142485-66a7-4700-871f-173fd9be74d0";
     db.prepare("INSERT INTO social_posts(id,author_user_id,video_id,body) VALUES(?,1,'portable001','Sprawdź @Default')").run(socialPostId);
@@ -282,6 +285,7 @@ describe("portable backup classification and restore", () => {
     setSetting("profile_admin_only_areas", "[]");
     setSetting("timezone", "UTC");
     db.prepare("DELETE FROM download_rules WHERE portable_uuid=?").run(ruleUuid);
+    db.prepare("DELETE FROM user_playlists WHERE portable_uuid=?").run(playlistUuid);
     db.prepare("DELETE FROM social_posts WHERE id=?").run(socialPostId);
     db.prepare("DELETE FROM social_recent_emojis WHERE user_id=1").run();
     db.prepare("DELETE FROM plugin_state WHERE plugin_id='social' AND user_id=1 AND key='emoji_skin_tone'").run();
@@ -323,6 +327,9 @@ describe("portable backup classification and restore", () => {
     expect(getSetting("timezone")).toBe("Europe/London");
     expect(db.prepare("SELECT name, include_keywords_json, exclude_keywords_json FROM download_rules WHERE portable_uuid=?").get(ruleUuid)).toEqual({ name: "Portable downloads", include_keywords_json: '["episode"]', exclude_keywords_json: '["trailer"]' });
     expect((db.prepare("SELECT COUNT(*) AS n FROM download_rules WHERE portable_uuid=?").get(ruleUuid) as { n: number }).n).toBe(1);
+    expect(db.prepare(`SELECT upv.added_at,upv.position FROM user_playlist_videos upv
+      JOIN user_playlists up ON up.id=upv.playlist_id WHERE up.portable_uuid=? AND upv.video_id='portable001'`).get(playlistUuid))
+      .toEqual({ added_at: "2024-02-03 04:05:06", position: 7 });
     expect(db.prepare("SELECT body,video_id FROM social_posts WHERE id=?").get(socialPostId)).toEqual({ body: "Sprawdź @Default", video_id: "portable001" });
     expect((db.prepare("SELECT COUNT(*) AS n FROM social_comments WHERE id=?").get(socialCommentId) as { n: number }).n).toBe(1);
     expect((db.prepare("SELECT COUNT(*) AS n FROM social_reactions WHERE post_id=?").get(socialPostId) as { n: number }).n).toBe(2);

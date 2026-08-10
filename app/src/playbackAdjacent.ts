@@ -6,6 +6,7 @@ import type { PlaybackContext, WatchlistSort } from "./playbackContext";
 import { sortFetchedPlaylistVideos } from "./playlistVideoOrder";
 import { recommendationQueueVideoIds } from "./plugins";
 import { fetchPlaylistVideos } from "./youtube";
+import { sortUserPlaylistRows, type UserPlaylistSortable } from "./userPlaylistSort";
 
 export type PlaybackDirection = "oldest" | "newest";
 
@@ -81,7 +82,11 @@ async function orderedVideoIds(userId: number, context: Exclude<PlaybackContext,
     return (await database.prepare("SELECT v.video_id FROM videos v JOIN user_videos uv ON uv.video_id=v.video_id AND uv.user_id=? WHERE uv.status='archived' ORDER BY COALESCE(v.published_at,v.created_at) DESC,v.video_id DESC").all(userId) as { video_id: string }[]).map((row) => row.video_id);
   }
   if (context.kind === "user-playlist") {
-    return (await database.prepare(`SELECT upv.video_id FROM user_playlist_videos upv JOIN user_playlists up ON up.id=upv.playlist_id WHERE up.user_id=? AND up.portable_uuid=? ORDER BY upv.added_at DESC,upv.video_id DESC`).all(userId, context.playlistUuid) as { video_id: string }[]).map((row) => row.video_id);
+    const rows = await database.prepare(`SELECT upv.video_id,upv.added_at,upv.position,v.title,v.published_at
+      FROM user_playlist_videos upv JOIN user_playlists up ON up.id=upv.playlist_id JOIN videos v ON v.video_id=upv.video_id
+      WHERE up.user_id=? AND up.portable_uuid=? ORDER BY upv.position ASC,upv.video_id ASC`)
+      .all(userId, context.playlistUuid) as Array<{ video_id: string } & UserPlaylistSortable>;
+    return sortUserPlaylistRows(rows, context.sort).map((row) => row.video_id);
   }
   if (context.kind === "channel-playlist") {
     return (await sortFetchedPlaylistVideos(await fetchPlaylistVideos(context.playlistId), context.sort)).map((video) => video.videoId);
