@@ -20,7 +20,7 @@
   width: 100%;
 }
 
-.video-card-hover-preview iframe[src*="ytzero_preview=1"] { pointer-events: auto; }
+.video-card-hover-preview__youtube iframe { pointer-events: auto; }
 
 .video-card-hover-preview video { object-fit: cover; }
 

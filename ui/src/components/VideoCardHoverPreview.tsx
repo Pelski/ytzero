@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, type CSSProperties, type SyntheticEvent } 
 import { Volume2, VolumeX } from "lucide-react";
 import { api } from "../api";
 import { enforceLocalPlayerVolume } from "../localPlayerVolume";
+import { loadYouTubeApi } from "../pages/watchRuntime";
 import { IconButton, Slider } from "./ui";
 import "./VideoCardHoverPreview.css";
 
-export function youtubeCardPreviewPlayerVars(videoId: string, startSeconds: number) {
+export function youtubeCardPreviewPlayerVars(videoId: string, startSeconds: number, origin: string) {
   return {
     autoplay: 1,
     cc_load_policy: 0,
@@ -16,19 +17,13 @@ export function youtubeCardPreviewPlayerVars(videoId: string, startSeconds: numb
     loop: 1,
     modestbranding: 1,
     mute: 1,
+    origin,
     playlist: videoId,
     playsinline: 1,
     rel: 0,
     start: Math.max(0, Math.floor(startSeconds)),
     ytzero_preview: 1,
   };
-}
-
-export function youtubeCardPreviewUrl(videoId: string, startSeconds: number): string {
-  const params = new URLSearchParams(Object.fromEntries(
-    Object.entries(youtubeCardPreviewPlayerVars(videoId, startSeconds)).map(([key, value]) => [key, String(value)]),
-  ));
-  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?${params}`;
 }
 
 export function VideoCardHoverPreview({
@@ -59,6 +54,55 @@ export function VideoCardHoverPreview({
   const [position, setPosition] = useState(startSeconds);
   const [ready, setReady] = useState(false);
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const youtubeWrapRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (downloaded) return;
+    const wrap = youtubeWrapRef.current;
+    if (!wrap) return;
+
+    let destroyed = false;
+    let player: any = null;
+    const inner = document.createElement("div");
+    wrap.appendChild(inner);
+
+    void loadYouTubeApi().then(() => {
+      if (destroyed) return;
+      const target = window as typeof window & { YT?: { Player?: new (element: HTMLElement, options: Record<string, unknown>) => any } };
+      if (!target.YT?.Player) {
+        onUnavailable();
+        return;
+      }
+      player = new target.YT.Player(inner, {
+        host: "https://www.youtube-nocookie.com",
+        videoId,
+        width: "100%",
+        height: "100%",
+        playerVars: youtubeCardPreviewPlayerVars(videoId, startSeconds, window.location.origin),
+        events: {
+          onReady: (event: any) => {
+            if (destroyed) return;
+            try {
+              event.target?.mute?.();
+              event.target?.playVideo?.();
+            } catch {}
+            setReady(true);
+          },
+          onError: () => {
+            if (!destroyed) onUnavailable();
+          },
+        },
+      });
+    }).catch(() => {
+      if (!destroyed) onUnavailable();
+    });
+
+    return () => {
+      destroyed = true;
+      try { player?.destroy?.(); } catch {}
+      while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
+    };
+  }, [downloaded, onUnavailable, startSeconds, videoId]);
 
   useEffect(() => {
     const video = localVideoRef.current;
@@ -113,13 +157,7 @@ export function VideoCardHoverPreview({
         if (startSeconds > 0 && startSeconds < event.currentTarget.duration - 1) event.currentTarget.currentTime = startSeconds;
         void event.currentTarget.play().catch(onUnavailable);
       }}
-    /> : <iframe
-      allow="autoplay; encrypted-media"
-      src={youtubeCardPreviewUrl(videoId, startSeconds)}
-      tabIndex={-1}
-      title={videoId}
-      onLoad={() => setReady(true)}
-    />}
+    /> : <span ref={youtubeWrapRef} className="video-card-hover-preview__youtube" />}
     {downloaded && <span className="video-card-hover-preview__controls" onClick={preventCardAction} onPointerDown={(event) => event.stopPropagation()} onPointerMove={(event) => event.stopPropagation()}>
       <span className="video-card-hover-preview__progress-track" style={{ "--preview-progress": `${Math.min(100, position / duration * 100)}%` } as CSSProperties}>
         <Slider className="video-card-hover-preview__progress" aria-label={progressLabel} min={0} max={duration} step={0.1} value={Math.min(position, duration)} onChange={seek} />
