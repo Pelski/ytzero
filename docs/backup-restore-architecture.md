@@ -200,6 +200,15 @@ below.
   keep actions visible over the thumbnail, show them in an always-visible bar
   below the thumbnail, require the overflow button, delay hover activation by
   three seconds, or leave actions to the video page.
+  The versioned video-card action-button configuration is also portable
+  per-profile presentation configuration. It stores only the ordered set of
+  bounded action identifiers and their visibility; it contains no video or
+  playlist identifiers. This shape is part of `profile.settings` schema v3;
+  older backups remain valid, with the current value retained on merge or the
+  application default used after a replace restore when the key is absent.
+  Watch-later scheduling is always visible and fixed in first position. Restore
+  and remove cannot be hidden but may be reordered; playlist and local-download
+  actions are hidden by default.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The

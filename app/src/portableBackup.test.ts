@@ -20,7 +20,8 @@ process.env.AVATAR_DIR = avatarDir;
 const backup = await import("./portableBackup");
 const permissions = await import("./profilePermissions");
 const plugins = await import("./plugins");
-const { db, setSetting, setUserSetting, getSetting, getUserSetting } = await import("./db");
+const videoCardActions = await import("./videoCardActions");
+const { db, setSetting, setUserSetting, getSetting, getUserSetting, SETTING_DEFAULTS } = await import("./db");
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -234,6 +235,8 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "enhance_frame_fps", "60");
     setUserSetting(1, "feed_sort", "arrival");
     setUserSetting(1, "video_card_actions", "delay");
+    const cardActionButtons = '{"version":1,"actions":[{"id":"playlist","hidden":false},{"id":"schedule","hidden":true},{"id":"download","hidden":false},{"id":"archive","hidden":false},{"id":"watched","hidden":false},{"id":"restore","hidden":false},{"id":"remove","hidden":false}]}';
+    setUserSetting(1, "video_card_action_buttons", cardActionButtons);
     setUserSetting(1, "dearrow_titles_enabled", "1");
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
@@ -265,6 +268,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "enhance_frame_fps", "24");
     setUserSetting(1, "feed_sort", "published");
     setUserSetting(1, "video_card_actions", "hover");
+    setUserSetting(1, "video_card_action_buttons", SETTING_DEFAULTS.video_card_action_buttons);
     setUserSetting(1, "dearrow_titles_enabled", "0");
     setUserSetting(1, "dearrow_thumbnails_enabled", "0");
     setUserSetting(1, "child_watching_monitor_enabled", "1");
@@ -294,6 +298,7 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "enhance_frame_fps")).toBe("60");
     expect(getUserSetting(1, "feed_sort")).toBe("arrival");
     expect(getUserSetting(1, "video_card_actions")).toBe("delay");
+    expect(getUserSetting(1, "video_card_action_buttons")).toBe(videoCardActions.normalizeVideoCardActionConfig(cardActionButtons));
     expect(getUserSetting(1, "dearrow_titles_enabled")).toBe("1");
     expect(getUserSetting(1, "dearrow_thumbnails_enabled")).toBe("1");
     expect(getUserSetting(1, "child_watching_monitor_enabled")).toBe("0");

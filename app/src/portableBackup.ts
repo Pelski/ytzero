@@ -16,7 +16,7 @@ import { listDownloadRules } from "./downloadRules";
 import { normalizeSocialReaction } from "./social";
 import { optimizeProfileAvatar, optimizedProfileAvatarToken, removeStoredProfileAvatar } from "./profileAvatars";
 import { DOWNLOAD_INSTANCE_BACKUP_SCHEMA_VERSION, DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, exportDownloadInstanceSettings, exportDownloadPreferences, restoreDownloadInstanceSettings, restoreDownloadPreferences } from "./downloadBackup";
-import { normalizeVideoCardActionMode } from "./videoCardActions";
+import { normalizeVideoCardActionConfig, normalizeVideoCardActionMode } from "./videoCardActions";
 import { exportPlaybackContext, restorePlaybackContext } from "./playbackContextBackup";
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -25,8 +25,7 @@ const SESSION_DIR = process.env.RESTORE_SESSION_DIR ?? resolve(import.meta.dir, 
 const AVATAR_DIR = process.env.AVATAR_DIR ?? resolve(import.meta.dir, "../../data/avatars");
 const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
 mkdirSync(SESSION_DIR, { recursive: true });
-export type BackupScope = "instance" | "profile";
-export type BackupSensitivity = "normal" | "personal" | "secret";
+export type BackupScope = "instance" | "profile"; export type BackupSensitivity = "normal" | "personal" | "secret";
 export interface BackupSectionDefinition {
   id: string;
   schemaVersion: number;
@@ -45,7 +44,7 @@ export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "instance.channels", schemaVersion: 4, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
   { id: "profiles.index", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "profiles", path: () => "profiles/index.json" },
   { id: "profile.avatar", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "profiles", optional: true, path: (uuid = "") => `assets/avatars/${uuid}` },
-  { id: "profile.settings", schemaVersion: 2, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
+  { id: "profile.settings", schemaVersion: 3, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
   { id: "profile.downloads", schemaVersion: DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "configuration", path: profilePath("downloads.json") },
   { id: "profile.subscriptions", schemaVersion: 2, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("subscriptions.jsonl") },
   { id: "profile.followed-playlists", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("followed-playlists.jsonl") },
@@ -77,6 +76,7 @@ function portableGlobalSettingValue(key: string, value: unknown): string {
 }
 function portableUserSettingValue(key: string, value: unknown): string {
   if (key === "video_card_actions") return normalizeVideoCardActionMode(value);
+  if (key === "video_card_action_buttons") return normalizeVideoCardActionConfig(value);
   if (key === "show_shorts") return value === "1" || value === "selected" ? value : "0";
   return String(value);
 }

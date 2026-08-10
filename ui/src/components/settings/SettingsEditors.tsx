@@ -1,15 +1,19 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronUp, Eye, EyeOff, Filter, GripVertical, ListMusic, LoaderCircle, Pencil, Plus, Trash2, Tv, X, Zap } from "lucide-react";
-import { api, type Channel, type FilterRule, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule } from "../../api";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
+import { Archive, ArrowDownToLine, BookmarkPlus, Check, ChevronDown, ChevronUp, Clock, Eye, EyeOff, Filter, GripHorizontal, GripVertical, ListMusic, LoaderCircle, Lock, Pencil, Plus, Trash2, Tv, Undo2, X, Zap } from "lucide-react";
+import { api, type Channel, type FilterRule, type Profile, type Rule, type Tag, type UserPlaylist, type UserPlaylistRule, type Video } from "../../api";
 import { emit } from "../../events";
-import { formatVideoCount, useI18n } from "../../i18n";
+import { formatVideoCount, useI18n, type I18nKey } from "../../i18n";
 import { NAV_ITEMS, normalizeNav, type NavConfigEntry } from "../../nav";
+import { LOCKED_VIDEO_CARD_ACTION_IDS, type VideoCardActionConfig, type VideoCardActionId } from "../../videoCardActionConfig";
+import type { VideoCardActionsMode } from "../../videoCardActions";
 import ChannelSearchPicker from "../ChannelSearchPicker";
 import { PlaylistIconPicker } from "../PlaylistIcon";
 import Popconfirm from "../Popconfirm";
 import TagChip from "../TagChip";
 import TagPickerMenu from "../TagPickerMenu";
 import Tooltip from "../Tooltip";
+import VideoCard from "../VideoCard";
 import { Badge, Button, Checkbox, Chip, ColorPicker, Divider, Field, IconButton, Inline, Input, Popover, SectionHeader, SelectMenu, SettingsSection, Switch, Text } from "../ui";
 import "./SettingsEditors.css";
 
@@ -475,6 +479,190 @@ export function SidebarNavEditor({ value, onChange, excludedKeys = new Set<strin
       })}
     </div>
   );
+}
+
+const VIDEO_CARD_ACTION_ITEMS: Record<VideoCardActionId, { labelKey: I18nKey; icon: typeof Clock }> = {
+  schedule: { labelKey: "watchLater", icon: Clock },
+  playlist: { labelKey: "addToPlaylist", icon: BookmarkPlus },
+  download: { labelKey: "downloadLocally", icon: ArrowDownToLine },
+  archive: { labelKey: "reject", icon: Archive },
+  watched: { labelKey: "markWatched", icon: Eye },
+  restore: { labelKey: "restore", icon: Undo2 },
+  remove: { labelKey: "remove", icon: Trash2 },
+};
+
+const VIDEO_CARD_PREVIEW: Video = {
+  video_id: "settings-preview", channel_id: "settings-preview", title: "YT Zero — Video preview", description: "", thumbnail: "",
+  published_at: "2026-08-10T12:00:00Z", found_at: "2026-08-10 12:00:00", published_at_approximate: 0,
+  members_only: 0, is_private: 0, live_status: "none", status: "inbox", bucket: null, show_from: null, is_short: 0,
+  views: null, likes: null, duration: "12:34", watch_position: null, watch_duration: null, in_history: 0,
+  liked: 0, watched: 0, channel_title: "YT Zero", channel_thumbnail: null, channel_subscriber_count: null,
+  downloads_enabled: true, downloads_allowed: true, tags: [],
+};
+
+export function VideoCardActionEditor({ value, mode, onChange }: { value: VideoCardActionConfig; mode: VideoCardActionsMode; onChange: (next: VideoCardActionConfig) => void }) {
+  const { t } = useI18n();
+  const [showContextualActions, setShowContextualActions] = useState(true);
+  const [dragId, setDragId] = useState<VideoCardActionId | null>(null);
+  const [pointerDrag, setPointerDrag] = useState<{ id: VideoCardActionId; source: "preview" | "tray"; x: number; y: number; startX: number; startY: number; offsetX: number; offsetY: number; width: number; height: number; moved: boolean } | null>(null);
+  const pointerDragRef = useRef(pointerDrag);
+  const suppressClickRef = useRef(false);
+  const laneRef = useRef<HTMLDivElement>(null);
+  const trayRef = useRef<HTMLDivElement>(null);
+  const previewItemRefs = useRef(new Map<VideoCardActionId, HTMLButtonElement>());
+  const trayItemRefs = useRef(new Map<VideoCardActionId, HTMLButtonElement>());
+  const previewItemLefts = useRef(new Map<VideoCardActionId, number>());
+  const trayItemTops = useRef(new Map<VideoCardActionId, number>());
+  const previewItemAnimations = useRef(new Map<VideoCardActionId, Animation>());
+  const trayItemAnimations = useRef(new Map<VideoCardActionId, Animation>());
+  const visibleActions = value.actions.filter((action) => !action.hidden);
+  const hiddenActions = value.actions.filter((action) => action.hidden);
+  const previewConfig = showContextualActions ? value : { ...value, actions: value.actions.map((action) => action.id === "restore" || action.id === "remove" ? { ...action, hidden: true } : action) };
+
+  useLayoutEffect(() => {
+    previewItemRefs.current.forEach((element, id) => {
+      const previous = previewItemLefts.current.get(id);
+      const left = element.offsetLeft;
+      previewItemLefts.current.set(id, left);
+      if (previous === undefined || id === dragId || previous === left) return;
+      previewItemAnimations.current.get(id)?.cancel();
+      previewItemAnimations.current.set(id, element.animate([{ transform: `translateX(${previous - left}px)` }, { transform: "translateX(0)" }], { duration: 150, easing: "cubic-bezier(.2, 0, 0, 1)" }));
+    });
+    trayItemRefs.current.forEach((element, id) => {
+      const previous = trayItemTops.current.get(id);
+      const top = element.offsetTop;
+      trayItemTops.current.set(id, top);
+      if (previous === undefined || id === dragId || previous === top) return;
+      trayItemAnimations.current.get(id)?.cancel();
+      trayItemAnimations.current.set(id, element.animate([{ transform: `translateY(${previous - top}px)` }, { transform: "translateY(0)" }], { duration: 150, easing: "cubic-bezier(.2, 0, 0, 1)" }));
+    });
+  });
+
+  const placeVisible = (id: VideoCardActionId, index: number) => {
+    if (id === "schedule") return;
+    const dragged = value.actions.find((action) => action.id === id);
+    if (!dragged) return;
+    const visible = visibleActions.filter((action) => action.id !== id);
+    visible.splice(Math.min(Math.max(1, index), visible.length), 0, { ...dragged, hidden: false });
+    const actions = [...visible, ...hiddenActions.filter((action) => action.id !== id)];
+    if (actions.some((action, actionIndex) => action.id !== value.actions[actionIndex]?.id || action.hidden !== value.actions[actionIndex]?.hidden)) onChange({ version: 1, actions });
+  };
+
+  const hide = (id: VideoCardActionId) => {
+    if (LOCKED_VIDEO_CARD_ACTION_IDS.has(id)) { setDragId(null); return; }
+    const action = value.actions.find((entry) => entry.id === id);
+    if (action) onChange({ version: 1, actions: [...value.actions.filter((entry) => entry.id !== id), { ...action, hidden: true }] });
+    setDragId(null);
+  };
+
+  const placeInTray = (id: VideoCardActionId, index: number) => {
+    const action = value.actions.find((entry) => entry.id === id);
+    if (!action || id === "schedule") return;
+    const trayActions = value.actions.filter((entry) => entry.id !== "schedule" && entry.id !== id);
+    trayActions.splice(Math.min(Math.max(0, index), trayActions.length), 0, action);
+    const actions = [value.actions.find((entry) => entry.id === "schedule")!, ...trayActions];
+    if (actions.some((entry, actionIndex) => entry.id !== value.actions[actionIndex]?.id)) onChange({ version: 1, actions });
+  };
+
+  const setActiveDrag = (next: typeof pointerDrag) => { pointerDragRef.current = next; setPointerDrag(next); };
+  const beginPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>, id: VideoCardActionId, source: "preview" | "tray") => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragId(id);
+    setActiveDrag({ id, source, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, offsetX: event.clientX - rect.left, offsetY: event.clientY - rect.top, width: rect.width, height: rect.height, moved: false });
+  };
+  const movePointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const current = pointerDragRef.current;
+    if (!current) return;
+    const moved = current.moved || Math.hypot(event.clientX - current.startX, event.clientY - current.startY) > 4;
+    setActiveDrag({ ...current, x: event.clientX, y: event.clientY, moved });
+    if (!moved) return;
+    const lane = laneRef.current?.getBoundingClientRect();
+    if (lane && event.clientX >= lane.left - 12 && event.clientX <= lane.right + 12 && event.clientY >= lane.top - 16 && event.clientY <= lane.bottom + 16) {
+      const candidates = visibleActions.filter((action) => action.id !== current.id && action.id !== "schedule");
+      const target = candidates.findIndex((action) => event.clientX < (previewItemRefs.current.get(action.id)?.getBoundingClientRect().left ?? Infinity) + (previewItemRefs.current.get(action.id)?.offsetWidth ?? 0) / 2);
+      placeVisible(current.id, target < 0 ? candidates.length + 1 : target + 1);
+      return;
+    }
+    const tray = trayRef.current?.getBoundingClientRect();
+    if (current.source !== "tray" || !tray || event.clientX < tray.left || event.clientX > tray.right || event.clientY < tray.top || event.clientY > tray.bottom) return;
+    const candidates = value.actions.filter((action) => action.id !== "schedule" && action.id !== current.id);
+    const target = candidates.findIndex((action) => event.clientY < (trayItemRefs.current.get(action.id)?.getBoundingClientRect().top ?? Infinity) + (trayItemRefs.current.get(action.id)?.offsetHeight ?? 0) / 2);
+    placeInTray(current.id, target < 0 ? candidates.length : target);
+  };
+  const endPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const current = pointerDragRef.current;
+    if (!current) return;
+    const tray = trayRef.current?.getBoundingClientRect();
+    if (current.source === "preview" && current.moved && tray && event.clientX >= tray.left && event.clientX <= tray.right && event.clientY >= tray.top && event.clientY <= tray.bottom) hide(current.id);
+    suppressClickRef.current = current.moved;
+    setDragId(null);
+    setActiveDrag(null);
+  };
+  const consumeDragClick = () => { if (!suppressClickRef.current) return false; suppressClickRef.current = false; return true; };
+
+  const renderPreviewAction = (id: Exclude<VideoCardActionId, "schedule">) => {
+    const item = VIDEO_CARD_ACTION_ITEMS[id];
+    const ItemIcon = item.icon;
+    return <button
+      type="button"
+      key={id}
+      className={`action-btn video-card-action-preview__button${dragId === id && pointerDrag?.source === "preview" ? " is-source" : ""}`}
+      title={LOCKED_VIDEO_CARD_ACTION_IDS.has(id) ? t(item.labelKey) : `${t(item.labelKey)} — ${t("hideItem")}`}
+      ref={(element) => { if (element) previewItemRefs.current.set(id, element); else previewItemRefs.current.delete(id); }}
+      onPointerDown={(event) => beginPointerDrag(event, id, "preview")}
+      onPointerMove={movePointerDrag}
+      onPointerUp={endPointerDrag}
+      onPointerCancel={endPointerDrag}
+      onClick={() => { if (!consumeDragClick() && !LOCKED_VIDEO_CARD_ACTION_IDS.has(id)) hide(id); }}
+    ><ItemIcon /></button>;
+  };
+
+  return <div className={`video-card-action-editor${dragId ? " is-dragging" : ""}`}>
+    <Switch
+      className="video-card-action-preview-toggle"
+      checked={showContextualActions}
+      onCheckedChange={setShowContextualActions}
+      label={t("contextActionsPreview")}
+    />
+    <div ref={laneRef} className="video-card-action-preview-shell" aria-label={t("videoCardActionsLabel")}>
+      <VideoCard
+        video={VIDEO_CARD_PREVIEW}
+        onPlay={() => {}}
+        onChanged={() => {}}
+        readOnly
+        processing={false}
+        actionPreview={{ config: previewConfig, mode, renderAction: renderPreviewAction }}
+      />
+    </div>
+
+    <div ref={trayRef} className={`video-card-action-tray${dragId ? " is-active" : ""}`}>
+      <div className="video-card-action-tray__title">{t("videoCardActionsLabel")}</div>
+      <div className="video-card-action-tray__items">
+        {value.actions.filter((action) => action.id !== "schedule").map((action) => {
+          const item = VIDEO_CARD_ACTION_ITEMS[action.id];
+          const Icon = item.icon;
+          return <button
+            type="button"
+            key={action.id}
+            className={`video-card-action-tray__item${action.hidden ? "" : " is-used"}${LOCKED_VIDEO_CARD_ACTION_IDS.has(action.id) ? " is-locked" : ""}${dragId === action.id && pointerDrag?.source === "tray" ? " is-source" : ""}`}
+            title={LOCKED_VIDEO_CARD_ACTION_IDS.has(action.id) ? t(item.labelKey) : `${t(item.labelKey)} — ${action.hidden ? t("showItem") : t("hideItem")}`}
+            ref={(element) => { if (element) trayItemRefs.current.set(action.id, element); else trayItemRefs.current.delete(action.id); }}
+            onPointerDown={(event) => beginPointerDrag(event, action.id, "tray")}
+            onPointerMove={movePointerDrag}
+            onPointerUp={endPointerDrag}
+            onPointerCancel={endPointerDrag}
+            onClick={() => { if (!consumeDragClick() && !LOCKED_VIDEO_CARD_ACTION_IDS.has(action.id)) action.hidden ? placeVisible(action.id, visibleActions.length) : hide(action.id); }}
+          ><span className="video-card-action-tray__grip"><GripHorizontal size={13} /></span><Icon size={16} /><span className="video-card-action-tray__name">{t(item.labelKey)}</span><span className="video-card-action-tray__state">{LOCKED_VIDEO_CARD_ACTION_IDS.has(action.id) ? <Lock size={12} /> : action.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</span></button>;
+        })}
+      </div>
+    </div>
+    {pointerDrag && pointerDrag.moved && createPortal(<div className={`video-card-action-drag-layer is-${pointerDrag.source}`} style={{ height: pointerDrag.height, left: pointerDrag.x - pointerDrag.offsetX, top: pointerDrag.y - pointerDrag.offsetY, width: pointerDrag.width }}>
+      {(() => { const item = VIDEO_CARD_ACTION_ITEMS[pointerDrag.id]; const DragIcon = item.icon; return <>{pointerDrag.source === "tray" && <GripHorizontal size={13} />}<DragIcon size={pointerDrag.source === "preview" ? 14 : 16} />{pointerDrag.source === "tray" && <span>{t(item.labelKey)}</span>}</>; })()}
+    </div>, document.body)}
+  </div>;
 }
 
 // Admin-only: claim every existing channel for one profile (ownership migration

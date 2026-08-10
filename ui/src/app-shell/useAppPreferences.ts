@@ -34,7 +34,8 @@ export function useAppPreferences() {
       emit("video-card-size-applied");
       applyWatchedStyle(parseWatchedStyle(settings.watched_style));
       applyVideoCardActionsMode(settings.video_card_actions);
-
+      document.documentElement.dataset.videoCardActionButtons = settings.video_card_action_buttons;
+      emit("card-actions");
       const rawNavConfig = settings.sidebar_nav;
       const nextNavConfig = parseNavConfig(rawNavConfig);
       if (!rawNavConfig && settings.shorts_tab === "1") {

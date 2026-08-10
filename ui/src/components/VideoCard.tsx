@@ -15,7 +15,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import type { CSSProperties, MouseEvent, PointerEvent } from "react";
+import type { CSSProperties, MouseEvent, PointerEvent, ReactNode } from "react";
 import { memo, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useDrag } from "@use-gesture/react";
@@ -26,9 +26,11 @@ import { img } from "../img";
 import Tooltip from "./Tooltip";
 import { VideoThumbnail, watchProgress } from "./VideoThumbnail";
 import { BUCKET_ICONS, VideoScheduleActions } from "./VideoScheduleActions";
+import { VideoCardPlaylistAction } from "./VideoCardPlaylistAction";
 import { Badge } from "./ui";
 import { useDeArrowBranding } from "../dearrow";
-import { readAppliedVideoCardActionsMode } from "../videoCardActions";
+import { readAppliedVideoCardActionsMode, type VideoCardActionsMode } from "../videoCardActions";
+import { useAppliedVideoCardActionConfig, type VideoCardActionConfig, type VideoCardActionId } from "../videoCardActionConfig";
 import "./VideoGrid.css";
 import "./VideoCard.css";
 import "./VideoCardActionsBar.css";
@@ -113,7 +115,7 @@ function thumbnailColorStyle(videoId: string): CSSProperties {
   } as CSSProperties;
 }
 
-function VideoCard({
+export function VideoCard({
   video,
   onPlay,
   onChanged,
@@ -134,6 +136,7 @@ function VideoCard({
   entering = false,
   showFoundTime = false,
   processing = video.published_at == null || video.published_at === "",
+  actionPreview,
 }: {
   video: Video;
   onPlay: (v: Video) => void;
@@ -162,6 +165,12 @@ function VideoCard({
   showFoundTime?: boolean;
   /** Metadata is still being enriched; blur the thumbnail and show progress. */
   processing?: boolean;
+  /** Settings-only mode: preserve the real card markup while replacing mutations with configurable drag handles. */
+  actionPreview?: {
+    config: VideoCardActionConfig;
+    mode: VideoCardActionsMode;
+    renderAction: (id: Exclude<VideoCardActionId, "schedule">) => ReactNode;
+  };
 }) {
   const deArrowBranding = useDeArrowBranding(video.video_id);
   const [showOriginalBranding, setShowOriginalBranding] = useState(false);
@@ -190,8 +199,10 @@ function VideoCard({
   const blockNextThumbClickRef = useRef(false);
   const blockClickAfterDragRef = useRef(false);
   const appliedActionsMode = readAppliedVideoCardActionsMode();
-  const actionsInBar = appliedActionsMode === "bar_always";
-  const actionsOpen = actionsPinned || actionsHovered || actionProximity > 0.52;
+  const appliedActionConfig = useAppliedVideoCardActionConfig();
+  const actionConfig = actionPreview?.config ?? appliedActionConfig;
+  const actionsInBar = (actionPreview?.mode ?? appliedActionsMode) === "bar_always";
+  const actionsOpen = Boolean(actionPreview) || actionsPinned || actionsHovered || actionProximity > 0.52;
 
   const exitLeft = () => {
     const cardWidth = cardRef.current?.getBoundingClientRect().width ?? SWIPE_MAX_DRAG;
@@ -390,6 +401,7 @@ function VideoCard({
   const videoHref = `/watch/${video.video_id}`;
 
   const playFromLink = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (actionPreview) { e.preventDefault(); return; }
     if (selectable) {
       e.preventDefault();
       e.stopPropagation();
@@ -452,6 +464,59 @@ function VideoCard({
             ? "swipe-reveal--unscheduled"
             : "swipe-reveal--right";
   const watched = isWatched ?? video.watched === 1;
+  const visibleActionIds = actionConfig.actions.filter((action) => !action.hidden).map((action) => action.id);
+  const scheduleIndex = visibleActionIds.indexOf("schedule");
+  const actionsBeforeSchedule = scheduleIndex < 0 ? visibleActionIds : visibleActionIds.slice(0, scheduleIndex);
+  const actionsAfterSchedule = scheduleIndex < 0 ? [] : visibleActionIds.slice(scheduleIndex + 1);
+
+  const renderSecondaryAction = (id: VideoCardActionId): ReactNode => {
+    if (actionPreview && id !== "schedule") return actionPreview.renderAction(id);
+    switch (id) {
+      case "playlist":
+        return <VideoCardPlaylistAction
+          key={id}
+          videoId={video.video_id}
+          onOpenChange={(open) => {
+            setActionsPinned(open);
+            if (open) {
+              lastProximityRef.current = 1;
+              setActionProximity(1);
+            }
+          }}
+        />;
+      case "download":
+        if (video.is_private === 1 || !canDownloadLocally) return null;
+        if (video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading")) {
+          return <button key={id} className="action-btn" aria-label={t("cancelDownload")} onClick={cancelLocalDownload}><X /></button>;
+        }
+        if (!(video.downloads_enabled || video.downloads_allowed) || downloadStatus === "done") return null;
+        return <Tooltip key={id} text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")} portal={actionsInBar}>
+          <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")} onClick={requestLocalDownload}><ArrowDownToLine /></button>
+        </Tooltip>;
+      case "archive":
+        return allowReject && video.status !== "archived" ? <Tooltip key={id} text={t("reject")} portal={actionsInBar}>
+          <button className="action-btn" aria-label={t("reject")} onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}><Archive /></button>
+        </Tooltip> : null;
+      case "watched":
+        return allowMarkWatched && watched ? <Tooltip key={id} text={t("markUnwatched")} portal={actionsInBar}>
+          <button className="action-btn" aria-label={t("markUnwatched")} onClick={(e) => act(e, markUnwatched, "unwatched")}><EyeOff /></button>
+        </Tooltip> : allowMarkWatched && video.status !== "archived" ? <Tooltip key={id} text={t("markWatched")} portal={actionsInBar}>
+          <button className="action-btn" aria-label={t("markWatched")} onClick={(e) => act(e, markWatchedAndArchive, "watched")}><Eye /></button>
+        </Tooltip> : null;
+      case "restore":
+        return showRestore ? <button key={id} className="action-btn" aria-label={t("restore")} onClick={(e) => act(e, () => api.restore(video.video_id), "restored")}><Undo2 /></button> : null;
+      case "remove":
+        if (onRemoveFromPlaylist) return <button key={id} className="action-btn" aria-label={t("removeFromPlaylist")} onClick={(e) => act(e, () => onRemoveFromPlaylist(video.video_id))}><Trash2 /></button>;
+        return onRemoveFromHistory && video.history_id != null ? <button key={id} className="action-btn" aria-label={t("removeFromHistory")} onClick={(e) => act(e, () => onRemoveFromHistory(video.history_id!), "removed")}><Trash2 /></button> : null;
+      default:
+        return null;
+    }
+  };
+
+  const renderSecondaryRow = (ids: VideoCardActionId[], afterSchedule = false) => {
+    const actions = ids.map(renderSecondaryAction).filter((action) => action != null);
+    return actions.length > 0 ? <div className={`thumb-actions-row secondary${afterSchedule ? " secondary--after-schedule" : ""}`}>{actions}</div> : null;
+  };
 
   const contentOpacity = Math.min(1, revealProgress * 2.5);
   const revealGap = swiping ? 10 : 0;
@@ -482,7 +547,7 @@ function VideoCard({
       <div
         ref={cardRef}
         {...bind()}
-        className={`video-card${watched ? " video-card--watched" : ""}${searchResultLayout ? " video-card--search-result" : ""}`}
+        className={`video-card${watched ? " video-card--watched" : ""}${searchResultLayout ? " video-card--search-result" : ""}${actionPreview ? ` video-card-action-preview${actionPreview.mode === "bar_always" ? " is-bar" : ""}` : ""}`}
         style={{
           transform: `translateX(${swipeX}px) ${cardTilt} ${cardFadeScale}`,
           transition: cardTransition,
@@ -595,7 +660,7 @@ function VideoCard({
               />
             </div>
           )}
-          {!selectable && !readOnly && (
+          {!selectable && (!readOnly || actionPreview) && (
           <div className="thumb-actions-zone">
             <button
               type="button"
@@ -612,64 +677,19 @@ function VideoCard({
               onPointerEnter={(e) => { if (e.pointerType === "mouse") setActionsHovered(true); }}
               onPointerLeave={(e) => { if (e.pointerType === "mouse") setActionsHovered(false); }}
             >
-              <VideoScheduleActions
+              {renderSecondaryRow(actionsBeforeSchedule)}
+              {scheduleIndex >= 0 && <VideoScheduleActions
                 video={video}
                 variant={actionsInBar ? "bar" : "overlay"}
-                onToggle={(e, bucket, active) => act(
-                  e,
-                  () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, bucket)),
-                  active ? "unscheduled" : "scheduled",
-                )}
-              />
-              <div className="thumb-actions-row secondary">
-                {video.is_private !== 1 && canDownloadLocally && video.downloads_enabled && (downloadStatus === "queued" || downloadStatus === "downloading") && (
-                  <button className="action-btn" aria-label={t("cancelDownload")} onClick={cancelLocalDownload}>
-                      <X />
-                  </button>
-                )}
-                {video.is_private !== 1 && canDownloadLocally && (video.downloads_enabled || video.downloads_allowed) && downloadStatus !== "done" && downloadStatus !== "queued" && downloadStatus !== "downloading" && (
-                  <Tooltip text={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")} portal={actionsInBar}>
-                    <button className="action-btn" aria-label={video.downloads_enabled ? t("downloadLocally") : t("enableDownloadsFeature")} onClick={requestLocalDownload}>
-                      <ArrowDownToLine />
-                    </button>
-                  </Tooltip>
-                )}
-                {allowReject && video.status !== "archived" && (
-                  <Tooltip text={t("reject")} portal={actionsInBar}>
-                    <button className="action-btn" aria-label={t("reject")} onClick={(e) => act(e, () => api.archiveVideo(video.video_id), "rejected")}>
-                      <Archive />
-                    </button>
-                  </Tooltip>
-                )}
-                {allowMarkWatched && watched ? (
-                  <Tooltip text={t("markUnwatched")} portal={actionsInBar}>
-                    <button className="action-btn" aria-label={t("markUnwatched")} onClick={(e) => act(e, markUnwatched, "unwatched")}>
-                        <EyeOff />
-                    </button>
-                  </Tooltip>
-                ) : allowMarkWatched && video.status !== "archived" ? (
-                  <Tooltip text={t("markWatched")} portal={actionsInBar}>
-                    <button className="action-btn" aria-label={t("markWatched")} onClick={(e) => act(e, markWatchedAndArchive, "watched")}>
-                      <Eye />
-                    </button>
-                  </Tooltip>
-                ) : null}
-                {showRestore && (
-                  <button className="action-btn" aria-label={t("restore")} onClick={(e) => act(e, () => api.restore(video.video_id), "restored")}>
-                      <Undo2 />
-                  </button>
-                )}
-                {onRemoveFromPlaylist && (
-                  <button className="action-btn" aria-label={t("removeFromPlaylist")} onClick={(e) => act(e, () => onRemoveFromPlaylist(video.video_id))}>
-                      <Trash2 />
-                  </button>
-                )}
-                {onRemoveFromHistory && video.history_id != null && (
-                  <button className="action-btn" aria-label={t("removeFromHistory")} onClick={(e) => act(e, () => onRemoveFromHistory(video.history_id!), "removed")}>
-                      <Trash2 />
-                  </button>
-                )}
-              </div>
+                onToggle={actionPreview
+                  ? (event) => { event.preventDefault(); event.stopPropagation(); }
+                  : (e, bucket, active) => act(
+                    e,
+                    () => queueAct(() => active ? api.dequeue(video.video_id) : api.queue(video.video_id, bucket)),
+                    active ? "unscheduled" : "scheduled",
+                  )}
+              />}
+              {renderSecondaryRow(actionsAfterSchedule, true)}
             </div>
           </div>
           )}

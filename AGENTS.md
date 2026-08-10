@@ -23,3 +23,7 @@
 - The primary profile generates or regenerates credentials for one profile at a time. Regeneration invalidates the previous password. Temporary passwords are returned once, stored only as hashes, and must never be added to logs, backups, settings, or later API responses.
 - When per-profile login is active, renaming or creating a profile keeps its login derived from its name. A newly created profile receives one-time temporary credentials in the creation response.
 - An authenticated profile changes only its own password and must provide its current password. Administrative authentication settings must not offer editable per-profile username or password fields.
+
+## Verification commands
+
+- Never run `bun run check:precommit`, `bun run check:validate`, or an equivalent command that executes the entire precommit validation chain. These commands are reserved for the repository owner. Run only the specific tests, typechecks, builds, or validation scripts needed for the current change.

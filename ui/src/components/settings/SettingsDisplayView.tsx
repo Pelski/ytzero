@@ -10,7 +10,7 @@ import { VIDEO_CARD_ACTIONS_MODES, type VideoCardActionsMode } from "../../video
 import { useSettingsPageController } from "../../pages/useSettingsPageController";
 import Popconfirm from "../Popconfirm";
 import { Button, ColorPicker, Divider, Inline, Input, InputGroup, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Text } from "../ui";
-import { SidebarNavEditor } from "./SettingsEditors";
+import { SidebarNavEditor, VideoCardActionEditor } from "./SettingsEditors";
 
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
@@ -42,7 +42,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     changeShortsFeedMode,
     changeMembersOnlyVisibility,
     changeWatchedStyle,
-    changeVideoCardActions, channelPostsTab,
+    changeVideoCardActions, changeVideoCardActionConfig, channelPostsTab,
     deArrowThumbnailsEnabled,
     deArrowTitlesEnabled,
     displaySubTab,
@@ -107,7 +107,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     watchShowComments,
     watchShowRelated,
     watchedStyle,
-    videoCardActions,
+    videoCardActions, videoCardActionConfig,
   } = controller;
 
   return (
@@ -201,20 +201,8 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
             </div>
           </div>
           </SettingsSection>
-
           }
-
           {displaySubTab === "feed" && canManageArea("feed") && <SettingsSection title={t("displayFeed")} className="settings-display-group">
-
-          <SettingRow label={t("videoCardActionsLabel")} description={t("videoCardActionsHint")}>
-            <SelectMenu
-              label={t("videoCardActionsLabel")}
-              value={videoCardActions}
-              options={VIDEO_CARD_ACTIONS_MODES.map((mode) => ({ value: mode.id, label: t(mode.labelKey) }))}
-              onChange={(next: VideoCardActionsMode) => void changeVideoCardActions(next)}
-            />
-          </SettingRow>
-
           <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
           </SettingRow>
@@ -272,8 +260,20 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
 
           </SettingsSection>
           }
-
           {displaySubTab === "playback" && canManageArea("playback") && <SettingsSection title={t("displayPlayback")} className="settings-display-group">
+          <SettingRow label={t("videoCardActionsLabel")} description={t("videoCardActionsHint")}>
+            <SelectMenu
+              label={t("videoCardActionsLabel")}
+              value={videoCardActions}
+              options={VIDEO_CARD_ACTIONS_MODES.map((mode) => ({ value: mode.id, label: t(mode.labelKey) }))}
+              onChange={(next: VideoCardActionsMode) => void changeVideoCardActions(next)}
+            />
+          </SettingRow>
+
+          <SettingRow label={t("videoCardActionsLabel")} align="start" className="video-card-action-setting">
+            <VideoCardActionEditor value={videoCardActionConfig} mode={videoCardActions} onChange={changeVideoCardActionConfig} />
+          </SettingRow>
+
           <SettingRow label={t("watchShowRelated")} description={t("watchShowRelatedHint")}>
             <Switch checked={watchShowRelated} onCheckedChange={() => toggleWatchRelated()} />
           </SettingRow>

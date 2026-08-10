@@ -36,7 +36,7 @@ html[data-video-card-actions="bar_always"] .video-card .thumb-actions-row {
   flex: 0 0 auto;
   padding: 0;
 }
-html[data-video-card-actions="bar_always"] .video-card .thumb-actions-row.secondary { margin-left: auto; }
+html[data-video-card-actions="bar_always"] .video-card .thumb-actions-row.secondary--after-schedule { margin-left: auto; }
 html[data-video-card-actions="bar_always"] .video-card .thumb-actions-row--bar {
   align-items: flex-start;
   display: flex;
