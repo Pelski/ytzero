@@ -44,6 +44,7 @@
 }
 .watch-player-shell {
   position: relative;
+  container-type: inline-size;
   transition: width 0.4s ease;
   width: min(100%, calc(80vh * 16 / 9));
   border-radius: var(--radius);
@@ -64,6 +65,16 @@
     width: 100%;
     max-width: none;
     border-radius: 0;
+  }
+}
+@media (max-width: 900px) {
+  .watch-player {
+    aspect-ratio: auto;
+    height: 56.25cqw;
+    transition: height 0.42s cubic-bezier(.22, 1, .36, 1);
+  }
+  .watch-player--audio {
+    height: max(56.25cqw, min(72svh, 680px));
   }
 }
 .watch-actions .dl-done { color: #7ee08a; }
@@ -103,7 +114,7 @@
   .watch-download-feedback-meta { grid-column: 2; justify-content: space-between; white-space: normal; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .watch-download-feedback-region, .watch-download-feedback { transition: none; }
+  .watch-download-feedback-region, .watch-download-feedback, .watch-player { transition: none; }
   .watch-download-feedback-progress > div { transition: none; }
 }
 

@@ -201,7 +201,6 @@ export default function WatchPage() {
   } = controller;
 
   const { errorText: watchTogetherError, transportLockLabel: watchTogetherTransportLockLabel } = getWatchTogetherLabels(watchTogether, t);
-
   return (
     <div className={`watch-layout${cinemaMode ? " theater" : ""}${watchTogether.room ? " together" : ""}`}>
       <div>
@@ -214,17 +213,17 @@ export default function WatchPage() {
             />
           )}
           <div className="watch-player-shell">
+            <WatchPlayerModeToggle
+              active={audioActive}
+              available={audioModeAvailable}
+              audioLabel={t("playerAudioMode")}
+              videoLabel={t("playerAudioModeExit")}
+              onToggle={(active) => { capturePlaybackPosition(); setAudioMode(active); }}
+            />
             <div
               ref={playerWrapRef}
-              className={`watch-player${usingLocal ? " watch-player--local" : ""}${watchTogetherTransportLocked ? " watch-player--transport-locked" : ""}`}
+              className={`watch-player${audioActive ? " watch-player--audio" : ""}${usingLocal ? " watch-player--local" : ""}${watchTogetherTransportLocked ? " watch-player--transport-locked" : ""}`}
             >
-              <WatchPlayerModeToggle
-                active={audioActive}
-                available={audioModeAvailable}
-                audioLabel={t("playerAudioMode")}
-                videoLabel={t("playerAudioModeExit")}
-                onToggle={(active) => { capturePlaybackPosition(); setAudioMode(active); }}
-              />
               {audioActive && video ? (
                 <AudioModePlayer
                   key={`${video.video_id}-${video.live_status}-audio-${sharedStartSeconds}`}
@@ -505,6 +504,7 @@ export default function WatchPage() {
               <ThumbsUp fill={video.liked === 1 ? "currentColor" : "none"} />
               <span className="btn-label">{t("like")}</span>
             </Button>
+            <WatchPlayerModeToggle placement="actions" active={audioActive} available={audioModeAvailable} audioLabel={t("playerAudioMode")} videoLabel={t("playerAudioModeExit")} onToggle={(active) => { capturePlaybackPosition(); setAudioMode(active); }} />
             <div className="watch-action-group watch-action-group--playback">
             <IconButton
               className="watch-action-desktop watch-action-medium"

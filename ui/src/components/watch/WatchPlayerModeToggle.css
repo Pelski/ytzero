@@ -1,4 +1,4 @@
-.watch-player-mode-toggle.ui-button {
+.watch-player-mode-toggle--overlay.ui-button {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -17,42 +17,49 @@
   transform: translateY(0);
   transition: opacity 0.16s ease, transform 0.16s ease, color 0.16s ease, background 0.16s ease;
 }
-.watch-player-mode-toggle.ui-button:hover,
-.watch-player-mode-toggle.ui-button:focus-visible {
+.watch-player-mode-toggle--overlay.ui-button:hover,
+.watch-player-mode-toggle--overlay.ui-button:focus-visible {
   color: rgba(255, 255, 255, 0.94);
   background: rgba(0, 0, 0, 0.34);
 }
-.watch-player-mode-toggle.ui-button svg {
+.watch-player-mode-toggle--overlay.ui-button svg {
   width: 15px;
   height: 15px;
   transform: translate(-0.5px, -0.5px);
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 @media (hover: hover) and (pointer: fine) {
-  .watch-player-mode-toggle.ui-button {
+  .watch-player-mode-toggle--overlay.ui-button {
     opacity: 0;
     transform: translateY(-4px);
     pointer-events: none;
   }
-  .watch-player:hover > .watch-player-mode-toggle.ui-button,
-  .watch-player-mode-toggle.ui-button:focus-visible {
+  .watch-player-shell:hover > .watch-player-mode-toggle--overlay.ui-button,
+  .watch-player-shell:focus-within > .watch-player-mode-toggle--overlay.ui-button,
+  .watch-player-mode-toggle--overlay.ui-button:focus-visible {
     opacity: 1;
     transform: translateY(0);
     pointer-events: auto;
   }
 }
+.watch-player-mode-toggle--actions.ui-button {
+  display: none;
+  background: transparent;
+}
+.watch-player-mode-toggle--actions.ui-button:hover,
+.watch-player-mode-toggle--actions.ui-button[aria-pressed="true"] {
+  background: transparent;
+  color: var(--text);
+}
 @media (max-width: 640px) {
-  .watch-player-mode-toggle.ui-button {
-    top: 8px;
-    right: max(8px, var(--safe-right));
-    width: 44px;
-    height: 44px;
-    color: rgba(255, 255, 255, 0.78);
-    background: rgba(0, 0, 0, 0.2);
+  .watch-player-mode-toggle--overlay.ui-button { display: none; }
+  .watch-player-mode-toggle--actions.ui-button {
+    display: inline-flex;
+    flex: 0 0 auto;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .watch-player-mode-toggle.ui-button {
+  .watch-player-mode-toggle--overlay.ui-button {
     transform: none;
     transition: opacity 0.16s ease, color 0.16s ease, background 0.16s ease;
   }

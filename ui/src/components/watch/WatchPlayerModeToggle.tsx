@@ -8,20 +8,22 @@ export default function WatchPlayerModeToggle({
   audioLabel,
   videoLabel,
   onToggle,
+  placement = "overlay",
 }: {
   active: boolean;
   available: boolean;
   audioLabel: string;
   videoLabel: string;
   onToggle: (active: boolean) => void;
+  placement?: "actions" | "overlay";
 }) {
   if (!available) return null;
   const label = active ? videoLabel : audioLabel;
   return (
     <IconButton
-      size="sm"
-      variant="secondary"
-      className="watch-player-mode-toggle"
+      size={placement === "actions" ? "md" : "sm"}
+      variant={placement === "actions" ? "default" : "secondary"}
+      className={`watch-player-mode-toggle watch-player-mode-toggle--${placement}`}
       label={label}
       icon={active ? <MonitorPlay /> : <Headphones />}
       onClick={(event) => {

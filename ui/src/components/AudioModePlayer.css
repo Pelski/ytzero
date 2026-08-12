@@ -56,6 +56,8 @@
   align-items: center;
   gap: 10px;
   width: min(520px, 78%);
+  min-width: 0;
+  max-width: 100%;
   max-height: 100%;
 }
 
@@ -125,6 +127,8 @@
   align-items: flex-start;
   gap: 8px;
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 56px;
   box-sizing: border-box;
   padding: 0;
@@ -253,7 +257,10 @@
 
 @media (max-width: 600px) {
   .audio-mode-hero {
-    padding: 12px 14px;
+    padding-top: 12px;
+    padding-right: calc(14px + var(--safe-right));
+    padding-bottom: 12px;
+    padding-left: calc(14px + var(--safe-left));
   }
   .audio-mode-card {
     width: min(100%, 440px);
