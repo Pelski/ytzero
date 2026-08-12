@@ -141,7 +141,7 @@ native systemd service, in its own Proxmox LXC, or on a cloud platform.
 [![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/Pelski/ytzero/tree/main)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Pelski/ytzero)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/yt-zero-1?referralCode=1GJD2M&utm_medium=integration&utm_source=template&utm_campaign=generic)
-[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=docker&image=ghcr.io%2Fpelski%2Fytzero%3Alatest&name=ytzero&service_type=web&instance_type=small&regions=fra&ports=3001%3Bhttp%3B%2F&env%5BPORT%5D=3001)
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=docker&image=ghcr.io%2Fpelski%2Fytzero%3Alatest&name=ytzero&service_type=web&instance_type=small&regions=fra&ports=3001%3Bhttp%3B%2F&env%5BPORT%5D=3001&env%5BYTZERO_AUTH_METHOD%5D=shared&env%5BYTZERO_AUTH_PASSWORD%5D=)
 [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/Pelski/ytzero)
 
 Render provisions a persistent `/data` disk. DigitalOcean provisions PostgreSQL
@@ -151,6 +151,10 @@ file limitation and provisions PostgreSQL. Koyeb requires a volume mounted at
 `/data` to be added manually after the initial deployment.
 See **[Cloud Deployment](https://github.com/Pelski/ytzero/wiki/Cloud-Deployment)**
 before choosing a provider.
+
+One-click deployments force the shared-password login. Set the required
+`YTZERO_AUTH_PASSWORD` secret in the provider's environment-variable form; an
+unset or empty value keeps the deployment locked and emits an error in its logs.
 
 | Method | Best for | How it runs |
 | --- | --- | --- |

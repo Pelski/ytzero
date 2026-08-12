@@ -16,6 +16,12 @@ spec:
         period_seconds: 30
         timeout_seconds: 5
       envs:
+        - key: YTZERO_AUTH_METHOD
+          scope: RUN_TIME
+          value: shared
+        - key: YTZERO_AUTH_PASSWORD
+          scope: RUN_TIME
+          type: SECRET
         - key: DATABASE_URL
           scope: RUN_TIME
           value: ${ytzero-db.DATABASE_URL}

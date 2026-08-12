@@ -46,6 +46,8 @@ picker is read-only until `TZ` is removed and the instance restarted.
 | `YTDLP_AUTO_UPDATE` | _(unset; `1` in Docker)_ | Set to `1` to run `yt-dlp -U` once a day. YouTube regularly stops serving formats to outdated yt-dlp versions, so keeping it current matters. |
 | `APP_URL` | _(derived from request)_ | Public base URL. Used as the OIDC redirect origin and WebAuthn origin when behind a reverse proxy. |
 | `WEBAUTHN_RP_ID` | _(request hostname)_ | Override the WebAuthn Relying Party ID (the registrable domain) when the auto-derived hostname is wrong. |
+| `YTZERO_AUTH_METHOD` | _(unset)_ | Set to `shared` to force shared-password authentication regardless of the saved method. One-click cloud templates set this automatically. |
+| `YTZERO_AUTH_PASSWORD` | _(unset)_ | Shared login password used when `YTZERO_AUTH_METHOD=shared`. It stays environment-owned and is never written to the database, backups, or logs. A missing or empty value leaves forced authentication unconfigured and emits `auth.environment_password_missing`. |
 | `YTZERO_AUTH_DISABLE` | _(unset)_ | Set to `1` to force the **None** auth method regardless of the saved setting. Emergency unlock if an auth method locks you out — see [Authentication](Authentication#recovery-anti-lockout). |
 | `YTZERO_VERSION` | `dev` | Version reported by `/api/health`. Set by the Docker build and by the native installer; there is no reason to set it by hand. |
 | `DATABASE_URL` | _(unset)_ | PostgreSQL connection URL. When unset, YT Zero uses SQLite at `DB_PATH`. Migrate from Dangerous settings before enabling this value. |

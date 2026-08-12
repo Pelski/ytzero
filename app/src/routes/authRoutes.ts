@@ -12,7 +12,6 @@ import {
   deletePasskey,
   destroySession,
   hasPasskeys,
-  hashPassword,
   invalidateOidcConfig,
   listPasskeys,
   oidcAuthUrl,
@@ -24,9 +23,9 @@ import {
   proxyHeaderValue,
   requestOrigin,
   resolveProxyUser,
+  sharedAuth,
   testOidc,
   validateSession,
-  verifyPassword,
 } from "../auth";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
@@ -106,10 +105,10 @@ api.get("/auth/status", async (c) => {
     ...ownerCapabilities,
     oidc_mode: method === "oidc" ? getSetting("auth_oidc_mode") || "mapped" : undefined,
     // per_profile always needs a username; shared only when one was configured.
-    username_field: method === "per_profile" || (method === "shared" && Boolean(getSetting("auth_shared_username"))),
+    username_field: method === "per_profile" || (method === "shared" && Boolean(sharedAuth.username())),
     login: {
       password:
-        method === "shared" ? Boolean(getSetting("auth_shared_password_hash")) : method === "per_profile",
+        method === "shared" ? sharedAuth.passwordConfigured() : method === "per_profile",
       passkey: method === "shared" ? await hasPasskeys(null) : method === "per_profile" ? perProfilePasskeys : false,
       oidc: method === "oidc",
     },
@@ -120,9 +119,9 @@ api.post("/auth/password/login", async (c) => {
   const method = authMethod();
   const { username, password } = await c.req.json().catch(() => ({}));
   if (method === "shared") {
-    const expectedUser = getSetting("auth_shared_username") || "";
+    const expectedUser = sharedAuth.username();
     if (expectedUser && String(username ?? "") !== expectedUser) return c.json({ error: "invalid credentials" }, 401);
-    if (!(await verifyPassword(String(password ?? ""), getSetting("auth_shared_password_hash") || ""))) {
+    if (!(await sharedAuth.verifyPassword(String(password ?? "")))) {
       return c.json({ error: "invalid credentials" }, 401);
     }
     c.header("Set-Cookie", authSessionCookie(await createSession(null, "account")));
@@ -131,7 +130,7 @@ api.post("/auth/password/login", async (c) => {
   }
   if (method === "per_profile") {
     const row = await database.prepare("SELECT * FROM users WHERE username = ? COLLATE NOCASE").get(String(username ?? "")) as UserRow | null;
-    if (!row?.password_hash || !(await verifyPassword(String(password ?? ""), row.password_hash))) {
+    if (!row?.password_hash || !(await sharedAuth.verifyHash(String(password ?? ""), row.password_hash))) {
       return c.json({ error: "invalid credentials" }, 401);
     }
     c.header("Set-Cookie", authSessionCookie(await createSession(row.id, "profile")));
@@ -259,11 +258,11 @@ api.get("/auth/config", async (c) => {
     proxy_match: u.proxy_match ?? "",
   })));
   return c.json({
-    method: getSetting("auth_method") || "none",
+    method: authMethod(),
     hide_other_profiles: getSetting("auth_hide_other_profiles") === "1",
     shared: {
-      username: getSetting("auth_shared_username") || "",
-      password_set: Boolean(getSetting("auth_shared_password_hash")),
+      username: sharedAuth.username(),
+      password_set: sharedAuth.passwordConfigured(),
       passkeys: await listPasskeys(null),
     },
     oidc: {
@@ -299,7 +298,7 @@ api.put("/auth/config", async (c) => {
 
   if (body.shared) {
     if (body.shared.username !== undefined) await setSetting("auth_shared_username", String(body.shared.username));
-    if (body.shared.password) await setSetting("auth_shared_password_hash", await hashPassword(String(body.shared.password)));
+    if (body.shared.password) await setSetting("auth_shared_password_hash", await sharedAuth.hashPassword(String(body.shared.password)));
     else if (body.shared.password === "") await setSetting("auth_shared_password_hash", "");
   }
 
@@ -348,7 +347,7 @@ api.post("/auth/per-profile/credentials/:id", async (c) => {
     return { row, username };
   });
   const password = generateTemporaryPassword();
-  const passwordHash = await hashPassword(password);
+  const passwordHash = await sharedAuth.hashPassword(password);
   await database.transaction(async () => {
     for (const entry of prepared) {
       if (entry.row.id === targetId) await database.prepare("UPDATE users SET username = ?, password_hash = ? WHERE id = ?").run(entry.username, passwordHash, entry.row.id);
@@ -367,10 +366,10 @@ api.put("/auth/profile/password", async (c) => {
   const id = currentUserId(c);
   const row = await database.prepare("SELECT password_hash FROM users WHERE id = ?").get(id) as { password_hash: string | null } | null;
   const { current_password, new_password } = await c.req.json().catch(() => ({}));
-  if (!row?.password_hash || !(await verifyPassword(String(current_password ?? ""), row.password_hash))) return c.json({ error: "current password is incorrect" }, 401);
+  if (!row?.password_hash || !(await sharedAuth.verifyHash(String(current_password ?? ""), row.password_hash))) return c.json({ error: "current password is incorrect" }, 401);
   const next = String(new_password ?? "");
   if (next.length < 8 || next.length > 200) return c.json({ error: "new password must contain 8 to 200 characters" }, 400);
-  await database.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await hashPassword(next), id);
+  await database.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(await sharedAuth.hashPassword(next), id);
   log.info("auth.profile_password_changed", { id });
   return c.json({ ok: true });
 });
@@ -418,11 +417,12 @@ async function validateMapping(method: string): Promise<{ missing: string[]; dup
 // Activate an auth method after validating its prerequisites (anti-lockout).
 api.post("/auth/method", async (c) => {
   if (!isPrimaryUser(c)) return c.json({ error: "primary only" }, 403);
+  if (sharedAuth.environmentControlled()) return c.json({ error: "authentication method is controlled by YTZERO_AUTH_METHOD" }, 409);
   const { method } = await c.req.json().catch(() => ({}));
   const valid = ["none", "shared", "per_profile", "oidc", "proxy_header"];
   if (!valid.includes(method)) return c.json({ error: "invalid method" }, 400);
 
-  if (method === "shared" && !getSetting("auth_shared_password_hash") && !await hasPasskeys(null)) {
+  if (method === "shared" && !sharedAuth.passwordConfigured() && !await hasPasskeys(null)) {
     return c.json({ error: "set a shared password or passkey first" }, 400);
   }
   if (method === "oidc") {
@@ -453,4 +453,3 @@ api.post("/auth/method", async (c) => {
   return c.json({ ok: true });
 });
 }
-

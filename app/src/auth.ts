@@ -23,11 +23,18 @@ import type {
 import * as oidc from "openid-client";
 import { getSetting } from "./db";
 import { database } from "./database";
+import {
+  environmentAuthMethod,
+  environmentAuthPasswordConfigured,
+  verifyEnvironmentAuthPassword,
+} from "./authEnvironment";
 
 export type AuthMethod = "none" | "shared" | "per_profile" | "oidc" | "proxy_header";
 
 export function authMethod(): AuthMethod {
   if (process.env.YTZERO_AUTH_DISABLE === "1") return "none"; // emergency unlock
+  const environmentMethod = environmentAuthMethod();
+  if (environmentMethod) return environmentMethod;
   const m = getSetting("auth_method") ?? "none";
   return (["none", "shared", "per_profile", "oidc", "proxy_header"].includes(m) ? m : "none") as AuthMethod;
 }
@@ -39,6 +46,31 @@ export async function verifyPassword(password: string, hash: string) {
   if (!hash) return false;
   return Bun.password.verify(password, hash);
 }
+
+function sharedAuthUsername(): string {
+  return environmentAuthMethod() ? "" : getSetting("auth_shared_username") || "";
+}
+
+function sharedPasswordConfigured(): boolean {
+  return environmentAuthMethod()
+    ? environmentAuthPasswordConfigured()
+    : Boolean(getSetting("auth_shared_password_hash"));
+}
+
+async function verifySharedPassword(password: string): Promise<boolean> {
+  return environmentAuthMethod()
+    ? verifyEnvironmentAuthPassword(password)
+    : verifyPassword(password, getSetting("auth_shared_password_hash") || "");
+}
+
+export const sharedAuth = {
+  environmentControlled: () => Boolean(environmentAuthMethod()),
+  hashPassword,
+  passwordConfigured: sharedPasswordConfigured,
+  username: sharedAuthUsername,
+  verifyHash: verifyPassword,
+  verifyPassword: verifySharedPassword,
+};
 
 // ---------- request origin / RP id (for WebAuthn and OIDC redirect URIs) ----------
 

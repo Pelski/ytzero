@@ -10,6 +10,10 @@ services:
     envVars:
       - key: PORT
         value: "3001"
+      - key: YTZERO_AUTH_METHOD
+        value: shared
+      - key: YTZERO_AUTH_PASSWORD
+        sync: false
     disk:
       name: ytzero-data
       mountPath: /data

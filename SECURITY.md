@@ -32,11 +32,13 @@ login) or be exposed more broadly using one of the built-in authentication
 methods — see [Authentication](https://github.com/pelski/ytzero/wiki/Authentication).
 Some things are intentional and **not** considered vulnerabilities:
 
-- **No authentication by default.** With the default **None** method, the app
+- **No authentication by default outside one-click cloud templates.** With the
+  default **None** method, the app
   has no login and assumes anyone who can reach it is the owner. If you expose
   the app beyond your LAN, activate one of the supported authentication
   methods first (shared login, per-profile login, OIDC, or a trusted
-  reverse-proxy header).
+  reverse-proxy header). One-click cloud templates instead force shared login
+  and require `YTZERO_AUTH_PASSWORD` in the deployment environment.
 - **Trusting the reverse-proxy header method.** The **Proxy header** auth
   method trusts whatever value your reverse proxy sends — it is your
   responsibility to run it behind a proxy that always sets that header and

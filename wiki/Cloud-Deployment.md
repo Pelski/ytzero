@@ -11,12 +11,17 @@ other filesystem state.
 [![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/Pelski/ytzero/tree/main)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Pelski/ytzero)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/yt-zero-1?referralCode=1GJD2M&utm_medium=integration&utm_source=template&utm_campaign=generic)
-[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=docker&image=ghcr.io%2Fpelski%2Fytzero%3Alatest&name=ytzero&service_type=web&instance_type=small&regions=fra&ports=3001%3Bhttp%3B%2F&env%5BPORT%5D=3001)
+[![Deploy to Koyeb](https://www.koyeb.com/static/images/deploy/button.svg)](https://app.koyeb.com/deploy?type=docker&image=ghcr.io%2Fpelski%2Fytzero%3Alatest&name=ytzero&service_type=web&instance_type=small&regions=fra&ports=3001%3Bhttp%3B%2F&env%5BPORT%5D=3001&env%5BYTZERO_AUTH_METHOD%5D=shared&env%5BYTZERO_AUTH_PASSWORD%5D=)
 [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://www.heroku.com/deploy?template=https://github.com/Pelski/ytzero)
 
 These buttons open the provider's deployment form and can create billable
 resources. Review the selected region, instance, database, and disk before
 confirming.
+
+Every one-click template forces the shared-password authentication method.
+Set `YTZERO_AUTH_PASSWORD` as a secret environment variable before the first
+start. If it is missing or empty, YT Zero remains locked and writes
+`auth.environment_password_missing` to stdout and the application log.
 
 ### Render
 
@@ -63,7 +68,8 @@ Before the first start:
 
 1. Add a Railway Volume to the YT Zero service.
 2. Mount it at `/data`.
-3. Generate a public domain for port `3001`.
+3. Add `YTZERO_AUTH_PASSWORD` as a secret service variable.
+4. Generate a public domain for port `3001`.
 
 The health check is already configured at `/api/health`. Confirm that the
 template created the `/data` volume and public domain before relying on the

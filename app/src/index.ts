@@ -13,6 +13,14 @@ import { createAppManifest } from "./app-manifest";
 import { collectDiagnosticSnapshot } from "./diagnostics";
 import { migrateLegacyProfileAvatars } from "./profileAvatars";
 import { flushTubeArchivistWatched, scheduleTubeArchivistSync } from "./tubeArchivist";
+import { environmentAuthMethod, environmentAuthPasswordConfigured } from "./authEnvironment";
+
+if (environmentAuthMethod() && !environmentAuthPasswordConfigured()) {
+  log.error("auth.environment_password_missing", {
+    method: "shared",
+    variable: "YTZERO_AUTH_PASSWORD",
+  });
+}
 
 const app = new Hono();
 // Serve the built UI (ui/dist is copied to ./public in the Docker image,

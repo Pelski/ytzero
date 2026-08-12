@@ -10,6 +10,10 @@ spec:
       type: DOMAIN
       name: Domain
       description: Public domain for your YT Zero instance.
+    - key: YTZERO_AUTH_PASSWORD
+      type: STRING
+      name: Login password
+      description: Required password for the shared YT Zero login.
   tags:
     - Tool
   readme: |-
@@ -35,3 +39,6 @@ spec:
         env:
           PORT:
             default: "3001"
+          YTZERO_AUTH_METHOD:
+            default: shared
+            readonly: true

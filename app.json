@@ -11,6 +11,12 @@
     }
   ],
   "env": {
+    "YTZERO_AUTH_METHOD": {
+      "value": "shared"
+    },
+    "YTZERO_AUTH_PASSWORD": {
+      "description": "Required password for the shared YT Zero login."
+    },
     "DATABASE_STATE_PATH": {
       "value": "/tmp/ytzero/database-state.json"
     },
@@ -22,6 +28,12 @@
     },
     "DOWNLOADS_DIR": {
       "value": "/tmp/ytzero/downloads"
+    },
+    "DOWNLOAD_COOKIES_DIR": {
+      "value": "/tmp/ytzero/download-cookies"
+    },
+    "RESTORE_SESSION_DIR": {
+      "value": "/tmp/ytzero/restore-sessions"
     },
     "AVATAR_DIR": {
       "value": "/tmp/ytzero/avatars"

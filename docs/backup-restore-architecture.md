@@ -378,6 +378,9 @@ below.
   never included in a portable or exact server-side backup.
 
 - passwords and PIN hashes
+- environment-owned authentication overrides and the `YTZERO_AUTH_PASSWORD`
+  secret; they are machine-bound runtime configuration and are never persisted,
+  exported, or restored
 - OIDC client secret and active authentication configuration, including the
   instance-local choice to hide other profile names in the authenticated
   profile picker
