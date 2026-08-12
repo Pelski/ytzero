@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import "./SettingsPage.css";
 import { useSettingsPageController } from "./useSettingsPageController";
 import { SettingsDisplayView } from "../components/settings/SettingsDisplayView";
@@ -6,7 +6,6 @@ import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, LoaderCircle, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChildLockStatus, type FilterRule, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES, PLAYBACK_SPEEDS } from "../api";
-import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
 import TagChip from "../components/TagChip";
@@ -35,6 +34,10 @@ import { ChannelOwnership, FilterRuleGroups, PlaylistSettingsItem, PluginMultise
 import { ChangelogNote, LogLine, SettingsLoadingState } from "../components/settings/SettingsSupport";
 import { SettingsSearch } from "../components/settings/SettingsSearch";
 import ChannelSettingsDialog, { hasCustomChannelSettings } from "../components/settings/ChannelSettingsDialog";
+
+const AuthSettings = lazy(() => import("../components/AuthSettings"));
+const TubeArchivistSettings = lazy(() => import("../components/settings/TubeArchivistSettings")
+  .then((module) => ({ default: module.TubeArchivistSettings })));
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "plugins" | "advanced" | "profiles" | "auth";
 
@@ -490,7 +493,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </>
       )}
 
-      {!isCurrentTabLocked && tab === "auth" && canManageAdministrators && <AuthSettings showToast={showToast} />}
+      {!isCurrentTabLocked && tab === "auth" && canManageAdministrators && <Suspense fallback={null}>
+        <AuthSettings showToast={showToast} />
+      </Suspense>}
 
       {!isCurrentTabLocked && tab === "channels" && (
         <SettingsSection>
@@ -926,6 +931,9 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                     </div>
                   </div>
                   <div className="plugin-modal-content">
+                    {plugin.id === "tubearchivist" && <Suspense fallback={null}>
+                      <TubeArchivistSettings canManage={isPrimary} />
+                    </Suspense>}
                     <div className="plugin-modal-content-head">
                       <span>{t("pluginConfigurationTitle")}</span>
                       <span>{config.definitions.length}</span>
@@ -977,6 +985,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                                     value={String(value)}
                                     options={def.options?.map((option) => ({ value: option.value, label: option.label })) ?? []}
                                     disabled={Boolean(def.adminOnly && !isPrimary)}
+                                    floating
                                     onChange={(next) => updatePluginSetting(plugin.id, def.key, next)}
                                   />
                                 ) : (

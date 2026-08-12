@@ -44,6 +44,7 @@ export interface Video {
   channel_thumbnail: string | null;
   channel_subscriber_count: string | null;
   download_status?: DownloadStatus | null;
+  local_media_source?: "download" | "tubearchivist" | null;
   downloads_enabled?: boolean;
   downloads_allowed?: boolean;
   download_progress?: number | null;
@@ -354,17 +355,6 @@ export interface PublishedAgo {
   unit: "second" | "minute" | "hour" | "day" | "week" | "month" | "year";
 }
 
-export interface PluginManifest {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  route: string;
-  icon: string;
-  permissions: string[];
-  enabled: boolean;
-}
-
 export type SettingValue = number | string;
 export interface SettingDefinition {
   key: string;
@@ -374,18 +364,6 @@ export interface SettingDefinition {
   min?: number; max?: number; step?: number;
   options?: { value: string; label: string }[];
   defaultValue: SettingValue;
-}
-export type PluginSettingValue = SettingValue;
-export type PluginSettingDef = SettingDefinition & { scope?: "user" | "global"; adminOnly?: boolean };
-export interface PluginTermState {
-  lastTerms: string[];
-  blockedTerms: string[];
-}
-
-export interface PluginSettingsResponse {
-  definitions: PluginSettingDef[];
-  settings: Record<string, PluginSettingValue>;
-  terms?: PluginTermState;
 }
 export type DownloadSettingValue = SettingValue;
 export type DownloadSettingDef = SettingDefinition;

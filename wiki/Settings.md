@@ -26,6 +26,16 @@ access.
 - **Screenshots** controls captures made by the local player or YT Zero Enhance.
 - **Privacy** contains the optional SponsorBlock and [DeArrow](Privacy-and-License#dearrow) integrations. DeArrow titles and thumbnails are separate and both are disabled by default.
 
+## Plugins
+
+Built-in plugins are disabled by default and can be enabled or configured under
+**Settings → Plugins**. The [YT-DLP Integration](YT-DLP-Integration) owns files
+downloaded by YT Zero and has a dedicated Downloads destination. The
+[TubeArchivist Integration](TubeArchivist-Integration) instead connects an
+existing external archive as a headless source for the normal feed and player;
+it intentionally adds no route or sidebar item. Shared plugin configuration and
+connection tests require administrator access.
+
 ## Administrator-only access
 
 The primary profile chooses which areas non-administrator profiles may change

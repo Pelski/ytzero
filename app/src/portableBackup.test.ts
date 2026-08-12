@@ -16,11 +16,13 @@ const avatarDir = resolve(root, "avatars");
 process.env.DB_PATH = resolve(root, "db", "source.db");
 process.env.RESTORE_SESSION_DIR = resolve(root, "sessions");
 process.env.AVATAR_DIR = avatarDir;
+process.env.TUBE_ARCHIVIST_CONFIG_DIR = resolve(root, "tubearchivist-secrets");
 
 const backup = await import("./portableBackup");
 const permissions = await import("./profilePermissions");
 const plugins = await import("./plugins");
 const videoCardActions = await import("./videoCardActions");
+const tubeArchivist = await import("./tubeArchivist");
 const { db, setSetting, setUserSetting, getSetting, getUserSetting, SETTING_DEFAULTS } = await import("./db");
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -87,6 +89,25 @@ describe("portable backup classification and restore", () => {
   test("registry contains no secret section", async () => {
     expect(backup.BACKUP_SECTIONS.some((section) => section.sensitivity === "secret")).toBe(false);
     expect((await backup.backupOptions()).exclusions.join(" ")).toContain("passkeys");
+  });
+
+  test("exports only safe TubeArchivist policy and excludes connection/cache sentinels", async () => {
+    const secret = "TA_SECRET_SENTINEL_8d197";
+    const baseUrl = "http://TA_MACHINE_SENTINEL.local:8000";
+    const metadata = "TA_CACHE_SENTINEL_94ac3";
+    tubeArchivist.saveTubeArchivistConfig({ baseUrl, token: secret });
+    await plugins.setPluginSettings(1, "tubearchivist", { sync_interval_minutes: "360", sync_watched: 0 });
+    db.prepare("INSERT INTO channels(channel_id,title) VALUES('UCtaBackup','TA backup')").run();
+    db.prepare("INSERT INTO videos(video_id,channel_id,title) VALUES('taBackup01','UCtaBackup','TA backup video')").run();
+    db.prepare("INSERT INTO tube_archivist_items(video_id,media_url,metadata_json) VALUES(?,?,?)").run("taBackup01", "/media/TA_PATH_SENTINEL.mp4", JSON.stringify({ metadata }));
+    const zip = await backup.createPortableBackup({ preset: "full" });
+    const archiveText = [...backup.readPortableZip(zip).values()].map((bytes) => decoder.decode(bytes)).join("\n");
+    expect(archiveText).not.toContain(secret);
+    expect(archiveText).not.toContain(baseUrl);
+    expect(archiveText).not.toContain(metadata);
+    expect(archiveText).not.toContain("TA_PATH_SENTINEL");
+    expect(archiveText).toContain('"sync_interval_minutes":"360"');
+    expect(archiveText).toContain('"sync_watched":0');
   });
 
   test("round-trips the Shorts feed mode and per-channel opt-in", async () => {

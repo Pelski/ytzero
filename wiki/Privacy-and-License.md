@@ -23,6 +23,18 @@ The optional [DeArrow](https://dearrow.ajay.app/) integration is disabled by def
 
 DeArrow/SponsorBlock community data is available under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 
+### TubeArchivist
+
+The optional TubeArchivist plugin is disabled by default. When enabled, the YT
+Zero server connects to the one administrator-configured TubeArchivist origin
+to synchronize its catalog, load archived comments, proxy thumbnails and
+subtitles, stream protected media, and optionally mark completed videos
+watched. The browser communicates only with YT Zero and never receives the
+TubeArchivist API token. Cross-origin redirects are rejected, and the token,
+server URL, media locators, synchronized cache, and watched outbox are excluded
+from portable backups. See [TubeArchivist Integration](TubeArchivist-Integration)
+for the full data flow and security model.
+
 ## Limitations
 
 - RSS feeds expose only a limited recent set of videos per channel.

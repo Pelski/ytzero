@@ -415,6 +415,15 @@ interface BackupSectionDefinition {
 
 The Discovery adapter exports validated settings, `blocked_terms`, and optional
 feedback; it does not export generated recommendations or `last_terms`. The
+TubeArchivist adapter exports only its harmless refresh interval and watched-sync
+policy. Its server URL is machine-bound, its API token is a secret, and its
+catalog rows, comments/metadata, media locators, sync generation/errors and
+watched outbox are rebuildable cache or transient operational state; all of
+those are excluded. Restoring an enabled TubeArchivist plugin therefore leaves
+it in `configuration_required` state and performs no network request until an
+administrator configures local credentials.
+
+The
 Downloads adapter exports validated per-profile preferences (including subtitle
 languages, automatic subtitles, retention, watched-file cleanup and liked-file
 protection) and that profile's automation rules. Instance storage policy

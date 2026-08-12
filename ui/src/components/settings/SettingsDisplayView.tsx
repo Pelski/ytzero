@@ -550,7 +550,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           <SidebarNavEditor
             value={navConfig}
             onChange={persistNavConfig}
-            excludedKeys={new Set(plugins.filter((plugin) => !plugin.enabled).map((plugin) => plugin.route))}
+            excludedKeys={new Set(plugins.filter((plugin) => !plugin.enabled).flatMap((plugin) => plugin.route ? [plugin.route] : []))}
           />
           </SettingsSection>
           }

@@ -6,6 +6,7 @@ export function resolvePlayerKind(input: {
   hasVideo: boolean;
   isLive: boolean;
   downloadStatus: string | null;
+  localMediaSource?: "download" | "tubearchivist" | null;
   playerSource: "auto" | "youtube";
   playbackPolicyReady: boolean;
   childDownloadsOnly: boolean;
@@ -19,7 +20,7 @@ export function resolvePlayerKind(input: {
   if (input.hasVideo && input.isLive) return "youtube";
   // The fast background download finished: switch to the local file, which
   // seeks natively and perfectly (the streaming path hands off to it here).
-  if (input.hasVideo && input.downloadStatus === "done" && input.playerSource === "auto") return "local";
+  if (input.hasVideo && (input.downloadStatus === "done" || input.localMediaSource === "tubearchivist") && input.playerSource === "auto") return "local";
   if (!input.playbackPolicyReady) return "loading";
   if (input.hasVideo && input.childDownloadsOnly) return "blocked";
   // Experimental: play-while-downloading. Holds the stream while the file is

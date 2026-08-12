@@ -285,9 +285,8 @@
 .plugin-config-section {
   margin-top: 10px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, .075);
   border-radius: 14px;
-  background: rgba(255, 255, 255, .025);
+  background: var(--surface);
 }
 .plugin-config-section-head,
 .plugin-terms-head { padding: 14px 16px 11px; }

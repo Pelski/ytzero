@@ -1,10 +1,8 @@
 import type { AsyncDatabaseClient } from "./databaseClient";
 import type { DatabaseEngine } from "./databaseConfig";
+import type { CanonicalSchemaFile } from "./canonicalSchema";
 
-export const CANONICAL_SCHEMA_FILES = [
-  "app/src/schema.sql",
-  "app/src/channelPostsSchema.sql",
-] as const;
+export { CANONICAL_SCHEMA_FILES } from "./canonicalSchema";
 
 interface AddColumnStep {
   kind: "add-column";
@@ -28,7 +26,7 @@ export type DatabaseMigrationStep = AddColumnStep | SqlStep | NoopStep;
 export interface DatabaseMigration {
   version: number;
   name: string;
-  schemaHashes: Record<(typeof CANONICAL_SCHEMA_FILES)[number], string>;
+  schemaHashes: Partial<Record<CanonicalSchemaFile, string>>;
   sqlite: readonly DatabaseMigrationStep[];
   postgres: readonly DatabaseMigrationStep[];
 }
@@ -104,6 +102,27 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
         WHERE ranked.playlist_id = target.playlist_id
           AND ranked.video_id = target.video_id
       ` },
+    ],
+  },
+  {
+    version: 5,
+    name: "tubearchivist-source",
+    schemaHashes: {
+      "app/src/schema.sql": "5a747328ebeda58f7cc52ee31c045160ef29f0239d15a1d9de0ebf677399b7e2",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "30b7c3fc889aedc977e2e5cd834cfd48d9e51870530213433359ed24333e03a0",
+    },
+    sqlite: [
+      { kind: "sql", statement: `CREATE TABLE IF NOT EXISTS tube_archivist_items (video_id TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE, media_url TEXT, metadata_json TEXT NOT NULL DEFAULT '{}', available INTEGER NOT NULL DEFAULT 1, generation INTEGER NOT NULL DEFAULT 0, downloaded_at TEXT, updated_at TEXT NOT NULL DEFAULT (datetime('now')))` },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_tube_archivist_items_available ON tube_archivist_items(available, downloaded_at DESC)" },
+      { kind: "sql", statement: `CREATE TABLE IF NOT EXISTS tube_archivist_sync_state (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), generation INTEGER NOT NULL DEFAULT 0, last_synced_at TEXT, last_error TEXT, running INTEGER NOT NULL DEFAULT 0)` },
+      { kind: "sql", statement: `CREATE TABLE IF NOT EXISTS tube_archivist_watch_outbox (video_id TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE, attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT NOT NULL DEFAULT (datetime('now')), last_error TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))` },
+    ],
+    postgres: [
+      { kind: "sql", statement: `CREATE TABLE IF NOT EXISTS tube_archivist_items (video_id TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE, media_url TEXT, metadata_json TEXT NOT NULL DEFAULT '{}', available INTEGER NOT NULL DEFAULT 1, generation INTEGER NOT NULL DEFAULT 0, downloaded_at TEXT, updated_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))` },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_tube_archivist_items_available ON tube_archivist_items(available, downloaded_at DESC)" },
+      { kind: "sql", statement: `CREATE TABLE IF NOT EXISTS tube_archivist_sync_state (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), generation INTEGER NOT NULL DEFAULT 0, last_synced_at TEXT, last_error TEXT, running INTEGER NOT NULL DEFAULT 0)` },
+      { kind: "sql", statement: `CREATE TABLE IF NOT EXISTS tube_archivist_watch_outbox (video_id TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE, attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), last_error TEXT, created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))` },
     ],
   },
 ];

@@ -9,6 +9,7 @@ import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downl
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "../downloadRules";
 import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
 import { configuredTimeZone } from "../timeZone";
+import { tubeArchivistResource, tubeArchivistSubtitleList, tubeArchivistSubtitleResponse } from "../tubeArchivist";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -231,7 +232,8 @@ api.put("/videos/:id/download/pin", async (c) => {
 api.get("/videos/:id/stream", async (c) => {
   const row = await getDownload(currentUserId(c), c.req.param("id"));
   if (!row || row.status !== "done" || !row.path || !existsSync(row.path)) {
-    return c.json({ error: "not downloaded" }, 404);
+    const archived = await tubeArchivistResource(c.req.param("id"), "media", c.req.header("range"), c.req.raw.signal);
+    return archived ?? c.json({ error: "not downloaded" }, 404);
   }
   const size = statSync(row.path).size;
   const contentType = row.path.endsWith(".webm") ? "video/webm" : "video/mp4";
@@ -304,12 +306,17 @@ async function subtitleList(videoId: string) {
 }
 
 api.get("/videos/:id/subtitles", async (c) => {
-  if (!await getDownload(currentUserId(c), c.req.param("id"))) return c.json({ subtitles: [] });
+  if (!await getDownload(currentUserId(c), c.req.param("id"))) {
+    return c.json({ subtitles: await tubeArchivistSubtitleList(c.req.param("id")) ?? [] });
+  }
   return c.json({ subtitles: await subtitleList(c.req.param("id")) });
 });
 
 api.get("/videos/:id/subtitles/:lang", async (c) => {
-  if (!await getDownload(currentUserId(c), c.req.param("id"))) return c.json({ error: "not found" }, 404);
+  if (!await getDownload(currentUserId(c), c.req.param("id"))) {
+    return await tubeArchivistSubtitleResponse(c.req.param("id"), c.req.param("lang"), c.req.raw.signal)
+      ?? c.json({ error: "not found" }, 404);
+  }
   const file = (await listSubtitleFiles(c.req.param("id"))).find((s) => s.lang === c.req.param("lang"));
   if (!file || !existsSync(file.path)) return c.json({ error: "not found" }, 404);
   let text = await Bun.file(file.path).text();

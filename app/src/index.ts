@@ -12,6 +12,7 @@ import { createAppIconPng, createAppIconSvg } from "./app-icon";
 import { createAppManifest } from "./app-manifest";
 import { collectDiagnosticSnapshot } from "./diagnostics";
 import { migrateLegacyProfileAvatars } from "./profileAvatars";
+import { flushTubeArchivistWatched, scheduleTubeArchivistSync } from "./tubeArchivist";
 
 const app = new Hono();
 // Serve the built UI (ui/dist is copied to ./public in the Docker image,
@@ -85,6 +86,8 @@ await migrateLegacyProfileAvatars()
   .catch((error) => log.warn("profile.avatar_migration_failed", { error: error instanceof Error ? error.message : String(error) }));
 startScheduler();
 await startDownloader();
+scheduleTubeArchivistSync(true);
+void flushTubeArchivistWatched();
 if (databaseConfig.engine === "sqlite") startSQLiteMaintenance(db);
 
 const port = Number(process.env.PORT ?? 3001);

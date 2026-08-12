@@ -23,6 +23,7 @@ import {
   PLUGINS,
   PLUGIN_TEXT,
   SOCIAL_SETTINGS,
+  TUBE_ARCHIVIST_SETTINGS,
   type LocalizedText,
   type PluginLanguage,
   type PluginManifest,
@@ -94,7 +95,7 @@ export function pluginEnabled(id: string) {
   return pluginEnabledCache.get(id) ?? true;
 }
 
-export async function setPluginEnabled(id: string, enabled: boolean) {
+export async function setPluginEnabled(id: string, enabled: boolean, options: { activate?: boolean } = {}) {
   const manifest = PLUGINS.find((p) => p.id === id);
   if (!manifest) throw new Error("plugin not found");
   await database.prepare(
@@ -102,11 +103,17 @@ export async function setPluginEnabled(id: string, enabled: boolean) {
   ).run(id, enabled ? 1 : 0, manifest.version);
   pluginEnabledCache.set(id, enabled);
   if (id === "social" && !enabled) socialWatchPartyStore.closeAll("social_disabled");
+  if (id === "tubearchivist") {
+    const integration = await import("./tubeArchivist");
+    if (enabled && options.activate !== false) integration.scheduleTubeArchivistSync(true);
+    else integration.stopTubeArchivistSync();
+  }
 }
 
 function settingDefs(pluginId: string): PluginSettingSource[] {
   if (pluginId === "discovery") return DISCOVERY_SETTINGS;
   if (pluginId === "social") return SOCIAL_SETTINGS;
+  if (pluginId === "tubearchivist") return TUBE_ARCHIVIST_SETTINGS;
   return [];
 }
 
@@ -209,6 +216,10 @@ export async function setPluginSettings(uid: number, pluginId: string, patch: Re
       socialWatchPartyStore.closeAll("watch_together_disabled");
     }
   }
+  if (pluginId === "tubearchivist") {
+    const integration = await import("./tubeArchivist");
+    integration.scheduleTubeArchivistSync();
+  }
   return getPluginSettings(uid, pluginId, language);
 }
 
@@ -224,6 +235,20 @@ export interface PortablePluginBackupAdapter {
 }
 
 export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
+  {
+    id: "tubearchivist",
+    scope: "instance",
+    schemaVersion: 1,
+    async export(userId) {
+      const settings = (await getPluginSettings(userId, "tubearchivist")).settings;
+      return { settings: Object.fromEntries(Object.entries(settings).filter(([key]) => ["sync_interval_minutes", "sync_watched"].includes(key))) };
+    },
+    async restore(userId, value) {
+      const input = value && typeof value === "object" ? value as any : {};
+      const settings = Object.fromEntries(Object.entries(input.settings ?? {}).filter(([key]) => ["sync_interval_minutes", "sync_watched"].includes(key)));
+      await setPluginSettings(userId, "tubearchivist", settings);
+    },
+  },
   {
     id: "social",
     scope: "instance",
@@ -297,6 +322,19 @@ export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
 
 export async function resetPluginState(uid: number, pluginId: string, language?: string | null) {
   if (!PLUGINS.some((plugin) => plugin.id === pluginId)) throw new Error("plugin not found");
+  if (pluginId === "tubearchivist") {
+    const integration = await import("./tubeArchivist");
+    integration.stopTubeArchivistSync();
+    await database.transaction(async () => {
+      await database.prepare("DELETE FROM tube_archivist_watch_outbox").run();
+      await database.prepare("DELETE FROM tube_archivist_items").run();
+      await database.prepare("DELETE FROM tube_archivist_sync_state").run();
+      await database.prepare("DELETE FROM settings WHERE key IN ('plugin_tubearchivist_sync_interval_minutes','plugin_tubearchivist_sync_watched')").run();
+    })();
+    await reloadSettingCache();
+    if (pluginEnabled("tubearchivist")) integration.scheduleTubeArchivistSync();
+    return getPluginSettings(uid, pluginId, language);
+  }
   if (pluginId === "social") {
     socialWatchPartyStore.closeAll("social_reset");
     await database.transaction(async () => {
@@ -415,7 +453,7 @@ async function localRecommendations(
   // Candidate ownership is intentionally profile-scoped. Videos are global in
   // storage, so a plain scan would leak another profile's library and habits.
   const profileOwnsCandidate = `(
-    (${followedExists(uid)} OR ${followedPlaylistExists(uid)})
+    (${followedExists(uid)} OR ${followedPlaylistExists(uid)}${pluginEnabled("tubearchivist") ? " OR EXISTS (SELECT 1 FROM tube_archivist_items tai WHERE tai.video_id=v.video_id AND tai.available=1)" : ""})
     OR EXISTS (SELECT 1 FROM user_videos own_uv WHERE own_uv.user_id = ${uid} AND own_uv.video_id = v.video_id)
     OR EXISTS (SELECT 1 FROM history own_h WHERE own_h.user_id = ${uid} AND own_h.video_id = v.video_id)
     OR EXISTS (

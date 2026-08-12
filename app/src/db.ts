@@ -1,5 +1,5 @@
 import { Database } from "bun:sqlite";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { configureTimeZoneProvider, DEFAULT_TIME_ZONE, environmentTimeZone } from "./timeZone";
 import { configureSQLiteConnection, optimizeSQLite } from "./sqliteMaintenance";
@@ -8,12 +8,12 @@ import { database, databaseConfig } from "./database";
 import { ensureChannelPostsPostgresSchema } from "./channelPostsSchema";
 import { migrateSQLiteToPostgres } from "./postgresMigration";
 import { applyDatabaseMigrations } from "./databaseMigrations";
+import { applyCanonicalSQLiteSchema } from "./canonicalSchema";
 export const DB_PATH = process.env.DB_PATH ?? resolve(import.meta.dir, "../../data/db/ytzero.db");
 mkdirSync(dirname(DB_PATH), { recursive: true });
 export const db = new Database(DB_PATH, { create: true });
 configureSQLiteConnection(db);
-db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
-db.exec(readFileSync(new URL("./channelPostsSchema.sql", import.meta.url), "utf8"));
+applyCanonicalSQLiteSchema(db);
 
 // Per-profile login identity (used by auth_method = per_profile / oidc / proxy_header).
 for (const stmt of [

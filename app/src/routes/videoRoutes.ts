@@ -4,13 +4,14 @@ import { database } from "../database";
 import { getUserSetting } from "../db";
 import { fetchChannelAbout, fetchChannelFeed, fetchVideoChapters, fetchVideoCreators, fetchVideoInfo } from "../youtube";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow } from "../plugins";
-import { fetchVideoComments, validYouTubeVideoId, VideoCommentsError } from "../youtubeComments";
+import { validYouTubeVideoId } from "../youtubeComments";
 import { childDownloadsOnly, childHidesLive, childLocalOnly, isChildUser, isParentLocked } from "../childTime";
 import { followedExists } from "../feedQuery";
 import { getDeArrowBranding } from "../dearrow";
 import { log } from "../logger";
 import { ageMs, CHAPTERS_DB_TTL, CREATORS_DB_TTL } from "../routeCache";
 import { videoExistsStmt, videoSelect, type VideoRow } from "../videoRoutesSupport";
+import { registerVideoCommentRoutes } from "./videoCommentRoutes";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -297,24 +298,7 @@ api.get("/videos/:id/chapters", async (c) => {
   }
 });
 
-api.get("/videos/:id/comments", async (c) => {
-  const videoId = c.req.param("id");
-  if (!validYouTubeVideoId(videoId)) return c.json({ error: "invalid video id" }, 400);
-  if (childLocalOnly(currentUserId(c))) return c.json({ error: "restricted" }, 403);
-  try {
-    return c.json(await fetchVideoComments(currentUserId(c), videoId, c.req.query("refresh") === "1"));
-  } catch (error) {
-    const failure = error instanceof VideoCommentsError
-      ? error
-      : new VideoCommentsError("unavailable", error instanceof Error ? error.message : String(error));
-    const status = failure.code === "comments_disabled" ? 409
-      : failure.code === "rate_limited" ? 429
-      : failure.code === "ytdlp_missing" ? 503
-      : failure.code === "timeout" ? 504
-      : 502;
-    return c.json({ error: "comments unavailable", code: failure.code }, status);
-  }
-});
+registerVideoCommentRoutes(api, currentUserId);
 
 interface StoredVideoCreator {
   channelId: string;

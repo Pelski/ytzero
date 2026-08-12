@@ -15,6 +15,7 @@
 - [Child Lock](Child-Lock)
 - [Browser Extensions](Browser-Extensions)
 - [YT-DLP Integration](YT-DLP-Integration)
+- [TubeArchivist Integration](TubeArchivist-Integration)
 
 **Operations**
 - [Backup & Updates](Backup-and-Updates)

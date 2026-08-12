@@ -36,12 +36,14 @@ describe("HTTP route manifest", () => {
   test("keeps every registered method and path stable while routers are extracted", () => {
     const transcriptRoute = "POST /videos/:id/transcript";
     const playbackAdjacentRoute = "POST /playback/adjacent";
-    expect(routes).toHaveLength(221);
+    expect(routes).toHaveLength(226);
     expect(routes).toContain(transcriptRoute);
     expect(routes).toContain(playbackAdjacentRoute);
+    expect(routes).toContain("GET /plugins/tubearchivist/config");
+    expect(routes).toContain("POST /plugins/tubearchivist/sync");
     const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute);
     expect(createHash("sha256").update(legacyRoutes.join("\n")).digest("hex"))
-      .toBe("a4c50f8ef2c8577849cc7fadfa11bbfc3460c10180c23696b19212f1882f2c9e");
+      .toBe("b7055a1054cc40f4127456fa246674aeaa5c06433a90468bacdcb0548968b4bf");
   });
 
   test("does not register duplicate method/path pairs", () => {

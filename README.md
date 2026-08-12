@@ -54,6 +54,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **Organized watching** — use tags, inherited channel tags, rules, and local playlists to shape your own feed.
 - **Real playback controls** — theater view, captions, quality, display settings, and optional SponsorBlock support.
 - **Downloads & local playback** — the optional yt-dlp plugin fetches videos to disk and plays them in YT Zero's own player: instant seeking, no embeds, no buffering, works offline.
+- **TubeArchivist source** — connect an existing TubeArchivist archive and let its videos appear directly in the normal feed, with protected local playback, archived comments and subtitles, and watched-status synchronization.
 - **Works for households** — profiles, authentication modes, child profiles with watch-time limits, and child lock make one install usable by more than one person.
 - **Pulse** — understand actual viewing time by profile, channel, tag, hour, weekday, and content type without sending analytics outside your server.
 
@@ -74,6 +75,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **Child lock** — PIN-protect household settings while leaving each profile's own tags and playlists editable.
 - **Child profiles** — daily watch-time limits, parent-approved extensions, subscribed-content-only mode, optional Shorts/live blocking, downloaded-videos-only mode, reduced settings access, and a parent activity panel with immediate stop/unlock controls.
 - **Downloads (yt-dlp)** — an optional plugin for scheduled, manual, playlist-wide, and rule-based downloads. It plays local files in a built-in player, supports metadata and subtitle sidecars, shows live progress, and cleans up with retention rules and a storage cap.
+- **TubeArchivist Integration** — an optional, default-disabled plugin that treats TubeArchivist as a headless source for the existing feed rather than adding a separate library page. Catalog items are deduplicated by YouTube ID and protected media is streamed through YT Zero without exposing the TubeArchivist token.
 - **Shorts tab & player** — a followed-channels-only vertical Shorts feed with format-native cards and a full-screen swipe player.
 - **SponsorBlock** — optionally skip sponsored segments, intros, outros, and more.
 - **DeArrow** — optionally replace clickbait titles and thumbnails with community-created alternatives from the [DeArrow project](https://dearrow.ajay.app/). Hover or focus a video card to reveal the control that switches between the DeArrow and original versions; library metadata stays intact.
@@ -94,6 +96,29 @@ The **YT-DLP Integration** plugin (disabled by default) uses [yt-dlp](https://gi
 - **Household-aware** — one download serves every profile, and child profiles can be limited to downloaded videos only.
 
 The Docker image bundles yt-dlp and ffmpeg and keeps yt-dlp updated daily. Details and the full settings reference: **[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)**.
+
+## TubeArchivist Integration
+
+The optional **TubeArchivist Integration** plugin is disabled by default. It
+connects an existing TubeArchivist instance to YT Zero as a source behind the
+normal feed—there is no separate TubeArchivist page:
+
+- archived videos enter the existing feed, search, channel pages, playlists,
+  history, and recommendations;
+- duplicate YouTube IDs remain one video, while the local archive becomes an
+  additional playback source;
+- YT Zero proxies TubeArchivist media with authenticated HTTP Range requests,
+  so the browser can seek without receiving the API token;
+- archived comments, thumbnails, and subtitles use the existing watch-page and
+  local-player UI;
+- completing a video updates YT Zero immediately and sends TubeArchivist's
+  global watched status through a durable retry queue.
+
+Configure it under **Settings → Plugins → TubeArchivist** with the server URL
+and API token. The YT Zero server/container must be able to reach that address;
+the browser does not need direct TubeArchivist access. Full setup, data flow,
+security, backup behavior, troubleshooting, and limitations:
+**[TubeArchivist Integration](https://github.com/Pelski/ytzero/wiki/TubeArchivist-Integration)**.
 
 ## How it works
 
@@ -211,6 +236,7 @@ Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)*
 - **[Child Lock](https://github.com/Pelski/ytzero/wiki/Child-Lock)** — PIN-protecting settings.
 - **[Browser Extensions](https://github.com/Pelski/ytzero/wiki/Browser-Extensions)** — recommended companion extension and redirect helpers.
 - **[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)** — downloads, offline playback, and retention.
+- **[TubeArchivist Integration](https://github.com/Pelski/ytzero/wiki/TubeArchivist-Integration)** — use an existing archive in the normal feed and local player.
 - **[Backup & Updates](https://github.com/Pelski/ytzero/wiki/Backup-and-Updates)** — keeping your data safe.
 - **[How It Works](https://github.com/Pelski/ytzero/wiki/How-It-Works)** — what is fetched and stored.
 - **[Privacy & License](https://github.com/Pelski/ytzero/wiki/Privacy-and-License)** — external requests, optional integrations, and licensing.
@@ -230,11 +256,18 @@ If you only want automatic redirects, [YTZero Redirect](https://github.com/pekem
 | Frontend | React, Vite, TypeScript |
 | Storage | SQLite by default, PostgreSQL optional |
 | Downloads | [yt-dlp](https://github.com/yt-dlp/yt-dlp) + ffmpeg (optional plugin, bundled in Docker) |
+| Archive integration | TubeArchivist API and protected media proxy (optional plugin) |
 | Runtime | Docker/Unraid, a Proxmox LXC or Debian/Ubuntu host via systemd, or local Bun |
 
 ## Privacy & license
 
 YT Zero does not require a Google account or a YouTube Data API key, and stores app data in your own SQLite or PostgreSQL database. It still connects to YouTube to fetch RSS feeds, metadata, thumbnails, pages, and embedded videos. With the YT-DLP Integration plugin enabled it also downloads video files from YouTube via yt-dlp; those files are stored locally and removed by the plugin's retention rules.
+
+With the optional TubeArchivist plugin enabled, the YT Zero server connects to
+the administrator-configured TubeArchivist origin to synchronize metadata,
+load archive comments, proxy thumbnails/subtitles/media, and optionally send
+watched completion. The API token remains server-side and is excluded from
+portable backups.
 
 The optional [DeArrow](https://dearrow.ajay.app/) integration fetches community-created replacement titles and thumbnails from DeArrow/SponsorBlock services. It is disabled by default, never overwrites metadata stored in the local library, and can be enabled separately for titles and thumbnails. Replacement-title lookups send the first four characters of the video's SHA-256 hash; thumbnail requests include the YouTube video ID. Branding lookup results are cached in memory for 15 minutes, and failures fall back to the original title and thumbnail. DeArrow/SponsorBlock data is provided under CC BY-NC-SA 4.0.
 

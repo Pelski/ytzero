@@ -16,8 +16,9 @@ import { GRID_SIZES, persistGridSize, readGridSize, type GridSize } from "../gri
 import { Button, ButtonLink, Divider, EmptyState, IconButton, RevealRegion } from "../components/ui";
 import { parseAppTimestamp } from "../dateTime";
 import type { PlaybackQueueContext, PlayVideo } from "../playbackQueue";
+import { filterChannelsByTags } from "./feedChannelFilter";
 
-type TopChannel = Channel & { watch_count: number; is_live: number };
+type AvatarChannel = Channel & { watch_count?: number; is_live?: number };
 type FeedSort = "published" | "arrival";
 
 function FeedOnboarding() {
@@ -45,17 +46,25 @@ function FeedOnboarding() {
   );
 }
 
-function ChannelAvatarRow() {
-  const [channels, setChannels] = useState<TopChannel[]>([]);
+function ChannelAvatarRow({ selectedTags }: { selectedTags: number[] }) {
+  const [channels, setChannels] = useState<AvatarChannel[]>([]);
   const scroll = useHScroll();
 
   useEffect(() => {
-    api.topChannels().then((r) => setChannels(r.channels)).catch(() => {});
-  }, []);
-
-  useEffect(() => subscribe("channels-changed", () => {
-    api.topChannels().then((r) => setChannels(r.channels)).catch(() => {});
-  }), []);
+    let active = true;
+    const loadChannels = async () => {
+      const next = selectedTags.length === 0
+        ? (await api.topChannels()).channels
+        : filterChannelsByTags((await api.channels()).channels, selectedTags);
+      if (active) setChannels(next);
+    };
+    void loadChannels().catch(() => {});
+    const unsubscribe = subscribe("channels-changed", () => { void loadChannels().catch(() => {}); });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [selectedTags]);
 
   if (channels.length === 0) return null;
 
@@ -424,7 +433,7 @@ export default function FeedPage({
         </div>
       </div>
 
-      {showTopChannels && <ChannelAvatarRow />}
+      {showTopChannels && <ChannelAvatarRow selectedTags={selectedTags} />}
 
       <RevealRegion open={inProgress.length > 0}>
         <div className="continue-watching-section">

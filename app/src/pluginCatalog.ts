@@ -3,7 +3,8 @@ export interface PluginManifest {
   name: string;
   version: string;
   description: string;
-  route: string;
+  // Headless integrations may enrich existing surfaces without owning a page.
+  route?: string;
   icon: string;
   permissions: string[];
   // "user" (default): settings live per profile in plugin_settings.
@@ -120,6 +121,33 @@ export const SOCIAL_SETTINGS: PluginSettingSource[] = [
   },
 ];
 
+export const TUBE_ARCHIVIST_SETTINGS: PluginSettingSource[] = [
+  {
+    key: "sync_interval_minutes",
+    type: "select",
+    scope: "global",
+    adminOnly: true,
+    label: { en: "Library refresh", pl: "Odświeżanie biblioteki", de: "Bibliothek aktualisieren" },
+    description: { en: "How often YTZero imports changes from TubeArchivist.", pl: "Jak często YTZero importuje zmiany z TubeArchivist.", de: "Wie oft YTZero Änderungen aus TubeArchivist importiert." },
+    options: [
+      { value: "15", label: { en: "Every 15 minutes", pl: "Co 15 minut", de: "Alle 15 Minuten" } },
+      { value: "60", label: { en: "Every hour", pl: "Co godzinę", de: "Stündlich" } },
+      { value: "360", label: { en: "Every 6 hours", pl: "Co 6 godzin", de: "Alle 6 Stunden" } },
+      { value: "1440", label: { en: "Daily", pl: "Codziennie", de: "Täglich" } },
+    ],
+    defaultValue: "60",
+  },
+  {
+    key: "sync_watched",
+    type: "toggle",
+    scope: "global",
+    adminOnly: true,
+    label: { en: "Sync watched status", pl: "Synchronizuj obejrzane", de: "Gesehen-Status synchronisieren" },
+    description: { en: "Mark a TubeArchivist video watched after it is completed in YTZero.", pl: "Oznacz film w TubeArchivist jako obejrzany po ukończeniu go w YTZero.", de: "Markiert ein TubeArchivist-Video nach dem Abschluss in YTZero als gesehen." },
+    defaultValue: 1,
+  },
+];
+
 export const DISCOVERY_SETTINGS: PluginSettingSource[] = [
   { key: "total_limit", label: { en: "Number of suggestions", pl: "Liczba propozycji", de: "Anzahl der Vorschläge" }, description: { en: "How many videos Recommendations should prepare at once.", pl: "Ile filmów Rekomendacje mają przygotować naraz.", de: "Wie viele Videos Empfehlungen auf einmal vorbereiten soll." }, min: 8, max: 80, step: 1, defaultValue: 32 },
   { key: "per_channel_limit", label: { en: "Videos from one channel", pl: "Filmy z jednego kanału", de: "Videos von einem Kanal" }, description: { en: "Prevents one channel from taking over the whole list.", pl: "Pilnuje, żeby jeden kanał nie zajął całej listy.", de: "Verhindert, dass ein Kanal die ganze Liste dominiert." }, min: 1, max: 20, step: 1, defaultValue: 5 },
@@ -158,6 +186,15 @@ export const PLUGINS: PluginManifest[] = [
     permissions: ["read:profiles", "read:library", "write:social"],
     settingsScope: "user",
   },
+  {
+    id: "tubearchivist",
+    name: "TubeArchivist",
+    version: "0.1.0",
+    description: "Uses a TubeArchivist library as a local source in the existing feed.",
+    icon: "Archive",
+    permissions: ["read:tubearchivist", "write:watched", "read:library"],
+    settingsScope: "global",
+  },
 ];
 
 export const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: LocalizedText; permissions: Record<string, LocalizedText> }> = {
@@ -184,6 +221,19 @@ export const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: Loc
       "read:profiles": { en: "shows participating profile names and avatars", pl: "pokazuje nazwy i avatary uczestniczących profili", de: "zeigt Namen und Avatare teilnehmender Profile" },
       "read:library": { en: "reads videos from the local library", pl: "czyta filmy z lokalnej biblioteki", de: "liest Videos aus der lokalen Bibliothek" },
       "write:social": { en: "stores posts, reactions, mentions and comments locally", pl: "zapisuje lokalnie posty, reakcje, oznaczenia i komentarze", de: "speichert Beiträge, Reaktionen, Erwähnungen und Kommentare lokal" },
+    },
+  },
+  tubearchivist: {
+    name: { en: "TubeArchivist", pl: "TubeArchivist", de: "TubeArchivist" },
+    description: {
+      en: "Adds archived videos directly to the main feed and plays their local media.",
+      pl: "Dodaje zarchiwizowane filmy bezpośrednio do głównego feedu i odtwarza lokalne pliki.",
+      de: "Fügt archivierte Videos direkt zum Hauptfeed hinzu und spielt lokale Medien ab.",
+    },
+    permissions: {
+      "read:tubearchivist": { en: "reads your TubeArchivist catalog and comments", pl: "czyta katalog i komentarze TubeArchivist", de: "liest den TubeArchivist-Katalog und Kommentare" },
+      "write:watched": { en: "marks completed videos watched in TubeArchivist", pl: "oznacza ukończone filmy jako obejrzane w TubeArchivist", de: "markiert abgeschlossene Videos in TubeArchivist als gesehen" },
+      "read:library": { en: "adds archived videos to the local feed", pl: "dodaje zarchiwizowane filmy do lokalnego feedu", de: "fügt archivierte Videos zum lokalen Feed hinzu" },
     },
   },
 };

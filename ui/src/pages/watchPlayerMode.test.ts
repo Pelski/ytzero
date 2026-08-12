@@ -35,6 +35,12 @@ describe("resolvePlayerKind", () => {
     expect(resolvePlayerKind({ ...base, isLive: true, downloadStatus: "done", watchMode: "download" })).toBe("youtube");
   });
 
+  test("plays TubeArchivist media as a local source, including downloads-only profiles", () => {
+    expect(resolvePlayerKind({ ...base, localMediaSource: "tubearchivist" })).toBe("local");
+    expect(resolvePlayerKind({ ...base, localMediaSource: "tubearchivist", childDownloadsOnly: true })).toBe("local");
+    expect(resolvePlayerKind({ ...base, localMediaSource: "tubearchivist", playerSource: "youtube" })).toBe("youtube");
+  });
+
   describe("experimental streaming", () => {
     test("streams a not-yet-downloaded video when enabled", () => {
       expect(resolvePlayerKind({ ...base, streamingEnabled: true })).toBe("stream");

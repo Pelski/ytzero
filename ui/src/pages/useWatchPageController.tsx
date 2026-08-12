@@ -271,6 +271,7 @@ export function useWatchPageController() {
     hasVideo: !!video,
     isLive: video?.live_status === "live" || video?.live_status === "upcoming",
     downloadStatus,
+    localMediaSource: video?.local_media_source,
     playerSource,
     playbackPolicyReady,
     childDownloadsOnly,

@@ -13,8 +13,8 @@ export function usePluginRoutes() {
   const loadPlugins = useCallback(() => {
     api.plugins()
       .then((result) => {
-        setKnownPluginRoutes(new Set(result.plugins.map((plugin) => plugin.route)));
-        setEnabledPluginRoutes(new Set(result.plugins.filter((plugin) => plugin.enabled).map((plugin) => plugin.route)));
+        setKnownPluginRoutes(new Set(result.plugins.flatMap((plugin) => plugin.route ? [plugin.route] : [])));
+        setEnabledPluginRoutes(new Set(result.plugins.filter((plugin) => plugin.enabled).flatMap((plugin) => plugin.route ? [plugin.route] : [])));
         api.downloadConfig()
           .then((config) => {
             document.documentElement.dataset.dlThumbProgress = config.enabled

@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import { database } from "../database";
 import { getUserSetting } from "../db";
 import { childHidesLive } from "../childTime";
-import { feedVisibilityWhere, feedSortSql, followedExists, followedPlaylistExists, tagFilterSql, filterOnlySql } from "../feedQuery";
+import { feedVisibilityWhere, feedSortSql, feedSourceExists, tagFilterSql, filterOnlySql } from "../feedQuery";
 import { videoSelect, type VideoRow } from "../videoRoutesSupport";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
@@ -55,7 +55,7 @@ api.get("/feed", async (c) => {
       where.push("v.channel_id = ?");
       params.push(channel);
     } else if (!allSources) {
-      where.push(`(${followedExists(uid)} OR ${followedPlaylistExists(uid)})`);
+      where.push(feedSourceExists(uid));
     }
     if (q) {
       where.push("(v.title LIKE ? OR v.description LIKE ?)");

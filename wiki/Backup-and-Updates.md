@@ -28,6 +28,12 @@ and automatic download rules. Downloaded media, queue state, generated plugin
 caches, YouTube cookie files, machine-wide download paths, and physical-store
 download settings are excluded.
 
+For TubeArchivist, portable backup includes only the enabled state, refresh
+interval, and watched-sync switch. The server URL, API token, protected media
+locations, synchronized catalog, sync errors, and watched outbox are excluded.
+After restore to a new host, configure the local TubeArchivist connection again;
+see [TubeArchivist Integration](TubeArchivist-Integration#backup-and-restore).
+
 ## Exact instance backup
 
 To back up a Docker install, stop the container and copy the data directory:

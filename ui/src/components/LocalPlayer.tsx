@@ -457,6 +457,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   // fullscreen shortcuts behave identically for both player types.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
       if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
       const isTransportShortcut = e.code === "Space"
         || e.key === "ArrowLeft"
@@ -552,6 +553,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
       if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
       e.preventDefault();
       if (transportLocked) return;

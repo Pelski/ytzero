@@ -73,11 +73,11 @@ Both packages use `strict` TypeScript — please keep the build type-clean.
 
 ## Database schema changes
 
-`app/src/schema.sql` and `app/src/channelPostsSchema.sql` describe the current
-schema for new installations. Any change to either file must also add the next
-versioned entry to `app/src/databaseMigrations.ts`, with explicit `sqlite` and
-`postgres` implementations and updated schema fingerprints. Never add a new
-one-off startup migration to `db.ts`.
+The files in `CANONICAL_SCHEMA_FILES` in `app/src/databaseMigrations.ts`
+describe the current schema for new installations. Any change to one must add
+the next versioned entry to `app/src/databaseMigrations.ts`, with explicit
+`sqlite` and `postgres` implementations and updated schema fingerprints. Never
+add a new one-off startup migration to `db.ts`.
 
 Run `bun run check:database-migrations` after changing the schema. The same
 check is part of `check:validate` and CI, and rejects schema changes that do not

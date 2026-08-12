@@ -4,6 +4,11 @@ import type { EmojiSkinTone } from "./emojiSkinTone";
 import { createSocialWatchPartyApi } from "./socialWatchPartyApi";
 import type { PlaylistSort, UserPlaylistSort } from "./playlistSort";
 import type { PlaybackQueueContext } from "./playbackQueue";
+import type {
+  PluginManifest,
+  PluginSettingValue,
+  PluginSettingsResponse,
+} from "./pluginTypes";
 import {
   BUCKET_LABELS, PLAYBACK_SPEEDS, SB_CATEGORIES,
   type AppChangelog,
@@ -54,9 +59,6 @@ import {
   type PlaylistDownloadResult,
   type PlaylistInfo,
   type PlaylistVideo,
-  type PluginManifest,
-  type PluginSettingValue,
-  type PluginSettingsResponse,
   type Profile,
   type ProfilePermissionArea,
   type ProfilePermissions,
@@ -85,6 +87,7 @@ import {
 } from "./apiTypes";
 import type { ChannelPost } from "./channelPostTypes";
 export * from "./apiTypes";
+export * from "./pluginTypes";
 export { ApiError } from "./apiHttp";
 export const api = {
   databaseStatus: () => http<DatabaseStatus>("/database/status"),

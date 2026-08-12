@@ -8,6 +8,7 @@ import {
   setPluginEnabled,
   setPluginSettings,
 } from "../plugins";
+import { registerTubeArchivistRoutes } from "./tubeArchivistRoutes";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -71,4 +72,6 @@ api.post("/plugins/:id/reset", async (c) => {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 404);
   }
 });
+
+registerTubeArchivistRoutes(api, isAdmin);
 }

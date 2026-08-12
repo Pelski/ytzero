@@ -19,6 +19,7 @@ YT Zero reads public YouTube RSS feeds, stores videos in your own SQLite or Post
 - **[Authentication](Authentication)** — None, shared login, per-profile login, OIDC, or proxy headers.
 - **[Child Lock](Child-Lock)** — PIN-protect household settings, configure child content restrictions, and monitor or stop active child viewing.
 - **[Browser Extensions](Browser-Extensions)** — improve the embedded player and redirect supported links to your instance.
+- **[TubeArchivist Integration](TubeArchivist-Integration)** — use an existing archive as a local source in the normal feed and player.
 
 ## Operations
 

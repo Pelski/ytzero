@@ -2,6 +2,7 @@ import { database } from "./database";
 import { isChildUser } from "./childTime";
 import { activeDownloadProgress } from "./downloader";
 import { parsePlaybackContext } from "./playbackContext";
+export { videoSelect } from "./videoSelect";
 export const videoExistsStmt = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
 export interface VideoRow {
   video_id: string;
@@ -101,33 +102,4 @@ export async function attachTags(uid: number, videos: VideoRow[], profileDownloa
     const { playback_context_json, ...video } = v;
     return { ...video, playback_context: parsePlaybackContext(playback_context_json), downloads_enabled: downloadsEnabled, downloads_allowed: downloadsAllowed, download_progress, tags: [...own, ...inherited, ...playlistInherited] };
   });
-}
-
-// Per-profile video projection: status/bucket/liked/progress come from the
-// active user's user_videos row (absent = default inbox); history is per user.
-// uid is a validated integer, safe to inline.
-export function videoSelect(uid: number) {
-  return `
-  SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
-         v.published_at, v.created_at AS found_at, v.published_at_approximate, v.members_only, v.is_private,
-         v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
-         v.is_short, v.views, v.likes, uv.liked, uv.watched,
-         v.duration, uv.watch_position, uv.watch_duration, uv.playback_context_json, v.external,
-         (SELECT cp.title
-          FROM channel_playlist_videos cpv
-          JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
-          JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id AND ufp.user_id = ${uid}
-          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1
-          ORDER BY cpv.discovered_at DESC LIMIT 1) AS source_playlist_title,
-         (SELECT cp.playlist_id
-          FROM channel_playlist_videos cpv
-          JOIN channel_playlists cp ON cp.playlist_id = cpv.playlist_id
-          JOIN user_followed_playlists ufp ON ufp.playlist_id = cpv.playlist_id AND ufp.user_id = ${uid}
-          WHERE cpv.video_id = v.video_id AND ufp.include_in_feed = 1
-          ORDER BY cpv.discovered_at DESC LIMIT 1) AS source_playlist_id,
-         EXISTS(SELECT 1 FROM history h WHERE h.video_id = v.video_id AND h.user_id = ${uid}) AS in_history,
-         (SELECT d.status FROM downloads d JOIN download_owners owner ON owner.video_id=d.video_id WHERE owner.user_id=${uid} AND d.video_id=v.video_id AND d.status!='deleted') AS download_status,
-         COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
-  FROM videos v JOIN channels c ON c.channel_id = v.channel_id
-  LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}`;
 }

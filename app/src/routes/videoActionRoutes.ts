@@ -7,6 +7,7 @@ import { refreshDiscoveryInBackground } from "../plugins";
 import { cancelAutoDownloadIfUnwanted } from "../downloader";
 import { videoExistsStmt } from "../videoRoutesSupport";
 import { savePlaybackContext } from "./playbackRoutes";
+import { completeVideo } from "../videoCompletion";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -81,11 +82,7 @@ api.post("/videos/:id/complete", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
   if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-  await database.prepare(
-    `INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
-     ON CONFLICT(user_id, video_id) DO UPDATE SET watched = 1, playback_context_json = NULL`
-  ).run(uid, id);
-  await database.prepare("INSERT INTO history (video_id, user_id) VALUES (?, ?)").run(id, uid);
+  await completeVideo(uid, id);
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
