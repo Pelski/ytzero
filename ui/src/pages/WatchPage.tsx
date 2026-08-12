@@ -81,7 +81,9 @@ export default function WatchPage() {
   const [audioMode, setAudioMode] = useState(audioModeDefault);
   const enterAudioMode = () => { setAudioMode(true); setAudioModeDefault(true); };
   const exitAudioMode = () => { setAudioMode(false); setAudioModeDefault(false); };
-  const controller = useWatchPageController();
+  // Audio mode tells the controller to skip building the YouTube iframe, so the
+  // standalone <audio> proxy owns playback (and the media session) uncontested.
+  const controller = useWatchPageController(audioMode);
   // Hooks must run before the early return below; reference the controller
   // defensively since it can be null on the first render. Re-apply the sticky
   // default on each new video; the render guard hides audio mode when there is
@@ -218,6 +220,15 @@ export default function WatchPage() {
 
   const { errorText: watchTogetherError, transportLockLabel: watchTogetherTransportLockLabel } = getWatchTogetherLabels(watchTogether, t);
 
+  // Audio mode rides on the standalone /audio proxy (yt-dlp AAC, no ffmpeg/HLS),
+  // so it works for any regular video — even one only queued/streaming, or one
+  // whose owner disabled embedding (the iframe would just show "Video
+  // unavailable"). Excluded only for live/upcoming and non-playable states.
+  const isLiveVideo = video?.live_status === "live" || video?.live_status === "upcoming";
+  const audioModeAvailable = !!video && !isLiveVideo
+    && !membersOnlyNotice && !privateVideoNotice && !watchTogetherTransportLocked
+    && (playerKind === "stream" || playerKind === "local" || playerKind === "waiting"
+        || playerKind === "choice" || playerKind === "youtube");
 
   return (
     <div className={`watch-layout${cinemaMode ? " theater" : ""}${watchTogether.room ? " together" : ""}`}>
@@ -235,7 +246,7 @@ export default function WatchPage() {
               ref={playerWrapRef}
               className={`watch-player${usingLocal ? " watch-player--local" : ""}${watchTogetherTransportLocked ? " watch-player--transport-locked" : ""}`}
             >
-              {usingLocal && video && !audioMode && !watchTogetherTransportLocked && (
+              {audioModeAvailable && !audioMode && (
                 <button
                   type="button"
                   className="watch-audio-toggle"
@@ -247,7 +258,7 @@ export default function WatchPage() {
                   <span>{t("playerAudioMode")}</span>
                 </button>
               )}
-              {audioMode && usingLocal && video ? (
+              {audioMode && audioModeAvailable && video ? (
                 <AudioModePlayer
                   key={`${video.video_id}-audio`}
                   src={api.audioUrl(video.video_id)}
@@ -436,7 +447,7 @@ export default function WatchPage() {
                 </div>
               )}
               {shortcutFeedback && <WatchPlayerFeedback key={shortcutFeedback.id} feedback={shortcutFeedback} keyboardSeekSeconds={keyboardSeekSeconds} />}
-              {playerKind === "youtube" && youtubeAutoplayBlocked && (
+              {playerKind === "youtube" && !audioMode && youtubeAutoplayBlocked && (
                 <div className="wp-autoplay-blocked">
                   <Button variant="primary" onClick={requestYouTubePlayback}>
                     <Play size={16} /> {t("playerPlay")}
@@ -460,7 +471,7 @@ export default function WatchPage() {
           <WatchTogetherPanelSlot controller={watchTogether} errorText={watchTogetherError} />
         </div>
         <WatchTogetherJoinStatus controller={watchTogether} errorText={watchTogetherError} roomId={watchTogetherRoomId} />
-        {playerKind === "youtube" && youtubeError === 153 && (
+        {playerKind === "youtube" && !audioMode && youtubeError === 153 && (
           <Alert className="youtube-referrer-alert-layout" variant="warning" icon={<AlertTriangle />} title={t("youtubeReferrerErrorTitle")}>{t("youtubeReferrerErrorHint")}</Alert>
         )}
         {(video ?? videoInfo) && (

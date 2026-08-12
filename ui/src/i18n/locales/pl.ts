@@ -263,6 +263,7 @@ export const pl: Locale = {
     playerPip: "Obraz w obrazie",
     playerAudioMode: "Tylko dźwięk",
     playerAudioModeExit: "Wideo",
+    playerAudioModeError: "Dźwięk niedostępny dla tego filmu.",
     playerScreenshot: "Zrób zrzut klatki",
     playerScreenshotSaved: "Zapisano zrzut klatki",
     playerScreenshotError: "Nie udało się zapisać tej klatki",

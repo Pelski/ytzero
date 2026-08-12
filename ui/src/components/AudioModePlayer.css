@@ -78,6 +78,20 @@
   max-width: 460px;
 }
 
+.audio-mode-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  text-align: center;
+}
+
+.audio-mode-status--error {
+  color: #ffb4b4;
+}
+
 /* Overlay affordance shown over the video player to switch to audio mode. */
 .watch-audio-toggle {
   position: absolute;

@@ -262,6 +262,7 @@ export const de: Locale = {
     playerPip: "Bild im Bild",
     playerAudioMode: "Nur Audio",
     playerAudioModeExit: "Video",
+    playerAudioModeError: "Audio ist für dieses Video nicht verfügbar.",
     playerScreenshot: "Screenshot aufnehmen",
     playerScreenshotSaved: "Screenshot gespeichert",
     playerScreenshotError: "Dieses Bild konnte nicht aufgenommen werden",

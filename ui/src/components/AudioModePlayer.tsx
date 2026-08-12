@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { Video } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { LoaderCircle, Video } from "lucide-react";
 import { useI18n } from "../i18n";
 import "./AudioModePlayer.css";
 
@@ -31,6 +31,15 @@ export default function AudioModePlayer({
   const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement>(null);
   const startedAt = useRef(startSeconds);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  // The audio proxy can only serve videos with an AAC track; if it never becomes
+  // playable, surface a clean error instead of an endless spinner.
+  useEffect(() => {
+    if (status !== "loading") return;
+    const timer = window.setTimeout(() => setStatus((s) => (s === "loading" ? "error" : s)), 20_000);
+    return () => window.clearTimeout(timer);
+  }, [status, src]);
 
   // Resume where the video player left off, once the element knows its metadata.
   const seekToStart = () => {
@@ -85,6 +94,14 @@ export default function AudioModePlayer({
           <div className="audio-mode-title">{title}</div>
           {channelTitle && <div className="audio-mode-channel">{channelTitle}</div>}
         </div>
+        {status === "loading" && (
+          <div className="audio-mode-status">
+            <LoaderCircle size={20} className="spin" />
+          </div>
+        )}
+        {status === "error" && (
+          <div className="audio-mode-status audio-mode-status--error">{t("playerAudioModeError")}</div>
+        )}
         <audio
           ref={audioRef}
           className="audio-mode-audio"
@@ -92,7 +109,11 @@ export default function AudioModePlayer({
           autoPlay
           controls
           playsInline
+          hidden={status === "error"}
           onLoadedMetadata={seekToStart}
+          onCanPlay={() => setStatus("ready")}
+          onPlaying={() => setStatus("ready")}
+          onError={() => setStatus("error")}
           onPlay={() => { try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing"; } catch {} }}
           onPause={() => { try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "paused"; } catch {} }}
           onTimeUpdate={(e) => {

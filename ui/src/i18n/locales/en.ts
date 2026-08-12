@@ -262,6 +262,7 @@ export const en = {
     playerPip: "Picture in picture",
     playerAudioMode: "Audio only",
     playerAudioModeExit: "Video",
+    playerAudioModeError: "Audio isn't available for this video.",
     playerScreenshot: "Take screenshot",
     playerScreenshotSaved: "Screenshot saved",
     playerScreenshotError: "Could not capture this frame",

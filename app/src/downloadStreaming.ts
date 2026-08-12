@@ -312,12 +312,14 @@ async function resolveAudioSource(userId: number, videoId: string, force = false
   const cached = audioSources.get(videoId);
   if (!force && cached && cached.expiresAt > Date.now()) return cached;
   if (!(await ytdlpStatus())) return null;
-  // Prefer AAC in an MP4 container: it plays natively in an <audio> element on
-  // every browser, including iPhone Safari (opus/webm does not).
+  // Require AAC in an MP4 container: it plays natively in an <audio> element on
+  // every browser, including iPhone Safari. Opus/WebM would just spin forever in
+  // Safari, so we deliberately do NOT fall back to it — a video with no AAC track
+  // resolves to nothing and the route surfaces a clean error instead.
   const args = [
     `https://www.youtube.com/watch?v=${videoId}`,
     "--no-playlist", "--no-warnings",
-    "-f", "bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/140/bestaudio",
+    "-f", "bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/140",
     "--print", "urls",
     "--print", "%(ext)s",
   ];

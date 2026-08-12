@@ -27,7 +27,7 @@ import { normalizePlaylistSort, playlistSortSearch } from "../playlistSort";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
-export function useWatchPageController() {
+export function useWatchPageController(audioMode: boolean = false) {
   const { t, language, locale, timeZone } = useI18n();
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
   const location = useLocation();
@@ -845,8 +845,9 @@ export function useWatchPageController() {
       };
     }
 
-    // Decision/waiting/blocked panels have no player to drive.
-    if (playerKind !== "youtube") return;
+    // Decision/waiting/blocked panels have no player to drive. Audio mode swaps
+    // the iframe for the standalone <audio> proxy, so skip creating it entirely.
+    if (playerKind !== "youtube" || audioMode) return;
 
     const wrap = ytWrapRef.current;
     if (!wrap) return;
@@ -946,13 +947,13 @@ export function useWatchPageController() {
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing, membersOnlyNotice, playerKind, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
+  }, [id, video?.video_id, videoMissing, membersOnlyNotice, playerKind, audioMode, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
 
   // Give the cross-origin YouTube iframe the same lock-screen/media-key surface
   // as LocalPlayer. The action handlers deliberately dereference playerRef at
   // invocation time because the iframe is created asynchronously.
   useEffect(() => {
-    if (playerKind !== "youtube" || !video || !("mediaSession" in navigator)) return;
+    if (playerKind !== "youtube" || audioMode || !video || !("mediaSession" in navigator)) return;
     const mediaSession = navigator.mediaSession;
     const seekByFallback = (seconds: number) => {
       const player = playerRef.current;
@@ -1011,7 +1012,7 @@ export function useWatchPageController() {
         setHandler(action, null);
       }
     };
-  }, [playerKind, video?.video_id, video?.title, video?.channel_title, video?.thumbnail, watchTogetherTransportLocked]);
+  }, [playerKind, audioMode, video?.video_id, video?.title, video?.channel_title, video?.thumbnail, watchTogetherTransportLocked]);
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
