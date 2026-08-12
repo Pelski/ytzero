@@ -299,11 +299,13 @@ api.get("/videos/:id/hls/:file", async (c) => {
 // Audio-only source for background listening: proxies the direct AAC track to
 // an <audio> element (Range-forwarded so seeking works). No ffmpeg/HLS — the
 // browser plays the original m4a, which is what lets iOS keep playing once
-// Safari is backgrounded or the screen is locked.
+// Safari is backgrounded or the screen is locked. This streams straight from
+// yt-dlp without keeping a file, so it stays available even for profiles that
+// leave the "download & keep" feature switched off; it only needs yt-dlp.
 api.get("/videos/:id/audio", async (c) => {
   const uid = currentUserId(c);
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
-  if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
+  if (!await ytdlpStatus()) return c.json({ error: "yt-dlp unavailable" }, 503);
   const id = c.req.param("id");
   if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
   const res = await getAudioResponse(uid, id, c.req.header("range") ?? null, c.req.raw.signal);
