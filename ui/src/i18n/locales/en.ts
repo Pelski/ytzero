@@ -260,6 +260,8 @@ export const en = {
     playerVolume: "Volume",
     playerFullscreen: "Fullscreen",
     playerPip: "Picture in picture",
+    playerAudioMode: "Audio only",
+    playerAudioModeExit: "Video",
     playerScreenshot: "Take screenshot",
     playerScreenshotSaved: "Screenshot saved",
     playerScreenshotError: "Could not capture this frame",

@@ -287,8 +287,99 @@ function resetHlsScratch() {
   try { rmSync(HLS_DIR, { recursive: true, force: true }); } catch {}
 }
 
+// ---------- audio-only source (background listening) ----------
+// Resolves the direct AAC audio URL for a video and proxies it (with Range) to
+// an <audio> element. Unlike the video HLS path this needs no ffmpeg/transcode:
+// it hands the browser the original m4a track, which is exactly what iOS needs
+// to keep playing once Safari is backgrounded or the screen is locked.
+
+interface AudioSource {
+  url: string;
+  mime: string;
+  expiresAt: number;
+}
+
+const audioSources = new Map<string, AudioSource>();
+
+/** googlevideo URLs carry an `expire` unix-second param; cache until just before. */
+function audioUrlExpiry(url: string): number {
+  const m = url.match(/[?&]expire=(\d+)/);
+  const expMs = m ? Number(m[1]) * 1000 : 0;
+  return expMs > Date.now() ? expMs - 300_000 : Date.now() + 3 * 3_600_000;
+}
+
+async function resolveAudioSource(userId: number, videoId: string, force = false): Promise<AudioSource | null> {
+  const cached = audioSources.get(videoId);
+  if (!force && cached && cached.expiresAt > Date.now()) return cached;
+  if (!(await ytdlpStatus())) return null;
+  // Prefer AAC in an MP4 container: it plays natively in an <audio> element on
+  // every browser, including iPhone Safari (opus/webm does not).
+  const args = [
+    `https://www.youtube.com/watch?v=${videoId}`,
+    "--no-playlist", "--no-warnings",
+    "-f", "bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/140/bestaudio",
+    "--print", "urls",
+    "--print", "%(ext)s",
+  ];
+  if (downloadCookiesConfigured(userId)) args.push("--cookies", downloadCookiesFile(userId));
+  try {
+    const proc = Bun.spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
+    const out = await new Response(proc.stdout).text();
+    if ((await proc.exited) !== 0) return null;
+    const lines = out.trim().split(/\r?\n/).filter(Boolean);
+    const url = lines[0];
+    const ext = lines[1] ?? "m4a";
+    if (!url || !/^https?:\/\//.test(url)) return null;
+    const source: AudioSource = {
+      url,
+      mime: ext === "webm" ? "audio/webm" : "audio/mp4",
+      expiresAt: audioUrlExpiry(url),
+    };
+    audioSources.set(videoId, source);
+    return source;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Proxy the audio track to the player, forwarding the browser's Range header so
+ * the <audio> element can seek. A stale (expired) googlevideo URL yields 403/410
+ * upstream; re-resolve once and retry. Null when yt-dlp can't resolve the audio.
+ */
+async function getAudioResponse(userId: number, videoId: string, range: string | null, signal?: AbortSignal): Promise<Response | null> {
+  let source = await resolveAudioSource(userId, videoId);
+  if (!source) return null;
+  const fetchUpstream = (url: string) => fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      ...(range ? { Range: range } : {}),
+    },
+    signal,
+  }).catch(() => null);
+
+  let upstream = await fetchUpstream(source.url);
+  if (upstream && (upstream.status === 403 || upstream.status === 410)) {
+    source = await resolveAudioSource(userId, videoId, true);
+    if (!source) return null;
+    upstream = await fetchUpstream(source.url);
+  }
+  if (!upstream || !upstream.body || (!upstream.ok && upstream.status !== 206)) return null;
+
+  const headers = new Headers();
+  headers.set("Content-Type", source.mime);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Cache-Control", "no-store");
+  const contentRange = upstream.headers.get("content-range");
+  if (contentRange) headers.set("Content-Range", contentRange);
+  const contentLength = upstream.headers.get("content-length");
+  if (contentLength) headers.set("Content-Length", contentLength);
+  return new Response(upstream.body, { status: upstream.status, headers });
+}
+
   return {
     destroyHlsSession,
+    getAudioResponse,
     getHlsPlaylist,
     getHlsSegment,
     isSegmentName,

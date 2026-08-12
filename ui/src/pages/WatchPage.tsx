@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
 import "./WatchPage.css";
 import { emitToast } from "../events";
 import { Link } from "react-router-dom";
@@ -20,6 +20,7 @@ import {
   Eye,
   Gauge,
   HardDrive,
+  Headphones,
   LoaderCircle,
   Lock,
   MonitorPlay,
@@ -38,6 +39,7 @@ import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCoun
 import { formatAppDate } from "../dateTime";
 import TagChip from "../components/TagChip";
 import LocalPlayer from "../components/LocalPlayer";
+import AudioModePlayer from "../components/AudioModePlayer";
 import Popconfirm from "../components/Popconfirm";
 import PlaylistPicker from "../components/PlaylistPicker";
 import { formatVideoDuration } from "../components/VideoCard";
@@ -63,7 +65,15 @@ const TranscriptDialog = lazy(() => import("../components/TranscriptDialog"));
 
 export default function WatchPage() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  // Audio-only background listening: swaps the video surface for an <audio>
+  // element so playback survives a backgrounded browser / locked screen on iOS.
+  const [audioMode, setAudioMode] = useState(false);
   const controller = useWatchPageController();
+  // Hooks must run before the early return below; reference the controller
+  // defensively since it can be null on the first render. Leaving a video (or
+  // losing the native source) drops back out of audio mode.
+  useEffect(() => { setAudioMode(false); }, [controller?.video?.video_id]);
+  useEffect(() => { if (controller && !controller.usingLocal) setAudioMode(false); }, [controller?.usingLocal]);
   if (!controller) return null;
   const {
     activePlaylistItemRef,
@@ -212,7 +222,39 @@ export default function WatchPage() {
               ref={playerWrapRef}
               className={`watch-player${usingLocal ? " watch-player--local" : ""}${watchTogetherTransportLocked ? " watch-player--transport-locked" : ""}`}
             >
-              {privateVideoNotice && video ? (
+              {usingLocal && video && !audioMode && !watchTogetherTransportLocked && (
+                <button
+                  type="button"
+                  className="watch-audio-toggle"
+                  onClick={() => setAudioMode(true)}
+                  aria-label={t("playerAudioMode")}
+                  title={t("playerAudioMode")}
+                >
+                  <Headphones size={16} />
+                  <span>{t("playerAudioMode")}</span>
+                </button>
+              )}
+              {audioMode && usingLocal && video ? (
+                <AudioModePlayer
+                  key={`${video.video_id}-audio`}
+                  src={api.audioUrl(video.video_id)}
+                  title={video.title}
+                  channelTitle={video.channel_title}
+                  artworkUrl={img(video.thumbnail)}
+                  startSeconds={
+                    Math.floor(streamPositionRef.current)
+                      || progressRef.current?.position
+                      || (video.watch_position && video.watch_duration && video.watch_duration > 0 &&
+                          video.watch_position / video.watch_duration < 0.9
+                        ? Math.floor(video.watch_position) : 0)
+                  }
+                  onPositionChange={(pos, dur) => {
+                    streamPositionRef.current = pos;
+                    if (dur > 0) progressRef.current = { position: pos, duration: dur };
+                  }}
+                  onExit={() => setAudioMode(false)}
+                />
+              ) : privateVideoNotice && video ? (
                 <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
                   <div className="wp-panel-scrim" />
                   <div className="wp-panel-content">

@@ -261,6 +261,8 @@ export const pl: Locale = {
     playerVolume: "Głośność",
     playerFullscreen: "Pełny ekran",
     playerPip: "Obraz w obrazie",
+    playerAudioMode: "Tylko dźwięk",
+    playerAudioModeExit: "Wideo",
     playerScreenshot: "Zrób zrzut klatki",
     playerScreenshotSaved: "Zapisano zrzut klatki",
     playerScreenshotError: "Nie udało się zapisać tej klatki",

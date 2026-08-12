@@ -260,6 +260,8 @@ export const de: Locale = {
     playerVolume: "Lautstärke",
     playerFullscreen: "Vollbild",
     playerPip: "Bild im Bild",
+    playerAudioMode: "Nur Audio",
+    playerAudioModeExit: "Video",
     playerScreenshot: "Screenshot aufnehmen",
     playerScreenshotSaved: "Screenshot gespeichert",
     playerScreenshotError: "Dieses Bild konnte nicht aufgenommen werden",
