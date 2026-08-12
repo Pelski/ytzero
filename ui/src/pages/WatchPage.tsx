@@ -63,17 +63,30 @@ import WatchPlayerFeedback from "./WatchPlayerFeedback";
 
 const TranscriptDialog = lazy(() => import("../components/TranscriptDialog"));
 
+// Sticky audio-mode preference, remembered across videos and sessions.
+const AUDIO_MODE_KEY = "ytzero:audioModeDefault";
+const audioModeDefault = (): boolean => {
+  try { return localStorage.getItem(AUDIO_MODE_KEY) === "1"; } catch { return false; }
+};
+const setAudioModeDefault = (on: boolean): void => {
+  try { localStorage.setItem(AUDIO_MODE_KEY, on ? "1" : "0"); } catch {}
+};
+
 export default function WatchPage() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   // Audio-only background listening: swaps the video surface for an <audio>
   // element so playback survives a backgrounded browser / locked screen on iOS.
-  const [audioMode, setAudioMode] = useState(false);
+  // Audio mode is "sticky": once chosen it persists across videos, so opening
+  // the next one lands straight in background-ready audio (no per-video tap).
+  const [audioMode, setAudioMode] = useState(audioModeDefault);
+  const enterAudioMode = () => { setAudioMode(true); setAudioModeDefault(true); };
+  const exitAudioMode = () => { setAudioMode(false); setAudioModeDefault(false); };
   const controller = useWatchPageController();
   // Hooks must run before the early return below; reference the controller
-  // defensively since it can be null on the first render. Leaving a video (or
-  // losing the native source) drops back out of audio mode.
-  useEffect(() => { setAudioMode(false); }, [controller?.video?.video_id]);
-  useEffect(() => { if (controller && !controller.usingLocal) setAudioMode(false); }, [controller?.usingLocal]);
+  // defensively since it can be null on the first render. Re-apply the sticky
+  // default on each new video; the render guard hides audio mode when there is
+  // no native source, without discarding the preference.
+  useEffect(() => { setAudioMode(audioModeDefault()); }, [controller?.video?.video_id]);
   if (!controller) return null;
   const {
     activePlaylistItemRef,
@@ -226,7 +239,7 @@ export default function WatchPage() {
                 <button
                   type="button"
                   className="watch-audio-toggle"
-                  onClick={() => setAudioMode(true)}
+                  onClick={enterAudioMode}
                   aria-label={t("playerAudioMode")}
                   title={t("playerAudioMode")}
                 >
@@ -252,7 +265,7 @@ export default function WatchPage() {
                     streamPositionRef.current = pos;
                     if (dur > 0) progressRef.current = { position: pos, duration: dur };
                   }}
-                  onExit={() => setAudioMode(false)}
+                  onExit={exitAudioMode}
                 />
               ) : privateVideoNotice && video ? (
                 <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
