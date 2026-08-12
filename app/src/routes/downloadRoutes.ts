@@ -5,7 +5,7 @@ import { database } from "../database";
 import { getUserSetting } from "../db";
 import { childLocalOnly, isChildUser } from "../childTime";
 import { DOWNLOADS_ADMIN_SETTING_KEYS, downloadCookiesConfigured, downloadSettings, profileDownloadsEnabled, removeDownloadCookies, saveDownloadCookies, setDownloadSettings, setProfileDownloadsEnabled } from "../downloadConfig";
-import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "../downloader";
+import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getAudioResponse, getDownload, getHlsPlaylist, getHlsSegment, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "../downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "../downloadRules";
 import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
 import { configuredTimeZone } from "../timeZone";
@@ -294,6 +294,22 @@ api.get("/videos/:id/hls/:file", async (c) => {
   return new Response(Bun.file(path), {
     headers: { "Content-Type": "video/mp2t", "Cache-Control": "no-store" },
   });
+});
+
+// Audio-only source for background listening: proxies the direct AAC track to
+// an <audio> element (Range-forwarded so seeking works). No ffmpeg/HLS — the
+// browser plays the original m4a, which is what lets iOS keep playing once
+// Safari is backgrounded or the screen is locked. This streams straight from
+// yt-dlp without keeping a file, so it stays available even for profiles that
+// leave the "download & keep" feature switched off; it only needs yt-dlp.
+api.get("/videos/:id/audio", async (c) => {
+  const uid = currentUserId(c);
+  if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  if (!await ytdlpStatus()) return c.json({ error: "yt-dlp unavailable" }, 503);
+  const id = c.req.param("id");
+  if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
+  const res = await getAudioResponse(uid, id, c.req.header("range") ?? null, c.req.raw.signal);
+  return res ?? c.json({ error: "audio unavailable" }, 502);
 });
 
 // ---------- subtitles for the local player ----------

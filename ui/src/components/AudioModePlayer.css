@@ -1,0 +1,128 @@
+.audio-mode {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #000;
+  border-radius: inherit;
+}
+
+/* Blurred cover art fills the frame the video would have occupied. */
+.audio-mode-art {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) brightness(0.5);
+  transform: scale(1.15);
+}
+
+.audio-mode-body {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 560px);
+  padding: clamp(16px, 4vw, 32px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.audio-mode-exit {
+  align-self: flex-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border: none;
+  border-radius: var(--radius, 8px);
+  cursor: pointer;
+}
+
+.audio-mode-exit:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.audio-mode-meta {
+  max-width: 100%;
+}
+
+.audio-mode-title {
+  font-size: clamp(15px, 2.4vw, 19px);
+  font-weight: 600;
+  color: #fff;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.audio-mode-channel {
+  margin-top: 4px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.audio-mode-audio {
+  width: 100%;
+  max-width: 460px;
+}
+
+.audio-mode-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  text-align: center;
+}
+
+.audio-mode-status--error {
+  color: #ffb4b4;
+}
+
+/* Overlay affordance shown over the video player to switch to audio mode. */
+.watch-audio-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border: none;
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+.watch-audio-toggle:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+@media (max-width: 600px) {
+  .watch-audio-toggle span {
+    display: none;
+  }
+  .watch-audio-toggle {
+    padding: 8px;
+  }
+}

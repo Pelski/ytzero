@@ -287,8 +287,130 @@ function resetHlsScratch() {
   try { rmSync(HLS_DIR, { recursive: true, force: true }); } catch {}
 }
 
+// ---------- audio-only source (background listening) ----------
+// Resolves the direct AAC audio URL for a video and proxies it (with Range) to
+// an <audio> element. Unlike the video HLS path this needs no ffmpeg/transcode:
+// it hands the browser the original m4a track, which is exactly what iOS needs
+// to keep playing once Safari is backgrounded or the screen is locked.
+
+interface AudioSource {
+  url: string;
+  mime: string;
+  expiresAt: number;
+}
+
+const audioSources = new Map<string, AudioSource>();
+
+/** googlevideo URLs carry an `expire` unix-second param; cache until just before. */
+function audioUrlExpiry(url: string): number {
+  const m = url.match(/[?&]expire=(\d+)/);
+  const expMs = m ? Number(m[1]) * 1000 : 0;
+  return expMs > Date.now() ? expMs - 300_000 : Date.now() + 3 * 3_600_000;
+}
+
+async function resolveAudioSource(userId: number, videoId: string, force = false): Promise<AudioSource | null> {
+  const cached = audioSources.get(videoId);
+  if (!force && cached && cached.expiresAt > Date.now()) return cached;
+  if (!(await ytdlpStatus())) return null;
+  // Require AAC in an MP4 container: it plays natively in an <audio> element on
+  // every browser, including iPhone Safari. Opus/WebM would just spin forever in
+  // Safari, so we deliberately do NOT fall back to it — a video with no AAC track
+  // resolves to nothing and the route surfaces a clean error instead.
+  const args = [
+    `https://www.youtube.com/watch?v=${videoId}`,
+    "--no-playlist", "--no-warnings",
+    "-f", "bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/140",
+    "--print", "urls",
+    "--print", "%(ext)s",
+  ];
+  if (downloadCookiesConfigured(userId)) args.push("--cookies", downloadCookiesFile(userId));
+  try {
+    const proc = Bun.spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
+    const out = await new Response(proc.stdout).text();
+    if ((await proc.exited) !== 0) return null;
+    const lines = out.trim().split(/\r?\n/).filter(Boolean);
+    const url = lines[0];
+    const ext = lines[1] ?? "m4a";
+    if (!url || !/^https?:\/\//.test(url)) return null;
+    const source: AudioSource = {
+      url,
+      mime: ext === "webm" ? "audio/webm" : "audio/mp4",
+      expiresAt: audioUrlExpiry(url),
+    };
+    audioSources.set(videoId, source);
+    return source;
+  } catch {
+    return null;
+  }
+}
+
+// One chunk of lookahead per reply. Small enough to buffer (so we can emit a
+// Content-Length), large enough that an AAC track rarely re-requests mid-play.
+const AUDIO_CHUNK_BYTES = 8_388_608;
+
+/**
+ * Proxy the audio track to the player. Two quirks force the shape of this:
+ *  - googlevideo rejects open-ended (`bytes=N-`) and range-less requests with a
+ *    403; only a *bounded* range gets a 206. So any range (or its absence) is
+ *    rewritten into a bounded one.
+ *  - Bun drops Content-Length when the body is a stream, and iOS Safari refuses
+ *    to start media without a Content-Length (it just spins). So the bounded
+ *    chunk is buffered and its byte length is sent back explicitly.
+ * A stale (expired) googlevideo URL yields 403/410 upstream; re-resolve once and
+ * retry. Null when yt-dlp can't resolve the audio.
+ */
+async function getAudioResponse(userId: number, videoId: string, range: string | null, signal?: AbortSignal): Promise<Response | null> {
+  let source = await resolveAudioSource(userId, videoId);
+  if (!source) return null;
+
+  const FAR_END = 10_000_000_000;
+  const match = range?.match(/bytes=(\d+)-(\d*)/);
+  const start = match?.[1] ? Number(match[1]) : 0;
+  const explicitEnd = match?.[2] ? Number(match[2]) : null;
+  const cappedEnd = range
+    ? Math.min(explicitEnd ?? start + AUDIO_CHUNK_BYTES - 1, start + AUDIO_CHUNK_BYTES - 1)
+    : (explicitEnd ?? start + FAR_END);
+  const boundedRange = `bytes=${start}-${cappedEnd}`;
+
+  const fetchUpstream = (url: string) => fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0", Range: boundedRange },
+    signal,
+  }).catch(() => null);
+
+  let upstream = await fetchUpstream(source.url);
+  if (upstream && (upstream.status === 403 || upstream.status === 410)) {
+    source = await resolveAudioSource(userId, videoId, true);
+    if (!source) return null;
+    upstream = await fetchUpstream(source.url);
+  }
+  if (!upstream || !upstream.body || !upstream.ok) return null;
+
+  const contentRange = upstream.headers.get("content-range");
+  const total = contentRange ? Number(contentRange.split("/")[1]) : NaN;
+  // Buffer the bounded chunk so Bun emits a real Content-Length (see above).
+  const body = await upstream.arrayBuffer().catch(() => null);
+  if (!body) return null;
+
+  const headers = new Headers();
+  headers.set("Content-Type", source.mime);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Cache-Control", "no-store");
+  headers.set("Content-Length", String(body.byteLength));
+
+  let status: number;
+  if (range) {
+    status = 206;
+    const end = start + body.byteLength - 1;
+    headers.set("Content-Range", `bytes ${start}-${end}/${Number.isFinite(total) ? total : "*"}`);
+  } else {
+    status = 200;
+  }
+  return new Response(body, { status, headers });
+}
+
   return {
     destroyHlsSession,
+    getAudioResponse,
     getHlsPlaylist,
     getHlsSegment,
     isSegmentName,
