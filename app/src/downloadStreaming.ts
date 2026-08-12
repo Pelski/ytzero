@@ -344,19 +344,36 @@ async function resolveAudioSource(userId: number, videoId: string, force = false
   }
 }
 
+// One chunk of lookahead per reply. Small enough to buffer (so we can emit a
+// Content-Length), large enough that an AAC track rarely re-requests mid-play.
+const AUDIO_CHUNK_BYTES = 8_388_608;
+
 /**
- * Proxy the audio track to the player, forwarding the browser's Range header so
- * the <audio> element can seek. A stale (expired) googlevideo URL yields 403/410
- * upstream; re-resolve once and retry. Null when yt-dlp can't resolve the audio.
+ * Proxy the audio track to the player. Two quirks force the shape of this:
+ *  - googlevideo rejects open-ended (`bytes=N-`) and range-less requests with a
+ *    403; only a *bounded* range gets a 206. So any range (or its absence) is
+ *    rewritten into a bounded one.
+ *  - Bun drops Content-Length when the body is a stream, and iOS Safari refuses
+ *    to start media without a Content-Length (it just spins). So the bounded
+ *    chunk is buffered and its byte length is sent back explicitly.
+ * A stale (expired) googlevideo URL yields 403/410 upstream; re-resolve once and
+ * retry. Null when yt-dlp can't resolve the audio.
  */
 async function getAudioResponse(userId: number, videoId: string, range: string | null, signal?: AbortSignal): Promise<Response | null> {
   let source = await resolveAudioSource(userId, videoId);
   if (!source) return null;
+
+  const FAR_END = 10_000_000_000;
+  const match = range?.match(/bytes=(\d+)-(\d*)/);
+  const start = match?.[1] ? Number(match[1]) : 0;
+  const explicitEnd = match?.[2] ? Number(match[2]) : null;
+  const cappedEnd = range
+    ? Math.min(explicitEnd ?? start + AUDIO_CHUNK_BYTES - 1, start + AUDIO_CHUNK_BYTES - 1)
+    : (explicitEnd ?? start + FAR_END);
+  const boundedRange = `bytes=${start}-${cappedEnd}`;
+
   const fetchUpstream = (url: string) => fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0",
-      ...(range ? { Range: range } : {}),
-    },
+    headers: { "User-Agent": "Mozilla/5.0", Range: boundedRange },
     signal,
   }).catch(() => null);
 
@@ -366,17 +383,29 @@ async function getAudioResponse(userId: number, videoId: string, range: string |
     if (!source) return null;
     upstream = await fetchUpstream(source.url);
   }
-  if (!upstream || !upstream.body || (!upstream.ok && upstream.status !== 206)) return null;
+  if (!upstream || !upstream.body || !upstream.ok) return null;
+
+  const contentRange = upstream.headers.get("content-range");
+  const total = contentRange ? Number(contentRange.split("/")[1]) : NaN;
+  // Buffer the bounded chunk so Bun emits a real Content-Length (see above).
+  const body = await upstream.arrayBuffer().catch(() => null);
+  if (!body) return null;
 
   const headers = new Headers();
   headers.set("Content-Type", source.mime);
   headers.set("Accept-Ranges", "bytes");
   headers.set("Cache-Control", "no-store");
-  const contentRange = upstream.headers.get("content-range");
-  if (contentRange) headers.set("Content-Range", contentRange);
-  const contentLength = upstream.headers.get("content-length");
-  if (contentLength) headers.set("Content-Length", contentLength);
-  return new Response(upstream.body, { status: upstream.status, headers });
+  headers.set("Content-Length", String(body.byteLength));
+
+  let status: number;
+  if (range) {
+    status = 206;
+    const end = start + body.byteLength - 1;
+    headers.set("Content-Range", `bytes ${start}-${end}/${Number.isFinite(total) ? total : "*"}`);
+  } else {
+    status = 200;
+  }
+  return new Response(body, { status, headers });
 }
 
   return {
