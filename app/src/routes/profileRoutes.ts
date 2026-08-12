@@ -12,7 +12,7 @@ import {
 } from "../childTime";
 import { database } from "../database";
 import { getSetting, getUserSetting, setSetting, setUserSetting } from "../db";
-import { removeDownload, removeDownloadCookies } from "../downloader";
+import { invalidateAudioSources, removeDownload, removeDownloadCookies } from "../downloader";
 import { log } from "../logger";
 import { generateTemporaryPassword, uniqueProfileUsername } from "../profileCredentials";
 import {
@@ -23,7 +23,6 @@ import {
   removeStoredProfileAvatar,
   stageProfileAvatarBytes,
 } from "../profileAvatars";
-
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
 type ApiContext = Context<ApiEnvironment>;
@@ -311,6 +310,7 @@ api.delete("/profiles/:id", async (c) => {
   const ownedDownloads = await database.prepare("SELECT video_id FROM download_owners WHERE user_id=?").all(id) as { video_id: string }[];
   for (const download of ownedDownloads) await removeDownload(id, download.video_id);
   removeDownloadCookies(id);
+  invalidateAudioSources(id);
   await database.prepare("DELETE FROM users WHERE id = ?").run(id); // cascades to all remaining per-user state
   removeStoredProfileAvatar(user.avatar);
   if (user.is_child) {

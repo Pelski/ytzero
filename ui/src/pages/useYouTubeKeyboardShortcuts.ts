@@ -2,11 +2,12 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import type { LocalPlayerShortcut } from "../components/LocalPlayer";
 import { sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import type { PlayerKind } from "./watchPlayerMode";
-import type { WatchPlayerHandle } from "./useWatchTogetherPlayback";
+import type { WatchPlayerHandle } from "../playerHandle";
 
 export type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
 export function useYouTubeKeyboardShortcuts({
+  audioActive,
   enhancePlayerStateRef,
   id,
   keyboardSeekSeconds,
@@ -17,6 +18,7 @@ export function useYouTubeKeyboardShortcuts({
   takeScreenshot,
   transportLocked,
 }: {
+  audioActive: boolean;
   enhancePlayerStateRef: MutableRefObject<{ state: EnhancePlayerState; updatedAt: number } | null>;
   id?: string;
   keyboardSeekSeconds: number;
@@ -33,7 +35,7 @@ export function useYouTubeKeyboardShortcuts({
   // The YouTube iframe only receives built-in shortcuts after focus. Mirror
   // essential keys at page level; LocalPlayer owns the equivalent behavior.
   useEffect(() => {
-    if (playerKind !== "youtube") return;
+    if (playerKind !== "youtube" && !audioActive) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.altKey || event.ctrlKey || event.metaKey) return;
       if ((event.target as Element).closest("input,textarea,select,[contenteditable]")) return;
@@ -65,17 +67,20 @@ export function useYouTubeKeyboardShortcuts({
 
       if (event.key === "s" || event.key === "S") {
         event.preventDefault();
-        if (!event.repeat) takeScreenshot();
+        if (!event.repeat) {
+          if (audioActive) showFeedback("screenshotUnsupported");
+          else takeScreenshot();
+        }
         return;
       }
 
       if (event.key === "m" || event.key === "M") {
         event.preventDefault();
         if (event.repeat) return;
-        const enhancedState = enhancePlayerStateRef.current?.state;
+        const enhancedState = audioActive ? null : enhancePlayerStateRef.current?.state;
         const muted = enhancedState?.muted ?? Boolean(player.isMuted?.());
         showFeedback(muted ? "unmute" : "mute");
-        if (id) {
+        if (id && !audioActive) {
           void sendPlayerCommand(id, "toggle-muted").catch(() => {
             if (muted) player.unMute?.();
             else player.mute?.();
@@ -140,5 +145,5 @@ export function useYouTubeKeyboardShortcuts({
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [enhancePlayerStateRef, id, keyboardSeekSeconds, playerKind, playerRef, showFeedback, speedRef, takeScreenshot, transportLocked]);
+  }, [audioActive, enhancePlayerStateRef, id, keyboardSeekSeconds, playerKind, playerRef, showFeedback, speedRef, takeScreenshot, transportLocked]);
 }

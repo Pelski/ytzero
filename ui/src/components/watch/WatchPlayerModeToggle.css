@@ -1,0 +1,59 @@
+.watch-player-mode-toggle.ui-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: rgba(255, 255, 255, 0.68);
+  background: rgba(0, 0, 0, 0.12);
+  box-shadow: none;
+  backdrop-filter: blur(4px);
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.16s ease, transform 0.16s ease, color 0.16s ease, background 0.16s ease;
+}
+.watch-player-mode-toggle.ui-button:hover,
+.watch-player-mode-toggle.ui-button:focus-visible {
+  color: rgba(255, 255, 255, 0.94);
+  background: rgba(0, 0, 0, 0.34);
+}
+.watch-player-mode-toggle.ui-button svg {
+  width: 15px;
+  height: 15px;
+  transform: translate(-0.5px, -0.5px);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+@media (hover: hover) and (pointer: fine) {
+  .watch-player-mode-toggle.ui-button {
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+  }
+  .watch-player:hover > .watch-player-mode-toggle.ui-button,
+  .watch-player-mode-toggle.ui-button:focus-visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+}
+@media (max-width: 640px) {
+  .watch-player-mode-toggle.ui-button {
+    top: 8px;
+    right: max(8px, var(--safe-right));
+    width: 44px;
+    height: 44px;
+    color: rgba(255, 255, 255, 0.78);
+    background: rgba(0, 0, 0, 0.2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .watch-player-mode-toggle.ui-button {
+    transform: none;
+    transition: opacity 0.16s ease, color 0.16s ease, background 0.16s ease;
+  }
+}

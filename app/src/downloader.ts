@@ -852,10 +852,14 @@ async function runDownload(userId: number, videoId: string, s: DlSettings) {
 
 const {
   destroyHlsSession,
+  getAudioHeadResponse,
   getAudioResponse,
   getHlsPlaylist,
   getHlsSegment,
+  getLiveAudioPlaylist,
+  getLiveAudioResource,
   isSegmentName,
+  invalidateAudioSources,
   liveStreamEnabled,
   resetHlsScratch,
 } = createDownloadStreaming({
@@ -870,7 +874,7 @@ const {
   ytdlpStatus,
 });
 
-export { destroyHlsSession, getAudioResponse, getHlsPlaylist, getHlsSegment, isSegmentName, liveStreamEnabled };
+export { destroyHlsSession, getAudioHeadResponse, getAudioResponse, getHlsPlaylist, getHlsSegment, getLiveAudioPlaylist, getLiveAudioResource, invalidateAudioSources, isSegmentName, liveStreamEnabled };
 // ---------- scheduler ----------
 
 let ticking = false;

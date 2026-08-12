@@ -9,6 +9,7 @@ import SubtitlePicker from "./SubtitlePicker";
 import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../playerScreenshot";
 import { enforceLocalPlayerVolume } from "../localPlayerVolume";
 import "./LocalPlayer.css";
+import "./PlayerVolume.css";
 import "./LocalPlayerTransportLock.css";
 
 const VOLUME_KEY = "localPlayerVolume";
@@ -816,6 +817,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
               max={1}
               step={0.05}
               value={muted ? 0 : volume}
+              style={{ "--player-volume": `${(muted ? 0 : volume) * 100}%` } as CSSProperties}
               aria-label={t("playerVolume")}
               onChange={(e) => { setVolume(Number(e.target.value)); setMuted(Number(e.target.value) === 0); }}
             />

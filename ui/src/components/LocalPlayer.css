@@ -293,16 +293,6 @@
 }
 .lp-btn:hover { opacity: 1; background: rgba(255, 255, 255, 0.14); }
 .lp-btn.active { opacity: 1; background: rgba(255, 255, 255, 0.2); }
-.lp-volume { display: flex; align-items: center; }
-.lp-volume input[type="range"] {
-  width: 0;
-  opacity: 0;
-  transition: width 0.18s ease, opacity 0.18s ease;
-  accent-color: #fff;
-  cursor: pointer;
-}
-.lp-volume:hover input[type="range"],
-.lp-volume input[type="range"]:focus-visible { width: 64px; opacity: 1; }
 .lp-time {
   font-size: 12.5px;
   color: rgba(255, 255, 255, 0.95);

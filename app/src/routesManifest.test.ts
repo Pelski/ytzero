@@ -36,12 +36,14 @@ describe("HTTP route manifest", () => {
   test("keeps every registered method and path stable while routers are extracted", () => {
     const transcriptRoute = "POST /videos/:id/transcript";
     const playbackAdjacentRoute = "POST /playback/adjacent";
-    expect(routes).toHaveLength(227);
+    const liveAudioRoute = "GET /videos/:id/audio-live/:resource";
+    expect(routes).toHaveLength(228);
     expect(routes).toContain(transcriptRoute);
     expect(routes).toContain(playbackAdjacentRoute);
+    expect(routes).toContain(liveAudioRoute);
     expect(routes).toContain("GET /plugins/tubearchivist/config");
     expect(routes).toContain("POST /plugins/tubearchivist/sync");
-    const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute);
+    const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute && route !== liveAudioRoute);
     expect(createHash("sha256").update(legacyRoutes.join("\n")).digest("hex"))
       .toBe("41e8bc10839e472581c4b99528626dcf5e1880c97ade30ad49319e76074947fd");
   });

@@ -24,10 +24,14 @@ import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTub
 import { useUpNextQueue } from "./useUpNextQueue";
 import { usePlaylistDownloadPrefetch } from "./usePlaylistDownloadPrefetch";
 import { normalizePlaylistSort, playlistSortSearch } from "../playlistSort";
+import type { WatchPlayerHandle } from "../playerHandle";
+import { canUseWatchAudioMode } from "./watchAudioMode";
+import { useWatchPlaybackPosition } from "./useWatchPlaybackPosition";
+import { useYouTubeMediaSession } from "./useYouTubeMediaSession";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
-export function useWatchPageController(audioMode: boolean = false) {
+export function useWatchPageController(audioModeRequested: boolean = false) {
   const { t, language, locale, timeZone } = useI18n();
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
   const location = useLocation();
@@ -153,7 +157,6 @@ export function useWatchPageController(audioMode: boolean = false) {
   const [sourceChoice, setSourceChoice] = useState<"undecided" | "youtube" | "wait">("undecided");
   // Current position of the experimental stream, so the handoff to the local
   // file (once the background download finishes) resumes at the same spot.
-  const streamPositionRef = useRef(0);
   // The viewer left the experimental stream for their configured player.
   const [skipStreaming, setSkipStreaming] = useState(false);
   const [waitProgress, setWaitProgress] = useState<{ percent: number; speed: string | null } | null>(null);
@@ -197,10 +200,9 @@ export function useWatchPageController(audioMode: boolean = false) {
   // Container the YT iframe is injected into; separate from playerWrapRef so
   // the manual DOM cleanup never touches the React-rendered LocalPlayer.
   const ytWrapRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<any>(null);
+  const playerRef = useRef<WatchPlayerHandle | null>(null);
   const enhancePlayerStateRef = useRef<{ state: EnhancePlayerState; updatedAt: number } | null>(null);
   const archivedRef = useRef(false);
-  const progressRef = useRef<{ position: number; duration: number } | null>(null);
   const sbSegmentsRef = useRef<SponsorSegment[]>([]);
   const sbPausedRef = useRef(false);
   const disabledSegsRef = useRef<Set<string>>(new Set());
@@ -283,10 +285,27 @@ export function useWatchPageController(audioMode: boolean = false) {
   const downloadFeedbackVisible = downloadReadyToReload || downloadRequestError || downloadStatus === "queued" || downloadStatus === "downloading" || downloadStatus === "error";
   const privateVideoNotice = video?.is_private === 1;
   const membersOnlyNotice = video?.members_only === 1 && !isChildProfile && !privateVideoNotice;
+  const audioModeAvailable = canUseWatchAudioMode({
+    childProfile: isChildProfile,
+    hasVideo: Boolean(video && video.video_id === id),
+    liveStatus: video?.live_status ?? "none",
+    membersOnly: Boolean(membersOnlyNotice),
+    playerKind,
+    privateVideo: Boolean(privateVideoNotice),
+    watchTogetherRoomId,
+  });
+  const audioActive = audioModeRequested && audioModeAvailable;
   // Both "local" and "stream" render the LocalPlayer component (same layout).
-  const usingLocal = (playerKind === "local" || playerKind === "stream") && !membersOnlyNotice && !privateVideoNotice;
+  const usingLocal = !audioActive && (playerKind === "local" || playerKind === "stream") && !membersOnlyNotice && !privateVideoNotice;
   const sharedTimestamp = Number(new URLSearchParams(location.search).get("t"));
   const sharedStartSeconds = Number.isFinite(sharedTimestamp) ? Math.max(0, Math.floor(sharedTimestamp)) : 0;
+  const {
+    capturePlaybackPosition, playbackPositionVideoIdRef, playbackStartSeconds,
+    progressRef, streamPositionRef,
+  } = useWatchPlaybackPosition({
+    audioActive, id, membersOnlyNotice, playerKind, playerRef,
+    privateVideoNotice, sharedStartSeconds, video,
+  });
   const keyboardSeekSeconds = Math.max(1, Number(settings?.keyboard_seek_seconds ?? "5") || 5);
   const screenshotFormat = parsePlayerScreenshotFormat(settings?.player_screenshot_format);
   const screenshotQuality = Math.min(1, Math.max(0.1, Number(settings?.player_screenshot_quality) || 0.92));
@@ -451,7 +470,7 @@ export function useWatchPageController(audioMode: boolean = false) {
     setSourceChoice("youtube");
   }, []);
 
-  useEffect(() => { streamPositionRef.current = 0; setSkipStreaming(false); }, [id]);
+  useEffect(() => { setSkipStreaming(false); }, [id]);
 
   // Leave the experimental stream: fall back to whatever the viewer's configured
   // player would be (download-wait / ask / YouTube — or the local file if the
@@ -674,7 +693,7 @@ export function useWatchPageController(audioMode: boolean = false) {
   }, [id]);
 
   useEffect(() => {
-    if (playerKind !== "youtube" || !id) return;
+    if (playerKind !== "youtube" || audioActive || !id) return;
     const toggleEnhancedCaptions = () => {
       void sendPlayerCommand(id, "toggle-captions").catch((error) => console.warn("Unable to toggle enhanced-player captions", error));
     };
@@ -717,7 +736,7 @@ export function useWatchPageController(audioMode: boolean = false) {
     };
     document.addEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
     return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
-  }, [id, keyboardSeekSeconds, playerKind, showShortcutFeedback]);
+  }, [audioActive, id, keyboardSeekSeconds, playerKind, showShortcutFeedback]);
 
   // Create the player (YT iframe or the ref populated by LocalPlayer) and poll
   // progress every second. The poll runs against the shared YT-shaped player
@@ -729,28 +748,25 @@ export function useWatchPageController(audioMode: boolean = false) {
     // In "stream" mode the reported duration is the downloaded length so far,
     // not the full video — persisting progress or auto-archiving off that ratio
     // would be wrong. The saved download handles resume on the next visit.
-    const isStream = playerKind === "stream";
+    const isStream = playerKind === "stream" && !audioActive;
     let wasPlaying = false;
     let lastLifecycleFlushAt = 0;
 
-    const startSeconds = sharedStartSeconds || (
-      video?.watch_position && video?.watch_duration && video.watch_duration > 0 &&
-      video.watch_position / video.watch_duration < 0.9
-        ? Math.floor(video.watch_position) : 0
-    );
+    const startSeconds = playbackStartSeconds;
 
     const poll = () => {
       const p = playerRef.current;
-      const enhancedSnapshot = playerKind === "youtube" ? enhancePlayerStateRef.current : null;
+      const enhancedSnapshot = playerKind === "youtube" && !audioActive ? enhancePlayerStateRef.current : null;
       const enhancedState = enhancedSnapshot && Date.now() - enhancedSnapshot.updatedAt < 2_500 ? enhancedSnapshot.state : null;
-      if (!p?.getCurrentTime && !enhancedState) return;
+      if (!p && !enhancedState) return;
       try {
-        const position = enhancedState?.currentTime ?? p.getCurrentTime() as number;
-        const playerDuration = enhancedState?.duration ?? p.getDuration() as number;
+        const position = enhancedState?.currentTime ?? p?.getCurrentTime();
+        const playerDuration = enhancedState?.duration ?? p?.getDuration();
         if (!position || !playerDuration) return;
+        playbackPositionVideoIdRef.current = id;
         if (isStream) streamPositionRef.current = position;
         if (!isStream) progressRef.current = { position, duration: playerDuration };
-        if (playerKind === "youtube" && "mediaSession" in navigator) {
+        if (playerKind === "youtube" && !audioActive && "mediaSession" in navigator) {
           try {
             navigator.mediaSession.setPositionState({
               duration: playerDuration,
@@ -759,7 +775,7 @@ export function useWatchPageController(audioMode: boolean = false) {
             });
           } catch {}
         }
-        const isPlaying = enhancedState ? !enhancedState.paused && !enhancedState.ended : p.getPlayerState?.() === 1;
+        const isPlaying = enhancedState ? !enhancedState.paused && !enhancedState.ended : p?.getPlayerState?.() === 1;
         if (!isPlaying) {
           if (wasPlaying && !isStream) {
             queueProgressWrite(id, position, playerDuration);
@@ -784,7 +800,7 @@ export function useWatchPageController(audioMode: boolean = false) {
             if (disabledSegsRef.current.has(seg.UUID)) continue;
             if (position >= seg.segment[0] && position < seg.segment[1] - 0.3) {
               const skippedSeconds = seg.segment[1] - position;
-              p.seekTo(seg.segment[1], true);
+              p?.seekTo?.(seg.segment[1], true);
               showShortcutFeedback("sponsorblock", skippedSeconds, seg.category);
               if (!isIncognitoMode() && !recordedSbSegsRef.current.has(seg.UUID)) {
                 recordedSbSegsRef.current.add(seg.UUID);
@@ -828,12 +844,11 @@ export function useWatchPageController(audioMode: boolean = false) {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", flushForPageLifecycle);
       if (Date.now() - lastLifecycleFlushAt >= 1_000) saveCurrentProgress(true);
-      progressRef.current = null;
     };
 
     if (membersOnlyNotice) return;
 
-    if (playerKind === "local" || playerKind === "stream") {
+    if (playerKind === "local" || playerKind === "stream" || audioActive) {
       // LocalPlayer renders the <video> itself and fills playerRef via its ref.
       // In "stream" mode the duration is unknown, so poll() self-skips progress
       // saving and auto-archive — SponsorBlock/resume just wait for the download.
@@ -847,7 +862,7 @@ export function useWatchPageController(audioMode: boolean = false) {
 
     // Decision/waiting/blocked panels have no player to drive. Audio mode swaps
     // the iframe for the standalone <audio> proxy, so skip creating it entirely.
-    if (playerKind !== "youtube" || audioMode) return;
+    if (playerKind !== "youtube") return;
 
     const wrap = ytWrapRef.current;
     if (!wrap) return;
@@ -874,6 +889,7 @@ export function useWatchPageController(audioMode: boolean = false) {
 
     let pollInterval: ReturnType<typeof setInterval>;
     let destroyed = false;
+    let youtubePlayer: WatchPlayerHandle | null = null;
     // YT resets the rate to 1× on load, so apply the desired speed once the
     // player is ready and again on the first PLAYING event to make it stick.
     let speedApplied = false;
@@ -888,7 +904,7 @@ export function useWatchPageController(audioMode: boolean = false) {
     loadYouTubeApi().then(() => {
       if (destroyed) return;
       const w = window as any;
-      playerRef.current = new w.YT.Player(`yt-inner-${id}`, {
+      youtubePlayer = new w.YT.Player(`yt-inner-${id}`, {
         host: "https://www.youtube-nocookie.com",
         videoId: id,
         width: "100%",
@@ -933,6 +949,7 @@ export function useWatchPageController(audioMode: boolean = false) {
           },
         },
       });
+      playerRef.current = youtubePlayer;
 
       pollInterval = setInterval(poll, 1_000);
     });
@@ -941,78 +958,15 @@ export function useWatchPageController(audioMode: boolean = false) {
       destroyed = true;
       clearInterval(pollInterval);
       saveOnExit();
-      if (playerRef.current) {
-        try { playerRef.current.destroy(); } catch {}
-        playerRef.current = null;
+      if (youtubePlayer) {
+        try { youtubePlayer.destroy(); } catch {}
+        if (playerRef.current === youtubePlayer) playerRef.current = null;
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing, membersOnlyNotice, playerKind, audioMode, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
+  }, [id, video?.video_id, videoMissing, membersOnlyNotice, playerKind, audioActive, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, playbackStartSeconds]);
 
-  // Give the cross-origin YouTube iframe the same lock-screen/media-key surface
-  // as LocalPlayer. The action handlers deliberately dereference playerRef at
-  // invocation time because the iframe is created asynchronously.
-  useEffect(() => {
-    if (playerKind !== "youtube" || audioMode || !video || !("mediaSession" in navigator)) return;
-    const mediaSession = navigator.mediaSession;
-    const seekByFallback = (seconds: number) => {
-      const player = playerRef.current;
-      const current = Number(player?.getCurrentTime?.());
-      const duration = Number(player?.getDuration?.());
-      if (!Number.isFinite(current)) return;
-      player?.seekTo?.(Math.min(Math.max(0, current + seconds), Number.isFinite(duration) ? duration : Infinity), true);
-    };
-    const setHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
-      try { mediaSession.setActionHandler(action, handler); } catch {}
-    };
-
-    try {
-      mediaSession.metadata = new MediaMetadata({
-        title: video.title,
-        artist: video.channel_title,
-        artwork: video.thumbnail ? [{ src: img(video.thumbnail), sizes: "480x360", type: "image/jpeg" }] : [],
-      });
-    } catch {}
-    if (!watchTogetherTransportLocked) {
-      setHandler("play", () => {
-        void sendPlayerCommand(video.video_id, "play").catch(() => playerRef.current?.playVideo?.());
-      });
-      setHandler("pause", () => {
-        void sendPlayerCommand(video.video_id, "pause").catch(() => playerRef.current?.pauseVideo?.());
-      });
-      setHandler("seekbackward", (details) => {
-        const seconds = -(details.seekOffset ?? 10);
-        void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
-      });
-      setHandler("seekforward", (details) => {
-        const seconds = details.seekOffset ?? 10;
-        void sendPlayerCommand(video.video_id, "seek-by", { seconds }).catch(() => seekByFallback(seconds));
-      });
-      setHandler("seekto", (details) => {
-        if (details.seekTime != null) {
-          void sendPlayerCommand(video.video_id, "seek-to", { seconds: details.seekTime })
-            .catch(() => playerRef.current?.seekTo?.(details.seekTime!, true));
-        }
-      });
-    } else {
-      // A null handler can hand media keys back to the browser's default media
-      // routing, which may still reach the embedded player. Consume them while
-      // the room host owns transport instead.
-      for (const action of ["play", "pause", "seekbackward", "seekforward", "seekto", "stop"] as MediaSessionAction[]) {
-        setHandler(action, () => {});
-      }
-    }
-
-    return () => {
-      try {
-        mediaSession.metadata = null;
-        mediaSession.playbackState = "none";
-      } catch {}
-      for (const action of ["play", "pause", "seekbackward", "seekforward", "seekto", "stop"] as MediaSessionAction[]) {
-        setHandler(action, null);
-      }
-    };
-  }, [playerKind, audioMode, video?.video_id, video?.title, video?.channel_title, video?.thumbnail, watchTogetherTransportLocked]);
+  useYouTubeMediaSession({ audioActive, playerKind, playerRef, video, watchTogetherTransportLocked });
 
   // Waiting panel: make sure the download is queued with top priority, then
   // track its progress until the file is ready (the local player takes over)
@@ -1053,8 +1007,9 @@ export function useWatchPageController(audioMode: boolean = false) {
     const eff = v ?? settings?.player_speed ?? "1";
     setSpeed(eff);
     speedRef.current = eff;
-    const applyFallback = () => { try { playerRef.current?.setPlaybackRate(Number(eff)); } catch {} };
-    if (id) void sendPlayerCommand(id, "set-playback-rate", { rate: Number(eff) }).catch(applyFallback);
+    const applyFallback = () => { try { playerRef.current?.setPlaybackRate?.(Number(eff)); } catch {} };
+    if (audioActive) applyFallback();
+    else if (id) void sendPlayerCommand(id, "set-playback-rate", { rate: Number(eff) }).catch(applyFallback);
     else applyFallback();
     setMoreOpen(false);
     setSpeedOpen(false);
@@ -1156,6 +1111,7 @@ export function useWatchPageController(audioMode: boolean = false) {
   }, []);
 
   useYouTubeKeyboardShortcuts({
+    audioActive,
     enhancePlayerStateRef,
     id,
     keyboardSeekSeconds,
@@ -1375,12 +1331,15 @@ export function useWatchPageController(audioMode: boolean = false) {
 
   return {
     activePlaylistItemRef,
+    audioActive,
+    audioModeAvailable,
     appUrl,
     backgroundDownload,
     cancelOrRemoveDownload,
     canPlayNextVideo,
     captionsDefaultLang,
     captionsDefaultOn,
+    capturePlaybackPosition,
     changeSpeed,
     changeSubtitleSize,
     chapters,
@@ -1426,6 +1385,7 @@ export function useWatchPageController(audioMode: boolean = false) {
     playlistIndex,
     playlistItemsRef,
     playlistOpen,
+    playbackStartSeconds,
     playlistSort,
     playlistVideos,
     playlists,

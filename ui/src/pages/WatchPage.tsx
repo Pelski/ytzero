@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type CSSProperties } from "react";
+import { lazy, Suspense, useState, type CSSProperties } from "react";
 import "./WatchPage.css";
 import { emitToast } from "../events";
 import { Link } from "react-router-dom";
@@ -20,15 +20,12 @@ import {
   Eye,
   Gauge,
   HardDrive,
-  Headphones,
   LoaderCircle,
-  Lock,
   MonitorPlay,
   Pause,
   Play,
   Share2,
   SkipForward,
-  Star,
   ThumbsUp,
   Trash2,
   Undo2,
@@ -57,47 +54,33 @@ import SocialShareDialog from "../components/social/SocialShareDialog";
 import { getWatchTogetherLabels, WatchTogetherJoinStatus, WatchTogetherPanelSlot } from "../components/social/WatchTogetherWatchUi";
 import WatchDescription from "../components/watch/WatchDescription";
 import WatchPlaylistPanel from "../components/watch/WatchPlaylistPanel";
+import WatchPlayerModeToggle from "../components/watch/WatchPlayerModeToggle";
+import WatchRestrictedPlayer from "../components/watch/WatchRestrictedPlayer";
 import { colonDurationToSeconds, formatWatchTime } from "./watchRuntime";
 import { useWatchPageController } from "./useWatchPageController";
 import WatchPlayerFeedback from "./WatchPlayerFeedback";
-
 const TranscriptDialog = lazy(() => import("../components/TranscriptDialog"));
-
-// Sticky audio-mode preference, remembered across videos and sessions.
-const AUDIO_MODE_KEY = "ytzero:audioModeDefault";
-const audioModeDefault = (): boolean => {
-  try { return localStorage.getItem(AUDIO_MODE_KEY) === "1"; } catch { return false; }
-};
-const setAudioModeDefault = (on: boolean): void => {
-  try { localStorage.setItem(AUDIO_MODE_KEY, on ? "1" : "0"); } catch {}
-};
 
 export default function WatchPage() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  // Audio-only background listening: swaps the video surface for an <audio>
-  // element so playback survives a backgrounded browser / locked screen on iOS.
-  // Audio mode is "sticky": once chosen it persists across videos, so opening
-  // the next one lands straight in background-ready audio (no per-video tap).
-  const [audioMode, setAudioMode] = useState(audioModeDefault);
-  const enterAudioMode = () => { setAudioMode(true); setAudioModeDefault(true); };
-  const exitAudioMode = () => { setAudioMode(false); setAudioModeDefault(false); };
-  // Audio mode tells the controller to skip building the YouTube iframe, so the
-  // standalone <audio> proxy owns playback (and the media session) uncontested.
+  // Session-only mode: keep audio while this WatchPage instance lives, but a
+  // page refresh always starts with video and nothing is written to storage.
+  const [audioMode, setAudioMode] = useState(false);
+  // The controller derives the effective active state from video/profile/room
+  // eligibility before it decides whether to mount the iframe.
   const controller = useWatchPageController(audioMode);
-  // Hooks must run before the early return below; reference the controller
-  // defensively since it can be null on the first render. Re-apply the sticky
-  // default on each new video; the render guard hides audio mode when there is
-  // no native source, without discarding the preference.
-  useEffect(() => { setAudioMode(audioModeDefault()); }, [controller?.video?.video_id]);
   if (!controller) return null;
   const {
     activePlaylistItemRef,
+    audioActive,
+    audioModeAvailable,
     appUrl,
     backgroundDownload,
     cancelOrRemoveDownload,
     canPlayNextVideo,
     captionsDefaultLang,
     captionsDefaultOn,
+    capturePlaybackPosition,
     changeSpeed,
     changeSubtitleSize,
     chapters,
@@ -143,12 +126,12 @@ export default function WatchPage() {
     playlistIndex,
     playlistItemsRef,
     playlistOpen,
+    playbackStartSeconds,
     playlistSort,
     playlistVideos,
     playlists,
     playlistsLoading,
     privateVideoNotice,
-    progressRef,
     queue,
     related,
     reload,
@@ -191,7 +174,6 @@ export default function WatchPage() {
     socialShareOpen,
     speed,
     speedOpen,
-    streamPositionRef,
     subtitleSize,
     t,
     timeZone,
@@ -220,16 +202,6 @@ export default function WatchPage() {
 
   const { errorText: watchTogetherError, transportLockLabel: watchTogetherTransportLockLabel } = getWatchTogetherLabels(watchTogether, t);
 
-  // Audio mode rides on the standalone /audio proxy (yt-dlp AAC, no ffmpeg/HLS),
-  // so it works for any regular video — even one only queued/streaming, or one
-  // whose owner disabled embedding (the iframe would just show "Video
-  // unavailable"). Excluded only for live/upcoming and non-playable states.
-  const isLiveVideo = video?.live_status === "live" || video?.live_status === "upcoming";
-  const audioModeAvailable = !!video && !isLiveVideo
-    && !membersOnlyNotice && !privateVideoNotice && !watchTogetherTransportLocked
-    && (playerKind === "stream" || playerKind === "local" || playerKind === "waiting"
-        || playerKind === "choice" || playerKind === "youtube");
-
   return (
     <div className={`watch-layout${cinemaMode ? " theater" : ""}${watchTogether.room ? " together" : ""}`}>
       <div>
@@ -246,68 +218,39 @@ export default function WatchPage() {
               ref={playerWrapRef}
               className={`watch-player${usingLocal ? " watch-player--local" : ""}${watchTogetherTransportLocked ? " watch-player--transport-locked" : ""}`}
             >
-              {audioModeAvailable && !audioMode && (
-                <button
-                  type="button"
-                  className="watch-audio-toggle"
-                  onClick={enterAudioMode}
-                  aria-label={t("playerAudioMode")}
-                  title={t("playerAudioMode")}
-                >
-                  <Headphones size={16} />
-                  <span>{t("playerAudioMode")}</span>
-                </button>
-              )}
-              {audioMode && audioModeAvailable && video ? (
+              <WatchPlayerModeToggle
+                active={audioActive}
+                available={audioModeAvailable}
+                audioLabel={t("playerAudioMode")}
+                videoLabel={t("playerAudioModeExit")}
+                onToggle={(active) => { capturePlaybackPosition(); setAudioMode(active); }}
+              />
+              {audioActive && video ? (
                 <AudioModePlayer
-                  key={`${video.video_id}-audio`}
-                  src={api.audioUrl(video.video_id)}
+                  key={`${video.video_id}-${video.live_status}-audio-${sharedStartSeconds}`}
+                  ref={playerRef}
+                  src={video.live_status === "live" ? api.liveAudioUrl(video.video_id) : api.audioUrl(video.video_id)}
+                  live={video.live_status === "live"}
                   title={video.title}
                   channelTitle={video.channel_title}
                   artworkUrl={img(video.thumbnail)}
-                  startSeconds={
-                    Math.floor(streamPositionRef.current)
-                      || progressRef.current?.position
-                      || (video.watch_position && video.watch_duration && video.watch_duration > 0 &&
-                          video.watch_position / video.watch_duration < 0.9
-                        ? Math.floor(video.watch_position) : 0)
-                  }
-                  onPositionChange={(pos, dur) => {
-                    streamPositionRef.current = pos;
-                    if (dur > 0) progressRef.current = { position: pos, duration: dur };
-                  }}
-                  onExit={exitAudioMode}
+                  startSeconds={video.live_status === "live" ? 0 : playbackStartSeconds}
+                  playbackRate={video.live_status === "live" ? 1 : Number(speed)}
+                  keyboardSeekSeconds={keyboardSeekSeconds}
+                  onEnded={video.live_status === "live" ? undefined : handleEnded}
                 />
-              ) : privateVideoNotice && video ? (
-                <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
-                  <div className="wp-panel-scrim" />
-                  <div className="wp-panel-content">
-                    <span className="wp-members-icon" aria-hidden="true"><Lock /></span>
-                    <h3>{t("privateVideoWatchTitle")}</h3>
-                    <p className="wp-panel-sub">{t("privateVideoWatchDescription")}</p>
-                  </div>
-                </div>
-              ) : membersOnlyNotice && video ? (
-                <div className="wp-panel wp-panel--members" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
-                  <div className="wp-panel-scrim" />
-                  <div className="wp-panel-content">
-                    <span className="wp-members-icon" aria-hidden="true"><Star fill="currentColor" /></span>
-                    <h3>{t("membersOnlyWatchTitle")}</h3>
-                    <p className="wp-panel-sub">{t("membersOnlyWatchDescription")}</p>
-                    <ButtonAnchor
-                      variant="primary"
-                      href={markYouTubeUrl(`https://www.youtube.com/watch?v=${video.video_id}`)}
-                      target="_blank"
-                      rel="noreferrer"
-                      leadingIcon={<ExternalLink />}
-                    >
-                      {t("membersOnlyWatchAction")}
-                    </ButtonAnchor>
-                  </div>
-                </div>
+              ) : (privateVideoNotice || membersOnlyNotice) && video ? (
+                <WatchRestrictedPlayer
+                  kind={privateVideoNotice ? "private" : "members"}
+                  thumbnailUrl={img(video.thumbnail)}
+                  title={t(privateVideoNotice ? "privateVideoWatchTitle" : "membersOnlyWatchTitle")}
+                  description={t(privateVideoNotice ? "privateVideoWatchDescription" : "membersOnlyWatchDescription")}
+                  actionHref={membersOnlyNotice ? markYouTubeUrl(`https://www.youtube.com/watch?v=${video.video_id}`) : undefined}
+                  actionLabel={membersOnlyNotice ? t("membersOnlyWatchAction") : undefined}
+                />
               ) : playerKind === "stream" && video ? (
                 <LocalPlayer
-                  key={`${video.video_id}-stream`}
+                  key={`${video.video_id}-stream-${sharedStartSeconds}`}
                   ref={playerRef}
                   live
                   liveLabel={t("watchStreamingBadge")}
@@ -318,6 +261,7 @@ export default function WatchPage() {
                   poster={img(video.thumbnail)}
                   autoplay={!watchTogetherRoomId}
                   transportLocked={watchTogetherTransportLocked}
+                  startSeconds={playbackStartSeconds}
                   playbackRate={Number(speed)}
                   title={video.title}
                   channelTitle={video.channel_title}
@@ -349,14 +293,7 @@ export default function WatchPage() {
                   poster={img(video.thumbnail)}
                   autoplay={!watchTogetherRoomId}
                   transportLocked={watchTogetherTransportLocked}
-                  startSeconds={
-                    sharedStartSeconds
-                      || Math.floor(streamPositionRef.current)
-                      || progressRef.current?.position
-                      || (video.watch_position && video.watch_duration && video.watch_duration > 0 &&
-                          video.watch_position / video.watch_duration < 0.9
-                        ? Math.floor(video.watch_position) : 0)
-                  }
+                  startSeconds={playbackStartSeconds}
                   playbackRate={Number(speed)}
                   title={video.title}
                   channelTitle={video.channel_title}
@@ -447,7 +384,7 @@ export default function WatchPage() {
                 </div>
               )}
               {shortcutFeedback && <WatchPlayerFeedback key={shortcutFeedback.id} feedback={shortcutFeedback} keyboardSeekSeconds={keyboardSeekSeconds} />}
-              {playerKind === "youtube" && !audioMode && youtubeAutoplayBlocked && (
+              {playerKind === "youtube" && !audioActive && youtubeAutoplayBlocked && (
                 <div className="wp-autoplay-blocked">
                   <Button variant="primary" onClick={requestYouTubePlayback}>
                     <Play size={16} /> {t("playerPlay")}
@@ -471,13 +408,13 @@ export default function WatchPage() {
           <WatchTogetherPanelSlot controller={watchTogether} errorText={watchTogetherError} />
         </div>
         <WatchTogetherJoinStatus controller={watchTogether} errorText={watchTogetherError} roomId={watchTogetherRoomId} />
-        {playerKind === "youtube" && !audioMode && youtubeError === 153 && (
+        {playerKind === "youtube" && !audioActive && youtubeError === 153 && (
           <Alert className="youtube-referrer-alert-layout" variant="warning" icon={<AlertTriangle />} title={t("youtubeReferrerErrorTitle")}>{t("youtubeReferrerErrorHint")}</Alert>
         )}
         {(video ?? videoInfo) && (
           <div className="watch-title-row">
             <h1 className="watch-title">{video?.title ?? videoInfo?.title}</h1>
-            {playerKind === "local" && (
+            {playerKind === "local" && !audioActive && (
               <Tooltip text={t("watchLocalPlaybackTooltip")} pos="top" className="watch-local-source-tooltip">
                 <span className="watch-local-source-icon" aria-label={t("watchLocalPlaybackTooltip")} tabIndex={0}>
                   <HardDrive size={15} aria-hidden="true" />

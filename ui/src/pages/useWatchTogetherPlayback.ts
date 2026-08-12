@@ -5,24 +5,7 @@ import { sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { emitToast } from "../events";
 import { watchPartyPlayerStatePaused } from "../watchTogetherRuntime";
 import type { PlayerKind } from "./watchPlayerMode";
-
-export interface WatchPlayerHandle {
-  destroy?: () => void;
-  getCurrentTime?: () => number;
-  getDuration?: () => number;
-  getIframe?: () => HTMLIFrameElement;
-  getPlaybackRate?: () => number;
-  getPlayerState?: () => number;
-  getVolume?: () => number;
-  isMuted?: () => boolean;
-  mute?: () => void;
-  pauseVideo?: () => void;
-  playVideo?: () => void;
-  seekTo?: (seconds: number, allowSeekAhead?: boolean) => void;
-  setPlaybackRate?: (rate: number) => void;
-  setVolume?: (volume: number) => void;
-  unMute?: () => void;
-}
+import type { WatchPlayerHandle } from "../playerHandle";
 
 type MoreView = "root" | "speed" | "watchlater" | "playlist";
 
