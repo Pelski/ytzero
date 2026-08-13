@@ -21,7 +21,7 @@ export function registerTranscriptRoutes(api: Hono<ApiEnvironment>, currentUserI
       return c.json({ language, transcript: await fetchTranscript(currentUserId(c), videoId, language) });
     } catch (error) {
       const failure = error instanceof TranscriptError ? error.code : "unavailable";
-      const status = failure === "not_found" ? 404 : failure === "timeout" ? 504 : failure === "ytdlp_missing" ? 503 : 502;
+      const status = failure === "not_found" ? 404 : failure === "rate_limited" ? 429 : failure === "timeout" ? 504 : failure === "ytdlp_missing" ? 503 : 502;
       return c.json({ error: "transcript unavailable", code: failure }, status);
     }
   });

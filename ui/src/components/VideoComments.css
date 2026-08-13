@@ -143,6 +143,10 @@
 .video-comment__text { margin-top: 2px; color: var(--text); font-size: 14px; line-height: 1.58; overflow-wrap: anywhere; white-space: pre-wrap; }
 .video-comment__text a { color: var(--accent); text-decoration: none; }
 .video-comment__text a:hover { text-decoration: underline; }
+.video-comment__mention {
+  color: color-mix(in srgb, var(--accent) 55%, var(--text));
+  font-weight: 600;
+}
 .video-comment__timestamp {
   appearance: none;
   margin: 0;
@@ -170,7 +174,7 @@
   color: color-mix(in srgb, var(--accent) 72%, white);
 }
 .video-comment-thread__toggle .ui-button__icon { transition: transform .18s ease; }
-.video-comment-thread--expanded .video-comment-thread__toggle .ui-button__icon { transform: rotate(180deg); }
+.video-comment-thread--expanded > .video-comment-thread__head > .video-comment-thread__toggle .ui-button__icon { transform: rotate(180deg); }
 .video-comment-thread__replies {
   --reply-branch-left: -38px;
   --reply-branch-width: 55px;

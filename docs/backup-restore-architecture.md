@@ -362,6 +362,9 @@ below.
   time are portable configuration instead)
 - pending child time requests and one-day child time extras
 - active/expired authentication sessions
+- the per-profile transcript language remembered in browser `sessionStorage`;
+  it is a transient convenience for the current browser session and is never
+  written to server settings, exported, or restored
 - uploaded archives and analysis plans in `restore-sessions`; these are
   short-lived staging files for an in-progress portable restore
 - active Social Watch together rooms, participant presence, playback
@@ -372,6 +375,8 @@ below.
   shared local files and is rebuilt by future download requests rather than
   exported as portable configuration
 - image cache and other network-derived cache
+- successful transcript payloads cached in memory for 30 minutes, isolated by
+  profile, video, and subtitle language; failures are never cached
 - `portable_object_mappings` restore bookkeeping and automatic pre-restore
   SQLite safety snapshots (local recovery data, not portable archive content)
 - `schema_migrations` database-engine migration bookkeeping and SQLite planner

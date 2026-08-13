@@ -1,5 +1,5 @@
 import type { Locale } from "../types";
-import { plural } from "../format";
+import { localeFormats } from "../localeFormats";
 import { featureMessages } from "./featureMessages";
 export const de: Locale = {
   messages: {
@@ -301,6 +301,10 @@ export const de: Locale = {
     followWithCustomName: "Mit eigenem Namen folgen",
     subtitles: "Untertitel",
     transcript: "Transkript",
+    transcriptLanguageBrowserHint: "Wird in diesem Browser für das aktuelle Profil bis zum Sitzungsende gespeichert.",
+    transcriptRetry: "Erneut laden",
+    transcriptRetryExhausted: "Leider sieht es nach drei Versuchen so aus, als ließe sich das Transkript gerade nicht laden.",
+    transcriptRateLimited: "YouTube hat die Anzahl der Anfragen vorübergehend begrenzt. Versuche es in ein paar Minuten erneut.",
     transcriptUnavailable: "Für die ausgewählte Sprache sind keine Untertitel verfügbar.",
     subtitlesOff: "Aus",
     subtitlesDownloaded: "Heruntergeladen",
@@ -1318,17 +1322,5 @@ export const de: Locale = {
     PlusCircle: "Hinzugefügt",
     CheckCircle: "Fertig",
   },
-  format: {
-    videoCount: (n) => `${n} ${plural("de", n, { one: "Video", other: "Videos" })}`,
-    addedVideos: (n) => `${n} neue${n === 1 ? "s" : ""} ${plural("de", n, { one: "Video", other: "Videos" })} hinzugefügt`,
-    channelCount: (n) => `${n} ${plural("de", n, { one: "Kanal", other: "Kanäle" })}`,
-    playlistCount: (n) => `${n} ${plural("de", n, { one: "Playlist", other: "Playlists" })}`,
-    historyEntryCount: (n) => `${n} ${plural("de", n, { one: "Eintrag", other: "Einträge" })}`,
-    ageUnit: (n, unit) => plural("de", n, {
-      days: { one: "Tag", other: "Tage" },
-      weeks: { one: "Woche", other: "Wochen" },
-      months: { one: "Monat", other: "Monate" },
-      years: { one: "Jahr", other: "Jahre" },
-    }[unit]),
-  },
+  format: localeFormats.de,
 };

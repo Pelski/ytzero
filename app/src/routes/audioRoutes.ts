@@ -11,6 +11,9 @@ import {
   retryAudioSource,
   ytdlpStatus,
 } from "../downloader";
+import { log } from "../logger";
+import { fetchVideoInfo } from "../youtube";
+import { persistDirectVideoInfo } from "../videoInfoPersistence";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -19,6 +22,35 @@ type ApiContext = Context<ApiEnvironment>;
 async function audioVideo(videoId: string): Promise<AudioVideoState | null> {
   return await database.prepare("SELECT live_status, is_private, is_unavailable, members_only FROM videos WHERE video_id = ?")
     .get(videoId) as AudioVideoState | null;
+}
+
+async function refreshAudioVideoState(videoId: string, source: string): Promise<AudioVideoState | null> {
+  const previous = await audioVideo(videoId);
+  if (!previous) return null;
+  try {
+    // A missing progressive format can be the first evidence that an RSS row
+    // was actually imported for an active livestream. Bypass the short video
+    // info cache here because this path exists specifically to repair state.
+    const info = await fetchVideoInfo(videoId, { force: true });
+    await persistDirectVideoInfo(info);
+    const current = await audioVideo(videoId);
+    if (current && current.live_status !== previous.live_status) {
+      log.info("video.live_status_corrected", {
+        videoId,
+        from: previous.live_status,
+        to: current.live_status,
+        source,
+      });
+    }
+    return current;
+  } catch (error) {
+    log.warn("audio.live_status_probe_failed", {
+      videoId,
+      source,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return previous;
+  }
 }
 
 export function registerAudioRoutes(api: Api, currentUserId: (context: ApiContext) => number): void {
@@ -33,8 +65,18 @@ export function registerAudioRoutes(api: Api, currentUserId: (context: ApiContex
       return context.json({ error: "audio unavailable" }, 409);
     }
     if (!await ytdlpStatus()) return context.json({ error: "yt-dlp unavailable" }, 503);
-    const resolved = await retryAudioSource(userId, videoId, live, context.req.raw.signal);
-    return resolved ? context.json({ ok: true }) : context.json({ error: "audio unavailable" }, 502);
+    let resolved = await retryAudioSource(userId, videoId, live, context.req.raw.signal);
+    if (resolved) return context.json({ ok: true, live });
+
+    const refreshed = await refreshAudioVideoState(videoId, "audio_retry");
+    const correctedLive = refreshed?.live_status === "live";
+    if (refreshed && correctedLive !== live) {
+      const eligible = correctedLive ? liveAudioVideoIsEligible(refreshed) : audioVideoIsEligible(refreshed);
+      if (eligible) resolved = await retryAudioSource(userId, videoId, correctedLive, context.req.raw.signal);
+    }
+    return resolved
+      ? context.json({ ok: true, live: correctedLive })
+      : context.json({ error: "audio unavailable" }, 502);
   });
 
   api.get("/videos/:id/audio", async (context) => {
@@ -52,7 +94,12 @@ export function registerAudioRoutes(api: Api, currentUserId: (context: ApiContex
     const response = context.req.method === "HEAD"
       ? await getAudioHeadResponse(userId, videoId, range, context.req.raw.signal)
       : await getAudioResponse(userId, videoId, range, context.req.raw.signal);
-    return response ?? context.json({ error: "audio unavailable" }, 502);
+    if (response) return response;
+    const refreshed = await refreshAudioVideoState(videoId, "progressive_audio_failure");
+    if (refreshed?.live_status === "live") {
+      return context.json({ error: "video is live", code: "video_is_live" }, 409);
+    }
+    return context.json({ error: "audio unavailable" }, 502);
   });
 
   api.get("/videos/:id/audio-live/:resource", async (context) => {
@@ -66,7 +113,13 @@ export function registerAudioRoutes(api: Api, currentUserId: (context: ApiContex
     const resource = context.req.param("resource");
     if (resource === "index.m3u8") {
       const playlist = await getLiveAudioPlaylist(userId, videoId, context.req.raw.signal);
-      if (!playlist) return context.json({ error: "live audio unavailable" }, 502);
+      if (!playlist) {
+        const refreshed = await refreshAudioVideoState(videoId, "live_audio_failure");
+        if (refreshed && refreshed.live_status !== "live") {
+          return context.json({ error: "video is no longer live", code: "video_is_not_live" }, 409);
+        }
+        return context.json({ error: "live audio unavailable" }, 502);
+      }
       return new Response(playlist, {
         headers: { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store" },
       });

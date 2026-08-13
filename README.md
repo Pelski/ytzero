@@ -9,6 +9,9 @@
     <a href="https://github.com/Pelski/ytzero/wiki"><img src="https://img.shields.io/badge/docs-wiki-555" alt="Documentation wiki"></a>
     <a href="https://github.com/Pelski/ytzero/stargazers"><img src="https://img.shields.io/github/stars/Pelski/ytzero?style=flat" alt="GitHub stars"></a>
   </p>
+  <p>
+    <a href="https://ko-fi.com/pelski"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi"></a>
+  </p>
 </div>
 
 YT Zero turns YouTube back into a simple reader for channels you chose on purpose. No Google account. No API key. No algorithmic home feed pushing videos you did not ask for.
@@ -53,6 +56,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **Built for triage** — schedule videos for later, archive the ones you will not watch, and come back on your terms.
 - **Organized watching** — use tags, inherited channel tags, rules, and local playlists to shape your own feed.
 - **Real playback controls** — theater view, captions, quality, display settings, and optional SponsorBlock support.
+- **Audio-only background playback** — switch a video or active livestream to a compact audio player that can keep playing from the lock screen on supported mobile browsers.
 - **Downloads & local playback** — the optional yt-dlp plugin fetches videos to disk and plays them in YT Zero's own player: instant seeking, no embeds, no buffering, works offline.
 - **TubeArchivist source** — connect an existing TubeArchivist archive and let its videos appear directly in the normal feed, with protected local playback, archived comments and subtitles, and watched-status synchronization.
 - **Works for households** — profiles, authentication modes, child profiles with watch-time limits, and child lock make one install usable by more than one person.
@@ -81,6 +85,7 @@ YT Zero removes that layer. It keeps subscriptions, watch progress, playlists, t
 - **DeArrow** — optionally replace clickbait titles and thumbnails with community-created alternatives from the [DeArrow project](https://dearrow.ajay.app/). Hover or focus a video card to reveal the control that switches between the DeArrow and original versions; library metadata stays intact.
 - **Comments and list continuation** — optionally load comments on demand and continue through whichever list opened the player, automatically or after confirmation.
 - **Playback and display controls** — theater view, captions, quality, display customization, and optional auto-fullscreen when a phone rotates to landscape.
+- **Audio mode** — switch regular videos and active livestreams to an audio-only player with Media Session controls, background playback, seeking, volume control, and per-profile browser persistence. It uses yt-dlp directly and does not require downloads to be enabled.
 - **Internationalization** — English, Polish, and German UI.
 
 See the full list with screens in the **[Features](https://github.com/Pelski/ytzero/wiki/Features)** wiki page.
@@ -96,6 +101,24 @@ The **YT-DLP Integration** plugin (disabled by default) uses [yt-dlp](https://gi
 - **Household-aware** — one download serves every profile, and child profiles can be limited to downloaded videos only.
 
 The Docker image bundles yt-dlp and ffmpeg and keeps yt-dlp updated daily. Details and the full settings reference: **[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)**.
+
+## Audio mode
+
+Use the audio/video control on the watch page to replace the video player with
+a compact audio-only player. On supported mobile browsers, including iOS
+Safari, playback can continue while YT Zero is in the background or the screen
+is locked. Media Session integration provides system play/pause and seeking
+controls where the browser supports them.
+
+Audio mode supports regular public videos and active public livestreams. It
+requires yt-dlp to be available on the YT Zero server, but the downloads plugin
+does not need to be enabled and no media file is kept on disk. The choice is
+remembered in that browser for the active profile, so continuous playback can
+remain in audio mode across videos. Upcoming, private, members-only, unavailable,
+child-profile, and Watch Together playback is excluded.
+
+Implementation details, browser behavior, privacy, limitations, and
+troubleshooting are covered in **[Audio mode](docs/audio-mode.md)**.
 
 ## TubeArchivist Integration
 
@@ -240,6 +263,7 @@ Full documentation lives in the **[Wiki](https://github.com/Pelski/ytzero/wiki)*
 - **[Child Lock](https://github.com/Pelski/ytzero/wiki/Child-Lock)** — PIN-protecting settings.
 - **[Browser Extensions](https://github.com/Pelski/ytzero/wiki/Browser-Extensions)** — recommended companion extension and redirect helpers.
 - **[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)** — downloads, offline playback, and retention.
+- **[Audio mode](docs/audio-mode.md)** — background audio playback for regular videos and active livestreams.
 - **[TubeArchivist Integration](https://github.com/Pelski/ytzero/wiki/TubeArchivist-Integration)** — use an existing archive in the normal feed and local player.
 - **[Backup & Updates](https://github.com/Pelski/ytzero/wiki/Backup-and-Updates)** — keeping your data safe.
 - **[How It Works](https://github.com/Pelski/ytzero/wiki/How-It-Works)** — what is fetched and stored.
@@ -291,7 +315,7 @@ Thanks to [baldemar-wuda](https://github.com/baldemar-wuda) for extensive testin
 
 Thanks to [@Taruvi](https://github.com/Taruvi) for helping with issues, testing the app, and coming up with interesting feature ideas.
 
-Thanks to [@cerede2000](https://github.com/cerede2000) for exceptionally detailed issue reports and for helping make YT Zero better.
+Audio mode works thanks to **[@cerede2000](https://github.com/cerede2000)**, whose implementation, research, exceptionally detailed issue reports, and continued testing have helped make YT Zero better.
 
 ## Development note
 

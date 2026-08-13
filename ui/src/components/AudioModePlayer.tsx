@@ -54,6 +54,7 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   playbackRate?: number;
   keyboardSeekSeconds?: number;
   onEnded?: () => void;
+  onReload?: () => void;
 }>(function AudioModePlayer({
   src,
   videoId,
@@ -65,6 +66,7 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   playbackRate = 1,
   keyboardSeekSeconds = 5,
   onEnded,
+  onReload,
 }, ref) {
   const { t } = useI18n();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -249,7 +251,8 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
     endedRef.current = false;
     setRetryAttempts(attempt);
     try {
-      await api.retryAudio(videoId);
+      const result = await api.retryAudio(videoId);
+      if (result.live !== live) return onReload?.();
       setSourceRevision((revision) => revision + 1);
     } catch {
       setStatus("error");

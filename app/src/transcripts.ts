@@ -1,10 +1,11 @@
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ytdlpCommand } from "./downloadConfig";
+import { downloadCookiesConfigured, ytdlpCommand } from "./downloadConfig";
 import { log } from "./logger";
+import { TranscriptCache } from "./transcriptCache";
 
-export type TranscriptFailure = "not_found" | "timeout" | "ytdlp_missing" | "unavailable";
+export type TranscriptFailure = "not_found" | "timeout" | "ytdlp_missing" | "rate_limited" | "unavailable";
 
 export class TranscriptError extends Error {
   constructor(public readonly code: TranscriptFailure) {
@@ -48,9 +49,22 @@ export function webVttToTranscript(vtt: string): string {
   return output.join("\n");
 }
 
-export async function fetchTranscript(userId: number, videoId: string, language: string): Promise<string> {
+const transcriptCache = new TranscriptCache();
+
+export function transcriptFailureReason(errorText: string): string {
+  if (/sign in|login|authentication|members.only|private video|age.restrict/i.test(errorText)) return "login_required";
+  if (/429|too many requests|rate.?limit/i.test(errorText)) return "rate_limited";
+  if (/timed? out|network|connection|unable to download/i.test(errorText)) return "network_error";
+  if (/no subtitles|not available|requested format is not available/i.test(errorText)) return "not_found";
+  return "ytdlp_error";
+}
+
+async function fetchTranscriptFresh(userId: number, videoId: string, language: string): Promise<string> {
   const directory = mkdtempSync(join(tmpdir(), "ytzero-transcript-"));
+  const startedAt = Date.now();
+  const cookiesConfigured = downloadCookiesConfigured(userId);
   let timedOut = false;
+  log.info("transcript.fetch_start", { userId, videoId, language, cookiesConfigured });
   try {
     const args = [
       "--ignore-config",
@@ -72,24 +86,41 @@ export async function fetchTranscript(userId: number, videoId: string, language:
     const errorText = await new Response(proc.stderr as ReadableStream<Uint8Array>).text().catch(() => "");
     const exitCode = await proc.exited;
     clearTimeout(timer);
-    if (timedOut) throw new TranscriptError("timeout");
+    if (timedOut) {
+      log.warn("transcript.fetch_failed", { userId, videoId, language, cookiesConfigured, reason: "timeout", ms: Date.now() - startedAt });
+      throw new TranscriptError("timeout");
+    }
     const subtitle = readdirSync(directory).find((file) => file.endsWith(".vtt"));
     if (!subtitle) {
       if (exitCode === 0 || /no subtitles|not available|requested format is not available/i.test(errorText)) {
+        log.info("transcript.fetch_unavailable", {
+          userId, videoId, language, cookiesConfigured, reason: "not_found", exitCode, ms: Date.now() - startedAt,
+        });
         throw new TranscriptError("not_found");
       }
-      log.warn("transcript.fetch_failed", { videoId, language, error: errorText.trim().split("\n").at(-1) ?? `yt-dlp exited with ${exitCode}` });
-      throw new TranscriptError("unavailable");
+      const reason = transcriptFailureReason(errorText);
+      log.warn("transcript.fetch_failed", { userId, videoId, language, cookiesConfigured, reason, exitCode, ms: Date.now() - startedAt });
+      throw new TranscriptError(reason === "rate_limited" ? "rate_limited" : "unavailable");
     }
     const transcript = webVttToTranscript(readFileSync(join(directory, subtitle), "utf8"));
     if (!transcript) throw new TranscriptError("not_found");
+    log.info("transcript.fetch_complete", { userId, videoId, language, bytes: transcript.length, ms: Date.now() - startedAt });
     return transcript;
   } catch (error) {
     if (error instanceof TranscriptError) throw error;
-    if (error instanceof Error && /ENOENT/.test(error.message)) throw new TranscriptError("ytdlp_missing");
-    log.warn("transcript.fetch_failed", { videoId, language, error: error instanceof Error ? error.message : String(error) });
+    if (error instanceof Error && /ENOENT/.test(error.message)) {
+      log.warn("transcript.fetch_failed", { userId, videoId, language, cookiesConfigured, reason: "ytdlp_missing", ms: Date.now() - startedAt });
+      throw new TranscriptError("ytdlp_missing");
+    }
+    log.warn("transcript.fetch_failed", {
+      userId, videoId, language, cookiesConfigured, reason: "runtime_error", ms: Date.now() - startedAt,
+    });
     throw new TranscriptError("unavailable");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+}
+
+export function fetchTranscript(userId: number, videoId: string, language: string): Promise<string> {
+  return transcriptCache.get(userId, videoId, language, () => fetchTranscriptFresh(userId, videoId, language));
 }

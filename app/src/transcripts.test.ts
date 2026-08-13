@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { webVttToTranscript } from "./transcripts";
+import { transcriptFailureReason, webVttToTranscript } from "./transcripts";
 
 describe("webVttToTranscript", () => {
   test("produces compact timestamped text and removes caption markup", () => {
@@ -33,5 +33,11 @@ Same line
 Literal &amp;lt;tag&amp;gt; and &lt;text&gt;
 `;
     expect(webVttToTranscript(vtt)).toBe("[00:01] Literal &lt;tag&gt; and <text>");
+  });
+});
+
+describe("transcriptFailureReason", () => {
+  test("recognizes YouTube rate limiting without exposing stderr to the client", () => {
+    expect(transcriptFailureReason("ERROR: HTTP Error 429: Too Many Requests")).toBe("rate_limited");
   });
 });

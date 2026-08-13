@@ -16,6 +16,7 @@ const SORT_LOADING_MS = 120;
 function CommentText({ text, onSeek, seekDisabled }: { text: string; onSeek: (seconds: number) => void; seekDisabled: boolean }) {
   return <>{parseCommentText(text).map((part, index): ReactNode => {
     if (part.type === "url") return <a key={index} href={markYouTubeUrl(part.value)} target="_blank" rel="noreferrer">{part.value}</a>;
+    if (part.type === "mention") return <span key={index} className="video-comment__mention">{part.value}</span>;
     if (part.type === "timestamp") {
       return <button key={index} type="button" className="video-comment__timestamp" disabled={seekDisabled} onClick={() => onSeek(part.seconds)}>{part.value}</button>;
     }

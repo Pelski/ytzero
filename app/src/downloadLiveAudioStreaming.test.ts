@@ -68,6 +68,52 @@ describe("live audio streaming", () => {
     expect(await live.getLiveAudioPlaylist(1, "video")).toBeNull();
   });
 
+  test("follows revalidated redirects for live manifests and ranged segments", async () => {
+    const manifestOne = `https://manifest.googlevideo.com/live/one.m3u8?expire=${futureExpiry}`;
+    const manifestTwo = `https://manifest.googlevideo.com/live/two.m3u8?expire=${futureExpiry}`;
+    const segmentOne = "https://r1.googlevideo.com/live/segment.ts";
+    const segmentTwo = "https://r2.googlevideo.com/live/segment.ts";
+    const requests: Array<{ url: string; range: string | null }> = [];
+    const live = factory({
+      spawn: (() => fakeProcess(`${manifestOne}\n`)) as unknown as typeof Bun.spawn,
+      fetchImpl: (async (input, init) => {
+        const url = String(input);
+        requests.push({ url, range: new Headers(init?.headers).get("range") });
+        if (url === manifestOne) return new Response(null, { status: 302, headers: { Location: manifestTwo } });
+        if (url === manifestTwo) return new Response(`#EXTM3U\n#EXTINF:6,\n${segmentOne}\n`);
+        if (url === segmentOne) return new Response(null, { status: 302, headers: { Location: segmentTwo } });
+        return new Response(new Uint8Array([4, 2]), {
+          status: 206,
+          headers: { "Content-Length": "2", "Content-Range": "bytes 10-11/20" },
+        });
+      }) as typeof fetch,
+    });
+
+    expect(await live.getLiveAudioPlaylist(1, "video")).toContain("\nr0\n");
+    expect((await live.getLiveAudioResource(1, "video", "r0", "bytes=10-11"))?.status).toBe(206);
+    expect(requests).toEqual([
+      { url: manifestOne, range: null },
+      { url: manifestTwo, range: null },
+      { url: segmentOne, range: "bytes=10-11" },
+      { url: segmentTwo, range: "bytes=10-11" },
+    ]);
+  });
+
+  test("rejects a redirected live request that leaves googlevideo", async () => {
+    const manifestUrl = `https://manifest.googlevideo.com/live/index.m3u8?expire=${futureExpiry}`;
+    const requests: string[] = [];
+    const live = factory({
+      spawn: (() => fakeProcess(`${manifestUrl}\n`)) as unknown as typeof Bun.spawn,
+      fetchImpl: (async (input) => {
+        requests.push(String(input));
+        return new Response(null, { status: 302, headers: { Location: "https://example.com/manifest.m3u8" } });
+      }) as typeof fetch,
+    });
+
+    expect(await live.getLiveAudioPlaylist(1, "video")).toBeNull();
+    expect(requests).toEqual([manifestUrl]);
+  });
+
   test("reduces a multi-megabyte DVR manifest to a bounded live edge", async () => {
     const manifestUrl = `https://manifest.googlevideo.com/live/index.m3u8?expire=${futureExpiry}`;
     const padding = "x".repeat(900);

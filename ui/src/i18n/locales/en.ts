@@ -1,4 +1,4 @@
-import { plural } from "../format";
+import { localeFormats } from "../localeFormats";
 import { featureMessages } from "./featureMessages";
 // English defines the message keys; `pl` and `de` are type-checked against them.
 export const en = {
@@ -301,6 +301,10 @@ export const en = {
     followWithCustomName: "Follow with a custom name",
     subtitles: "Subtitles",
     transcript: "Transcript",
+    transcriptLanguageBrowserHint: "Saved in this browser for the current profile until the session ends.",
+    transcriptRetry: "Download again",
+    transcriptRetryExhausted: "Unfortunately, after three attempts it looks like the transcript can't be loaded right now.",
+    transcriptRateLimited: "YouTube temporarily limited requests. Try again in a few minutes.",
     transcriptUnavailable: "Subtitles are not available in the selected language.",
     subtitlesOff: "Off",
     subtitlesDownloaded: "Downloaded",
@@ -1250,17 +1254,5 @@ export const en = {
   },
   // English playlist-icon labels are derived from the icon id (see iconLabel()), so no curated map is needed here.
   iconLabels: {} as Record<string, string>,
-  format: {
-    videoCount: (n: number) => `${n} ${plural("en", n, { one: "video", other: "videos" })}`,
-    addedVideos: (n: number) => `Added ${n} new ${plural("en", n, { one: "video", other: "videos" })}`,
-    channelCount: (n: number) => `${n} ${plural("en", n, { one: "channel", other: "channels" })}`,
-    playlistCount: (n: number) => `${n} ${plural("en", n, { one: "playlist", other: "playlists" })}`,
-    historyEntryCount: (n: number) => `${n} ${plural("en", n, { one: "entry", other: "entries" })}`,
-    ageUnit: (n: number, unit: "days" | "weeks" | "months" | "years") => plural("en", n, {
-      days: { one: "day", other: "days" },
-      weeks: { one: "week", other: "weeks" },
-      months: { one: "month", other: "months" },
-      years: { one: "year", other: "years" },
-    }[unit]),
-  },
+  format: localeFormats.en,
 } as const;

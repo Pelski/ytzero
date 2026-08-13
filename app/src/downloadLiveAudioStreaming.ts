@@ -1,4 +1,5 @@
 import { AudioSourceCache, audioSourceKey } from "./audioSourceCache";
+import { fetchGoogleVideoResponse, safeGoogleVideoUrl } from "./audioUpstreamUrl";
 import { downloadCookieAttempts } from "./downloadStrategy";
 import { rewriteLiveAudioPlaylist } from "./liveAudioPlaylist";
 
@@ -31,18 +32,6 @@ const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
 const MAX_RESOURCES = 512;
 const LIVE_EDGE_SEGMENTS = 24;
 const LIVE_SESSION_IDLE_TTL_MS = 3 * 3_600_000;
-
-function safeYouTubeMediaUrl(candidate: string, base?: string): string | null {
-  try {
-    const url = new URL(candidate, base);
-    const hostname = url.hostname.toLowerCase();
-    if (url.protocol !== "https:") return null;
-    if (hostname !== "googlevideo.com" && !hostname.endsWith(".googlevideo.com")) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
 
 function liveResourceIdentity(url: string): string | null {
   try {
@@ -125,7 +114,7 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
       ]);
       if (signal.aborted || timedOut || exitCode !== 0) return null;
       for (const line of stdout.trim().split(/\r?\n/)) {
-        const url = safeYouTubeMediaUrl(line.trim());
+        const url = safeGoogleVideoUrl(line.trim());
         if (url) return url;
       }
       return null;
@@ -219,17 +208,16 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
 
   function rewritePlaylist(session: LiveAudioSession, source: string): string | null {
     return rewriteLiveAudioPlaylist(source, LIVE_EDGE_SEGMENTS, (candidate) => {
-      const url = safeYouTubeMediaUrl(candidate, session.playlistUrl);
+      const url = safeGoogleVideoUrl(candidate, session.playlistUrl);
       return url ? resourceToken(session, url) : null;
     });
   }
 
   async function fetchPlaylist(session: LiveAudioSession, signal?: AbortSignal): Promise<Response | null> {
-    return fetchImpl(session.playlistUrl, {
+    return fetchGoogleVideoResponse(fetchImpl, session.playlistUrl, {
       headers: { "User-Agent": "Mozilla/5.0" },
-      redirect: "manual",
       signal,
-    }).catch(() => null);
+    });
   }
 
   async function getLiveAudioPlaylist(userId: number, videoId: string, signal?: AbortSignal): Promise<string | null> {
@@ -268,7 +256,7 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
     if (!url || signal?.aborted) return null;
     const headers: Record<string, string> = { "User-Agent": "Mozilla/5.0" };
     if (range) headers.Range = range;
-    let upstream = await fetchImpl(url, { headers, redirect: "manual", signal }).catch(() => null);
+    let upstream = await fetchGoogleVideoResponse(fetchImpl, url, { headers, signal });
     if (upstream && (upstream.status === 403 || upstream.status === 404 || upstream.status === 410)) {
       await upstream.body?.cancel().catch(() => {});
       session = await refreshSession(userId, videoId, session!.playlistUrl, signal);
@@ -280,7 +268,7 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
         await playlist?.body?.cancel().catch(() => {});
       }
       url = session?.resources.get(token);
-      upstream = url ? await fetchImpl(url, { headers, redirect: "manual", signal }).catch(() => null) : null;
+      upstream = url ? await fetchGoogleVideoResponse(fetchImpl, url, { headers, signal }) : null;
     }
     if (!upstream || (upstream.status !== 200 && upstream.status !== 206) || !upstream.body) {
       await upstream?.body?.cancel().catch(() => {});

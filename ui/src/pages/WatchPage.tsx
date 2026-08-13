@@ -36,7 +36,6 @@ import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCoun
 import { formatAppDate } from "../dateTime";
 import TagChip from "../components/TagChip";
 import LocalPlayer from "../components/LocalPlayer";
-import AudioModePlayer from "../components/AudioModePlayer";
 import Popconfirm from "../components/Popconfirm";
 import PlaylistPicker from "../components/PlaylistPicker";
 import { formatVideoDuration } from "../components/VideoCard";
@@ -61,6 +60,7 @@ import { useWatchPageController } from "./useWatchPageController";
 import WatchPlayerFeedback from "./WatchPlayerFeedback";
 import { useProfileAudioMode } from "../audioModePreference";
 const TranscriptDialog = lazy(() => import("../components/TranscriptDialog"));
+const AudioModePlayer = lazy(() => import("../components/AudioModePlayer"));
 
 export default function WatchPage() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -224,19 +224,20 @@ export default function WatchPage() {
               className={`watch-player${audioActive ? " watch-player--audio" : ""}${usingLocal ? " watch-player--local" : ""}${watchTogetherTransportLocked ? " watch-player--transport-locked" : ""}`}
             >
               {audioActive && video ? (
-                <AudioModePlayer
-                  key={`${video.video_id}-${video.live_status}-audio-${sharedStartSeconds}`}
-                  ref={playerRef}
-                  src={video.live_status === "live" ? api.liveAudioUrl(video.video_id) : api.audioUrl(video.video_id)}
-                  live={video.live_status === "live"} videoId={video.video_id}
-                  title={video.title}
-                  channelTitle={video.channel_title}
-                  artworkUrl={img(video.thumbnail)}
-                  startSeconds={video.live_status === "live" ? 0 : playbackStartSeconds}
-                  playbackRate={video.live_status === "live" ? 1 : Number(speed)}
-                  keyboardSeekSeconds={keyboardSeekSeconds}
-                  onEnded={video.live_status === "live" ? undefined : handleEnded}
-                />
+                <Suspense fallback={null}>
+                  <AudioModePlayer
+                    key={`${video.video_id}-${video.live_status}-audio-${sharedStartSeconds}`}
+                    ref={playerRef}
+                    src={video.live_status === "live" ? api.liveAudioUrl(video.video_id) : api.audioUrl(video.video_id)}
+                    live={video.live_status === "live"} videoId={video.video_id}
+                    title={video.title} channelTitle={video.channel_title}
+                    artworkUrl={img(video.thumbnail)}
+                    startSeconds={video.live_status === "live" ? 0 : playbackStartSeconds}
+                    playbackRate={video.live_status === "live" ? 1 : Number(speed)}
+                    keyboardSeekSeconds={keyboardSeekSeconds}
+                    onEnded={video.live_status === "live" ? undefined : handleEnded} onReload={reload}
+                  />
+                </Suspense>
               ) : (privateVideoNotice || membersOnlyNotice) && video ? (
                 <WatchRestrictedPlayer
                   kind={privateVideoNotice ? "private" : "members"}
@@ -747,7 +748,7 @@ export default function WatchPage() {
         {video && transcriptOpen && <Suspense fallback={null}><TranscriptDialog
           videoId={video.video_id}
           title={video.title}
-          languages={[...new Set([captionsDefaultLang, ...downloadSubtitleLanguages])].filter(Boolean)}
+          languages={[...new Set([captionsDefaultLang, ...downloadSubtitleLanguages])]}
           onClose={() => setTranscriptOpen(false)}
         /></Suspense>}
         {video && <div className={`watch-download-feedback-region${downloadFeedbackVisible ? " is-open" : ""}`} aria-hidden={!downloadFeedbackVisible}>

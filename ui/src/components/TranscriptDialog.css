@@ -2,32 +2,117 @@
   width: min(720px, calc(100vw - 32px));
 }
 
+.transcript-dialog .ui-dialog__body {
+  padding: 0;
+}
+
+.transcript-dialog__toolbar {
+  padding: 16px;
+}
+
+.transcript-dialog__language-row {
+  border: 0;
+  padding: 0;
+}
+
+.transcript-dialog__language-row .ui-setting-row__copy {
+  max-width: 360px;
+}
+
 .transcript-dialog__language {
-  min-width: 180px;
+  min-width: 166px;
   justify-content: space-between;
 }
 
 .transcript-dialog .ui-floating-popover__trigger {
-  justify-self: start;
   width: fit-content;
 }
 
-.transcript-dialog__loading {
-  min-height: 180px;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 10px;
-  color: var(--text-2);
+.transcript-dialog__content {
+  border-top: 1px solid var(--surface-3);
+  min-height: min(48vh, 360px);
+  padding: 16px;
+  position: relative;
 }
 
-.transcript-dialog__alert,
-.transcript-dialog__result {
-  margin-top: 16px;
+.transcript-dialog__loading {
+  align-content: center;
+  color: var(--text-2);
+  display: grid;
+  gap: 10px;
+  inset: 16px;
+  justify-items: center;
+  position: absolute;
+}
+
+.transcript-dialog__loading svg {
+  color: var(--text-3);
+}
+
+.transcript-dialog__failure {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  left: 50%;
+  max-width: min(440px, calc(100% - 32px));
+  position: absolute;
+  text-align: center;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+}
+
+.transcript-dialog__failure .ui-alert {
+  text-align: left;
+}
+
+.transcript-dialog__failure small {
+  color: var(--text-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+  max-width: 360px;
 }
 
 .transcript-dialog__text {
-  width: 100%;
-  min-height: min(52vh, 420px);
+  animation: transcript-dialog-result-in 160ms ease-out;
+  box-sizing: border-box;
+  height: min(48vh, 360px);
+  line-height: 1.55;
   resize: none;
+  width: 100%;
+}
+
+@keyframes transcript-dialog-result-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 600px) {
+  .transcript-dialog__language-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .transcript-dialog__language {
+    width: 100%;
+  }
+
+  .transcript-dialog__language-row .ui-setting-row__control,
+  .transcript-dialog__language-row .ui-floating-popover__trigger {
+    width: 100%;
+  }
+
+  .transcript-dialog__content {
+    min-height: min(52dvh, 420px);
+  }
+
+  .transcript-dialog__text {
+    height: min(52dvh, 420px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transcript-dialog__text { animation-duration: 1ms; }
 }

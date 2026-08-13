@@ -1,7 +1,6 @@
 import type { Locale } from "../types";
-import { plural } from "../format";
+import { localeFormats } from "../localeFormats";
 import { featureMessages } from "./featureMessages";
-const videoForms = { one: "film", few: "filmy", many: "filmów", other: "filmów" };
 export const pl: Locale = {
   messages: {
     navToday: "Główna",
@@ -302,6 +301,10 @@ export const pl: Locale = {
     followWithCustomName: "Subskrybuj z własną nazwą",
     subtitles: "Napisy",
     transcript: "Transkrypcja",
+    transcriptLanguageBrowserHint: "Zapisywany w tej przeglądarce dla bieżącego profilu do końca sesji.",
+    transcriptRetry: "Pobierz ponownie",
+    transcriptRetryExhausted: "Niestety, po trzech próbach wygląda na to, że transkrypcji nie uda się teraz pobrać.",
+    transcriptRateLimited: "YouTube tymczasowo ograniczył liczbę zapytań. Spróbuj ponownie za kilka minut.",
     transcriptUnavailable: "Napisy nie są dostępne w wybranym języku.",
     subtitlesOff: "Wyłączone",
     subtitlesDownloaded: "Pobrane",
@@ -1320,17 +1323,5 @@ export const pl: Locale = {
     PlusCircle: "Dodane",
     CheckCircle: "Gotowe",
   },
-  format: {
-    videoCount: (n) => `${n} ${plural("pl", n, videoForms)}`,
-    addedVideos: (n) => `Dodano ${n} nowych filmów`,
-    channelCount: (n) => `${n} ${plural("pl", n, { one: "kanał", few: "kanały", many: "kanałów", other: "kanałów" })}`,
-    playlistCount: (n) => `${n} ${plural("pl", n, { one: "playlista", few: "playlisty", many: "playlist", other: "playlist" })}`,
-    historyEntryCount: (n) => `${n} ${plural("pl", n, { one: "wpis", few: "wpisy", many: "wpisów", other: "wpisów" })}`,
-    ageUnit: (n, unit) => plural("pl", n, {
-      days: { one: "dzień", few: "dni", many: "dni", other: "dni" },
-      weeks: { one: "tydzień", few: "tygodnie", many: "tygodni", other: "tygodni" },
-      months: { one: "miesiąc", few: "miesiące", many: "miesięcy", other: "miesięcy" },
-      years: { one: "rok", few: "lata", many: "lat", other: "lat" },
-    }[unit]),
-  },
+  format: localeFormats.pl,
 };

@@ -12,6 +12,8 @@ import { log } from "../logger";
 import { ageMs, CHAPTERS_DB_TTL, CREATORS_DB_TTL } from "../routeCache";
 import { videoExistsStmt, videoSelect, type VideoRow } from "../videoRoutesSupport";
 import { registerVideoCommentRoutes } from "./videoCommentRoutes";
+import { persistDirectVideoInfo } from "../videoInfoPersistence";
+import { refreshExternalWatchVideo } from "../externalVideoRefresh";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -212,29 +214,24 @@ api.get("/videos/:id/info", async (c) => {
                          THEN excluded.thumbnail ELSE channels.thumbnail END
     `).run(info.channelId, info.channelTitle, `https://www.youtube.com/channel/${info.channelId}`, avatar);
 
-    const insertVideo = database.prepare(`
+    const insertRelatedVideo = database.prepare(`
       INSERT OR IGNORE INTO videos
         (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, external)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'inbox', ?, ?, 1)
+      VALUES (?, ?, ?, ?, ?, ?, 'none', 'inbox', ?, ?, 1)
     `);
 
-    // Insert the watched video (no-op if already in DB as a real video)
-    const inserted = await insertVideo.run(
-      info.videoId, info.channelId, info.title, info.description,
-      info.thumbnail, info.publishedAt, info.liveStatus, info.viewCount, info.duration
-    );
-    if (info.duration) {
-      await database.prepare("UPDATE videos SET duration = ? WHERE video_id = ? AND duration IS NULL")
-        .run(info.duration, info.videoId);
-    }
+    // The directly requested player response is authoritative for live state,
+    // even when RSS imported this row earlier without a live marker.
+    const existing = await videoExistsStmt.get(info.videoId);
+    await persistDirectVideoInfo(info);
 
     // Insert the channel's recent uploads as external so the related panel fills.
     if (feed) {
       const insertMany = database.transaction(async (videos: typeof feed.videos) => {
         for (const v of videos) {
-          await insertVideo.run(
+          await insertRelatedVideo.run(
             v.videoId, info.channelId, v.title, v.description,
-            v.thumbnail, v.publishedAt, "none", v.views, null
+            v.thumbnail, v.publishedAt, v.views, null
           );
         }
       });
@@ -243,7 +240,7 @@ api.get("/videos/:id/info", async (c) => {
     log.info("external.video_info_loaded", {
       videoId: info.videoId,
       channelId: info.channelId,
-      inserted: inserted.changes > 0,
+      inserted: !existing,
       relatedImported: feed?.videos.length ?? 0,
     });
     return c.json({ info });
@@ -397,10 +394,12 @@ api.get("/videos/:id/creators", async (c) => {
 
 api.get("/videos/:id", async (c) => {
   const uid = currentUserId(c);
-  const row = await database
+  let row = await database
     .prepare(`${videoSelect(uid)} WHERE v.video_id = ?`)
     .get(c.req.param("id")) as VideoRow | null;
   if (!row) return c.json({ error: "not found" }, 404);
+
+  row = await refreshExternalWatchVideo(row, uid);
   if (childHidesLive(uid) && (row.live_status === "live" || row.live_status === "upcoming")) {
     return c.json({ error: "live streams are disabled for this profile" }, 403);
   }

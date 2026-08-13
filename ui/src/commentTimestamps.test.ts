@@ -19,4 +19,14 @@ describe("comment timestamps", () => {
       { type: "url", value: "https://example.com/watch?t=12:33" },
     ]));
   });
+
+  test("marks handles without treating email addresses or URLs as mentions", () => {
+    expect(parseCommentText("Thanks @creator.name, mail me@example.com or visit https://example.com/@channel"))
+      .toEqual([
+        { type: "text", value: "Thanks " },
+        { type: "mention", value: "@creator.name" },
+        { type: "text", value: ", mail me@example.com or visit " },
+        { type: "url", value: "https://example.com/@channel" },
+      ]);
+  });
 });

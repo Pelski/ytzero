@@ -2,18 +2,44 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type React from "react";
 import { api, type AppSettings, type Bucket } from "../api";
 import { en } from "./locales/en";
-import { pl } from "./locales/pl";
-import { de } from "./locales/de";
 import type { I18nKey, Language, Locale } from "./types";
 import { DEFAULT_TIME_ZONE, normalizeTimeZone, parseAppTimestamp } from "../dateTime";
 import { subscribe } from "../events";
+import { localeFormats } from "./localeFormats";
 
 export type { Language, I18nKey, Bucket } from "./types";
 
 const LANGUAGE_KEY = "language";
 
-/** All registered locales. Add a language: drop a file in ./locales and wire it here + in LOCALE_TAGS. */
-const locales: Record<Language, Locale> = { en, pl, de };
+const supportedLanguages: readonly Language[] = ["en", "pl", "de"];
+const loadedLocales: Partial<Record<Language, Locale>> = { en };
+const pendingLocales: Partial<Record<Language, Promise<Locale>>> = {};
+const localeLoaders: Record<Exclude<Language, "en">, () => Promise<Locale>> = {
+  pl: () => import("./locales/pl").then((module) => module.pl),
+  de: () => import("./locales/de").then((module) => module.de),
+};
+
+function localeFor(language: Language): Locale {
+  return loadedLocales[language] ?? en;
+}
+
+async function loadLocale(language: Language): Promise<Locale> {
+  const loaded = loadedLocales[language];
+  if (loaded) return loaded;
+  const pending = pendingLocales[language];
+  if (pending) return pending;
+
+  const request = localeLoaders[language as Exclude<Language, "en">]()
+    .then((locale) => {
+      loadedLocales[language] = locale;
+      return locale;
+    })
+    .finally(() => {
+      delete pendingLocales[language];
+    });
+  pendingLocales[language] = request;
+  return request;
+}
 
 /** BCP 47 tags used for Intl date/number formatting. Single source of truth. */
 export const LOCALE_TAGS: Record<Language, string> = {
@@ -30,10 +56,10 @@ export function languageName(code: Language): string {
 }
 
 /** All available UI languages, sorted by their native name. Drives the language picker. */
-export const LANGUAGES = (Object.keys(locales) as Language[]).sort((a, b) => languageName(a).localeCompare(languageName(b)));
+export const LANGUAGES = [...supportedLanguages].sort((a, b) => languageName(a).localeCompare(languageName(b)));
 
 export function normalizeLanguage(value: unknown): Language {
-  return typeof value === "string" && value in locales ? (value as Language) : "en";
+  return typeof value === "string" && supportedLanguages.includes(value as Language) ? (value as Language) : "en";
 }
 
 type TParams = Record<string, string | number>;
@@ -45,7 +71,7 @@ function interpolate(template: string, params?: TParams): string {
 
 /** Playlist-icon label for the current language, falling back to the id split into words. */
 function resolveIconLabel(language: Language, id: string): string {
-  return locales[language].iconLabels[id] ?? id.replace(/([a-z])([A-Z])/g, "$1 $2");
+  return localeFor(language).iconLabels[id] ?? id.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
 type I18nValue = {
@@ -70,18 +96,28 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const loadAppSettings = useCallback(() => {
     return api
       .bootstrapSettings()
-      .then((r) => {
+      .then(async (r) => {
         const next = normalizeLanguage(r.settings.language);
+        await loadLocale(next);
         setLanguageState(next);
         setTimeZoneState(normalizeTimeZone(r.settings.timezone));
         localStorage.setItem(LANGUAGE_KEY, next);
         document.documentElement.lang = next;
       })
-      .catch(() => {
-        document.documentElement.lang = language;
+      .catch(async () => {
+        const storedLanguage = normalizeLanguage(localStorage.getItem(LANGUAGE_KEY));
+        try {
+          await loadLocale(storedLanguage);
+          setLanguageState(storedLanguage);
+          document.documentElement.lang = storedLanguage;
+        } catch {
+          setLanguageState("en");
+          localStorage.setItem(LANGUAGE_KEY, "en");
+          document.documentElement.lang = "en";
+        }
       })
       .finally(() => setReady(true));
-  }, [language]);
+  }, []);
 
   useEffect(() => {
     void loadAppSettings();
@@ -93,6 +129,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   }, [language]);
 
   const setLanguage = useCallback(async (next: Language) => {
+    await loadLocale(next);
     setLanguageState(next);
     localStorage.setItem(LANGUAGE_KEY, next);
     await api.updateSettings({ language: next });
@@ -110,8 +147,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     setLanguage,
     timeZone,
     setTimeZone,
-    t: (key, params) => interpolate(locales[language].messages[key], params),
-    bucketLabel: (bucket) => locales[language].buckets[bucket],
+    t: (key, params) => interpolate(localeFor(language).messages[key], params),
+    bucketLabel: (bucket) => localeFor(language).buckets[bucket],
     iconLabel: (id) => resolveIconLabel(language, id),
     locale: LOCALE_TAGS[language],
   }), [language, ready, setLanguage, setTimeZone, timeZone]);
@@ -131,7 +168,7 @@ export function useI18n() {
 // new language needs to touch this file.
 
 export function formatVideoCount(n: number, language: Language): string {
-  return locales[language].format.videoCount(n);
+  return localeFormats[language].videoCount(n);
 }
 
 /** Normalize YouTube's localized/raw playlist counts (for example
@@ -147,24 +184,24 @@ export function formatPlaylistVideoCount(value: string | number, language: Langu
 }
 
 export function formatAddedVideos(n: number, language: Language): string {
-  return locales[language].format.addedVideos(n);
+  return localeFormats[language].addedVideos(n);
 }
 
 export function formatChannelCount(n: number, language: Language): string {
-  return locales[language].format.channelCount(n);
+  return localeFormats[language].channelCount(n);
 }
 
 export function formatPlaylistCount(n: number, language: Language): string {
-  return locales[language].format.playlistCount(n);
+  return localeFormats[language].playlistCount(n);
 }
 
 export function formatHistoryEntryCount(n: number, language: Language): string {
-  return locales[language].format.historyEntryCount(n);
+  return localeFormats[language].historyEntryCount(n);
 }
 
 /** Bare time unit agreeing with `n` — for the feed age-limit selects. */
 export function formatAgeUnit(n: number, unit: "days" | "weeks" | "months" | "years", language: Language): string {
-  return locales[language].format.ageUnit(n, unit);
+  return localeFormats[language].ageUnit(n, unit);
 }
 
 export function compactNumber(value: number | null, language: Language): string {
@@ -174,14 +211,14 @@ export function compactNumber(value: number | null, language: Language): string 
 
 export function formatViewsCount(views: number | null, language: Language): string {
   if (views == null) return "";
-  return `${compactNumber(views, language)} ${locales[language].messages.views}`;
+  return `${compactNumber(views, language)} ${localeFor(language).messages.views}`;
 }
 
 export function formatTimeAgo(iso: string | null, language: Language): string {
   if (!iso) return "";
   const diffMs = Date.now() - parseAppTimestamp(iso).getTime();
   if (Math.abs(diffMs) < 60_000) {
-    return locales[language].messages.notificationJustNow.toLocaleLowerCase(LOCALE_TAGS[language]);
+    return localeFor(language).messages.notificationJustNow.toLocaleLowerCase(LOCALE_TAGS[language]);
   }
   const min = Math.floor(diffMs / 60_000);
   const h = Math.floor(min / 60);
