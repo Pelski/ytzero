@@ -219,6 +219,7 @@ export interface VideoCommentsResponse {
   fetchedAt: string;
   cached: boolean;
 }
+export type VideoCommentSort = "top" | "new";
 export interface PlaylistVideo {
   videoId: string;
   title: string;

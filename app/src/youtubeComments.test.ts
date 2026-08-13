@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classifyVideoCommentsError, createVideoCommentsFetcher, normalizeVideoComments, validYouTubeVideoId, YOUTUBE_COMMENTS_EXTRACTOR_ARGS } from "./youtubeComments";
+import { classifyVideoCommentsError, createVideoCommentsFetcher, normalizeVideoComments, validYouTubeVideoId, videoCommentsExtractorArgs, YOUTUBE_COMMENTS_EXTRACTOR_ARGS } from "./youtubeComments";
 
 describe("YouTube comments", () => {
   test("normalizes yt-dlp comment fields and drops unusable entries", () => {
@@ -46,6 +46,7 @@ describe("YouTube comments", () => {
 
   test("keeps comment extraction bounded without truncating reply depth", () => {
     expect(YOUTUBE_COMMENTS_EXTRACTOR_ARGS).toBe("youtube:comment_sort=top;max_comments=1000,all,all,all,all");
+    expect(videoCommentsExtractorArgs("new")).toBe("youtube:comment_sort=new;max_comments=1000,all,all,all,all");
     expect(normalizeVideoComments(Array.from({ length: 1_001 }, (_, index) => ({ id: `c${index}`, text: "Comment" }))).length).toBe(1_000);
   });
 
@@ -59,12 +60,25 @@ describe("YouTube comments", () => {
     expect((await fetch("dQw4w9WgXcQ")).cached).toBe(true);
     expect(calls).toBe(1);
 
-    await fetch("dQw4w9WgXcQ", true);
+    await fetch("dQw4w9WgXcQ", "top", true);
     expect(calls).toBe(2);
 
     clock += 5 * 60_000 + 1;
     expect((await fetch("dQw4w9WgXcQ")).cached).toBe(false);
     expect(calls).toBe(3);
+  });
+
+  test("caches popular and newest comment selections independently", async () => {
+    const calls: string[] = [];
+    const fetch = createVideoCommentsFetcher(async (_id, sort) => {
+      calls.push(sort);
+      return normalizeVideoComments([{ id: sort, text: sort }]);
+    });
+
+    expect((await fetch("dQw4w9WgXcQ", "top")).comments[0]?.id).toBe("top");
+    expect((await fetch("dQw4w9WgXcQ", "new")).comments[0]?.id).toBe("new");
+    expect((await fetch("dQw4w9WgXcQ", "top")).cached).toBe(true);
+    expect(calls).toEqual(["top", "new"]);
   });
 
   test("classifies friendly failure states while retaining safe details", () => {

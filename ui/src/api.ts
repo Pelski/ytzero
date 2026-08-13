@@ -80,6 +80,7 @@ import {
   type VideoChapter,
   type VideoChannelPlaylist,
   type VideoCommentsResponse,
+  type VideoCommentSort,
   type VideoCreator,
   type VideoDownload,
   type VideoInfo,
@@ -257,8 +258,8 @@ export const api = {
   live: () => http<{ videos: Video[] }>("/live"),
   channelLive: (id: string) => http<{ videos: Video[] }>(`/channels/${id}/live`),
   video: (id: string) => sharedGet<{ video: Video; related: Video[] }>(`video:${id}`, `/videos/${id}`),
-  videoComments: (id: string, refresh = false) =>
-    http<VideoCommentsResponse>(`/videos/${id}/comments${refresh ? "?refresh=1" : ""}`),
+  videoComments: (id: string, sort: VideoCommentSort = "top", refresh = false) =>
+    http<VideoCommentsResponse>(`/videos/${id}/comments?sort=${sort}${refresh ? "&refresh=1" : ""}`),
   watchlist: () => sharedGet<{ videos: Video[] }>("watchlist", "/watchlist"),
   archive: (page = 0) => http<{ videos: Video[] }>(`/archive?page=${page}`),
   history: (page = 0) => http<{ videos: Video[]; page: number; has_more: boolean }>(`/history?page=${page}`),

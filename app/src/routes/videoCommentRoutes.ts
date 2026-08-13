@@ -11,11 +11,13 @@ export function registerVideoCommentRoutes(api: Api, currentUserId: (context: Ap
   api.get("/videos/:id/comments", async (c) => {
     const videoId = c.req.param("id");
     if (!validYouTubeVideoId(videoId)) return c.json({ error: "invalid video id" }, 400);
+    const sort = c.req.query("sort") ?? "top";
+    if (sort !== "top" && sort !== "new") return c.json({ error: "invalid comment sort" }, 400);
     try {
       const archived = await tubeArchivistComments(videoId);
       if (archived) return c.json(archived);
       if (childLocalOnly(currentUserId(c))) return c.json({ error: "restricted" }, 403);
-      return c.json(await fetchVideoComments(currentUserId(c), videoId, c.req.query("refresh") === "1"));
+      return c.json(await fetchVideoComments(currentUserId(c), videoId, sort, c.req.query("refresh") === "1"));
     } catch (error) {
       const failure = error instanceof VideoCommentsError
         ? error

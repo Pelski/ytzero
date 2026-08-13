@@ -12,6 +12,21 @@
   padding: 0 2px;
 }
 
+.video-comments__controls {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: 34px;
+  border-radius: 10px;
+  background: var(--chip);
+}
+.video-comments__controls > * + * { border-left: 1px solid color-mix(in srgb, var(--text) 10%, transparent); }
+.video-comments__controls .ui-button { height: 34px; border-radius: 0; background: transparent; }
+.video-comments__controls .ui-button:hover { background: var(--chip-hover); }
+.video-comments__controls > :first-child > .ui-button { border-radius: 9px 0 0 9px; }
+.video-comments__controls > .ui-button:last-child { border-radius: 0 9px 9px 0; }
+.video-comments__sort { min-width: 150px; }
+.video-comments__refresh { color: var(--text-2); }
+
 .video-comments__header .ui-section-header__copy > h2 {
   font-size: 17px;
   letter-spacing: -.15px;
@@ -51,6 +66,8 @@
   flex-direction: column;
   gap: 0;
 }
+.video-comments__list--leaving { pointer-events: none; }
+.video-comments__list--leaving .video-comment-thread { animation: video-comment-exit 140ms ease-in both; animation-delay: 0ms; }
 .video-comments__load-more { display: flex; justify-content: center; padding: 18px 0 4px; }
 
 .video-comment-thread {
@@ -199,6 +216,7 @@
 .video-comments__error { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .video-comments__error-copy { display: grid; gap: 10px; }
 .video-comments__skeleton { display: flex; flex-direction: column; }
+.video-comments__skeleton--sorting { animation: video-comments-loading-enter 140ms ease-out both; }
 .video-comment-skeleton { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 12px; padding: 14px 4px; }
 .video-comment-skeleton > span,
 .video-comment-skeleton b,
@@ -215,6 +233,8 @@
 .video-comment-skeleton i:last-child { width: 62%; }
 
 @keyframes comments-skeleton-pulse { to { opacity: .48; } }
+@keyframes video-comments-loading-enter { from { opacity: 0; } }
+@keyframes video-comment-exit { to { opacity: 0; transform: translateY(-4px); } }
 @keyframes video-comment-reveal {
   from { opacity: 0; transform: translateY(7px); }
   to { opacity: 1; transform: translateY(0); }
@@ -228,6 +248,8 @@
   .video-comment-skeleton b,
   .video-comment-skeleton i,
   .video-comment-thread,
+  .video-comments__list--leaving .video-comment-thread,
+  .video-comments__skeleton--sorting,
   .video-comment-thread--closing > .video-comment-thread__head::after,
   .video-comment-thread__replies--closing { animation: none; }
 }

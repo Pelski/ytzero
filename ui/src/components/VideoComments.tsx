@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronDown, Heart, MessageCircle, MessageCircleOff, Pin, RefreshCw, ThumbsUp } from "lucide-react";
-import { api, ApiError, type VideoComment } from "../api";
+import { api, ApiError, type VideoComment, type VideoCommentSort } from "../api";
 import { parseCommentText } from "../commentTimestamps";
 import { compactNumber, formatTimeAgo, useI18n } from "../i18n";
 import { img } from "../img";
 import { markYouTubeUrl } from "../youtubeUrl";
-import { Alert, Button, EmptyState, SectionHeader } from "./ui";
+import { buildVideoCommentThreads, type VideoCommentThread } from "../videoCommentThreads";
+import { Alert, Button, EmptyState, IconButton, SectionHeader, SelectMenu } from "./ui";
 import "./VideoComments.css";
 
 const COMMENT_PAGE_SIZE = 20;
+const SORT_EXIT_MS = 140;
+const SORT_LOADING_MS = 120;
 
 function CommentText({ text, onSeek, seekDisabled }: { text: string; onSeek: (seconds: number) => void; seekDisabled: boolean }) {
   return <>{parseCommentText(text).map((part, index): ReactNode => {
@@ -62,52 +65,7 @@ function CommentRow({ comment, creatorAvatar, onSeek, seekDisabled }: { comment:
   );
 }
 
-interface CommentThread {
-  comment: VideoComment;
-  replies: CommentThread[];
-}
-
-function buildCommentThreads(comments: VideoComment[]): CommentThread[] {
-  const byId = new Map<string, CommentThread>();
-  const ordered: CommentThread[] = [];
-  for (const comment of comments) {
-    if (byId.has(comment.id)) continue;
-    const thread = { comment, replies: [] } satisfies CommentThread;
-    byId.set(comment.id, thread);
-    ordered.push(thread);
-  }
-
-  const roots: CommentThread[] = [];
-  for (const thread of ordered) {
-    const parent = thread.comment.parent && thread.comment.parent !== "root"
-      ? byId.get(thread.comment.parent)
-      : undefined;
-    if (!parent) {
-      roots.push(thread);
-      continue;
-    }
-
-    // Treat malformed cyclic parent references as roots instead of creating a
-    // recursive render loop from external comment data.
-    let ancestor: CommentThread | undefined = parent;
-    const visited = new Set<string>();
-    let cyclic = false;
-    while (ancestor && !visited.has(ancestor.comment.id)) {
-      if (ancestor.comment.id === thread.comment.id) {
-        cyclic = true;
-        break;
-      }
-      visited.add(ancestor.comment.id);
-      const parentId: string | null = ancestor.comment.parent;
-      ancestor = parentId && parentId !== "root" ? byId.get(parentId) : undefined;
-    }
-    if (cyclic) roots.push(thread);
-    else parent.replies.push(thread);
-  }
-  return roots;
-}
-
-function CommentThreadRow({ thread, creatorAvatar, onSeek, seekDisabled, revealIndex = 0 }: { thread: CommentThread; creatorAvatar?: string | null; onSeek: (seconds: number) => void; seekDisabled: boolean; revealIndex?: number }) {
+function CommentThreadRow({ thread, creatorAvatar, onSeek, seekDisabled, revealIndex = 0 }: { thread: VideoCommentThread; creatorAvatar?: string | null; onSeek: (seconds: number) => void; seekDisabled: boolean; revealIndex?: number }) {
   const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const [closing, setClosing] = useState(false);
@@ -187,37 +145,77 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "disabled" | "error">("idle");
   const [comments, setComments] = useState<VideoComment[]>([]);
   const [error, setError] = useState<{ code: string } | null>(null);
+  const [sort, setSort] = useState<VideoCommentSort>("top");
+  const [loadedSort, setLoadedSort] = useState<VideoCommentSort>("top");
+  const [sortTransition, setSortTransition] = useState<"idle" | "leaving" | "loading">("idle");
+  const [refreshing, setRefreshing] = useState(false);
   const [visibleThreadCount, setVisibleThreadCount] = useState(COMMENT_PAGE_SIZE);
   const [scrollUnlockProgress, setScrollUnlockProgress] = useState<number | null>(null);
-  const threads = buildCommentThreads(comments);
+  const threads = buildVideoCommentThreads(comments, loadedSort);
   const visibleThreads = threads.slice(0, visibleThreadCount);
 
-  const load = useCallback(async (refresh = false) => {
+  const load = useCallback(async (refresh = false, requestedSort: VideoCommentSort = sort, animateSort = false) => {
     const version = ++requestVersion.current;
-    setStatus("loading");
+    const backgroundRefresh = refresh && status === "ready" && comments.length > 0;
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const wait = (duration: number) => new Promise<void>((resolve) => window.setTimeout(resolve, reducedMotion ? 0 : duration));
+    if (backgroundRefresh) setRefreshing(true);
+    else if (animateSort) {
+      setSortTransition("leaving");
+    }
+    else setStatus("loading");
     setError(null);
+    const request = api.videoComments(videoId, requestedSort, refresh);
+    void request.catch(() => {});
     try {
-      const result = await api.videoComments(videoId, refresh);
+      if (animateSort) {
+        await wait(SORT_EXIT_MS);
+        if (requestVersion.current !== version) return;
+        setStatus("loading");
+        setSortTransition("loading");
+        await wait(SORT_LOADING_MS);
+      }
+      const result = await request;
       if (requestVersion.current !== version) return;
       setVisibleThreadCount(COMMENT_PAGE_SIZE);
       setComments(result.comments);
+      setLoadedSort(requestedSort);
+      if (animateSort) {
+        // Keep the replacement data behind the loading state for a paint. The
+        // rows mount only afterwards, so their own reveal animation starts on
+        // the first visible frame instead of flashing before it.
+        await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        if (requestVersion.current !== version) return;
+      }
+      setSortTransition("idle");
       setStatus("ready");
     } catch (failure) {
       if (requestVersion.current !== version) return;
       const apiError = failure instanceof ApiError ? failure : null;
       setError({ code: apiError?.code ?? "unavailable" });
-      setStatus(apiError?.code === "comments_disabled" ? "disabled" : "error");
+      if (!backgroundRefresh) setStatus(apiError?.code === "comments_disabled" ? "disabled" : "error");
+      setSortTransition("idle");
+    } finally {
+      if (requestVersion.current === version) setRefreshing(false);
     }
-  }, [videoId]);
+  }, [comments.length, sort, status, videoId]);
 
   useEffect(() => {
     requestVersion.current += 1;
     setComments([]);
     setError(null);
+    setSort("top");
+    setLoadedSort("top");
+    setSortTransition("idle");
+    setRefreshing(false);
     setStatus("idle");
     setVisibleThreadCount(COMMENT_PAGE_SIZE);
     setScrollUnlockProgress(null);
   }, [videoId]);
+
+  useEffect(() => () => {
+    requestVersion.current += 1;
+  }, []);
 
   useEffect(() => {
     const section = sectionRef.current;
@@ -302,6 +300,34 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
       <SectionHeader
         className="video-comments__header"
         title={t("commentsTitle")}
+        actions={
+          <div className="video-comments__controls">
+            <SelectMenu
+              className="video-comments__sort"
+              size="sm"
+              value={sort}
+              label={t("commentsSortLabel")}
+              options={[
+                { value: "top", label: t("commentsSortTop") },
+                { value: "new", label: t("commentsSortNewest") },
+              ] as const}
+              onChange={(nextSort) => {
+                if (sort === nextSort) return;
+                setSort(nextSort);
+                if (status !== "idle") void load(false, nextSort, true);
+              }}
+            />
+            <IconButton
+              className="video-comments__refresh"
+              variant="ghost"
+              size="sm"
+              disabled={refreshing}
+              label={t("commentsRefresh")}
+              icon={<RefreshCw className={refreshing ? "spin" : undefined} />}
+              onClick={() => void load(true, sort)}
+            />
+          </div>
+        }
       />
 
       {status === "idle" && !showScrollUnlock && <div className="video-comments__lazy-placeholder">{t("commentsLazyHint")}</div>}
@@ -332,7 +358,7 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
         </div>
       )}
       {status === "loading" && (
-        <div className="video-comments__skeleton" aria-hidden="true">
+        <div className={`video-comments__skeleton${sortTransition === "loading" ? " video-comments__skeleton--sorting" : ""}`} aria-hidden="true">
           {[0, 1, 2].map((item) => <div key={item} className="video-comment-skeleton"><span /><div><b /><i /><i /></div></div>)}
         </div>
       )}
@@ -353,10 +379,18 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
           </div>
         </Alert>
       )}
+      {status === "ready" && error && (
+        <Alert variant="warning" title={errorTitle(error.code, t)}>
+          <div className="video-comments__error">
+            <span>{errorHint(error.code, t)}</span>
+            <Button size="sm" leadingIcon={<RefreshCw />} onClick={() => void load(true, sort)}>{t("commentsRetry")}</Button>
+          </div>
+        </Alert>
+      )}
       {status === "ready" && comments.length === 0 && <EmptyState icon={<MessageCircle />} title={t("commentsEmpty")} />}
       {status === "ready" && comments.length > 0 && (
         <>
-          <div className="video-comments__list">{visibleThreads.map((thread, index) => <CommentThreadRow key={thread.comment.id} thread={thread} creatorAvatar={creatorAvatar} onSeek={onSeek} seekDisabled={seekDisabled} revealIndex={index % COMMENT_PAGE_SIZE} />)}</div>
+          <div className={`video-comments__list${sortTransition === "leaving" ? " video-comments__list--leaving" : ""}`}>{visibleThreads.map((thread, index) => <CommentThreadRow key={thread.comment.id} thread={thread} creatorAvatar={creatorAvatar} onSeek={onSeek} seekDisabled={seekDisabled} revealIndex={index % COMMENT_PAGE_SIZE} />)}</div>
           {visibleThreadCount < threads.length && (
             <div className="video-comments__load-more">
               <Button variant="secondary" onClick={() => setVisibleThreadCount((count) => count + COMMENT_PAGE_SIZE)}>{t("showMore")}</Button>

@@ -7,7 +7,13 @@ const COMMENTS_TIMEOUT_MS = 60_000;
 const MAX_COMMENTS = 1_000;
 const MAX_TEXT_LENGTH = 20_000;
 const YOUTUBE_VIDEO_ID = /^[A-Za-z0-9_-]{6,20}$/;
-export const YOUTUBE_COMMENTS_EXTRACTOR_ARGS = "youtube:comment_sort=top;max_comments=1000,all,all,all,all";
+export type VideoCommentSort = "top" | "new";
+
+export function videoCommentsExtractorArgs(sort: VideoCommentSort): string {
+  return `youtube:comment_sort=${sort};max_comments=1000,all,all,all,all`;
+}
+
+export const YOUTUBE_COMMENTS_EXTRACTOR_ARGS = videoCommentsExtractorArgs("top");
 
 export interface VideoComment {
   id: string;
@@ -126,7 +132,7 @@ export function normalizeVideoComments(value: unknown): VideoComment[] {
   });
 }
 
-async function runYtdlp(userId: number, videoId: string, useCookies: boolean): Promise<VideoComment[]> {
+async function runYtdlp(userId: number, videoId: string, sort: VideoCommentSort, useCookies: boolean): Promise<VideoComment[]> {
   const args = [
     "--ignore-config",
     "--no-playlist",
@@ -134,7 +140,7 @@ async function runYtdlp(userId: number, videoId: string, useCookies: boolean): P
     "--write-comments",
     // Keep the payload bounded while allowing yt-dlp to follow reply chains at
     // every depth: total, parents, replies, replies/thread, depth.
-    "--extractor-args", YOUTUBE_COMMENTS_EXTRACTOR_ARGS,
+    "--extractor-args", videoCommentsExtractorArgs(sort),
     "--print", "%(comments)j",
     `https://www.youtube.com/watch?v=${videoId}`,
   ];
@@ -173,11 +179,11 @@ async function runYtdlp(userId: number, videoId: string, useCookies: boolean): P
   }
 }
 
-async function extractVideoComments(userId: number, videoId: string): Promise<VideoComment[]> {
+async function extractVideoComments(userId: number, videoId: string, sort: VideoCommentSort): Promise<VideoComment[]> {
   let lastError: unknown;
   for (const useCookies of downloadCookieAttempts(downloadCookiesConfigured(userId))) {
     try {
-      return await runYtdlp(userId, videoId, useCookies);
+      return await runYtdlp(userId, videoId, sort, useCookies);
     } catch (error) {
       lastError = error;
     }
@@ -196,51 +202,52 @@ export function validYouTubeVideoId(videoId: string): boolean {
 }
 
 export function createVideoCommentsFetcher(
-  extract: (videoId: string) => Promise<VideoComment[]>,
+  extract: (videoId: string, sort: VideoCommentSort) => Promise<VideoComment[]>,
   now: () => number = Date.now,
 ) {
   const cache = new Map<string, CacheEntry>();
   const inFlight = new Map<string, Promise<CacheEntry>>();
 
-  return async (videoId: string, force = false): Promise<VideoCommentsResult> => {
+  return async (videoId: string, sort: VideoCommentSort = "top", force = false): Promise<VideoCommentsResult> => {
     if (!validYouTubeVideoId(videoId)) throw new Error("invalid video id");
-    const cached = cache.get(videoId);
+    const cacheKey = `${videoId}:${sort}`;
+    const cached = cache.get(cacheKey);
     if (!force && cached && cached.expiresAt > now()) {
       return { comments: cached.comments, fetchedAt: cached.fetchedAt, cached: true };
     }
 
-    const existing = inFlight.get(videoId);
+    const existing = inFlight.get(cacheKey);
     if (existing) {
       const entry = await existing;
       return { comments: entry.comments, fetchedAt: entry.fetchedAt, cached: false };
     }
 
-    const request = extract(videoId).then((comments) => {
+    const request = extract(videoId, sort).then((comments) => {
       const completedAt = now();
       const entry = { comments, fetchedAt: new Date(completedAt).toISOString(), expiresAt: completedAt + COMMENTS_TTL_MS };
-      cache.set(videoId, entry);
+      cache.set(cacheKey, entry);
       return entry;
     });
-    inFlight.set(videoId, request);
+    inFlight.set(cacheKey, request);
     try {
       const entry = await request;
       return { comments: entry.comments, fetchedAt: entry.fetchedAt, cached: false };
     } finally {
-      if (inFlight.get(videoId) === request) inFlight.delete(videoId);
+      if (inFlight.get(cacheKey) === request) inFlight.delete(cacheKey);
     }
   };
 }
 
 const profileCommentFetchers = new Map<number, ReturnType<typeof createVideoCommentsFetcher>>();
 
-export async function fetchVideoComments(userId: number, videoId: string, force = false): Promise<VideoCommentsResult> {
+export async function fetchVideoComments(userId: number, videoId: string, sort: VideoCommentSort = "top", force = false): Promise<VideoCommentsResult> {
   try {
     let fetcher = profileCommentFetchers.get(userId);
     if (!fetcher) {
-      fetcher = createVideoCommentsFetcher((id) => extractVideoComments(userId, id));
+      fetcher = createVideoCommentsFetcher((id, order) => extractVideoComments(userId, id, order));
       profileCommentFetchers.set(userId, fetcher);
     }
-    return await fetcher(videoId, force);
+    return await fetcher(videoId, sort, force);
   } catch (error) {
     log.warn("youtube.comments_failed", { videoId, error: error instanceof Error ? error.message : String(error) });
     throw error;
