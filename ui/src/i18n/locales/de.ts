@@ -263,6 +263,8 @@ export const de: Locale = {
     playerAudioMode: "Nur Audio",
     playerAudioModeExit: "Video",
     playerAudioModeError: "Audio ist für dieses Video nicht verfügbar.",
+    playerAudioModeRetry: "Erneut versuchen",
+    playerAudioModeRetryExhausted: "Audio konnte nicht gestartet werden. Bitte versuche es später erneut.",
     playerScreenshot: "Screenshot aufnehmen",
     playerScreenshotSaved: "Screenshot gespeichert",
     playerScreenshotError: "Dieses Bild konnte nicht aufgenommen werden",

@@ -117,4 +117,63 @@ describe("live audio streaming", () => {
     await live.getLiveAudioPlaylist(1, "video");
     expect(spawns).toBe(6);
   });
+
+  test("an explicit live retry resolves a fresh manifest with yt-dlp", async () => {
+    let spawns = 0;
+    const live = factory({
+      spawn: (() => fakeProcess(`https://manifest.googlevideo.com/version-${++spawns}.m3u8?expire=${futureExpiry}\n`)) as unknown as typeof Bun.spawn,
+    });
+
+    expect(await live.retryAudioSource(1, "video", true)).toBe(true);
+    expect(spawns).toBe(1);
+    expect(await live.retryAudioSource(1, "video", true)).toBe(true);
+    expect(spawns).toBe(2);
+  });
+
+  test("keeps old segment tokens when a live manifest URL is refreshed", async () => {
+    let spawns = 0;
+    let staleManifestRequests = 0;
+    const requested: string[] = [];
+    const live = factory({
+      spawn: (() => fakeProcess(`https://manifest.googlevideo.com/version-${++spawns}.m3u8\n`)) as unknown as typeof Bun.spawn,
+      fetchImpl: (async (input) => {
+        const url = String(input);
+        requested.push(url);
+        if (url.includes("version-1.m3u8") && staleManifestRequests++ > 0) return new Response(null, { status: 403 });
+        if (url.includes("version-1.m3u8")) return new Response("#EXTM3U\n#EXTINF:6,\nhttps://r1.googlevideo.com/old.ts\n");
+        if (url.includes("version-2.m3u8")) return new Response("#EXTM3U\n#EXTINF:6,\nhttps://r1.googlevideo.com/new.ts\n");
+        return new Response(new Uint8Array([1]));
+      }) as typeof fetch,
+    });
+
+    expect(await live.getLiveAudioPlaylist(1, "video")).toContain("\nr0\n");
+    expect(await live.getLiveAudioPlaylist(1, "video")).toContain("\nr1\n");
+    expect((await live.getLiveAudioResource(1, "video", "r0", null))?.status).toBe(200);
+    expect((await live.getLiveAudioResource(1, "video", "r1", null))?.status).toBe(200);
+    expect(requested.slice(-2)).toEqual([
+      "https://r1.googlevideo.com/old.ts",
+      "https://r1.googlevideo.com/new.ts",
+    ]);
+  });
+
+  test("refreshes a rejected live segment and keeps its stable sequence token", async () => {
+    let spawns = 0;
+    let oldSegmentRequests = 0;
+    const live = factory({
+      spawn: (() => fakeProcess(`https://manifest.googlevideo.com/version-${++spawns}.m3u8\n`)) as unknown as typeof Bun.spawn,
+      fetchImpl: (async (input) => {
+        const url = String(input);
+        if (url.includes("version-1.m3u8")) return new Response("#EXTM3U\n#EXTINF:2,\nhttps://r1.googlevideo.com/sq/42/old.ts\n");
+        if (url.includes("version-2.m3u8")) return new Response("#EXTM3U\n#EXTINF:2,\nhttps://r2.googlevideo.com/sq/42/new.ts\n");
+        if (url.includes("old.ts") && oldSegmentRequests++ === 0) return new Response(null, { status: 404 });
+        return new Response(new Uint8Array([7]));
+      }) as typeof fetch,
+    });
+
+    expect(await live.getLiveAudioPlaylist(1, "video")).toContain("\nr0\n");
+    const resource = await live.getLiveAudioResource(1, "video", "r0", null);
+    expect(resource?.status).toBe(200);
+    expect([...new Uint8Array(await resource!.arrayBuffer())]).toEqual([7]);
+    expect(spawns).toBe(2);
+  });
 });

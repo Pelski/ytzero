@@ -1,9 +1,11 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
-import { LoaderCircle, Pause, Play, Volume2, VolumeX } from "lucide-react";
+import { LoaderCircle, Pause, Play, RefreshCw, Volume2, VolumeX } from "lucide-react";
+import { api } from "../api";
 import { useI18n } from "../i18n";
 import { enforceLocalPlayerVolume } from "../localPlayerVolume";
 import type { WatchPlayerHandle } from "../playerHandle";
+import { Button } from "./ui";
 import { useAudioMediaSource } from "./useAudioMediaSource";
 import "./LocalPlayer.css";
 import "./PlayerVolume.css";
@@ -11,6 +13,7 @@ import "./AudioModePlayer.css";
 
 const VOLUME_KEY = "localPlayerVolume";
 const MUTED_KEY = "localPlayerMuted";
+const MAX_RETRY_ATTEMPTS = 3;
 
 function fmtTime(seconds: number): string {
   const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
@@ -42,6 +45,7 @@ function storedVolume(): number {
  */
 const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   src: string;
+  videoId: string;
   live?: boolean;
   title?: string;
   channelTitle?: string;
@@ -52,6 +56,7 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   onEnded?: () => void;
 }>(function AudioModePlayer({
   src,
+  videoId,
   live = false,
   title,
   channelTitle,
@@ -80,12 +85,15 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   const [volumeOpen, setVolumeOpen] = useState(false);
   const [scrubbing, setScrubbing] = useState(false);
   const [hoverX, setHoverX] = useState<number | null>(null);
+  const [retryAttempts, setRetryAttempts] = useState(0);
+  const [sourceRevision, setSourceRevision] = useState(0);
+  const retrySrc = sourceRevision > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${sourceRevision}` : src;
   const onFatalSourceError = useCallback(() => {
     setStatus("error");
     setBuffering(false);
     setPlaying(false);
   }, []);
-  useAudioMediaSource({ audioRef, live, onFatalError: onFatalSourceError, src });
+  useAudioMediaSource({ audioRef, live, onFatalError: onFatalSourceError, src: retrySrc });
 
   const setAudioPosition = useCallback((seconds: number) => {
     const audio = audioRef.current;
@@ -232,6 +240,23 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
     toggleMuted();
   };
 
+  const retryAudio = async () => {
+    if (retryAttempts >= MAX_RETRY_ATTEMPTS) return;
+    const attempt = retryAttempts + 1;
+    setStatus("loading");
+    setBuffering(true);
+    setPlaying(false);
+    endedRef.current = false;
+    setRetryAttempts(attempt);
+    try {
+      await api.retryAudio(videoId);
+      setSourceRevision((revision) => revision + 1);
+    } catch {
+      setStatus("error");
+      setBuffering(false);
+    }
+  };
+
   // System-level controls keep the same <audio> element alive on the lock
   // screen; the custom controls below only replace its on-page chrome.
   useEffect(() => {
@@ -324,15 +349,15 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
       <audio
         ref={audioRef}
         className="audio-mode-media"
-        src={live ? undefined : src}
+        src={live ? undefined : retrySrc}
         autoPlay
         preload="auto"
         playsInline
         aria-label={title ?? t("playerAudioMode")}
         onLoadedMetadata={onLoadedMetadata}
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
-        onCanPlay={() => { setStatus("ready"); setBuffering(false); }}
-        onPlaying={() => { setStatus("ready"); setPlaying(true); setBuffering(false); endedRef.current = false; }}
+        onCanPlay={() => { setStatus("ready"); setBuffering(false); setRetryAttempts(0); }}
+        onPlaying={() => { setStatus("ready"); setPlaying(true); setBuffering(false); setRetryAttempts(0); endedRef.current = false; }}
         onPlay={() => {
           setPlaying(true);
           try { if ("mediaSession" in navigator) navigator.mediaSession.playbackState = "playing"; } catch {}
@@ -486,6 +511,14 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
                 </button>
               </div>
               {playbackRate !== 1 && <span className="audio-mode-rate">{playbackRate}×</span>}
+            </div>
+          )}
+          {status === "error" && (
+            <div className="audio-mode-retry">
+              <Button variant="ghost" className="audio-mode-retry-button" leadingIcon={<RefreshCw />} onClick={retryAudio} disabled={retryAttempts >= MAX_RETRY_ATTEMPTS}>
+                {t("playerAudioModeRetry")}
+              </Button>
+              {retryAttempts >= MAX_RETRY_ATTEMPTS && <small>{t("playerAudioModeRetryExhausted")}</small>}
             </div>
           )}
         </div>

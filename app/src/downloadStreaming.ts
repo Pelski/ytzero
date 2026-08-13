@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import { database } from "./database";
 import { createDownloadAudioStreaming } from "./downloadAudioStreaming";
 import { createDownloadLiveAudioStreaming } from "./downloadLiveAudioStreaming";
+import { createAudioStreamingControls } from "./audioStreamingControls";
 import { log } from "./logger";
 import type { DlSettings } from "./downloader";
 interface DownloadStreamingDependencies {
@@ -277,21 +278,20 @@ async function getHlsSegment(videoId: string, file: string, signal?: AbortSignal
   }
   return existsSync(path) ? path : null;
 }
-
 /** Drop any HLS scratch left over from a previous run (called on boot). */
 function resetHlsScratch() {
   try { rmSync(HLS_DIR, { recursive: true, force: true }); } catch {}
 }
   const audioStreaming = createDownloadAudioStreaming(dependencies);
   const liveAudioStreaming = createDownloadLiveAudioStreaming(dependencies);
-  const invalidateAudioSources = (userId: number) => { audioStreaming.invalidateAudioSources(userId); liveAudioStreaming.invalidateLiveAudioSources(userId); };
+  const audioSourceControls = createAudioStreamingControls(audioStreaming, liveAudioStreaming);
   return {
     ...audioStreaming,
     ...liveAudioStreaming,
     destroyHlsSession,
     getHlsPlaylist,
     getHlsSegment,
-    invalidateAudioSources,
+    ...audioSourceControls,
     isSegmentName,
     liveStreamEnabled,
     resetHlsScratch,

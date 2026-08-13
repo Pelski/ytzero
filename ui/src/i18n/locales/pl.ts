@@ -264,6 +264,8 @@ export const pl: Locale = {
     playerAudioMode: "Tylko dźwięk",
     playerAudioModeExit: "Wideo",
     playerAudioModeError: "Dźwięk niedostępny dla tego filmu.",
+    playerAudioModeRetry: "Spróbuj ponownie",
+    playerAudioModeRetryExhausted: "Nie udało się uruchomić dźwięku. Spróbuj ponownie później.",
     playerScreenshot: "Zrób zrzut klatki",
     playerScreenshotSaved: "Zapisano zrzut klatki",
     playerScreenshotError: "Nie udało się zapisać tej klatki",

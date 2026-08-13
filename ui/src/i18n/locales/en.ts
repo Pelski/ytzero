@@ -263,6 +263,8 @@ export const en = {
     playerAudioMode: "Audio only",
     playerAudioModeExit: "Video",
     playerAudioModeError: "Audio isn't available for this video.",
+    playerAudioModeRetry: "Try again",
+    playerAudioModeRetryExhausted: "We couldn't start the audio. Please try again later.",
     playerScreenshot: "Take screenshot",
     playerScreenshotSaved: "Screenshot saved",
     playerScreenshotError: "Could not capture this frame",

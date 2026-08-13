@@ -37,13 +37,15 @@ describe("HTTP route manifest", () => {
     const transcriptRoute = "POST /videos/:id/transcript";
     const playbackAdjacentRoute = "POST /playback/adjacent";
     const liveAudioRoute = "GET /videos/:id/audio-live/:resource";
-    expect(routes).toHaveLength(228);
+    const retryAudioRoute = "POST /videos/:id/audio/retry";
+    expect(routes).toHaveLength(229);
     expect(routes).toContain(transcriptRoute);
     expect(routes).toContain(playbackAdjacentRoute);
     expect(routes).toContain(liveAudioRoute);
+    expect(routes).toContain(retryAudioRoute);
     expect(routes).toContain("GET /plugins/tubearchivist/config");
     expect(routes).toContain("POST /plugins/tubearchivist/sync");
-    const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute && route !== liveAudioRoute);
+    const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute && route !== liveAudioRoute && route !== retryAudioRoute);
     expect(createHash("sha256").update(legacyRoutes.join("\n")).digest("hex"))
       .toBe("41e8bc10839e472581c4b99528626dcf5e1880c97ade30ad49319e76074947fd");
   });

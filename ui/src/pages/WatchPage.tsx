@@ -229,7 +229,7 @@ export default function WatchPage() {
                   key={`${video.video_id}-${video.live_status}-audio-${sharedStartSeconds}`}
                   ref={playerRef}
                   src={video.live_status === "live" ? api.liveAudioUrl(video.video_id) : api.audioUrl(video.video_id)}
-                  live={video.live_status === "live"}
+                  live={video.live_status === "live"} videoId={video.video_id}
                   title={video.title}
                   channelTitle={video.channel_title}
                   artworkUrl={img(video.thumbnail)}

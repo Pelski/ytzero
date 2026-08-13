@@ -255,6 +255,25 @@
   font-variant-numeric: tabular-nums;
 }
 
+.audio-mode-retry {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  min-height: 56px;
+  text-align: center;
+}
+
+.audio-mode-retry-button.ui-button,
+.audio-mode-retry-button.ui-button:hover {
+  height: 34px;
+  padding-inline: 8px;
+  background: transparent;
+}
+
+.audio-mode-retry-button.ui-button:not(:disabled):hover { color: #fff; }
+.audio-mode-retry-button.ui-button svg { width: 15px; height: 15px; }
+.audio-mode-retry small { max-width: 310px; color: rgba(255, 255, 255, 0.64); font-size: 11px; line-height: 1.35; }
+
 @media (max-width: 600px) {
   .audio-mode-hero {
     padding-top: 12px;

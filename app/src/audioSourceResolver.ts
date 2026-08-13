@@ -167,6 +167,20 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
     return resolveAudioSource(userId, videoId, signal);
   }
 
+  function invalidateAudioSource(userId: number, videoId: string): void {
+    audioSources.delete(userId, videoId);
+    const key = audioSourceKey(userId, videoId);
+    const resolution = audioResolutions.get(key);
+    if (!resolution) return;
+    audioResolutions.delete(key);
+    resolution.controller.abort();
+  }
+
+  async function retryAudioSource(userId: number, videoId: string, signal?: AbortSignal): Promise<boolean> {
+    invalidateAudioSource(userId, videoId);
+    return Boolean(await resolveAudioSource(userId, videoId, signal));
+  }
+
   function invalidateAudioSources(userId: number): void {
     audioSources.invalidateUser(userId);
     const prefix = `${userId}:`;
@@ -177,5 +191,5 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
     }
   }
 
-  return { invalidateAudioSources, refreshAudioSource, resolveAudioSource };
+  return { invalidateAudioSources, refreshAudioSource, resolveAudioSource, retryAudioSource };
 }

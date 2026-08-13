@@ -8,6 +8,7 @@ import {
   getAudioResponse,
   getLiveAudioPlaylist,
   getLiveAudioResource,
+  retryAudioSource,
   ytdlpStatus,
 } from "../downloader";
 
@@ -21,6 +22,21 @@ async function audioVideo(videoId: string): Promise<AudioVideoState | null> {
 }
 
 export function registerAudioRoutes(api: Api, currentUserId: (context: ApiContext) => number): void {
+  api.post("/videos/:id/audio/retry", async (context) => {
+    const userId = currentUserId(context);
+    if (await isChildUser(userId)) return context.json({ error: "not allowed" }, 403);
+    const videoId = context.req.param("id");
+    const video = await audioVideo(videoId);
+    if (!video) return context.json({ error: "not found" }, 404);
+    const live = video.live_status === "live";
+    if (!(live ? liveAudioVideoIsEligible(video) : audioVideoIsEligible(video))) {
+      return context.json({ error: "audio unavailable" }, 409);
+    }
+    if (!await ytdlpStatus()) return context.json({ error: "yt-dlp unavailable" }, 503);
+    const resolved = await retryAudioSource(userId, videoId, live, context.req.raw.signal);
+    return resolved ? context.json({ ok: true }) : context.json({ error: "audio unavailable" }, 502);
+  });
+
   api.get("/videos/:id/audio", async (context) => {
     const userId = currentUserId(context);
     if (await isChildUser(userId)) return context.json({ error: "not allowed" }, 403);

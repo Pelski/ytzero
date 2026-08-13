@@ -265,4 +265,19 @@ describe("audio streaming integration", () => {
     expect(response?.headers.get("content-length")).toBe("999");
     expect((await response!.arrayBuffer()).byteLength).toBe(0);
   });
+
+  test("an explicit retry discards the cached URL and runs yt-dlp again", async () => {
+    let spawns = 0;
+    const audio = factory({
+      spawn: (() => fakeProcess(`https://r1.googlevideo.com/version-${++spawns}?expire=${futureExpiry}\nm4a\n`)) as unknown as typeof Bun.spawn,
+      fetchImpl: (async () => rangeResponse([1], 0, 1)) as unknown as typeof fetch,
+    });
+
+    expect((await audio.getAudioResponse(1, "video", "bytes=0-0"))?.status).toBe(206);
+    expect(spawns).toBe(1);
+    expect(await audio.retryAudioSource(1, "video", false)).toBe(true);
+    expect(spawns).toBe(2);
+    expect((await audio.getAudioResponse(1, "video", "bytes=0-0"))?.status).toBe(206);
+    expect(spawns).toBe(2);
+  });
 });

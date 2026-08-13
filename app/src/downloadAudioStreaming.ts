@@ -20,7 +20,7 @@ const AUDIO_REQUEST_TIMEOUT_MS = 45_000;
 
 export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamingDependencies) {
   const { fetchImpl = fetch } = dependencies;
-  const { invalidateAudioSources, refreshAudioSource, resolveAudioSource } = createAudioSourceResolver(dependencies);
+  const { invalidateAudioSources, refreshAudioSource, resolveAudioSource, retryAudioSource } = createAudioSourceResolver(dependencies);
 
   function rangeNotSatisfiable(total?: number): Response {
     const headers = new Headers({ "Accept-Ranges": "bytes", "Cache-Control": "no-store" });
@@ -169,5 +169,5 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
     }
   }
 
-  return { getAudioHeadResponse, getAudioResponse, invalidateAudioSources };
+  return { getAudioHeadResponse, getAudioResponse, invalidateAudioSources, retryAudioSource };
 }

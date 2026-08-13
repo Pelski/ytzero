@@ -16,6 +16,7 @@ interface LiveAudioSession {
   nextResourceId: number;
   playlistUrl: string;
   resources: Map<string, string>;
+  tokensByIdentity: Map<string, string>;
   tokensByUrl: Map<string, string>;
 }
 
@@ -29,6 +30,7 @@ const RESOLVE_TIMEOUT_MS = 30_000;
 const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
 const MAX_RESOURCES = 512;
 const LIVE_EDGE_SEGMENTS = 24;
+const LIVE_SESSION_IDLE_TTL_MS = 3 * 3_600_000;
 
 function safeYouTubeMediaUrl(candidate: string, base?: string): string | null {
   try {
@@ -42,10 +44,14 @@ function safeYouTubeMediaUrl(candidate: string, base?: string): string | null {
   }
 }
 
-function directUrlExpiry(url: string): number {
-  const match = url.match(/[?&]expire=(\d+)/);
-  const expiresAt = match ? Number(match[1]) * 1000 : 0;
-  return expiresAt > Date.now() ? expiresAt - 300_000 : Date.now() + 3 * 3_600_000;
+function liveResourceIdentity(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const sequence = parsed.pathname.match(/\/sq\/(\d+)(?:\/|$)/)?.[1] ?? parsed.searchParams.get("sq");
+    return sequence ? `sq:${sequence}` : null;
+  } catch {
+    return null;
+  }
 }
 
 function proxyHeaders(upstream: Response): Headers {
@@ -137,10 +143,11 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
       const playlistUrl = await resolveAttempt(userId, videoId, useCookies, signal);
       if (playlistUrl) {
         return {
-          expiresAt: directUrlExpiry(playlistUrl),
+          expiresAt: Date.now() + LIVE_SESSION_IDLE_TTL_MS,
           nextResourceId: 0,
           playlistUrl,
           resources: new Map(),
+          tokensByIdentity: new Map(),
           tokensByUrl: new Map(),
         };
       }
@@ -151,7 +158,11 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
 
   async function sessionFor(userId: number, videoId: string): Promise<LiveAudioSession | null> {
     const cached = sessions.get(userId, videoId);
-    if (cached) return cached;
+    if (cached) {
+      cached.expiresAt = Date.now() + LIVE_SESSION_IDLE_TTL_MS;
+      sessions.set(userId, videoId, cached);
+      return cached;
+    }
     const key = audioSourceKey(userId, videoId);
     const existing = resolutions.get(key);
     if (existing) return existing.promise;
@@ -168,24 +179,40 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
     return resolution.promise;
   }
 
-  async function refreshSession(userId: number, videoId: string, staleUrl: string): Promise<LiveAudioSession | null> {
+  async function refreshSession(userId: number, videoId: string, staleUrl: string, signal?: AbortSignal): Promise<LiveAudioSession | null> {
     const current = sessions.get(userId, videoId);
     if (current?.playlistUrl !== staleUrl) return current ?? sessionFor(userId, videoId);
-    sessions.delete(userId, videoId);
-    return sessionFor(userId, videoId);
+    const replacement = await resolveFresh(userId, videoId, signal ?? new AbortController().signal);
+    if (!replacement || signal?.aborted) return null;
+    current.playlistUrl = replacement.playlistUrl;
+    current.expiresAt = Date.now() + LIVE_SESSION_IDLE_TTL_MS;
+    sessions.set(userId, videoId, current);
+    return current;
   }
 
   function resourceToken(session: LiveAudioSession, url: string): string {
     const existing = session.tokensByUrl.get(url);
     if (existing) return existing;
+    const identity = liveResourceIdentity(url);
+    const stable = identity ? session.tokensByIdentity.get(identity) : null;
+    if (stable) {
+      const previous = session.resources.get(stable);
+      if (previous) session.tokensByUrl.delete(previous);
+      session.resources.set(stable, url);
+      session.tokensByUrl.set(url, stable);
+      return stable;
+    }
     const token = `r${session.nextResourceId++}`;
     session.resources.set(token, url);
     session.tokensByUrl.set(url, token);
+    if (identity) session.tokensByIdentity.set(identity, token);
     while (session.resources.size > MAX_RESOURCES) {
       const oldest = session.resources.entries().next().value as [string, string] | undefined;
       if (!oldest) break;
       session.resources.delete(oldest[0]);
       session.tokensByUrl.delete(oldest[1]);
+      const oldestIdentity = liveResourceIdentity(oldest[1]);
+      if (oldestIdentity && session.tokensByIdentity.get(oldestIdentity) === oldest[0]) session.tokensByIdentity.delete(oldestIdentity);
     }
     return token;
   }
@@ -211,7 +238,7 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
     let upstream = await fetchPlaylist(session, signal);
     if (upstream && (upstream.status === 403 || upstream.status === 404 || upstream.status === 410)) {
       await upstream.body?.cancel().catch(() => {});
-      session = await refreshSession(userId, videoId, session.playlistUrl);
+      session = await refreshSession(userId, videoId, session.playlistUrl, signal);
       if (!session || signal?.aborted) return null;
       upstream = await fetchPlaylist(session, signal);
     }
@@ -236,12 +263,25 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
     signal?: AbortSignal,
   ): Promise<Response | null> {
     if (!/^r\d+$/.test(token)) return null;
-    const session = await sessionFor(userId, videoId);
-    const url = session?.resources.get(token);
+    let session = await sessionFor(userId, videoId);
+    let url = session?.resources.get(token);
     if (!url || signal?.aborted) return null;
     const headers: Record<string, string> = { "User-Agent": "Mozilla/5.0" };
     if (range) headers.Range = range;
-    const upstream = await fetchImpl(url, { headers, redirect: "manual", signal }).catch(() => null);
+    let upstream = await fetchImpl(url, { headers, redirect: "manual", signal }).catch(() => null);
+    if (upstream && (upstream.status === 403 || upstream.status === 404 || upstream.status === 410)) {
+      await upstream.body?.cancel().catch(() => {});
+      session = await refreshSession(userId, videoId, session!.playlistUrl, signal);
+      const playlist = session ? await fetchPlaylist(session, signal) : null;
+      if (playlist?.status === 200) {
+        const source = await readBoundedPlaylist(playlist);
+        if (source) rewritePlaylist(session!, source);
+      } else {
+        await playlist?.body?.cancel().catch(() => {});
+      }
+      url = session?.resources.get(token);
+      upstream = url ? await fetchImpl(url, { headers, redirect: "manual", signal }).catch(() => null) : null;
+    }
     if (!upstream || (upstream.status !== 200 && upstream.status !== 206) || !upstream.body) {
       await upstream?.body?.cancel().catch(() => {});
       return null;
@@ -259,5 +299,28 @@ export function createDownloadLiveAudioStreaming(dependencies: DownloadLiveAudio
     }
   }
 
-  return { getLiveAudioPlaylist, getLiveAudioResource, invalidateLiveAudioSources };
+  async function retryLiveAudioSource(userId: number, videoId: string, signal?: AbortSignal): Promise<boolean> {
+    sessions.delete(userId, videoId);
+    const key = audioSourceKey(userId, videoId);
+    const resolution = resolutions.get(key);
+    if (resolution) {
+      resolutions.delete(key);
+      resolution.controller.abort();
+    }
+    if (signal?.aborted) return false;
+    const pending = sessionFor(userId, videoId);
+    const replacement = resolutions.get(key);
+    const abort = () => {
+      if (replacement && resolutions.get(key) === replacement) resolutions.delete(key);
+      replacement?.controller.abort();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      return Boolean(await pending) && !signal?.aborted;
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
+  }
+
+  return { getLiveAudioPlaylist, getLiveAudioResource, invalidateLiveAudioSources, retryLiveAudioSource };
 }
