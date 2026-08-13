@@ -261,7 +261,7 @@ export async function enqueueDownload(userId: number, videoId: string, source: "
   if (source !== "manual") {
     // Re-check at the queue boundary as classification may have changed since
     // the scheduler selected its candidates.
-    const video = await database.prepare("SELECT is_short FROM videos WHERE video_id=? AND is_private=0").get(videoId) as { is_short: number | null } | null;
+    const video = await database.prepare("SELECT is_short FROM videos WHERE video_id=? AND is_private=0 AND is_unavailable=0").get(videoId) as { is_short: number | null } | null;
     if (!video || !shouldAutoDownloadVideo(video.is_short, (await dlSettings(userId)).download_shorts === 1)) return false;
   }
   const row = await database.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
@@ -279,7 +279,7 @@ export async function enqueueDownload(userId: number, videoId: string, source: "
     if (context.notify !== false) notifyDownloadChanged(videoId);
     return true;
   }
-  const exists = await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId);
+  const exists = await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0 AND is_unavailable = 0").get(videoId);
   if (!exists) return false;
   await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title, automation_rule_id, requested_by_user_id) VALUES (?, 'queued', ?, ?, ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null, userId);
   await claimDownload(userId, videoId, source, context.automationRuleId);
@@ -639,7 +639,7 @@ async function pickNext(): Promise<{ videoId: string; userId: number; settings: 
   const rows = await database.prepare(`
     SELECT d.video_id, d.requested_by_user_id FROM downloads d
     JOIN videos v ON v.video_id = d.video_id
-    WHERE d.status = 'queued' AND v.is_private = 0
+    WHERE d.status = 'queued' AND v.is_private = 0 AND v.is_unavailable = 0
     ORDER BY d.priority DESC, CASE d.source WHEN 'manual' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END, d.created_at ASC
   `).all() as { video_id: string; requested_by_user_id: number | null }[];
   const settingsByUser = new Map<number, DlSettings>();

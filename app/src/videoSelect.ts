@@ -15,7 +15,7 @@ function localMediaSourceSelect(uid: number): string {
 export function videoSelect(uid: number): string {
   return `
   SELECT v.video_id, v.channel_id, v.title, v.description, v.thumbnail,
-         v.published_at, v.created_at AS found_at, v.published_at_approximate, v.members_only, v.is_private,
+         v.published_at, v.created_at AS found_at, v.published_at_approximate, v.members_only, v.is_private, v.is_unavailable,
          v.live_status, COALESCE(uv.status, 'inbox') AS status, uv.bucket, uv.show_from,
          v.is_short, v.views, v.likes, uv.liked, uv.watched,
          v.duration, uv.watch_position, uv.watch_duration, uv.playback_context_json, v.external,

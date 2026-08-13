@@ -291,6 +291,8 @@ Thanks to [baldemar-wuda](https://github.com/baldemar-wuda) for extensive testin
 
 Thanks to [@Taruvi](https://github.com/Taruvi) for helping with issues, testing the app, and coming up with interesting feature ideas.
 
+Thanks to [@cerede2000](https://github.com/cerede2000) for exceptionally detailed issue reports and for helping make YT Zero better.
+
 ## Development note
 
 AI-assisted coding tools have been used selectively to support development tasks such as code exploration, prototyping, and review. Project direction, architectural decisions, validation, and responsibility for the final code remain with the maintainers.

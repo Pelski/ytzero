@@ -15,6 +15,7 @@ export interface VideoRow {
   published_at_approximate: number;
   members_only: number;
   is_private: number;
+  is_unavailable?: number;
   live_status: string;
   status: string;
   bucket: string | null;

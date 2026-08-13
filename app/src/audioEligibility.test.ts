@@ -7,8 +7,9 @@ describe("audio playback eligibility", () => {
     expect(audioVideoIsEligible({ live_status: "was_live", is_private: 0, members_only: 0 })).toBe(true);
   });
 
-  test("rejects private, members-only, live, and upcoming videos", () => {
+  test("rejects private, unavailable, members-only, live, and upcoming videos", () => {
     expect(audioVideoIsEligible({ live_status: "none", is_private: 1, members_only: 0 })).toBe(false);
+    expect(audioVideoIsEligible({ live_status: "none", is_private: 0, is_unavailable: 1, members_only: 0 })).toBe(false);
     expect(audioVideoIsEligible({ live_status: "none", is_private: 0, members_only: 1 })).toBe(false);
     expect(audioVideoIsEligible({ live_status: "live", is_private: 0, members_only: 0 })).toBe(false);
     expect(audioVideoIsEligible({ live_status: "upcoming", is_private: 0, members_only: 0 })).toBe(false);
@@ -18,6 +19,7 @@ describe("audio playback eligibility", () => {
     expect(liveAudioVideoIsEligible({ live_status: "live", is_private: 0, members_only: 0 })).toBe(true);
     expect(liveAudioVideoIsEligible({ live_status: "upcoming", is_private: 0, members_only: 0 })).toBe(false);
     expect(liveAudioVideoIsEligible({ live_status: "live", is_private: 1, members_only: 0 })).toBe(false);
+    expect(liveAudioVideoIsEligible({ live_status: "live", is_private: 0, is_unavailable: 1, members_only: 0 })).toBe(false);
     expect(liveAudioVideoIsEligible({ live_status: "live", is_private: 0, members_only: 1 })).toBe(false);
   });
 });

@@ -56,6 +56,7 @@ export function feedVisibilityWhere(
 ): { where: string[]; params: any[] } {
   const where: string[] = [];
   const params: any[] = [];
+  where.push("COALESCE(v.is_unavailable, 0) = 0");
   where.push("(v.published_at IS NOT NULL AND v.published_at != '')");
   const status = q.status ?? "inbox";
   if (status !== "all") {

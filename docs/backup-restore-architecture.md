@@ -348,7 +348,9 @@ below.
 
 - full `videos`, `video_creators`, fetched channel metadata, chapters, channel
   playlist cache, and `channel_playlist_videos`, except minimal referenced
-  records described above
+  records described above. YouTube availability tombstones and their last-check
+  timestamps are rebuildable catalog state and are not exported; a restored
+  referenced-video seed is checked again by normal channel synchronization
 - `channel_posts` and `channel_post_sync_state`; posts are a shared, normalized
   local catalog fetched again from YouTube, while attempt/success timestamps and
   errors are machine-local scheduler state

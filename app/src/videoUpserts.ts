@@ -15,5 +15,7 @@ export const RSS_VIDEO_UPSERT_SQL = `
     views = COALESCE(excluded.views, videos.views),
     likes = COALESCE(excluded.likes, videos.likes),
     members_only = 0,
-    is_private = 0
+    is_private = 0,
+    is_unavailable = 0,
+    availability_checked_at = datetime('now')
 `;

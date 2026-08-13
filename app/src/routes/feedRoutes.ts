@@ -40,6 +40,7 @@ api.get("/feed", async (c) => {
   } else {
     where = [];
     params = [];
+    where.push("COALESCE(v.is_unavailable, 0) = 0");
     // Videos without a publication date are incomplete imports. Never let them
     // use created_at as a fake feed date; expose them only through the channel's
     // dedicated processing tab.

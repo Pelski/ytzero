@@ -258,9 +258,9 @@ api.get("/channels/:id/about", async (c) => {
   // UI has loaded (NULL is_short counts as a regular video, matching the UI).
   const row = await database.prepare(`
     SELECT
-      COALESCE(SUM(CASE WHEN published_at IS NOT NULL AND published_at != '' AND COALESCE(is_short, 0) = 0 THEN 1 ELSE 0 END), 0) AS videos,
-      COALESCE(SUM(CASE WHEN published_at IS NOT NULL AND published_at != '' AND is_short = 1 THEN 1 ELSE 0 END), 0) AS shorts,
-      COALESCE(SUM(CASE WHEN published_at IS NULL OR published_at = '' THEN 1 ELSE 0 END), 0) AS processing
+      COALESCE(SUM(CASE WHEN is_unavailable = 0 AND published_at IS NOT NULL AND published_at != '' AND COALESCE(is_short, 0) = 0 THEN 1 ELSE 0 END), 0) AS videos,
+      COALESCE(SUM(CASE WHEN is_unavailable = 0 AND published_at IS NOT NULL AND published_at != '' AND is_short = 1 THEN 1 ELSE 0 END), 0) AS shorts,
+      COALESCE(SUM(CASE WHEN is_unavailable = 0 AND (published_at IS NULL OR published_at = '') THEN 1 ELSE 0 END), 0) AS processing
     FROM videos WHERE channel_id = ?
   `).get(channelId) as { videos: number; shorts: number; processing: number };
   const counts = row;
@@ -574,7 +574,7 @@ api.get("/channels/recent", async (c) => {
   const uid = currentUserId(c);
   // Sidebar ordering is navigation, not the main feed. Keep it stable by using
   // the latest regular upload regardless of the Shorts feed policy.
-  const shortsFilter = "AND COALESCE(is_short, 0) = 0";
+  const shortsFilter = "AND COALESCE(is_short, 0) = 0 AND COALESCE(is_unavailable, 0) = 0";
   const rows = await database.prepare(`
     SELECT c.channel_id, COALESCE(c.custom_title, c.title) AS title, c.thumbnail,
            (SELECT thumbnail FROM videos WHERE channel_id = c.channel_id ${shortsFilter} ORDER BY COALESCE(published_at, created_at) DESC LIMIT 1) AS latest_thumbnail,

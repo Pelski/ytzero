@@ -17,7 +17,7 @@ type Api = Hono<ApiEnvironment>;
 type ApiContext = Context<ApiEnvironment>;
 
 async function audioVideo(videoId: string): Promise<AudioVideoState | null> {
-  return await database.prepare("SELECT live_status, is_private, members_only FROM videos WHERE video_id = ?")
+  return await database.prepare("SELECT live_status, is_private, is_unavailable, members_only FROM videos WHERE video_id = ?")
     .get(videoId) as AudioVideoState | null;
 }
 

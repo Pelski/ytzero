@@ -17,6 +17,7 @@ import { liveStatusChanged, resolveActiveLivestreams, type StoredLiveStatus } fr
 import { channelSyncJobIsRunning } from "./channelSyncRuntime";
 import { isYouTubeRateLimitError } from "./youtubeRateLimit";
 import { RSS_VIDEO_UPSERT_SQL } from "./videoUpserts";
+import { syncChannelVideoAvailability } from "./videoAvailabilitySync";
 
 const upsertVideo = database.prepare(RSS_VIDEO_UPSERT_SQL);
 
@@ -160,6 +161,7 @@ async function backfillExactPublishedDates(channelId: string): Promise<{ recover
     SELECT video_id FROM videos
     WHERE channel_id = ?
       AND is_private = 0
+      AND is_unavailable = 0
       AND (published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
     ORDER BY
       CASE WHEN published_at IS NULL OR published_at = '' THEN 0 ELSE 1 END,
@@ -404,10 +406,15 @@ export async function refreshChannel(channelId: string): Promise<{ added: number
     }
   }
   await backfillShorts(feed.videos.map((v) => v.videoId));
+  const availability = await syncChannelVideoAvailability(
+    channelId,
+    new Set(feed.videos.map((video) => video.videoId)),
+  );
+  if (availability.rateLimited) throw new Error("YouTube availability check failed (429)");
 
   const missingDuration = await database.prepare(
     `SELECT 1 FROM videos
-     WHERE channel_id = ?
+     WHERE channel_id = ? AND is_unavailable = 0
        AND is_private = 0
        AND (duration IS NULL OR TRIM(duration) = '')
        AND live_status IN ('none', 'was_live')
@@ -447,13 +454,14 @@ export async function backfillShorts(videoIds?: string[], limit = 50) {
   if (videoIds && videoIds.length > 0) {
     const ph = videoIds.map(() => "?").join(",");
     rows = await database
-      .prepare(`SELECT video_id, title FROM videos WHERE is_short IS NULL AND is_private = 0 AND video_id IN (${ph})`)
+      .prepare(`SELECT video_id, title FROM videos WHERE is_short IS NULL AND is_private = 0 AND is_unavailable = 0 AND video_id IN (${ph})`)
       .all(...videoIds) as any[];
   } else {
     rows = await database
       .prepare(`SELECT video_id, title FROM videos
                 WHERE is_short IS NULL
                   AND is_private = 0
+                  AND is_unavailable = 0
                   AND COALESCE(published_at, created_at) >= datetime('now', ?)
                 ORDER BY COALESCE(published_at, created_at) DESC
                 LIMIT ?`)
@@ -484,7 +492,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
     SELECT video_id, title, live_status, duration, published_at,
            published_at_approximate, is_short
     FROM videos
-    WHERE channel_id = ? AND is_private = 0 AND (
+    WHERE channel_id = ? AND is_private = 0 AND is_unavailable = 0 AND (
       published_at IS NULL OR published_at = '' OR published_at_approximate = 1
       OR duration IS NULL OR duration = '' OR is_short IS NULL
     )
@@ -579,7 +587,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
 
   const remaining = (await database.prepare(`
     SELECT COUNT(*) AS count FROM videos
-    WHERE channel_id = ? AND is_private = 0 AND (
+    WHERE channel_id = ? AND is_private = 0 AND is_unavailable = 0 AND (
       published_at IS NULL OR published_at = '' OR published_at_approximate = 1
       OR duration IS NULL OR is_short IS NULL
     )
@@ -700,7 +708,9 @@ async function runChannelSync(channelId: string): Promise<ChannelSyncResult> {
       members_only = excluded.members_only,
       views = COALESCE(excluded.views, videos.views),
       duration = COALESCE(excluded.duration, videos.duration),
-      is_private = 0
+      is_private = 0,
+      is_unavailable = 0,
+      availability_checked_at = datetime('now')
   `);
   const markArchivedStream = database.prepare(
     "UPDATE videos SET live_status = 'was_live' WHERE video_id = ? AND live_status = 'none'"
@@ -747,7 +757,9 @@ async function runChannelSync(channelId: string): Promise<ChannelSyncResult> {
 
   // Also add RSS-only videos (not in scraped list) to get description + published_at
   for (const v of feed.videos) {
-    if (seen.has(v.videoId)) continue;
+    const alreadySeen = seen.has(v.videoId);
+    seen.add(v.videoId);
+    if (alreadySeen) continue;
     const isNew = !await videoExists.get(v.videoId);
     await upsertVideo.run(v.videoId, channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes);
     if (isNew) {
@@ -759,6 +771,11 @@ async function runChannelSync(channelId: string): Promise<ChannelSyncResult> {
       log.info("video.added", { source: "rss-only", channelId, videoId: v.videoId, title: v.title, publishedAt: v.publishedAt });
     }
   }
+
+  const availability = rateLimited
+    ? { checked: 0, deleted: 0, private: 0, failed: 0, rateLimited: true }
+    : await syncChannelVideoAvailability(channelId, seen, { force: true });
+  rateLimited ||= availability.rateLimited;
 
   // Surface videos hidden in the channel's playlists — these include older
   // uploads that no longer appear in the RSS feed or /videos tab. Each
@@ -813,7 +830,13 @@ async function runChannelSync(channelId: string): Promise<ChannelSyncResult> {
   } else {
     await database.prepare("UPDATE channels SET last_refreshed_at = datetime('now'), last_full_synced_at = datetime('now') WHERE channel_id = ?").run(channelId);
   }
-  log.info("channel.sync.complete", { channelId, added, rateLimited, scraped: scraped.length, streams: streams.length, rss: feed.videos.length, playlists: playlistsScanned, ms: Date.now() - startedAt });
+  log.info("channel.sync.complete", {
+    channelId, added, rateLimited, scraped: scraped.length, streams: streams.length,
+    rss: feed.videos.length, playlists: playlistsScanned,
+    availabilityChecked: availability.checked, unavailable: availability.deleted,
+    private: availability.private, availabilityFailed: availability.failed,
+    ms: Date.now() - startedAt,
+  });
   return { added, rateLimited: rateLimited || undefined };
 }
 
@@ -931,6 +954,7 @@ async function refreshPlaylistDurations(): Promise<number> {
     JOIN videos v ON v.video_id = cpv.video_id
     WHERE v.duration IS NULL
       AND v.is_private = 0
+      AND v.is_unavailable = 0
       AND v.live_status IN ('none', 'was_live')
       AND (v.published_at >= datetime('now', ?) OR v.created_at >= datetime('now', ?))
     GROUP BY cpv.playlist_id
@@ -983,7 +1007,7 @@ export async function refreshVideoMetadataBatch(limit = 10) {
     .prepare(
       `SELECT video_id, live_status FROM videos
        WHERE (duration IS NULL OR published_at IS NULL OR published_at = '' OR published_at_approximate = 1)
-         AND is_private = 0
+         AND is_private = 0 AND is_unavailable = 0
          AND live_status IN ('none', 'was_live')
          AND (published_at >= datetime('now', ?) OR created_at >= datetime('now', ?))
        ORDER BY created_at DESC, COALESCE(published_at, '1970-01-01') DESC
@@ -1090,7 +1114,7 @@ export async function backfillImportedVideos(limit = 15) {
   // titleless videos first — a titled history row is already presentable.
   const candidates = await database.prepare(`
     SELECT video_id FROM videos
-    WHERE channel_id = ? AND is_private = 0
+    WHERE channel_id = ? AND is_private = 0 AND is_unavailable = 0
     ORDER BY (video_id IN (SELECT video_id FROM user_playlist_videos)) DESC,
              (title IS NULL OR title = '') DESC, created_at ASC
     LIMIT ?

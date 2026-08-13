@@ -229,7 +229,7 @@ api.post("/import/commit", async (c) => {
     const n = Number(v);
     return Number.isFinite(n) && n > 0 ? n : fallback;
   };
-  const enrichPending = (await database.prepare("SELECT COUNT(*) AS n FROM videos WHERE channel_id = ? AND is_private = 0").get(IMPORTED_CHANNEL_ID) as { n: number }).n;
+  const enrichPending = (await database.prepare("SELECT COUNT(*) AS n FROM videos WHERE channel_id = ? AND is_private = 0 AND is_unavailable = 0").get(IMPORTED_CHANNEL_ID) as { n: number }).n;
   const enrichBatch = num(process.env.IMPORT_ENRICH_BATCH_SIZE, 15);
   const enrichIntervalMin = num(process.env.IMPORT_ENRICH_INTERVAL_MINUTES, 2);
   const refreshIntervalMin = num(process.env.REFRESH_INTERVAL_MINUTES, 5);

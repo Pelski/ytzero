@@ -257,7 +257,7 @@ export async function previewDownloadRule(userId: number, value: Partial<Downloa
     JOIN channels c ON c.channel_id=v.channel_id
     LEFT JOIN downloads d ON d.video_id=v.video_id
     LEFT JOIN download_owners owner ON owner.video_id=v.video_id AND owner.user_id=?
-    WHERE (v.live_status='none' OR (v.live_status='was_live' AND ?=1)) AND v.is_private=0 AND v.external=0
+    WHERE (v.live_status='none' OR (v.live_status='was_live' AND ?=1)) AND v.is_private=0 AND v.is_unavailable=0 AND v.external=0
       AND (${sourceWhere.join(" OR ")})
       ${timeWhere}
       ${readyOnly ? "AND owner.video_id IS NULL" : ""}

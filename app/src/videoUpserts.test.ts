@@ -17,10 +17,12 @@ describe("RSS video upsert", () => {
         views INTEGER,
         likes INTEGER,
         members_only INTEGER NOT NULL DEFAULT 0,
-        is_private INTEGER NOT NULL DEFAULT 0
+        is_private INTEGER NOT NULL DEFAULT 0,
+        is_unavailable INTEGER NOT NULL DEFAULT 0,
+        availability_checked_at TEXT
       );
-      INSERT INTO videos (video_id, channel_id, title, members_only)
-      VALUES ('unlock-me', 'channel', 'Members preview', 1);
+      INSERT INTO videos (video_id, channel_id, title, members_only, is_unavailable)
+      VALUES ('unlock-me', 'channel', 'Members preview', 1, 1);
     `);
 
     db.query(RSS_VIDEO_UPSERT_SQL).run(
@@ -34,7 +36,7 @@ describe("RSS video upsert", () => {
       10,
     );
 
-    expect(db.query("SELECT title, members_only FROM videos WHERE video_id = 'unlock-me'").get())
-      .toEqual({ title: "Public release", members_only: 0 });
+    expect(db.query("SELECT title, members_only, is_unavailable, availability_checked_at IS NOT NULL AS checked FROM videos WHERE video_id = 'unlock-me'").get())
+      .toEqual({ title: "Public release", members_only: 0, is_unavailable: 0, checked: 1 });
   });
 });

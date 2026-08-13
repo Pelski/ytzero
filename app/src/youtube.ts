@@ -3,6 +3,8 @@ import { createRequire } from "module";
 import { decodeHtmlEntities } from "./htmlEntities";
 import { createYoutubeSearch } from "./youtubeSearch";
 import { isYouTubeRateLimitError, readYouTubeResponse } from "./youtubeRateLimit";
+import { DeletedVideoError, fetchVideoOEmbedAvailability, isDeletedVideoError, isPrivateVideoError, PrivateVideoError } from "./youtubeVideoAvailability";
+export { DeletedVideoError, fetchVideoOEmbedAvailability, isDeletedVideoError, isPrivateVideoError, PrivateVideoError, videoOEmbedAvailabilityFromStatus } from "./youtubeVideoAvailability";
 const _require = createRequire(import.meta.url);
 const InnerTubeClient = _require("innertube.js");
 const _yt = new InnerTubeClient();
@@ -965,20 +967,6 @@ export async function fetchVideoCreators(videoId: string): Promise<VideoCreatorI
 const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
 const VIDEO_INFO_TTL = 10 * 60_000;
 
-export class PrivateVideoError extends Error {
-  readonly code = "PRIVATE_VIDEO";
-
-  constructor(message = "Private video") {
-    super(message);
-    this.name = "PrivateVideoError";
-  }
-}
-
-export function isPrivateVideoError(error: unknown): boolean {
-  return error instanceof PrivateVideoError
-    || (error instanceof Error && /\bprivate video\b/i.test(error.message));
-}
-
 function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
   const vd = pr?.videoDetails;
   if (!vd?.videoId) {
@@ -986,12 +974,17 @@ function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
     // playabilityStatus LOGIN_REQUIRED + "confirm you're not a bot" means the
     // server's egress IP is bot-flagged (VPN/WARP/datacenter), not a bug here.
     const ps = pr?.playabilityStatus;
+    const renderer = ps?.errorScreen?.playerErrorMessageRenderer;
     const reason = ps?.reason
-      ?? ps?.errorScreen?.playerErrorMessageRenderer?.reason?.simpleText;
+      ?? renderer?.reason?.simpleText
+      ?? renderer?.reason?.runs?.map((part: any) => part?.text ?? "").join("")
+      ?? renderer?.subreason?.simpleText
+      ?? renderer?.subreason?.runs?.map((part: any) => part?.text ?? "").join("");
     const detail = pr == null
       ? "no player response"
       : [ps?.status, reason].filter(Boolean).join(": ") || "no playabilityStatus";
     if (/\bprivate video\b/i.test(detail)) throw new PrivateVideoError(detail);
+    if (isDeletedVideoError(new Error(detail))) throw new DeletedVideoError(detail);
     throw new Error(`videoDetails missing (${detail})`);
   }
 
@@ -1037,7 +1030,8 @@ async function fetchVideoInfoFromEmbed(videoId: string): Promise<VideoInfo> {
   return videoInfoFromPlayerResponse(videoId, pr);
 }
 
-export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
+export async function fetchVideoInfo(videoId: string, options: { force?: boolean } = {}): Promise<VideoInfo> {
+  if (options.force) videoInfoCache.delete(videoId);
   const cached = videoInfoCache.get(videoId);
   if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
 
@@ -1058,6 +1052,9 @@ export async function fetchVideoInfo(videoId: string): Promise<VideoInfo> {
       } catch (embedError) {
         if ([htmlError, innerTubeError, embedError].some(isPrivateVideoError)) {
           throw new PrivateVideoError();
+        }
+        if ([htmlError, innerTubeError, embedError].some(isDeletedVideoError)) {
+          throw new DeletedVideoError();
         }
         const primary = htmlError instanceof Error ? htmlError.message : String(htmlError);
         const fallback = innerTubeError instanceof Error ? innerTubeError.message : String(innerTubeError);
@@ -1131,15 +1128,22 @@ export async function fetchVideoChapters(videoId: string): Promise<VideoChapter[
  * Detect whether a video is a YouTube Short. /shorts/<id> responds 200 for
  * Shorts and redirects (303) to /watch for regular videos.
  */
-export async function classifyIsShort(videoId: string, title: string): Promise<boolean | null> {
+export async function classifyIsShort(
+  videoId: string,
+  title: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<boolean | null> {
   if (/#shorts?\b/i.test(title)) return true;
   try {
-    const res = await fetch(`https://www.youtube.com/shorts/${videoId}`, {
+    const res = await fetchImpl(`https://www.youtube.com/shorts/${videoId}`, {
       method: "HEAD",
       redirect: "manual",
       headers: FETCH_HEADERS,
     });
-    if (res.status === 200) return true;
+    if (res.status === 200) {
+      const availability = await fetchVideoOEmbedAvailability(videoId, fetchImpl);
+      return availability === "available" ? true : null;
+    }
     const location = res.headers.get("location") ?? "";
     if (res.status >= 300 && res.status < 400 && /\/watch(?:\?|$)/i.test(location)) return false;
     return null;

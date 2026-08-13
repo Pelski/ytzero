@@ -208,7 +208,7 @@ async function getHlsPlaylist(userId: number, videoId: string): Promise<string |
   const existing = hlsSessions.get(videoId);
   if (existing) { existing.lastAccess = Date.now(); return existing.playlist; }
   if (!(await ytdlpStatus())) return null;
-  if (!await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0").get(videoId)) return null;
+  if (!await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0 AND is_unavailable = 0").get(videoId)) return null;
 
   const probe = await probeSource(userId, videoId);
   if (!probe) return null;

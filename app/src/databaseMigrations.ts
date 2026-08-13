@@ -125,6 +125,23 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "sql", statement: `CREATE TABLE IF NOT EXISTS tube_archivist_watch_outbox (video_id TEXT PRIMARY KEY REFERENCES videos(video_id) ON DELETE CASCADE, attempts INTEGER NOT NULL DEFAULT 0, next_attempt_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), last_error TEXT, created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))` },
     ],
   },
+  {
+    version: 6,
+    name: "video-availability-tombstones",
+    schemaHashes: {
+      "app/src/schema.sql": "5a747328ebeda58f7cc52ee31c045160ef29f0239d15a1d9de0ebf677399b7e2",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "30b7c3fc889aedc977e2e5cd834cfd48d9e51870530213433359ed24333e03a0",
+    },
+    sqlite: [
+      { kind: "add-column", table: "videos", column: "is_unavailable", definition: "INTEGER NOT NULL DEFAULT 0" },
+      { kind: "add-column", table: "videos", column: "availability_checked_at", definition: "TEXT" },
+    ],
+    postgres: [
+      { kind: "add-column", table: "videos", column: "is_unavailable", definition: "INTEGER NOT NULL DEFAULT 0" },
+      { kind: "add-column", table: "videos", column: "availability_checked_at", definition: "TEXT" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

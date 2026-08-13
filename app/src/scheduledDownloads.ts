@@ -16,6 +16,7 @@ export async function enqueueScheduledDownloadsForUser(userId: number, enqueue: 
     WHERE uv.user_id=? AND uv.status = 'queued'
       AND (v.live_status = 'none' OR (v.live_status = 'was_live' AND ? = 1))
       AND v.is_private = 0
+      AND v.is_unavailable = 0
       AND COALESCE(uv.watched, 0) = 0
       AND COALESCE(uv.queued_at, datetime('now')) >= datetime('now', '-30 days')
       AND NOT EXISTS (SELECT 1 FROM download_owners owner WHERE owner.user_id=uv.user_id AND owner.video_id=v.video_id)

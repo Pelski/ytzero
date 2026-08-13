@@ -81,7 +81,7 @@ api.post("/channel-playlists/:id/download", async (c) => {
   const rows = await database.prepare(`
     SELECT v.video_id, v.title, v.published_at FROM channel_playlist_videos cpv
     JOIN videos v ON v.video_id = cpv.video_id
-    WHERE cpv.playlist_id = ? AND v.is_private = 0
+    WHERE cpv.playlist_id = ? AND v.is_private = 0 AND v.is_unavailable = 0
       AND v.live_status NOT IN ('live', 'upcoming')
     ORDER BY cpv.position ASC
   `).all(c.req.param("id")) as Array<{ video_id: string; title: string; published_at: string | null }>;
