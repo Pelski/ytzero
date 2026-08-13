@@ -248,6 +248,7 @@ export const pl: Locale = {
     downloadsInQueue: "w kolejce",
     downloadsDisabled: "Pobieranie filmów jest wyłączone — włącz je w Pobrane → Konfiguracja.",
     downloadsYtdlpMissing: "Nie znaleziono yt-dlp. Zainstaluj yt-dlp oraz ffmpeg, żeby pobieranie działało.",
+    downloadsYtdlpJsRuntimeMissing: "Nie znaleziono Deno. Pobieranie, streaming, audio mode, napisy, transkrypcje i komentarze mogą nie działać dla części filmów, ponieważ yt-dlp nie może rozwiązać ich wyzwania JavaScript.",
     dlSourceManual: "ręczne",
     dlSourceScheduled: "zaplanowane",
     dlSourceFeed: "automatyzacja",

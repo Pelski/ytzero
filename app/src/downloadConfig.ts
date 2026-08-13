@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { database } from "./database";
 import { DB_PATH, getSetting, setSetting } from "./db";
 import { log } from "./logger";
+import { supportedDenoVersion } from "./ytdlpJavascriptRuntime";
 export { DL_DEFAULTS, DOWNLOADS_ADMIN_SETTING_KEYS } from "./downloadSettings";
 export type { DlSettings, DownloadSettingDefinition, DownloadSettingValue } from "./downloadSettings";
 export { dlEnabled, dlSettings, downloadSettings, migrateDownloadsFromPlugin, profileDownloadsEnabled, setDownloadSettings, setProfileDownloadsEnabled } from "./downloadSettingsStore";
@@ -80,9 +81,30 @@ export async function migrateLegacyDownloadCookies() {
 // ---------- yt-dlp binary ----------
 
 let ytdlpVersion: string | null | undefined;
+let ytdlpJavascriptRuntimeVersion: string | null | undefined;
 
 export function invalidateYtdlpStatus(): void {
   ytdlpVersion = undefined;
+}
+
+/** Deno is yt-dlp's recommended and default-enabled EJS challenge runtime. */
+export async function ytdlpJavascriptRuntimeStatus(): Promise<string | null> {
+  if (ytdlpJavascriptRuntimeVersion !== undefined) return ytdlpJavascriptRuntimeVersion;
+  try {
+    const proc = Bun.spawn(["deno", "--version"], { stdout: "pipe", stderr: "ignore" });
+    const out = await new Response(proc.stdout).text();
+    ytdlpJavascriptRuntimeVersion = (await proc.exited) === 0 ? supportedDenoVersion(out) : null;
+  } catch {
+    ytdlpJavascriptRuntimeVersion = null;
+  }
+  if (!ytdlpJavascriptRuntimeVersion) {
+    log.warn("downloads.ytdlp_js_runtime_missing", {
+      runtime: "deno",
+      minimumVersion: "2.3.0",
+      impact: "YouTube JavaScript challenges may make downloads, streaming, audio, subtitles, transcripts, and comments unavailable",
+    });
+  }
+  return ytdlpJavascriptRuntimeVersion;
 }
 
 export async function ytdlpStatus(): Promise<string | null> {

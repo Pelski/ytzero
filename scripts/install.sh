@@ -11,6 +11,7 @@
 #   YTZERO_PORT      port to listen on (default: 3001)
 #   YTZERO_DIR       install directory (default: /opt/ytzero)
 #   YTZERO_DATA      data directory (default: $YTZERO_DIR/data)
+#   YTZERO_DENO_VERSION Deno version used by yt-dlp (default: 2.8.1)
 set -euo pipefail
 
 REPO="Pelski/ytzero"
@@ -21,6 +22,9 @@ ENV_FILE="/etc/ytzero/ytzero.env"
 SERVICE_USER="ytzero"
 BUN_DIR="/opt/bun"
 BUN_BIN="${BUN_DIR}/bin/bun"
+DENO_VERSION="${YTZERO_DENO_VERSION:-2.8.1}"
+DENO_INSTALL_DIR="/opt/deno"
+DENO_BIN="${DENO_INSTALL_DIR}/bin/deno"
 
 msg() { echo -e "\e[1;34m==>\e[0m $*"; }
 warn() { echo -e "\e[1;33m warn\e[0m $*" >&2; }
@@ -74,6 +78,16 @@ fi
 BUN_VERSION="$("${BUN_BIN}" --version)"
 msg "Bun ${BUN_VERSION}"
 
+# ---------- deno (yt-dlp JavaScript challenges) ----------
+
+msg "Installing Deno ${DENO_VERSION} for yt-dlp"
+DENO_INSTALL="${DENO_INSTALL_DIR}" bash -c "$(curl -fsSL https://deno.land/install.sh)" -- "v${DENO_VERSION}" >/dev/null
+ln -sf "${DENO_BIN}" /usr/local/bin/deno
+if ! "${DENO_BIN}" --version >/dev/null 2>&1; then
+  die "Deno was installed but cannot run. yt-dlp will not be able to solve YouTube JavaScript challenges."
+fi
+msg "$("${DENO_BIN}" --version | head -n 1)"
+
 # ---------- service user ----------
 
 if ! id -u "${SERVICE_USER}" >/dev/null 2>&1; then
@@ -87,6 +101,7 @@ mkdir -p \
   "${DATA_DIR}/db" \
   "${DATA_DIR}/imgcache" \
   "${DATA_DIR}/downloads" \
+  "${DATA_DIR}/deno-cache" \
   "${DATA_DIR}/avatars" \
   "${DATA_DIR}/logs" \
   "${DATA_DIR}/restore-sessions" \
@@ -171,6 +186,7 @@ UI_DIST=./public
 DB_PATH=${DATA_DIR}/db/ytzero.db
 IMG_CACHE_DIR=${DATA_DIR}/imgcache
 DOWNLOADS_DIR=${DATA_DIR}/downloads
+DENO_DIR=${DATA_DIR}/deno-cache
 AVATAR_DIR=${DATA_DIR}/avatars
 LOG_PATH=${DATA_DIR}/logs/ytzero.log
 RESTORE_SESSION_DIR=${DATA_DIR}/restore-sessions
@@ -190,6 +206,9 @@ fi
 # data-directory default on update without replacing an operator override.
 if ! grep -q '^RESTORE_SESSION_DIR=' "${ENV_FILE}"; then
   echo "RESTORE_SESSION_DIR=${DATA_DIR}/restore-sessions" >> "${ENV_FILE}"
+fi
+if ! grep -q '^DENO_DIR=' "${ENV_FILE}"; then
+  echo "DENO_DIR=${DATA_DIR}/deno-cache" >> "${ENV_FILE}"
 fi
 
 # YTZERO_VERSION is what /api/health reports; refreshed on every update.

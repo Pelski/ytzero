@@ -18,13 +18,18 @@ RUN if [ "${YTZERO_CHANGELOG_PREGENERATED}" = "1" ]; then bun run build:prepared
 
 # ---- runtime ----
 FROM oven/bun:1.3-slim
+ARG DENO_VERSION=2.8.1
 WORKDIR /app
 RUN apt-get update && \
     apt-get upgrade -y --no-install-recommends && \
-    apt-get install -y --no-install-recommends python3 ffmpeg curl ca-certificates && \
+    apt-get install -y --no-install-recommends python3 ffmpeg curl ca-certificates unzip && \
     curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp && \
-    apt-get purge -y curl && apt-get autoremove -y && \
+    curl -fsSL https://deno.land/install.sh -o /tmp/install-deno.sh && \
+    DENO_INSTALL=/usr/local sh /tmp/install-deno.sh "v${DENO_VERSION}" && \
+    deno --version && \
+    rm /tmp/install-deno.sh && \
+    apt-get purge -y curl unzip && apt-get autoremove -y && \
     rm -rf /var/lib/apt/lists/*
 COPY app/package.json app/bun.lock* ./
 RUN bun install --production
@@ -41,6 +46,7 @@ ENV PORT=3001 \
     IMG_CACHE_DIR=/data/imgcache \
     IMG_CACHE_TTL_DAYS=7 \
     DOWNLOADS_DIR=/data/downloads \
+    DENO_DIR=/data/deno-cache \
     DOWNLOAD_COOKIES_DIR=/data/download-cookies \
     RESTORE_SESSION_DIR=/data/restore-sessions \
     AVATAR_DIR=/data/avatars \

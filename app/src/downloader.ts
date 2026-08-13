@@ -23,6 +23,7 @@ import {
   migrateLegacyDownloadCookies,
   profileDownloadsEnabled,
   ytdlpSelfUpdate,
+  ytdlpJavascriptRuntimeStatus,
   ytdlpStatus,
   type DlSettings,
 } from "./downloadConfig";
@@ -36,6 +37,7 @@ export {
   removeDownloadCookies,
   saveDownloadCookies,
   ytdlpCommand,
+  ytdlpJavascriptRuntimeStatus,
   ytdlpStatus,
 } from "./downloadConfig";
 export type { DlSettings } from "./downloadConfig";
@@ -917,6 +919,7 @@ export async function startDownloader() {
   resetHlsScratch();
   await migrateLegacyDownloadCookies();
   await migrateLegacyDownloadAutomation();
+  if (await ytdlpStatus()) await ytdlpJavascriptRuntimeStatus();
   // Crash recovery: an interrupted download restarts from the queue.
   const crashRecovered = (await database.prepare("UPDATE downloads SET status = 'queued' WHERE status = 'downloading'").run()).changes;
   if (crashRecovered > 0) log.warn("downloads.crash_recovered", { count: crashRecovered });

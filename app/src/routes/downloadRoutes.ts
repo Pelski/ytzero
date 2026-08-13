@@ -5,7 +5,7 @@ import { database } from "../database";
 import { getUserSetting } from "../db";
 import { childLocalOnly, isChildUser } from "../childTime";
 import { DOWNLOADS_ADMIN_SETTING_KEYS, downloadCookiesConfigured, downloadSettings, profileDownloadsEnabled, removeDownloadCookies, saveDownloadCookies, setDownloadSettings, setProfileDownloadsEnabled } from "../downloadConfig";
-import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, invalidateAudioSources, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpStatus } from "../downloader";
+import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, invalidateAudioSources, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpJavascriptRuntimeStatus, ytdlpStatus } from "../downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "../downloadRules";
 import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
 import { configuredTimeZone } from "../timeZone";
@@ -162,11 +162,13 @@ api.get("/downloads", async (c) => {
   const includeAllProfiles = c.req.query("scope") === "all" && isAdmin(c);
   const downloads = await listDownloads(uid, includeAllProfiles);
   const progress = activeDownloadProgress();
+  const ytdlpVersion = await ytdlpStatus();
   return c.json({
     enabled: await profileDownloadsEnabled(uid),
     can_view_all: isAdmin(c),
     scope: includeAllProfiles ? "all" : "mine",
-    ytdlp_version: await ytdlpStatus(),
+    ytdlp_version: ytdlpVersion,
+    ytdlp_js_runtime_version: ytdlpVersion ? await ytdlpJavascriptRuntimeStatus() : null,
     stats: await downloadStats(uid, includeAllProfiles),
     active: progress && downloads.some((item) => item.video_id === progress.video_id) ? progress : null,
     downloads,

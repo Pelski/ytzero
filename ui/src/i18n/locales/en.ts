@@ -248,6 +248,7 @@ export const en = {
     downloadsInQueue: "queued",
     downloadsDisabled: "Video downloads are disabled — enable them under Downloads → Configuration.",
     downloadsYtdlpMissing: "yt-dlp was not found. Install yt-dlp and ffmpeg for downloads to work.",
+    downloadsYtdlpJsRuntimeMissing: "Deno was not found. Some YouTube videos may fail in downloads, streaming, audio mode, subtitles, transcripts, and comments because yt-dlp cannot solve their JavaScript challenge.",
     dlSourceManual: "manual",
     dlSourceScheduled: "scheduled",
     dlSourceFeed: "automation",

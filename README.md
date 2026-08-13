@@ -100,7 +100,11 @@ The **YT-DLP Integration** plugin (disabled by default) uses [yt-dlp](https://gi
 - **Smart retention** — keep files for N days, drop them after watching, protect liked and pinned videos, and cap total disk usage. Everything is cleaned up automatically.
 - **Household-aware** — one download serves every profile, and child profiles can be limited to downloaded videos only.
 
-The Docker image bundles yt-dlp and ffmpeg and keeps yt-dlp updated daily. Details and the full settings reference: **[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)**.
+The Docker image and native installer bundle yt-dlp, ffmpeg, and Deno. Deno is
+the JavaScript runtime yt-dlp uses to solve YouTube's extraction challenges;
+manual installations must provide Deno 2.3 or newer on `PATH`. YT Zero keeps
+yt-dlp updated daily. Details and the full settings reference:
+**[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)**.
 
 ## Audio mode
 
@@ -283,7 +287,7 @@ If you only want automatic redirects, [YTZero Redirect](https://github.com/pekem
 | Backend | Bun, Hono |
 | Frontend | React, Vite, TypeScript |
 | Storage | SQLite by default, PostgreSQL optional |
-| Downloads | [yt-dlp](https://github.com/yt-dlp/yt-dlp) + ffmpeg (optional plugin, bundled in Docker) |
+| Downloads | [yt-dlp](https://github.com/yt-dlp/yt-dlp) + Deno + ffmpeg (optional plugin, bundled in Docker/native installs) |
 | Archive integration | TubeArchivist API and protected media proxy (optional plugin) |
 | Runtime | Docker/Unraid, a Proxmox LXC or Debian/Ubuntu host via systemd, or local Bun |
 

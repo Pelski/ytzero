@@ -21,8 +21,10 @@ profile to another device, and is not included in backups.
 ## Requirements and supported content
 
 The YT Zero server must have a working [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-installation. The official Docker image bundles it. Audio mode is independent
-of the downloads plugin: it resolves and proxies audio on demand without
+installation and Deno 2.3 or newer available on `PATH`. Deno runs yt-dlp's
+JavaScript challenge solver for videos that YouTube does not expose without
+that step. The official Docker image and native installer bundle both. Audio
+mode is independent of the downloads plugin: it resolves and proxies audio on demand without
 writing a media file to disk or requiring downloads to be enabled.
 
 Audio mode is available for:
@@ -78,7 +80,8 @@ Useful server log events include:
 - `audio.source_attempt_failed` and `audio.source_resolution_failed`;
 - `audio.upstream_failed` and `audio.upstream_redirect`;
 - `audio.live_status_probe_failed`;
-- `video.live_status_corrected`.
+- `video.live_status_corrected`;
+- `downloads.ytdlp_js_runtime_missing` when Deno cannot be executed.
 
 These diagnostics contain video/profile identifiers and safe failure reasons,
 but do not log signed media URLs or cookie contents.

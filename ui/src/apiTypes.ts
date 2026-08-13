@@ -452,6 +452,7 @@ export interface DownloadsResponse {
   can_view_all: boolean;
   scope: "mine" | "all";
   ytdlp_version: string | null;
+  ytdlp_js_runtime_version: string | null;
   stats: { files: number; bytes: number; queued: number; cap_bytes: number };
   active: { video_id: string; percent: number; total_bytes: number | null; speed: string | null } | null;
   downloads: DownloadItem[];

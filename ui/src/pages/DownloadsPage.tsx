@@ -216,6 +216,9 @@ export default function DownloadsPage() {
       {data.enabled && data.ytdlp_version === null && (
         <Alert className="dl-alert-layout" variant="warning" icon={<AlertTriangle />}>{t("downloadsYtdlpMissing")}</Alert>
       )}
+      {data.enabled && data.ytdlp_version !== null && data.ytdlp_js_runtime_version === null && (
+        <Alert className="dl-alert-layout" variant="warning" icon={<AlertTriangle />}>{t("downloadsYtdlpJsRuntimeMissing")}</Alert>
+      )}
 
       {view === "automation" && <DownloadAutomation />}
       {view === "configuration" && <DownloadConfiguration />}

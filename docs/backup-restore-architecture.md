@@ -374,7 +374,7 @@ below.
 - `download_owners`, which is profile-scoped runtime ownership/visibility for
   shared local files and is rebuilt by future download requests rather than
   exported as portable configuration
-- image cache and other network-derived cache
+- image cache, Deno's yt-dlp JavaScript-solver cache, and other network-derived cache
 - successful transcript payloads cached in memory for 30 minutes, isolated by
   profile, video, and subtitle language; failures are never cached
 - `portable_object_mappings` restore bookkeeping and automatic pre-restore
