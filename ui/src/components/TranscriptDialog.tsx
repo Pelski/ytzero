@@ -4,6 +4,7 @@ import { api } from "../api";
 import { emitToast } from "../events";
 import { useI18n } from "../i18n";
 import { SUBTITLE_LANGUAGE_CODES, subtitleLanguageLabel } from "../subtitleLanguages";
+import { formatTranscript } from "../transcriptFormatter";
 import { Alert, Button, Dialog, Field, SelectMenu, Textarea } from "./ui";
 import "./TranscriptDialog.css";
 
@@ -28,7 +29,7 @@ export default function TranscriptDialog({ videoId, title, languages, onClose }:
     setLoading(true);
     try {
       const result = await api.videoTranscript(videoId, nextLanguage);
-      setTranscript(result.transcript);
+      setTranscript(formatTranscript(result.transcript));
     } catch {
       setFailed(true);
     } finally {
