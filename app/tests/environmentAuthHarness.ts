@@ -24,11 +24,16 @@ const methodChange = await api.request("http://localhost/auth/method", {
   body: JSON.stringify({ method: "none" }),
 });
 
-console.log("RESULT " + JSON.stringify({
-  method: statusBody.method,
-  passwordConfigured: statusBody.login.password,
-  usernameField: statusBody.username_field,
-  storedLoginStatus: storedLogin.status,
-  environmentLoginStatus: environmentLogin.status,
-  methodChangeStatus: methodChange.status,
-}));
+if (
+  statusBody.method !== "shared"
+  || statusBody.login?.password !== true
+  || statusBody.username_field !== false
+  || storedLogin.status !== 401
+  || environmentLogin.status !== 200
+  || methodChange.status !== 409
+) throw new Error("environment authentication policy assertion failed");
+
+// The parent test needs only a completion marker. Keep response fields local to
+// this process so security scanners and captured CI output never treat an auth
+// capability field as logged credential material.
+console.log("RESULT ok");
