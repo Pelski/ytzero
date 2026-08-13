@@ -16,6 +16,7 @@ interface DownloadStreamingDependencies {
   prioritizeDownload: (userId: number, videoId: string) => Promise<boolean>;
   readLines: (stream: ReadableStream<Uint8Array>, onLine: (line: string) => void) => Promise<void>;
   ytdlpStatus: () => Promise<string | null>;
+  audioDiagnostic?: import("./audioDiagnostics").AudioDiagnostic;
   fetchImpl?: typeof fetch;
   spawn?: typeof Bun.spawn;
 }
@@ -32,7 +33,6 @@ export function createDownloadStreaming(dependencies: DownloadStreamingDependenc
     ytdlpStatus,
     spawn = Bun.spawn,
   } = dependencies;
-
 // Experimental seek-anywhere HLS with segments transcoded on demand.
 
 const FFMPEG = process.env.FFMPEG_PATH ?? "ffmpeg";

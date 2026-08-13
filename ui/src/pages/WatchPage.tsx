@@ -59,13 +59,12 @@ import WatchRestrictedPlayer from "../components/watch/WatchRestrictedPlayer";
 import { colonDurationToSeconds, formatWatchTime } from "./watchRuntime";
 import { useWatchPageController } from "./useWatchPageController";
 import WatchPlayerFeedback from "./WatchPlayerFeedback";
+import { useProfileAudioMode } from "../audioModePreference";
 const TranscriptDialog = lazy(() => import("../components/TranscriptDialog"));
 
 export default function WatchPage() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
-  // Session-only mode: keep audio while this WatchPage instance lives, but a
-  // page refresh always starts with video and nothing is written to storage.
-  const [audioMode, setAudioMode] = useState(false);
+  const [audioMode, setAudioMode] = useProfileAudioMode();
   // The controller derives the effective active state from video/profile/room
   // eligibility before it decides whether to mount the iframe.
   const controller = useWatchPageController(audioMode);

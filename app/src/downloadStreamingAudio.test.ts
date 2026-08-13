@@ -43,6 +43,7 @@ function factory(overrides: Partial<Parameters<typeof createDownloadStreaming>[0
     prioritizeDownload: async () => false,
     readLines: async () => {},
     ytdlpStatus: async () => "test",
+    audioDiagnostic: () => {},
     ...overrides,
   });
 }
@@ -172,6 +173,82 @@ describe("audio streaming integration", () => {
     expect(response?.status).toBe(206);
     expect(spawns).toBe(2);
     expect(fetches).toBe(2);
+  });
+
+  test("follows a bounded, revalidated googlevideo redirect and preserves Range", async () => {
+    const requests: Array<{ url: string; range: string }> = [];
+    const audio = factory({
+      spawn: successfulSpawn(`https://r1.googlevideo.com/audio?expire=${futureExpiry}`),
+      fetchImpl: (async (input, init) => {
+        requests.push({
+          url: String(input),
+          range: new Headers(init?.headers).get("range") ?? "",
+        });
+        if (requests.length === 1) {
+          return new Response(null, {
+            status: 302,
+            headers: { Location: `https://r2.googlevideo.com/audio?expire=${futureExpiry}` },
+          });
+        }
+        return rangeResponse([4, 2], 0, 2);
+      }) as typeof fetch,
+    });
+
+    expect((await audio.getAudioResponse(1, "video", "bytes=0-1"))?.status).toBe(206);
+    expect(requests).toEqual([
+      { url: `https://r1.googlevideo.com/audio?expire=${futureExpiry}`, range: "bytes=0-1" },
+      { url: `https://r2.googlevideo.com/audio?expire=${futureExpiry}`, range: "bytes=0-1" },
+    ]);
+  });
+
+  test("rejects an audio redirect outside googlevideo without requesting it", async () => {
+    const requests: string[] = [];
+    const audio = factory({
+      spawn: successfulSpawn(`https://r1.googlevideo.com/audio?expire=${futureExpiry}`),
+      fetchImpl: (async (input) => {
+        requests.push(String(input));
+        return new Response(null, {
+          status: 302,
+          headers: { Location: "https://example.com/not-a-media-host" },
+        });
+      }) as typeof fetch,
+    });
+
+    expect(await audio.getAudioResponse(1, "video", "bytes=0-0")).toBeNull();
+    expect(requests).toEqual([`https://r1.googlevideo.com/audio?expire=${futureExpiry}`]);
+  });
+
+  test("does not reuse a cached source after an upstream failure", async () => {
+    let spawns = 0;
+    const audio = factory({
+      spawn: (() => fakeProcess(
+        `https://r1.googlevideo.com/version-${++spawns}?expire=${futureExpiry}\nm4a\n`,
+      )) as unknown as typeof Bun.spawn,
+      fetchImpl: (async (input) => String(input).includes("version-1")
+        ? new Response(null, { status: 500 })
+        : rangeResponse([8], 0, 1)) as typeof fetch,
+    });
+
+    expect(await audio.getAudioResponse(1, "video", "bytes=0-0")).toBeNull();
+    expect((await audio.getAudioResponse(1, "video", "bytes=0-0"))?.status).toBe(206);
+    expect(spawns).toBe(2);
+  });
+
+  test("diagnostics describe redirect failures without exposing signed URLs", async () => {
+    const diagnostics: Array<{ event: string; meta: Record<string, unknown> }> = [];
+    const secret = "signed-query-must-not-be-logged";
+    const audio = factory({
+      audioDiagnostic: (_level, event, meta) => diagnostics.push({ event, meta }),
+      spawn: successfulSpawn(`https://r1.googlevideo.com/audio?token=${secret}&expire=${futureExpiry}`),
+      fetchImpl: (async () => new Response(null, {
+        status: 302,
+        headers: { Location: `https://example.com/audio?token=${secret}` },
+      })) as unknown as typeof fetch,
+    });
+
+    expect(await audio.getAudioResponse(1, "video", "bytes=0-0")).toBeNull();
+    expect(diagnostics.some(({ event }) => event === "audio.upstream_failed")).toBe(true);
+    expect(JSON.stringify(diagnostics)).not.toContain(secret);
   });
 
   test("a late stale 403 reuses the source refreshed by a concurrent request", async () => {

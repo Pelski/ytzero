@@ -5,22 +5,33 @@ import {
   validateAudioRangeResponse,
   type AudioByteRange,
 } from "./audioRange";
+import { defaultAudioDiagnostic, type AudioDiagnostic } from "./audioDiagnostics";
 import { createAudioSourceResolver, type AudioSource } from "./audioSourceResolver";
+import { googleVideoHost, safeGoogleVideoUrl } from "./audioUpstreamUrl";
 
 interface DownloadAudioStreamingDependencies {
   YTDLP: string;
   downloadCookiesConfigured: (userId: number) => boolean;
   downloadCookiesFile: (userId: number) => string;
   ytdlpStatus: () => Promise<string | null>;
+  audioDiagnostic?: AudioDiagnostic;
   fetchImpl?: typeof fetch;
   spawn?: typeof Bun.spawn;
 }
 
 const AUDIO_REQUEST_TIMEOUT_MS = 45_000;
+const AUDIO_REDIRECT_LIMIT = 4;
+const AUDIO_REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 
 export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamingDependencies) {
-  const { fetchImpl = fetch } = dependencies;
-  const { invalidateAudioSources, refreshAudioSource, resolveAudioSource, retryAudioSource } = createAudioSourceResolver(dependencies);
+  const { audioDiagnostic = defaultAudioDiagnostic, fetchImpl = fetch } = dependencies;
+  const {
+    discardAudioSource,
+    invalidateAudioSources,
+    refreshAudioSource,
+    resolveAudioSource,
+    retryAudioSource,
+  } = createAudioSourceResolver(dependencies);
 
   function rangeNotSatisfiable(total?: number): Response {
     const headers = new Headers({ "Accept-Ranges": "bytes", "Cache-Control": "no-store" });
@@ -55,6 +66,58 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
     | { kind: "response"; value: Response }
     | null;
 
+  async function fetchAudioUpstream(
+    userId: number,
+    videoId: string,
+    sourceUrl: string,
+    range: AudioByteRange,
+    signal: AbortSignal,
+  ): Promise<Response | null> {
+    let currentUrl = sourceUrl;
+    for (let hop = 0; hop <= AUDIO_REDIRECT_LIMIT; hop++) {
+      let response: Response;
+      try {
+        response = await fetchImpl(currentUrl, {
+          headers: { "User-Agent": "Mozilla/5.0", Range: audioRangeHeader(range) },
+          redirect: "manual",
+          signal,
+        });
+      } catch {
+        if (!signal.aborted) audioDiagnostic("warn", "audio.upstream_failed", {
+          userId, videoId, reason: "network_error", rangeStart: range.start, rangeEnd: range.end,
+        });
+        return null;
+      }
+
+      if (!AUDIO_REDIRECT_STATUSES.has(response.status)) return response;
+      const location = response.headers.get("location");
+      await response.body?.cancel().catch(() => {});
+      if (hop === AUDIO_REDIRECT_LIMIT) {
+        audioDiagnostic("warn", "audio.upstream_failed", {
+          userId, videoId, reason: "redirect_limit", status: response.status, redirects: hop + 1,
+        });
+        return null;
+      }
+      const nextUrl = location ? safeGoogleVideoUrl(location, currentUrl) : null;
+      if (!nextUrl) {
+        audioDiagnostic("warn", "audio.upstream_failed", {
+          userId, videoId, reason: "redirect_rejected", status: response.status, redirects: hop + 1,
+        });
+        return null;
+      }
+      audioDiagnostic("info", "audio.upstream_redirect", {
+        userId,
+        videoId,
+        status: response.status,
+        redirects: hop + 1,
+        fromHost: googleVideoHost(currentUrl),
+        toHost: googleVideoHost(nextUrl),
+      });
+      currentUrl = nextUrl;
+    }
+    return null;
+  }
+
   async function validatedAudioUpstream(
     userId: number,
     videoId: string,
@@ -64,20 +127,20 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
     let source = await resolveAudioSource(userId, videoId, signal);
     if (!source) return null;
 
-    const fetchUpstream = (url: string) => fetchImpl(url, {
-      headers: { "User-Agent": "Mozilla/5.0", Range: audioRangeHeader(range) },
-      redirect: "manual",
-      signal,
-    }).catch(() => null);
-
-    let upstream = await fetchUpstream(source.url);
+    let upstream = await fetchAudioUpstream(userId, videoId, source.url, range, signal);
     if (upstream && (upstream.status === 403 || upstream.status === 410)) {
+      audioDiagnostic("info", "audio.source_refresh", {
+        userId, videoId, reason: "upstream_status", status: upstream.status,
+      });
       await upstream.body?.cancel().catch(() => {});
       source = await refreshAudioSource(userId, videoId, source.url, signal);
       if (!source) return null;
-      upstream = await fetchUpstream(source.url);
+      upstream = await fetchAudioUpstream(userId, videoId, source.url, range, signal);
     }
-    if (!upstream) return null;
+    if (!upstream) {
+      if (!signal.aborted) discardAudioSource(userId, videoId, source.url);
+      return null;
+    }
 
     if (upstream.status === 416) {
       const total = parseAudioUnsatisfiedTotal(upstream.headers.get("content-range"));
@@ -85,7 +148,16 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
       return { kind: "response", value: rangeNotSatisfiable(total ?? undefined) };
     }
     if (upstream.status !== 206 || !upstream.body) {
+      audioDiagnostic("warn", "audio.upstream_failed", {
+        userId,
+        videoId,
+        reason: upstream.body ? "unexpected_status" : "missing_body",
+        status: upstream.status,
+        rangeStart: range.start,
+        rangeEnd: range.end,
+      });
       await upstream.body?.cancel().catch(() => {});
+      if (!signal.aborted) discardAudioSource(userId, videoId, source.url);
       return null;
     }
 
@@ -96,7 +168,18 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
       range,
     );
     if (!contentRange) {
+      audioDiagnostic("warn", "audio.upstream_failed", {
+        userId,
+        videoId,
+        reason: "invalid_range_headers",
+        status: upstream.status,
+        contentRange: upstream.headers.get("content-range"),
+        contentLength: upstream.headers.get("content-length"),
+        rangeStart: range.start,
+        rangeEnd: range.end,
+      });
       await upstream.body.cancel().catch(() => {});
+      if (!signal.aborted) discardAudioSource(userId, videoId, source.url);
       return null;
     }
     const expectedLength = contentRange.end - contentRange.start + 1;
@@ -119,7 +202,19 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
       if (result.kind === "response") return result.value;
       const { source, response, contentRange, contentLength } = result.value;
       const body = await response.arrayBuffer().catch(() => null);
-      if (!body || body.byteLength !== contentLength || operation.signal.aborted) return null;
+      if (!body || body.byteLength !== contentLength || operation.signal.aborted) {
+        if (!operation.signal.aborted) {
+          audioDiagnostic("warn", "audio.upstream_failed", {
+            userId,
+            videoId,
+            reason: body ? "body_length_mismatch" : "body_read_failed",
+            expectedLength: contentLength,
+            receivedLength: body?.byteLength,
+          });
+          discardAudioSource(userId, videoId, source.url);
+        }
+        return null;
+      }
       return new Response(body, {
         status: 206,
         headers: {

@@ -383,6 +383,11 @@ below.
   origin, is validated against the current profile list before use, and is
   never included in a portable or exact server-side backup.
 
+- The audio-only playback choice stored in browser `localStorage` is a
+  machine-bound playback convenience, namespaced by the active profile. It
+  remains local to that browser and origin, is not written to profile settings,
+  and is never included in a portable or exact server-side backup.
+
 - passwords and PIN hashes
 - environment-owned authentication overrides and the `YTZERO_AUTH_PASSWORD`
   secret; they are machine-bound runtime configuration and are never persisted,

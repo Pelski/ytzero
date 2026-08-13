@@ -1,5 +1,7 @@
 import { AudioSourceCache, audioSourceKey } from "./audioSourceCache";
+import { defaultAudioDiagnostic, type AudioDiagnostic } from "./audioDiagnostics";
 import { downloadCookieAttempts } from "./downloadStrategy";
+import { safeGoogleVideoUrl } from "./audioUpstreamUrl";
 
 export interface AudioSource {
   url: string;
@@ -19,13 +21,21 @@ interface AudioSourceResolverDependencies {
   downloadCookiesConfigured: (userId: number) => boolean;
   downloadCookiesFile: (userId: number) => string;
   ytdlpStatus: () => Promise<string | null>;
+  audioDiagnostic?: AudioDiagnostic;
   spawn?: typeof Bun.spawn;
 }
 
 const AUDIO_RESOLVE_TIMEOUT_MS = 30_000;
 
 export function createAudioSourceResolver(dependencies: AudioSourceResolverDependencies) {
-  const { YTDLP, downloadCookiesConfigured, downloadCookiesFile, ytdlpStatus, spawn = Bun.spawn } = dependencies;
+  const {
+    YTDLP,
+    downloadCookiesConfigured,
+    downloadCookiesFile,
+    ytdlpStatus,
+    audioDiagnostic = defaultAudioDiagnostic,
+    spawn = Bun.spawn,
+  } = dependencies;
   const audioSources = new AudioSourceCache<AudioSource>();
   const audioResolutions = new Map<string, AudioResolution>();
 
@@ -35,24 +45,17 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
     return expiresAt ? Math.max(Date.now(), expiresAt - 300_000) : Date.now() + 3 * 3_600_000;
   }
 
-  function safeDirectAudioUrl(candidate: string): string | null {
-    try {
-      const url = new URL(candidate);
-      const hostname = url.hostname.toLowerCase();
-      if (url.protocol !== "https:") return null;
-      if (hostname !== "googlevideo.com" && !hostname.endsWith(".googlevideo.com")) return null;
-      return url.toString();
-    } catch {
-      return null;
-    }
-  }
-
   async function runResolverAttempt(
     userId: number,
     videoId: string,
     useCookies: boolean,
     signal: AbortSignal,
   ): Promise<AudioSource | null> {
+    const reportFailure = (reason: string, extra: Record<string, number | string> = {}) => {
+      audioDiagnostic("warn", "audio.source_attempt_failed", {
+        userId, videoId, reason, usedCookies: useCookies, ...extra,
+      });
+    };
     const args = [
       `https://www.youtube.com/watch?v=${videoId}`,
       "--ignore-config", "--no-playlist", "--no-warnings",
@@ -67,6 +70,7 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
     try {
       process = spawn([YTDLP, ...args], { stdout: "pipe", stderr: "pipe" });
     } catch {
+      reportFailure("spawn_failed");
       return null;
     }
 
@@ -81,13 +85,29 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
         new Response(process.stderr as ReadableStream<Uint8Array>).text(),
         process.exited,
       ]);
-      if (signal.aborted || timedOut || exitCode !== 0) return null;
+      if (signal.aborted) return null;
+      if (timedOut) {
+        reportFailure("timeout");
+        return null;
+      }
+      if (exitCode !== 0) {
+        reportFailure("ytdlp_exit", { exitCode });
+        return null;
+      }
       const lines = stdout.trim().split(/\r?\n/).filter(Boolean);
-      const url = safeDirectAudioUrl(lines[0] ?? "");
+      const url = safeGoogleVideoUrl(lines[0] ?? "");
       const extension = lines[1] ?? "m4a";
-      if (!url || (extension !== "m4a" && extension !== "mp4")) return null;
+      if (!url) {
+        reportFailure("missing_or_rejected_url");
+        return null;
+      }
+      if (extension !== "m4a" && extension !== "mp4") {
+        reportFailure("unsupported_extension");
+        return null;
+      }
       return { url, mime: "audio/mp4", expiresAt: audioUrlExpiry(url) };
     } catch {
+      if (!signal.aborted) reportFailure("process_io_failed");
       return null;
     } finally {
       clearTimeout(timer);
@@ -96,11 +116,28 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
   }
 
   async function resolveFresh(userId: number, videoId: string, signal: AbortSignal): Promise<AudioSource | null> {
-    if (!(await ytdlpStatus()) || signal.aborted) return null;
-    for (const useCookies of downloadCookieAttempts(downloadCookiesConfigured(userId))) {
-      const source = await runResolverAttempt(userId, videoId, useCookies, signal);
-      if (source || signal.aborted) return source;
+    const startedAt = Date.now();
+    if (!(await ytdlpStatus()) || signal.aborted) {
+      if (!signal.aborted) audioDiagnostic("warn", "audio.source_resolution_failed", {
+        userId, videoId, reason: "ytdlp_unavailable", ms: Date.now() - startedAt,
+      });
+      return null;
     }
+    let attempts = 0;
+    for (const useCookies of downloadCookieAttempts(downloadCookiesConfigured(userId))) {
+      attempts++;
+      const source = await runResolverAttempt(userId, videoId, useCookies, signal);
+      if (source) {
+        audioDiagnostic("info", "audio.source_resolved", {
+          userId, videoId, attempts, usedCookies: useCookies, mime: source.mime, ms: Date.now() - startedAt,
+        });
+        return source;
+      }
+      if (signal.aborted) return null;
+    }
+    audioDiagnostic("warn", "audio.source_resolution_failed", {
+      userId, videoId, reason: "no_compatible_source", attempts, ms: Date.now() - startedAt,
+    });
     return null;
   }
 
@@ -167,6 +204,11 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
     return resolveAudioSource(userId, videoId, signal);
   }
 
+  function discardAudioSource(userId: number, videoId: string, failedUrl: string): void {
+    const current = audioSources.get(userId, videoId);
+    if (current?.url === failedUrl) audioSources.delete(userId, videoId);
+  }
+
   function invalidateAudioSource(userId: number, videoId: string): void {
     audioSources.delete(userId, videoId);
     const key = audioSourceKey(userId, videoId);
@@ -191,5 +233,5 @@ export function createAudioSourceResolver(dependencies: AudioSourceResolverDepen
     }
   }
 
-  return { invalidateAudioSources, refreshAudioSource, resolveAudioSource, retryAudioSource };
+  return { discardAudioSource, invalidateAudioSources, refreshAudioSource, resolveAudioSource, retryAudioSource };
 }
