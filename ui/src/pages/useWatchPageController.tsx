@@ -10,7 +10,7 @@ import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
 import { parseVideoDurationSeconds } from "../components/VideoCard";
 import { img } from "../img";
-import { resolvePlayerKind, type WatchSourceMode } from "./watchPlayerMode";
+import { resolvePlayerKind, shouldLatchCompletedDownload, type WatchSourceMode } from "./watchPlayerMode";
 import { normalizeSponsorSegments } from "../sponsorblock";
 import { markYouTubeUrl } from "../youtubeUrl";
 import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } from "../playerScreenshot";
@@ -168,6 +168,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const [downloadReadyToReload, setDownloadReadyToReload] = useState(false);
   const [youtubeAutoplayBlocked, setYoutubeAutoplayBlocked] = useState(false);
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
+  const downloadPollGenerationRef = useRef(0);
   // Path to the next playlist video, read by the player's onStateChange when a
   // video ends. A ref keeps the player effect free of playlist dependencies.
   const nextInPlaylistRef = useRef<string | null>(null);
@@ -272,33 +273,35 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     return () => { cancelled = true; };
   }, []);
 
-  const downloadStatus = video?.download_status ?? null;
+  const matchingVideo = video?.video_id === id ? video : null;
+  const downloadStatus = matchingVideo?.download_status ?? null;
   // Which surface fills the player area. Children never get a choice: with
   // downloads_only they are locked to local files, otherwise plain YouTube.
   const watchMode = downloadsEnabled && !isChildProfile ? downloadWatchMode : "youtube";
   const streamingEnabled = experimentalStreaming && !isChildProfile && !skipStreaming;
   const playerKind = resolvePlayerKind({
-    hasVideo: !!video,
-    isLive: video?.live_status === "live" || video?.live_status === "upcoming",
+    hasVideo: !!matchingVideo,
+    isLive: matchingVideo?.live_status === "live" || matchingVideo?.live_status === "upcoming",
     downloadStatus,
-    localMediaSource: video?.local_media_source,
+    localMediaSource: matchingVideo?.local_media_source,
     playerSource,
     playbackPolicyReady,
     childDownloadsOnly,
     sourceChoice,
     watchMode,
     streamingEnabled,
+    keepStreamingAfterDownload: downloadReadyToReload,
   });
   const downloadFeedbackKind = downloadReadyToReload ? "ready" : downloadRequestError || downloadStatus === "error" ? "error" : downloadStatus === "downloading" ? "downloading" : "queued";
   const downloadFeedbackVisible = downloadReadyToReload || downloadRequestError || downloadStatus === "queued" || downloadStatus === "downloading" || downloadStatus === "error";
-  const privateVideoNotice = video?.is_private === 1;
-  const membersOnlyNotice = video?.members_only === 1 && !isChildProfile && !privateVideoNotice;
+  const privateVideoNotice = matchingVideo?.is_private === 1;
+  const membersOnlyNotice = matchingVideo?.members_only === 1 && !isChildProfile && !privateVideoNotice;
   const playerTargetId = resolveWatchPlayerTarget(id, video?.video_id, missingVideoId);
   canAutoArchiveRef.current = canAutoArchiveVideo(video, id);
   const audioModeAvailable = canUseWatchAudioMode({
     childProfile: isChildProfile,
-    hasVideo: Boolean(video && video.video_id === id),
-    liveStatus: video?.live_status ?? "none",
+    hasVideo: Boolean(matchingVideo),
+    liveStatus: matchingVideo?.live_status ?? "none",
     membersOnly: Boolean(membersOnlyNotice),
     playerKind,
     privateVideo: Boolean(privateVideoNotice),
@@ -459,7 +462,10 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   // Leave the experimental stream: fall back to whatever the viewer's configured
   // player would be (download-wait / ask / YouTube — or the local file if the
   // background download already finished).
-  const exitStreaming = useCallback(() => setSkipStreaming(true), []);
+  const exitStreaming = useCallback(() => {
+    capturePlaybackPosition();
+    setSkipStreaming(true);
+  }, [capturePlaybackPosition]);
 
   useEffect(() => {
     setYoutubeError(null);
@@ -1131,26 +1137,39 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   // Track background downloads. A normal remote player remains mounted when
   // the file becomes ready; the viewer explicitly chooses when to reload it.
   useEffect(() => {
+    const generation = ++downloadPollGenerationRef.current;
+    let cancelled = false;
+    let inFlight = false;
+    let reloadQueued = false;
     const active = downloadStatus === "queued" || downloadStatus === "downloading" || downloadStatus === "error" || playerKind === "stream";
     if (!id || !active || playerKind === "waiting") {
       setBackgroundDownload({ percent: null, speed: null, error: null });
       return;
     }
+    const isCurrent = () => !cancelled && downloadPollGenerationRef.current === generation;
     const load = () => {
+      if (!isCurrent()) return;
+      if (inFlight) { reloadQueued = true; return; }
+      inFlight = true;
       api.videoDownload(id).then((result) => {
+        if (!isCurrent()) return;
         const status = result.download?.status ?? null;
-        if (status === "done" && playerKind === "youtube" && (downloadStatus === "queued" || downloadStatus === "downloading")) {
-          setPlayerSource("youtube");
+        if (shouldLatchCompletedDownload(playerKind, downloadStatus, status)) {
+          if (playerKind === "youtube") setPlayerSource("youtube");
           setDownloadReadyToReload(true);
         }
         setBackgroundDownload({ percent: result.progress?.percent ?? null, speed: result.progress?.speed ?? null, error: result.download?.error ?? null });
-        setVideo((prev) => prev ? { ...prev, download_status: status } : prev);
-      }).catch(() => {});
+        setVideo((prev) => prev?.video_id === id ? { ...prev, download_status: status } : prev);
+      }).catch(() => {}).finally(() => {
+        inFlight = false;
+        if (isCurrent() && reloadQueued) { reloadQueued = false; load(); }
+      });
     };
     load();
-    return subscribeServerEvent("downloads", (data) => {
+    const unsubscribe = subscribeServerEvent("downloads", (data) => {
       if (!data?.videoId || data.videoId === id) load();
     });
+    return () => { cancelled = true; unsubscribe(); };
   }, [id, downloadStatus, playerKind]);
 
   useEffect(() => {
@@ -1182,6 +1201,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   };
 
   const reloadDownloadedPlayer = () => {
+    capturePlaybackPosition();
     setDownloadReadyToReload(false);
     setPlayerSource("auto");
   };

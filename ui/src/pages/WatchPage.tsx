@@ -254,7 +254,7 @@ export default function WatchPage() {
                   live
                   liveLabel={t("watchStreamingBadge")}
                   durationSeconds={colonDurationToSeconds(video.duration)}
-                  onExitStreaming={watchTogetherTransportLocked ? undefined : exitStreaming}
+                  onError={exitStreaming} onExitStreaming={watchTogetherTransportLocked ? undefined : exitStreaming}
                   exitStreamingLabel={t("watchExitStreaming")}
                   src={api.hlsUrl(video.video_id)}
                   poster={img(video.thumbnail)}

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolvePlayerKind } from "./watchPlayerMode";
+import { resolvePlayerKind, shouldLatchCompletedDownload } from "./watchPlayerMode";
 
 const base = {
   hasVideo: true,
@@ -11,6 +11,7 @@ const base = {
   sourceChoice: "undecided" as const,
   watchMode: "youtube" as const,
   streamingEnabled: false,
+  keepStreamingAfterDownload: false,
 };
 
 describe("resolvePlayerKind", () => {
@@ -46,6 +47,10 @@ describe("resolvePlayerKind", () => {
       expect(resolvePlayerKind({ ...base, streamingEnabled: true })).toBe("stream");
     });
 
+    test("does not let a stale library row own the streaming player", () => {
+      expect(resolvePlayerKind({ ...base, hasVideo: false, streamingEnabled: true })).toBe("youtube");
+    });
+
     test("prefers streaming over the wait/ask panels", () => {
       expect(resolvePlayerKind({ ...base, streamingEnabled: true, watchMode: "download" })).toBe("stream");
       expect(resolvePlayerKind({ ...base, streamingEnabled: true, watchMode: "ask" })).toBe("stream");
@@ -72,9 +77,29 @@ describe("resolvePlayerKind", () => {
       expect(resolvePlayerKind({ ...base, streamingEnabled: true, downloadStatus: "done" })).toBe("local");
     });
 
+    test("keeps an active stream mounted until the viewer accepts the finished local file", () => {
+      expect(resolvePlayerKind({ ...base, streamingEnabled: true, downloadStatus: "done", keepStreamingAfterDownload: true })).toBe("stream");
+      expect(resolvePlayerKind({ ...base, streamingEnabled: true, downloadStatus: "done", keepStreamingAfterDownload: true, playerSource: "youtube" })).toBe("youtube");
+    });
+
     test("keeps streaming while the download is still in progress", () => {
       expect(resolvePlayerKind({ ...base, streamingEnabled: true, downloadStatus: "downloading" })).toBe("stream");
     });
   });
 
+});
+
+describe("shouldLatchCompletedDownload", () => {
+  test("latches every completion observed by an active stream", () => {
+    expect(shouldLatchCompletedDownload("stream", null, "done")).toBe(true);
+    expect(shouldLatchCompletedDownload("stream", "error", "done")).toBe(true);
+    expect(shouldLatchCompletedDownload("stream", "downloading", "done")).toBe(true);
+  });
+
+  test("only announces a YouTube background download that was already in progress", () => {
+    expect(shouldLatchCompletedDownload("youtube", "downloading", "done")).toBe(true);
+    expect(shouldLatchCompletedDownload("youtube", null, "done")).toBe(false);
+    expect(shouldLatchCompletedDownload("local", "downloading", "done")).toBe(false);
+    expect(shouldLatchCompletedDownload("stream", "downloading", "error")).toBe(false);
+  });
 });

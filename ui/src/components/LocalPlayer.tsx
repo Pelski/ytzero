@@ -10,6 +10,7 @@ import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../player
 import { enforceLocalPlayerVolume } from "../localPlayerVolume";
 import { stepPlaybackRate } from "../playbackSpeedStep";
 import { resolveShortcutBindings, shortcutActionMatches } from "../keyboardShortcuts";
+import { useVideoHlsSource } from "./useVideoHlsSource";
 import "./LocalPlayer.css";
 import "./PlayerVolume.css";
 import "./LocalPlayerTransportLock.css";
@@ -82,9 +83,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   preferredSubtitleLanguages?: string[];
   subtitleStyle?: SubtitleStyle;
   onSubtitleSizeChange?: (size: number) => void;
-  // Experimental play-while-downloading stream (HLS via hls.js). hls.js reports
-  // an Infinite duration for the growing playlist, so the known total length is
-  // passed in for the scrub bar and seeking; buffered shows what's downloaded.
+  // Experimental play-while-downloading source. The known total length keeps
+  // controls stable while the HLS master and its renditions are attaching.
   live?: boolean;
   liveLabel?: string;
   durationSeconds?: number;
@@ -307,7 +307,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     const v = videoRef.current;
     if (!v) return;
     setDuration(Number.isFinite(v.duration) ? v.duration : 0);
-    if (startSeconds > 0 && startSeconds < v.duration - 5) v.currentTime = startSeconds;
+    if (!live && startSeconds > 0 && startSeconds < v.duration - 5) v.currentTime = startSeconds;
     v.playbackRate = playbackRate;
     enforceLocalPlayerVolume(v, volume);
     v.muted = muted;
@@ -330,50 +330,15 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     });
   }, [autoplay]);
 
-  // Experimental streaming source: attach the growing HLS playlist via hls.js
-  // (or native HLS on Safari). Seeking works across everything downloaded so
-  // far; the seekable range grows as ffmpeg produces more segments.
-  useEffect(() => {
-    if (!live) return;
-    const v = videoRef.current;
-    if (!v) return;
-    let cancelled = false;
-    let detach = () => {};
-
-    void import("hls.js").then(({ default: Hls }) => {
-      if (cancelled) return;
-      // Native HLS (Safari): point the element straight at the playlist.
-      if (!Hls.isSupported() && v.canPlayType("application/vnd.apple.mpegurl")) {
-        v.src = src;
-        const onLoaded = () => tryStreamAutoplay();
-        v.addEventListener("loadedmetadata", onLoaded, { once: true });
-        detach = () => v.removeEventListener("loadedmetadata", onLoaded);
-        return;
-      }
-      if (!Hls.isSupported()) { onError?.(); return; }
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        maxBufferLength: 30,
-        backBufferLength: 60,
-      });
-      hls.loadSource(src);
-      hls.attachMedia(v);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => tryStreamAutoplay());
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data.fatal) return;
-        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad();
-        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-        else { hls.destroy(); onError?.(); }
-      });
-      detach = () => hls.destroy();
-    }).catch(() => onError?.());
-
-    return () => {
-      cancelled = true;
-      detach();
-    };
-  }, [live, src, onError, tryStreamAutoplay]);
+  useVideoHlsSource({
+    active: live,
+    durationSeconds,
+    mediaRef: videoRef,
+    onFatalError: onError,
+    onReady: tryStreamAutoplay,
+    src,
+    startSeconds,
+  });
 
   useEffect(() => {
     const v = videoRef.current;
@@ -692,7 +657,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
           setControlsVisible(true);
           onEnded?.();
         }}
-        onError={() => onError?.()}
+        onError={() => { if (!live) onError?.(); }}
       >
         {activeSub && (
           <track

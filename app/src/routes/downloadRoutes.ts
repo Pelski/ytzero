@@ -5,7 +5,7 @@ import { database } from "../database";
 import { getUserSetting } from "../db";
 import { childLocalOnly, isChildUser } from "../childTime";
 import { DOWNLOADS_ADMIN_SETTING_KEYS, downloadCookiesConfigured, downloadSettings, profileDownloadsEnabled, removeDownloadCookies, saveDownloadCookies, setDownloadSettings, setProfileDownloadsEnabled } from "../downloadConfig";
-import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsSegment, invalidateAudioSources, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpJavascriptRuntimeStatus, ytdlpStatus } from "../downloader";
+import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, fetchSubtitles, getDownload, getHlsPlaylist, getHlsResource, getHlsSegment, hasHlsSession, invalidateAudioSources, isSegmentName, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpJavascriptRuntimeStatus, ytdlpStatus } from "../downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "../downloadRules";
 import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
 import { configuredTimeZone } from "../timeZone";
@@ -267,12 +267,9 @@ api.get("/videos/:id/stream", async (c) => {
   });
 });
 
-// EXPERIMENTAL: play + seek a not-yet-downloaded video via on-demand HLS. The
-// playlist is a static VOD for the whole (known) duration, so the browser can
-// seek anywhere; each segment is transcoded on demand from the direct stream.
-// A clean copy is saved in the background so /stream serves it locally later.
-//   GET .../hls/index.m3u8  -> the static VOD playlist
-//   GET .../hls/segNNNNN.ts -> a media segment (produced on demand)
+// EXPERIMENTAL: play a not-yet-downloaded video through a validated fMP4 HLS
+// presentation. Unsupported source indexes fall back to on-demand ffmpeg TS
+// segments; either path still saves a normal download in the background.
 api.get("/videos/:id/hls/:file", async (c) => {
   const uid = currentUserId(c);
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
@@ -286,15 +283,29 @@ api.get("/videos/:id/hls/:file", async (c) => {
       return c.json({ error: "already downloaded" }, 409);
     }
     if (!await videoExistsStmt.get(id)) return c.json({ error: "not found" }, 404);
-    const playlist = await getHlsPlaylist(uid, id);
+    const playlist = await getHlsPlaylist(uid, id, c.req.raw.signal);
     if (!playlist) return c.json({ error: "stream unavailable" }, 502);
     return new Response(playlist, {
       headers: { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store" },
     });
   }
 
-  if (!await getDownload(uid, id)) return c.json({ error: "not found" }, 404);
-  const path = await getHlsSegment(id, file, c.req.raw.signal);
+  if (!await getDownload(uid, id) && !hasHlsSession(uid, id)) return c.json({ error: "not found" }, 404);
+  if (!isSegmentName(file)) {
+    const resource = await getHlsResource(
+      uid,
+      id,
+      file,
+      c.req.header("range") ?? null,
+      c.req.query("v") ?? null,
+      c.req.raw.signal,
+    );
+    if (resource.kind === "response") return resource.response;
+    if (resource.kind === "stale") return c.json({ error: "stream changed; reload the playlist" }, 410);
+    if (resource.kind === "failed") return c.json({ error: "stream temporarily unavailable" }, 502);
+    return c.json({ error: "not found" }, 404);
+  }
+  const path = await getHlsSegment(uid, id, file, c.req.raw.signal);
   if (!path) return c.json({ error: "not found" }, 404);
   return new Response(Bun.file(path), {
     headers: { "Content-Type": "video/mp2t", "Cache-Control": "no-store" },

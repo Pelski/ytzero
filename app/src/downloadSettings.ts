@@ -34,9 +34,10 @@ export const DL_DEFAULTS = {
   compatible_format: 0,
   watch_source_mode: "youtube",
   prefetch_next_playlist_video: 0,
-  // HEAVILY EXPERIMENTAL: play a not-yet-downloaded video immediately by piping
-  // yt-dlp straight into ffmpeg and streaming a fragmented MP4 to the browser as
-  // it is produced (see startLiveStream). Off by default.
+  // HEAVILY EXPERIMENTAL: play a not-yet-downloaded video through a direct,
+  // indexed HLS presentation while the normal download continues in the
+  // background. Sources without compatible fMP4 indexes use an ffmpeg fallback.
+  // Off by default.
   experimental_streaming: 0,
   // Filename template, rendered server-side from the DB (so {channel} honours
   // the custom channel name). "/" creates subdirectories; the extension is
@@ -299,9 +300,9 @@ export const DOWNLOADS_SETTINGS: DownloadSettingSource[] = [
     type: "toggle",
     label: { en: "Stream while downloading (experimental)", pl: "Streaming w trakcie pobierania (eksperymentalne)", de: "Streamen während des Downloads (experimentell)" },
     description: {
-      en: "HIGHLY EXPERIMENTAL. Opening a not-yet-downloaded video plays it instantly via a live HLS stream while yt-dlp + ffmpeg download it in the background. You can seek anywhere already downloaded; seeking further ahead waits for the download to catch up. The finished stream is also saved as a normal download. Requires ffmpeg. H.264 only, so quality is capped at ~1080p.",
-      pl: "MOCNO EKSPERYMENTALNE. Wejście na niepobrany film odtwarza go od razu przez strumień HLS na żywo, podczas gdy yt-dlp + ffmpeg pobierają go w tle. Możesz przewijać po wszystkim, co już pobrane; przewinięcie dalej czeka, aż pobieranie dogoni. Ukończony strumień zapisuje się też jako zwykłe pobranie. Wymaga ffmpeg. Tylko H.264, więc jakość ograniczona do ~1080p.",
-      de: "HOCHEXPERIMENTELL. Beim Öffnen eines noch nicht heruntergeladenen Videos wird es sofort über einen Live-HLS-Stream abgespielt, während yt-dlp + ffmpeg es im Hintergrund laden. Du kannst überall im bereits Geladenen spulen; weiter nach vorne zu spulen wartet, bis der Download aufholt. Der fertige Stream wird zusätzlich als normaler Download gespeichert. Benötigt ffmpeg. Nur H.264, daher Qualität auf ~1080p begrenzt.",
+      en: "HIGHLY EXPERIMENTAL. Plays a not-yet-downloaded video through direct HLS while the normal download continues in the background. Seeking is immediately available across the whole video. Sources without compatible MP4 indexes fall back to on-demand ffmpeg processing. The completed download becomes available as a local file. H.264 only, so quality is capped at ~1080p.",
+      pl: "MOCNO EKSPERYMENTALNE. Odtwarza niepobrany film bezpośrednio przez HLS, podczas gdy zwykłe pobieranie trwa w tle. Możesz od razu przewijać po całym filmie. Materiały bez kompatybilnego indeksu MP4 korzystają awaryjnie z przetwarzania przez ffmpeg na żądanie. Ukończone pobranie staje się dostępne jako plik lokalny. Tylko H.264, więc jakość jest ograniczona do ~1080p.",
+      de: "HOCHEXPERIMENTELL. Spielt ein noch nicht heruntergeladenes Video direkt über HLS ab, während der normale Download im Hintergrund weiterläuft. Das gesamte Video ist sofort durchsuchbar. Quellen ohne kompatiblen MP4-Index werden ersatzweise bei Bedarf mit ffmpeg verarbeitet. Der abgeschlossene Download wird als lokale Datei verfügbar. Nur H.264, daher ist die Qualität auf ~1080p begrenzt.",
     },
     defaultValue: DL_DEFAULTS.experimental_streaming,
   },
