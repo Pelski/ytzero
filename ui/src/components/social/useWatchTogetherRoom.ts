@@ -7,6 +7,7 @@ import {
   type SocialWatchPartyPlayback,
 } from "../../api";
 import { probeApiAuthentication } from "../../apiTransport";
+import { createClientId } from "../../clientId";
 import {
   mergeWatchPartyMessages,
   projectWatchPartyPosition,
@@ -228,7 +229,7 @@ export function useWatchTogetherRoom({
       void api.updateSocialWatchPartyPlayback(room.id, {
         ...current,
         expected_revision: playbackRevisionRef.current,
-        client_event_id: crypto.randomUUID(),
+        client_event_id: createClientId(),
       }).then(({ playback }) => {
         lastSentRef.current = { playback: current, at: now };
         playbackRevisionRef.current = playback.revision;

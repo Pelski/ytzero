@@ -143,6 +143,7 @@ type PendingPlayerCommand = {
 
 const pendingPlayerCommands = new Map<string, PendingPlayerCommand>();
 let playerCommandListenerInstalled = false;
+let playerCommandSequence = 0;
 
 function installPlayerCommandResultListener() {
   if (playerCommandListenerInstalled || typeof document === "undefined") return;
@@ -164,9 +165,9 @@ export function sendPlayerCommand(
   command: EnhancePlayerCommand,
   payload: Record<string, unknown> = {},
 ): Promise<Record<string, unknown>> {
-  installPlayerCommandResultListener();
-  const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
+    installPlayerCommandResultListener();
+    const requestId = `${Date.now()}-${++playerCommandSequence}`;
     const timeout = window.setTimeout(() => {
       pendingPlayerCommands.delete(requestId);
       reject(new Error("Player command timed out"));

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEnhanceConfiguration, ENHANCE_BRIDGE_EVENTS, ENHANCE_CONFIGURATION_FORMAT, parseEnhancePlayerEvent, resolveEnhanceContentType, serializeEnhanceConfiguration } from "./enhanceBridge";
+import { createEnhanceConfiguration, ENHANCE_BRIDGE_EVENTS, ENHANCE_CONFIGURATION_FORMAT, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, serializeEnhanceConfiguration } from "./enhanceBridge";
 
 describe("YT Zero Enhance configuration", () => {
   test("maps watch-page video metadata to the embedded-player content type", () => {
@@ -89,5 +89,13 @@ describe("YT Zero Enhance configuration", () => {
     expect(parseEnhancePlayerEvent(new CustomEvent(ENHANCE_BRIDGE_EVENTS.playerEvent, {
       detail: JSON.stringify({ version: 1, videoId: "abcdefghijk", type: "shortcut", payload: { action: "speedUp", key: ">", code: "Period", repeat: false, value: "fast", modifiers: { alt: false, ctrl: false, meta: false, shift: true } } }),
     }))).toBe(null);
+  });
+
+  test("returns a rejected promise instead of throwing synchronously when the bridge is unavailable", async () => {
+    const command = sendPlayerCommand("abcdefghijk", "set-playback-rate", { rate: 2 });
+    expect(command instanceof Promise).toBe(true);
+    let rejected = false;
+    try { await command; } catch { rejected = true; }
+    expect(rejected).toBe(true);
   });
 });
