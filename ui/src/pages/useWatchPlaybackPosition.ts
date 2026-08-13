@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import type { Video } from "../api";
 import type { WatchPlayerHandle } from "../playerHandle";
 import type { PlayerKind } from "./watchPlayerMode";
@@ -27,25 +27,28 @@ export function useWatchPlaybackPosition({
   const progressRef = useRef<{ position: number; duration: number } | null>(null);
   const playbackPositionVideoIdRef = useRef<string | null>(null);
   const appliedSharedTargetRef = useRef<{ videoId: string | null; seconds: number }>({ videoId: null, seconds: 0 });
-  const sharedTargetChanged = sharedStartSeconds > 0 && (
-    appliedSharedTargetRef.current.videoId !== (id ?? null)
-    || appliedSharedTargetRef.current.seconds !== sharedStartSeconds
-  );
   const matchingVideo = video?.video_id === id ? video : null;
   const livePlayback = matchingVideo?.live_status === "live" || matchingVideo?.live_status === "upcoming";
   const savedStartSeconds = !livePlayback && matchingVideo?.watch_position && matchingVideo.watch_duration && matchingVideo.watch_duration > 0
     && matchingVideo.watch_position / matchingVideo.watch_duration < 0.9
     ? Math.floor(matchingVideo.watch_position) : 0;
-  const capturedStartSeconds = livePlayback ? 0 : resolveWatchStartSeconds(
-    ownedWatchPosition(id, playbackPositionVideoIdRef.current, streamPositionRef.current),
-    ownedWatchPosition(id, playbackPositionVideoIdRef.current, progressRef.current?.position),
-  );
-  const playbackStartSeconds = livePlayback ? 0 : resolveWatchPlaybackStart({
-    capturedPosition: capturedStartSeconds,
-    savedPosition: savedStartSeconds,
-    sharedTargetChanged,
-    sharedTargetSeconds: sharedStartSeconds,
-  });
+  // Position refs advance every second without rendering. Do not let an
+  // unrelated render (for example expanding the description) turn that newer
+  // ref value into a player-effect dependency and recreate the iframe. Source,
+  // mode and explicit timestamp changes are the only hand-offs that may adopt
+  // the captured position as a new mount start.
+  const playbackStartSeconds = useMemo(() => {
+    if (livePlayback) return 0;
+    const sharedTargetChanged = sharedStartSeconds > 0 && (
+      appliedSharedTargetRef.current.videoId !== (id ?? null)
+      || appliedSharedTargetRef.current.seconds !== sharedStartSeconds
+    );
+    const capturedStartSeconds = resolveWatchStartSeconds(
+      ownedWatchPosition(id, playbackPositionVideoIdRef.current, streamPositionRef.current),
+      ownedWatchPosition(id, playbackPositionVideoIdRef.current, progressRef.current?.position),
+    );
+    return resolveWatchPlaybackStart({ capturedPosition: capturedStartSeconds, savedPosition: savedStartSeconds, sharedTargetChanged, sharedTargetSeconds: sharedStartSeconds });
+  }, [audioActive, id, livePlayback, playerKind, savedStartSeconds, sharedStartSeconds]);
   const capturePlaybackPosition = useCallback(() => {
     if (!id || livePlayback) return;
     const player = playerRef.current;

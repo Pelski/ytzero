@@ -28,6 +28,7 @@ import type { WatchPlayerHandle } from "../playerHandle";
 import { canUseWatchAudioMode } from "./watchAudioMode";
 import { useWatchPlaybackPosition } from "./useWatchPlaybackPosition";
 import { useYouTubeMediaSession } from "./useYouTubeMediaSession";
+import { resolveShortcutBindings, SHORTCUT_CLOSE_EVENT, shortcutActionMatches } from "../keyboardShortcuts";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
@@ -211,6 +212,11 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const watchedVisitRef = useRef<string | null>(null);
 
   const showShortcutFeedback = useCallback((kind: WatchShortcutKind, seconds?: number, category?: string) => {
+    if (kind === "speed" && seconds != null) {
+      const value = String(seconds);
+      setSpeed(value);
+      speedRef.current = value;
+    }
     if (shortcutFeedbackTimerRef.current) window.clearTimeout(shortcutFeedbackTimerRef.current);
     setShortcutFeedback({ kind, id: Date.now(), seconds, category });
     shortcutFeedbackTimerRef.current = window.setTimeout(() => setShortcutFeedback(null), kind === "sponsorblock" ? 4_200 : 1_560);
@@ -349,51 +355,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     if (requestWasNotClaimed) showShortcutFeedback("screenshotUnsupported");
   }, [screenshotFilenameTemplate, screenshotFormat, screenshotQuality, showShortcutFeedback, video]);
 
-  // Publish per-video data that cannot live in the static configuration file.
-  // The ready handshake lets a content script request the latest snapshot even
-  // when it loads after React emitted the initial context event.
-  useEffect(() => {
-    if (playerKind !== "youtube" || !video) return;
-    const publishContext = () => dispatchEnhanceEvent(ENHANCE_BRIDGE_EVENTS.context, {
-      version: ENHANCE_BRIDGE_VERSION,
-      active: true,
-      video: {
-        id: video.video_id,
-        title: video.title,
-        channelId: video.channel_id,
-        channelTitle: video.channel_title,
-        duration: parseVideoDurationSeconds(video.duration) ?? 0,
-        contentType: resolveEnhanceContentType(video),
-      },
-      playback: {
-        rate: Number(video.channel_playback_speed ?? settings?.player_speed ?? 1) || 1,
-        keyboardSeekSeconds,
-        frameStepFps: 30,
-        captions: {
-          enabledByDefault: captionsDefaultOn,
-          language: captionsDefaultLang,
-          style: {
-            fontSizePx: subtitleSize,
-            color: settings?.player_sub_color || "#ffffff",
-            backgroundOpacityPercent: Number(settings?.player_sub_bg ?? 75),
-          },
-        },
-        chapters,
-        // The parent page remains the single SponsorBlock driver in a room, so
-        // the optional iframe extension cannot apply a guest-only local seek.
-        sponsorBlockSegments: watchTogetherRoomId ? [] : sbSegments,
-      },
-      screenshot: {
-        format: screenshotFormat,
-        quality: screenshotQuality,
-        filenameTemplate: screenshotFilenameTemplate,
-      },
-    });
-    publishContext();
-    document.addEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
-    return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
-  }, [captionsDefaultLang, captionsDefaultOn, chapters, keyboardSeekSeconds, playerKind, screenshotFilenameTemplate, screenshotFormat, screenshotQuality, sbSegments, settings?.player_speed, settings?.player_sub_bg, settings?.player_sub_color, subtitleSize, video, watchTogetherRoomId]);
-
   useEffect(() => {
     const onScreenshotResult = (event: Event) => {
       const detail = parseEnhanceEventDetail<{ status?: string }>(event);
@@ -464,6 +425,25 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     speedRef,
     videoId: video?.video_id,
   });
+
+  // Publish the authenticated, effective per-video snapshot after room state is
+  // known, so the extension receives the same transport lock as the parent.
+  useEffect(() => {
+    if (playerKind !== "youtube" || !video) return;
+    const publishContext = () => dispatchEnhanceEvent(ENHANCE_BRIDGE_EVENTS.context, {
+      version: ENHANCE_BRIDGE_VERSION, active: true,
+      video: { id: video.video_id, title: video.title, channelId: video.channel_id, channelTitle: video.channel_title, duration: parseVideoDurationSeconds(video.duration) ?? 0, contentType: resolveEnhanceContentType(video) },
+      playback: {
+        rate: Number(video.channel_playback_speed ?? settings?.player_speed ?? 1) || 1, keyboardSeekSeconds,
+        keyboardShortcuts: resolveShortcutBindings(settings?.keyboard_shortcuts), frameStepFps: Math.max(1, Number(settings?.enhance_frame_fps ?? 30) || 30), transportLocked: watchTogetherTransportLocked,
+        captions: { enabledByDefault: captionsDefaultOn, language: captionsDefaultLang, style: { fontSizePx: subtitleSize, color: settings?.player_sub_color || "#ffffff", backgroundOpacityPercent: Number(settings?.player_sub_bg ?? 75) } },
+        chapters, sponsorBlockSegments: watchTogetherRoomId ? [] : sbSegments,
+      },
+      screenshot: { format: screenshotFormat, quality: screenshotQuality, filenameTemplate: screenshotFilenameTemplate },
+    });
+    publishContext(); document.addEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
+    return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.ready, publishContext);
+  }, [captionsDefaultLang, captionsDefaultOn, chapters, keyboardSeekSeconds, playerKind, screenshotFilenameTemplate, screenshotFormat, screenshotQuality, sbSegments, settings?.enhance_frame_fps, settings?.keyboard_shortcuts, settings?.player_speed, settings?.player_sub_bg, settings?.player_sub_color, subtitleSize, video, watchTogetherRoomId, watchTogetherTransportLocked]);
 
   const chooseYouTube = useCallback(() => {
     setYoutubeAutoplayBlocked(false);
@@ -538,7 +518,9 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
 
   const playlistIndex = playlistId ? playlistVideos.findIndex((v) => v.videoId === id) : -1;
   const nextPlaylistVideo = playlistIndex >= 0 ? playlistVideos[playlistIndex + 1] : undefined;
+  const previousPlaylistVideo = playlistIndex > 0 ? playlistVideos[playlistIndex - 1] : undefined;
   const nextPlaylistPath = nextPlaylistVideo ? `/watch/${nextPlaylistVideo.videoId}/playlist/${playlistId}${playlistSortSearch(playlistSort)}` : null;
+  const previousPlaylistPath = previousPlaylistVideo ? `/watch/${previousPlaylistVideo.videoId}/playlist/${playlistId}${playlistSortSearch(playlistSort)}` : null;
   usePlaylistDownloadPrefetch({ enabled: prefetchNextPlaylistVideo, playlistId, routeNextVideoId: nextPlaylistVideo?.videoId, queue: playbackQueue, queueNextVideoId: prefetchedQueueVideo?.video_id });
 
   useEffect(() => {
@@ -679,6 +661,12 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const canPlayNextVideo = !watchTogetherRoomId && Boolean(
     nextPlaylistPath || (settings?.feed_autoplay_enabled === "1" && hasNextQueueVideo),
   );
+  const closeWatchMode = useCallback(() => {
+    if (document.querySelector(".ui-dialog")) document.dispatchEvent(new Event(SHORTCUT_CLOSE_EVENT));
+    else if (document.fullscreenElement) void document.exitFullscreen?.();
+    else if ((document as any).pictureInPictureElement) void (document as any).exitPictureInPicture?.();
+    else setCinemaMode(false);
+  }, []);
 
   const toggleFeedAutoplay = useCallback((next: boolean) => {
     const behavior = next ? "autoplay" : "prompt";
@@ -716,14 +704,18 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
       if (message.type === "shortcut") {
         const { action, repeat } = message.payload;
         if (repeat) return;
-        if (action === "cinema-mode") setCinemaMode((current) => !current);
-        else if (action === "seek-back") showShortcutFeedback("back", keyboardSeekSeconds);
-        else if (action === "seek-forward") showShortcutFeedback("forward", keyboardSeekSeconds);
-        else if (action === "seek-back-10") showShortcutFeedback("back", 10);
-        else if (action === "seek-forward-10") showShortcutFeedback("forward", 10);
-        else if (action === "volume-up") showShortcutFeedback("volumeUp");
-        else if (action === "volume-down") showShortcutFeedback("volumeDown");
-        else if (action === "toggle-muted") showShortcutFeedback(enhancePlayerStateRef.current?.state.muted ? "unmute" : "mute");
+        if (action === "toggleTheater" || action === "cinema-mode") setCinemaMode((current) => !current);
+        else if (action === "previousVideo" && !watchTogetherRoomId && previousPlaylistPath) navigate(previousPlaylistPath);
+        else if (action === "nextVideo" && canPlayNextVideo) playNextVideo();
+        else if (action === "close") closeWatchMode();
+        else if (action === "seekBack" || action === "seek-back") showShortcutFeedback("back", keyboardSeekSeconds);
+        else if (action === "seekForward" || action === "seek-forward") showShortcutFeedback("forward", keyboardSeekSeconds);
+        else if (action === "seekBack10" || action === "seek-back-10") showShortcutFeedback("back", 10);
+        else if (action === "seekForward10" || action === "seek-forward-10") showShortcutFeedback("forward", 10);
+        else if (action === "volumeUp" || action === "volume-up") showShortcutFeedback("volumeUp");
+        else if (action === "volumeDown" || action === "volume-down") showShortcutFeedback("volumeDown");
+        else if (action === "toggleMute" || action === "toggle-muted") showShortcutFeedback(enhancePlayerStateRef.current?.state.muted ? "unmute" : "mute");
+        else if ((action === "speedDown" || action === "speedUp") && message.payload.value) showShortcutFeedback("speed", message.payload.value);
         return;
       }
 
@@ -736,7 +728,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     };
     document.addEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
     return () => document.removeEventListener(ENHANCE_BRIDGE_EVENTS.playerEvent, onPlayerEvent);
-  }, [audioActive, id, keyboardSeekSeconds, playerKind, showShortcutFeedback]);
+  }, [audioActive, canPlayNextVideo, closeWatchMode, id, keyboardSeekSeconds, navigate, playerKind, playNextVideo, previousPlaylistPath, showShortcutFeedback, watchTogetherRoomId]);
 
   // Create the player (YT iframe or the ref populated by LocalPlayer) and poll
   // progress every second. The poll runs against the shared YT-shaped player
@@ -1038,14 +1030,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     }
   }, [cinemaMode]);
 
-  // Escape key — only active in cinema mode
-  useEffect(() => {
-    if (!cinemaMode) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setCinemaMode(false); };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [cinemaMode]);
-
   // Unmount: clean cinema mode without overriding the user's saved sidebar state.
   useEffect(() => restoreSidebarVisibility, []);
 
@@ -1093,12 +1077,19 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     };
   }, [settings?.auto_fullscreen_landscape, id]);
 
-  // Keyboard shortcuts: T = cinema, F = fullscreen
+  // Page-level shortcuts own navigation and presentation modes. Player-local
+  // transport remains in the active player so one key produces one action.
   useEffect(() => {
+    const bindings = resolveShortcutBindings(settings?.keyboard_shortcuts);
+    const matches = (action: Parameters<typeof shortcutActionMatches>[0], event: KeyboardEvent) => shortcutActionMatches(action, event, bindings);
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as Element).closest("input,textarea,select")) return;
-      if (e.key === "t" || e.key === "T") setCinemaMode((v) => !v);
-      if (e.key === "f" || e.key === "F") {
+      if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
+      if (matches("toggleTheater", e)) { e.preventDefault(); if (!e.repeat) setCinemaMode((v) => !v); }
+      else if (matches("previousVideo", e)) { e.preventDefault(); if (!e.repeat && !watchTogetherRoomId && previousPlaylistPath) navigate(previousPlaylistPath); }
+      else if (matches("nextVideo", e)) { e.preventDefault(); if (!e.repeat && canPlayNextVideo) playNextVideo(); }
+      else if (matches("close", e)) { e.preventDefault(); closeWatchMode(); }
+      else if (matches("toggleFullscreen", e) && playerKind !== "local" && playerKind !== "stream") {
+        e.preventDefault();
         const el = playerWrapRef.current ?? document.documentElement;
         if (!document.fullscreenElement) el.requestFullscreen?.();
         else document.exitFullscreen?.();
@@ -1108,13 +1099,16 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     return () => {
       document.removeEventListener("keydown", onKey);
     };
-  }, []);
+  }, [canPlayNextVideo, closeWatchMode, navigate, playNextVideo, playerKind, previousPlaylistPath, settings?.keyboard_shortcuts, watchTogetherRoomId]);
 
   useYouTubeKeyboardShortcuts({
     audioActive,
+    chapters,
+    frameRate: Math.max(1, Number(settings?.enhance_frame_fps ?? 30) || 30),
     enhancePlayerStateRef,
     id,
     keyboardSeekSeconds,
+    keyboardShortcuts: settings?.keyboard_shortcuts,
     playerKind,
     playerRef,
     showFeedback: showShortcutFeedback,

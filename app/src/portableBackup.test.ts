@@ -261,6 +261,8 @@ describe("portable backup classification and restore", () => {
     const cardSwipeDevices = '{"version":1,"devices":["desktop","tablet"]}';
     setUserSetting(1, "video_card_swipe_devices", cardSwipeDevices);
     setUserSetting(1, "video_card_preview", "downloaded");
+    const keyboardShortcuts = '{"version":1,"bindings":{"togglePlay":"KeyX","toggleMute":null}}';
+    setUserSetting(1, "keyboard_shortcuts", keyboardShortcuts);
     setUserSetting(1, "dearrow_titles_enabled", "1");
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
@@ -298,6 +300,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "video_card_action_buttons", SETTING_DEFAULTS.video_card_action_buttons);
     setUserSetting(1, "video_card_swipe_devices", SETTING_DEFAULTS.video_card_swipe_devices);
     setUserSetting(1, "video_card_preview", "off");
+    setUserSetting(1, "keyboard_shortcuts", SETTING_DEFAULTS.keyboard_shortcuts);
     setUserSetting(1, "dearrow_titles_enabled", "0");
     setUserSetting(1, "dearrow_thumbnails_enabled", "0");
     setUserSetting(1, "child_watching_monitor_enabled", "1");
@@ -331,6 +334,7 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "video_card_action_buttons")).toBe(videoCardActions.normalizeVideoCardActionConfig(cardActionButtons));
     expect(getUserSetting(1, "video_card_swipe_devices")).toBe(videoCardActions.normalizeVideoCardSwipeConfig(cardSwipeDevices));
     expect(getUserSetting(1, "video_card_preview")).toBe("downloaded");
+    expect(getUserSetting(1, "keyboard_shortcuts")).toBe(keyboardShortcuts);
     expect(getUserSetting(1, "dearrow_titles_enabled")).toBe("1");
     expect(getUserSetting(1, "dearrow_thumbnails_enabled")).toBe("1");
     expect(getUserSetting(1, "child_watching_monitor_enabled")).toBe("0");

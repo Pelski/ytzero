@@ -8,6 +8,8 @@ import { useI18n } from "../i18n";
 import SubtitlePicker from "./SubtitlePicker";
 import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../playerScreenshot";
 import { enforceLocalPlayerVolume } from "../localPlayerVolume";
+import { stepPlaybackRate } from "../playbackSpeedStep";
+import { resolveShortcutBindings, shortcutActionMatches } from "../keyboardShortcuts";
 import "./LocalPlayer.css";
 import "./PlayerVolume.css";
 import "./LocalPlayerTransportLock.css";
@@ -68,6 +70,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   onToggleCinema?: () => void;
   onEnded?: () => void;
   keyboardSeekSeconds?: number;
+  keyboardShortcuts?: string;
+  frameRate?: number;
   onShortcut?: (kind: LocalPlayerShortcut, seconds?: number) => void;
   screenshotFormat?: PlayerScreenshotFormat;
   screenshotQuality?: number;
@@ -105,6 +109,8 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   onToggleCinema,
   onEnded,
   keyboardSeekSeconds = 5,
+  keyboardShortcuts,
+  frameRate = 30,
   onShortcut,
   screenshotFormat = "jpeg",
   screenshotQuality = 0.92,
@@ -454,22 +460,20 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
-  // Keyboard: playback-local keys only. F/T stay in WatchPage so cinema and
-  // fullscreen shortcuts behave identically for both player types.
+  // Keyboard: playback-local keys. Page navigation, theater and the app-level
+  // page-owned modes stay in WatchPage so they behave identically for every source.
   useEffect(() => {
+    const bindings = resolveShortcutBindings(keyboardShortcuts);
+    const matches = (action: Parameters<typeof shortcutActionMatches>[0], event: KeyboardEvent) => shortcutActionMatches(action, event, bindings);
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
       if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
-      const isTransportShortcut = e.code === "Space"
-        || e.key === "ArrowLeft"
-        || e.key === "ArrowRight"
-        || /^[jkl0-9]$/i.test(e.key);
+      const isTransportShortcut = (["temporaryBoost", "togglePlay", "seekBack10", "seekForward10", "previousFrame", "nextFrame", "speedDown", "speedUp", "seekPercent", "previousChapter", "nextChapter", "seekBack", "seekForward"] as const).some((action) => matches(action, e));
       if (transportLocked && isTransportShortcut) {
         e.preventDefault();
         showControls();
         return;
       }
-      if (e.code === "Space") {
+      if (matches("temporaryBoost", e)) {
         e.preventDefault();
         if (e.repeat || spaceHoldTimerRef.current != null || spaceHoldActiveRef.current) return;
         spaceHoldTimerRef.current = window.setTimeout(() => {
@@ -482,79 +486,37 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         }, 220);
         return;
       }
-      switch (e.key) {
-        case "+":
-        case "=":
-          e.preventDefault();
-          changeSubtitleSize(1);
-          break;
-        case "-":
-        case "_":
-          e.preventDefault();
-          changeSubtitleSize(-1);
-          break;
-        case "c":
-        case "C":
-          e.preventDefault();
-          if (!e.repeat) {
-            const captionsWereOn = Boolean(subLang);
-            const preferred = subs.find((sub) => sub.lang === ccDefaultLang)?.lang ?? subs[0]?.lang ?? ccDefaultLang;
-            toggleSubtitles();
-            if (captionsWereOn || preferred) onShortcut?.(captionsWereOn ? "captionsOff" : "captionsOn");
-          }
-          break;
-        case "k":
-        case "K":
-          e.preventDefault();
-          togglePlay();
-          break;
-        case "j": case "J": seekBy(-10); break;
-        case "l": case "L": seekBy(10); break;
-        case "ArrowLeft": e.preventDefault(); seekBy(-keyboardSeekSeconds); onShortcut?.("back", keyboardSeekSeconds); break;
-        case "ArrowRight": e.preventDefault(); seekBy(keyboardSeekSeconds); onShortcut?.("forward", keyboardSeekSeconds); break;
-        case "ArrowUp":
-          e.preventDefault();
-          setVolume((current) => {
-            const next = Math.min(1, current + 0.05);
-            if (next > 0) setMuted(false);
-            return next;
-          });
-          onShortcut?.("volumeUp");
-          showControls();
-          break;
-        case "ArrowDown":
-          e.preventDefault();
-          setVolume((current) => Math.max(0, current - 0.05));
-          onShortcut?.("volumeDown");
-          showControls();
-          break;
-        case "m":
-        case "M":
-          e.preventDefault();
-          if (!e.repeat) {
-            const nextMuted = !muted;
-            setMuted(nextMuted);
-            onShortcut?.(nextMuted ? "mute" : "unmute");
-            showControls();
-          }
-          break;
-        case "s": case "S":
-          e.preventDefault();
-          if (!e.repeat) void takeScreenshot();
-          break;
-        default: {
-          if (/^[0-9]$/.test(e.key)) {
-            const v = videoRef.current;
-            const dur = v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (live && durationSeconds ? durationSeconds : 0);
-            if (v && dur && Number.isFinite(dur)) v.currentTime = (Number(e.key) / 10) * dur;
-            showControls();
-          }
-        }
+      const speedDirection = matches("speedDown", e) ? -1 : matches("speedUp", e) ? 1 : null;
+      if (speedDirection !== null) {
+        e.preventDefault();
+        const video = videoRef.current;
+        if (!video) return;
+        const nextRate = stepPlaybackRate(video.playbackRate, speedDirection);
+        video.playbackRate = nextRate;
+        onShortcut?.("speed", nextRate);
+        showControls();
+        return;
       }
+      if (matches("subtitleLarger", e)) { e.preventDefault(); changeSubtitleSize(1); }
+      else if (matches("subtitleSmaller", e)) { e.preventDefault(); changeSubtitleSize(-1); }
+      else if (matches("toggleCaptions", e)) {
+        e.preventDefault(); if (!e.repeat) { const captionsWereOn = Boolean(subLang); const preferred = subs.find((sub) => sub.lang === ccDefaultLang)?.lang ?? subs[0]?.lang ?? ccDefaultLang; toggleSubtitles(); if (captionsWereOn || preferred) onShortcut?.(captionsWereOn ? "captionsOff" : "captionsOn"); }
+      } else if (matches("togglePlay", e)) { e.preventDefault(); togglePlay(); }
+      else if (matches("seekBack10", e)) { e.preventDefault(); seekBy(-10); onShortcut?.("back", 10); }
+      else if (matches("seekForward10", e)) { e.preventDefault(); seekBy(10); onShortcut?.("forward", 10); }
+      else if (matches("seekBack", e)) { e.preventDefault(); seekBy(-keyboardSeekSeconds); onShortcut?.("back", keyboardSeekSeconds); }
+      else if (matches("seekForward", e)) { e.preventDefault(); seekBy(keyboardSeekSeconds); onShortcut?.("forward", keyboardSeekSeconds); }
+      else if (matches("previousFrame", e) || matches("nextFrame", e)) { const v = videoRef.current; if (v?.paused) { e.preventDefault(); v.currentTime = Math.max(0, v.currentTime + (matches("previousFrame", e) ? -1 : 1) / frameRate); showControls(); } }
+      else if (matches("previousChapter", e) || matches("nextChapter", e)) { const v = videoRef.current; if (v && chapters.length) { e.preventDefault(); const starts = chapters.map((chapter) => chapter.start); const target = matches("previousChapter", e) ? [...starts].reverse().find((start) => start < v.currentTime - 1) ?? 0 : starts.find((start) => start > v.currentTime + 1); if (target != null) v.currentTime = target; showControls(); } }
+      else if (matches("volumeUp", e) || matches("volumeDown", e)) { e.preventDefault(); const up = matches("volumeUp", e); setVolume((current) => { const next = Math.min(1, Math.max(0, current + (up ? .05 : -.05))); if (next > 0) setMuted(false); return next; }); onShortcut?.(up ? "volumeUp" : "volumeDown"); showControls(); }
+      else if (matches("toggleMute", e)) { e.preventDefault(); if (!e.repeat) { const nextMuted = !muted; setMuted(nextMuted); onShortcut?.(nextMuted ? "mute" : "unmute"); showControls(); } }
+      else if (matches("screenshot", e)) { e.preventDefault(); if (!e.repeat) void takeScreenshot(); }
+      else if (matches("toggleFullscreen", e)) { e.preventDefault(); if (!e.repeat) toggleFullscreen(); }
+      else if (matches("togglePictureInPicture", e)) { e.preventDefault(); if (!e.repeat) togglePip(); }
+      else if (matches("seekPercent", e) && /^Digit[0-9]$/.test(e.code)) { e.preventDefault(); const v = videoRef.current; const dur = v && Number.isFinite(v.duration) && v.duration > 0 ? v.duration : (live && durationSeconds ? durationSeconds : 0); if (v && dur) v.currentTime = (Number(e.code.slice(-1)) / 10) * dur; showControls(); }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      if (!matches("temporaryBoost", e)) return;
       if ((e.target as Element).closest("input,textarea,select,[contenteditable]")) return;
       e.preventDefault();
       if (transportLocked) return;
@@ -581,7 +543,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
       }
       spaceHoldActiveRef.current = false;
     };
-  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId, takeScreenshot, muted, onShortcut, transportLocked]);
+  }, [togglePlay, seekBy, showControls, playbackRate, keyboardSeekSeconds, keyboardShortcuts, frameRate, subStyle.size, onSubtitleSizeChange, subLang, subs, ccDefaultLang, videoId, takeScreenshot, muted, onShortcut, transportLocked, chapters, live, durationSeconds, toggleFullscreen, togglePip]);
 
   // Media Session: system-level controls (keyboard media keys, lock screen).
   useEffect(() => {

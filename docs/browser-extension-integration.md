@@ -111,7 +111,7 @@ the active embedded video or relevant data changes. Context includes:
 
 - video id, title, channel id/title, duration and semantic content type;
 - effective playback rate (including the per-channel override);
-- seek seconds and frame-step FPS;
+- seek seconds, frame-step FPS, configurable shortcut map and transport lock;
 - effective caption language/style;
 - chapters and normalized SponsorBlock segments;
 - screenshot format, quality and filename template.
@@ -320,9 +320,16 @@ must synchronously claim a supported command with `preventDefault()` and later
 emit a matching `command-result`. Supported commands are `play`, `pause`,
 `toggle-play`, `seek-by`, `seek-to`, `set-volume`, `set-muted`, `toggle-muted`,
 `set-playback-rate`, `set-captions`, `toggle-captions`, `set-caption-size`,
-`capture-frame`, `toggle-fullscreen`, `enter-fullscreen`, `exit-fullscreen`, and
+`capture-frame`, `toggle-fullscreen`, `enter-fullscreen`, `exit-fullscreen`,
+`toggle-picture-in-picture`, and
 `request-state`. YT Zero rejects unclaimed commands immediately and claimed
 commands without a result after five seconds.
+
+The per-video `playback` context exposes `keyboardShortcuts`, a complete map of
+stable action identifiers to normalized
+`KeyboardEvent.code` chords (or `null` for disabled actions). The iframe must use
+that map instead of a fixed key table, ignore shortcuts while an editable control
+has focus, and emit the resolved action identifier in its `shortcut` event.
 
 The legacy `ytzero:enhance:captions-toggle-request` event remains compatible;
 new implementations may use only the general player event.
@@ -336,6 +343,9 @@ that URL. An explicit redirect chosen later from the extension popup may ignore
 the marker because it is a new user action.
 
 ## Implementation brief for the extension agent
+
+For configurable shortcut implementation, use the complete action/ownership and
+test hand-off in [`browser-extension-keyboard-shortcuts.md`](./browser-extension-keyboard-shortcuts.md).
 
 1. Add a user-editable YT Zero instance URL and request host permission for that
    origin plus `https://www.youtube.com/*`.

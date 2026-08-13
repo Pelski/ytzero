@@ -1,0 +1,7 @@
+.keyboard-shortcut-settings { border-top: 1px solid var(--surface-3); padding-top: 18px; }
+.keyboard-shortcut-settings > .ui-section-header { margin-bottom: 4px; }
+.keyboard-shortcut-settings__category.ui-divider { margin: 14px 0 0; }
+.keyboard-shortcut-settings__category + .ui-setting-row { border-top: 0; }
+.keyboard-shortcut-settings__conflict .ui-control-description { color: #ff7b88; }
+.keyboard-shortcut-settings > .ui-button { margin-top: 16px; }
+@media (max-width: 600px) { .keyboard-shortcut-settings .ui-setting-row { align-items: stretch; flex-direction: column; gap: 9px; } .keyboard-shortcut-settings .ui-setting-row__control { width: 100%; } }

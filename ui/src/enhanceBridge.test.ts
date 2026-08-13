@@ -75,12 +75,19 @@ describe("YT Zero Enhance configuration", () => {
     const parsed = parseEnhancePlayerEvent(event);
     expect(parsed?.type).toBe("state");
     if (parsed?.type === "state") expect(parsed.payload.state.currentTime).toBe(12);
+    const shortcut = parseEnhancePlayerEvent(new CustomEvent(ENHANCE_BRIDGE_EVENTS.playerEvent, {
+      detail: JSON.stringify({ version: 1, videoId: "abcdefghijk", type: "shortcut", payload: { action: "speedUp", key: ">", code: "Period", repeat: false, value: 1.25, modifiers: { alt: false, ctrl: false, meta: false, shift: true } } }),
+    }));
+    if (shortcut?.type === "shortcut") expect(shortcut.payload.value).toBe(1.25);
   });
 
   test("rejects malformed and unsupported enhanced-player events", () => {
     expect(parseEnhancePlayerEvent(new CustomEvent(ENHANCE_BRIDGE_EVENTS.playerEvent, { detail: "not-json" }))).toBe(null);
     expect(parseEnhancePlayerEvent(new CustomEvent(ENHANCE_BRIDGE_EVENTS.playerEvent, {
       detail: JSON.stringify({ version: 2, videoId: "abcdefghijk", type: "ended", payload: {} }),
+    }))).toBe(null);
+    expect(parseEnhancePlayerEvent(new CustomEvent(ENHANCE_BRIDGE_EVENTS.playerEvent, {
+      detail: JSON.stringify({ version: 1, videoId: "abcdefghijk", type: "shortcut", payload: { action: "speedUp", key: ">", code: "Period", repeat: false, value: "fast", modifiers: { alt: false, ctrl: false, meta: false, shift: true } } }),
     }))).toBe(null);
   });
 });

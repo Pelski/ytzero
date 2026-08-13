@@ -17,6 +17,7 @@ import { normalizeSocialReaction } from "./social";
 import { optimizeProfileAvatar, optimizedProfileAvatarToken, removeStoredProfileAvatar } from "./profileAvatars";
 import { DOWNLOAD_INSTANCE_BACKUP_SCHEMA_VERSION, DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, exportDownloadInstanceSettings, exportDownloadPreferences, restoreDownloadInstanceSettings, restoreDownloadPreferences } from "./downloadBackup";
 import { normalizeVideoCardSetting } from "./videoCardActions";
+import { normalizeKeyboardShortcutSetting } from "./keyboardShortcutSettings";
 import { exportPlaybackContext, restorePlaybackContext } from "./playbackContextBackup";
 export const BACKUP_FORMAT = "ytzero.portable-backup";
 export const BACKUP_FORMAT_VERSION = 1;
@@ -44,7 +45,7 @@ export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "instance.channels", schemaVersion: 4, scope: "instance", sensitivity: "normal", dependencies: [], category: "organization", path: () => "instance/channels.jsonl" },
   { id: "profiles.index", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "profiles", path: () => "profiles/index.json" },
   { id: "profile.avatar", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "profiles", optional: true, path: (uuid = "") => `assets/avatars/${uuid}` },
-  { id: "profile.settings", schemaVersion: 4, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
+  { id: "profile.settings", schemaVersion: 5, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
   { id: "profile.downloads", schemaVersion: DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "configuration", path: profilePath("downloads.json") },
   { id: "profile.subscriptions", schemaVersion: 2, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("subscriptions.jsonl") },
   { id: "profile.followed-playlists", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "organization", path: profilePath("followed-playlists.jsonl") },
@@ -75,7 +76,7 @@ function portableGlobalSettingValue(key: string, value: unknown): string {
   return String(value);
 }
 function portableUserSettingValue(key: string, value: unknown): string {
-  if (key.startsWith("video_card_")) return normalizeVideoCardSetting(key, value);
+  if (key === "keyboard_shortcuts") return normalizeKeyboardShortcutSetting(value) ?? SETTING_DEFAULTS.keyboard_shortcuts; if (key.startsWith("video_card_")) return normalizeVideoCardSetting(key, value);
   if (key === "show_shorts") return value === "1" || value === "selected" ? value : "0";
   return String(value);
 }

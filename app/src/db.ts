@@ -219,7 +219,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   player_sub_bg: "75",
   player_quality: "auto",
   player_speed: "1",
-  keyboard_seek_seconds: "5",
+  keyboard_seek_seconds: "5", keyboard_shortcuts: '{"version":1,"bindings":{}}',
   // Browser-extension integration for enhancing the embedded YouTube iframe.
   // These are portable presentation preferences and contain no instance secrets.
   enhance_enabled: "1",

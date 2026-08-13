@@ -1,0 +1,6 @@
+.ui-shortcut-input { align-items: center; display: flex; gap: 2px; justify-content: flex-end; min-width: 210px; }
+.ui-shortcut-input__capture { background: var(--surface-3); border-radius: 7px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; min-width: 112px; }
+.ui-shortcut-input.is-recording .ui-shortcut-input__capture { box-shadow: 0 0 0 2px var(--accent); color: var(--text); }
+.ui-shortcut-input.is-invalid .ui-shortcut-input__capture { box-shadow: 0 0 0 1px #ff5969; color: #ff7b88; }
+.ui-shortcut-input .ui-button--icon { color: var(--text-2); }
+@media (max-width: 600px) { .ui-shortcut-input { min-width: 0; width: 100%; } .ui-shortcut-input__capture { flex: 1; } }

@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { IconButton } from "./Button";
 import { cx } from "./utils";
 import "./Dialog.css";
+const SHORTCUT_CLOSE_EVENT = "ytzero:shortcut-close";
 
 const FOCUSABLE = "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
@@ -46,9 +47,12 @@ export function Dialog({ open, onOpenChange, title, children, footer, closeLabel
         elements[0].focus();
       }
     };
+    const onShortcutClose = () => { if (dismissibleRef.current) onOpenChangeRef.current(false); };
     document.addEventListener("keydown", onKeyDown);
+    document.addEventListener(SHORTCUT_CLOSE_EVENT, onShortcutClose);
     return () => {
       document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener(SHORTCUT_CLOSE_EVENT, onShortcutClose);
       if (appRoot) {
         if (!rootWasInert) appRoot.removeAttribute("inert");
         if (previousAriaHidden === null) appRoot.removeAttribute("aria-hidden");

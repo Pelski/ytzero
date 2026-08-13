@@ -220,6 +220,12 @@ below.
   hover state, media buffers, and YouTube player instances are transient and
   never exported. Older backups retain the target value on merge and use the
   application default after a replace restore.
+  Keyboard-shortcut overrides are bounded, versioned portable per-profile
+  presentation configuration in `profile.settings` schema v5. Only known
+  action identifiers and normalized key chords are accepted; defaults are not
+  serialized as overrides, so newly introduced actions inherit their current
+  defaults. An older backup leaves the target shortcuts unchanged on merge and
+  restores application defaults on replace when this key is absent.
   Context-aware continuation preferences are portable configuration: whether
   list playback is disabled, waits for confirmation, or starts automatically,
   plus whether it follows the visible list order or walks it in reverse. The

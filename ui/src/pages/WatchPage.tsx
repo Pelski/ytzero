@@ -268,7 +268,7 @@ export default function WatchPage() {
                   cinemaMode={cinemaMode}
                   onToggleCinema={() => setCinemaMode((mode) => !mode)}
                   onEnded={watchTogetherTransportLocked ? undefined : handleEnded}
-                  keyboardSeekSeconds={keyboardSeekSeconds}
+                  keyboardSeekSeconds={keyboardSeekSeconds} keyboardShortcuts={settings?.keyboard_shortcuts} frameRate={Number(settings?.enhance_frame_fps) || 30}
                   onShortcut={showShortcutFeedback}
                   screenshotFormat={screenshotFormat}
                   screenshotQuality={screenshotQuality}
@@ -302,7 +302,7 @@ export default function WatchPage() {
                   cinemaMode={cinemaMode}
                   onToggleCinema={() => setCinemaMode((mode) => !mode)}
                   onEnded={watchTogetherTransportLocked ? undefined : handleEnded}
-                  keyboardSeekSeconds={keyboardSeekSeconds}
+                  keyboardSeekSeconds={keyboardSeekSeconds} keyboardShortcuts={settings?.keyboard_shortcuts} frameRate={Number(settings?.enhance_frame_fps) || 30}
                   onShortcut={showShortcutFeedback}
                   screenshotFormat={screenshotFormat}
                   screenshotQuality={screenshotQuality}

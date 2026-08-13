@@ -260,7 +260,7 @@ export interface AppSettings {
   player_sub_bg: string;
   player_quality: string;
   player_speed: string;
-  keyboard_seek_seconds: string;
+  keyboard_seek_seconds: string; keyboard_shortcuts: string;
   enhance_enabled: string;
   enhance_replace_controls: string;
   enhance_frame_fps: string;

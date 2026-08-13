@@ -7,15 +7,19 @@ export interface WatchPlayerHandle {
   getCurrentTime: () => number;
   getDuration: () => number;
   getIframe?: () => HTMLIFrameElement;
+  getOption?: (module: string, option: string) => unknown;
   getPlaybackRate: () => number;
   getPlayerState: () => number;
   getVolume?: () => number;
   isMuted?: () => boolean;
+  loadModule?: (module: string) => void;
   mute?: () => void;
   pauseVideo: () => void;
   playVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
   setPlaybackRate: (rate: number) => void;
   setVolume?: (volume: number) => void;
+  setOption?: (module: string, option: string, value: unknown) => void;
+  unloadModule?: (module: string) => void;
   unMute?: () => void;
 }

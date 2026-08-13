@@ -27,7 +27,7 @@ export default function WatchPlayerFeedback({
   const sponsorCategory = feedback.category ? SB_CATEGORIES.find((category) => category.id === feedback.category) : undefined;
   const label = feedback.kind === "back" ? `−${feedback.seconds ?? keyboardSeekSeconds} s`
     : feedback.kind === "forward" ? `+${feedback.seconds ?? keyboardSeekSeconds} s`
-      : feedback.kind === "speed" ? "2×"
+      : feedback.kind === "speed" ? `${feedback.seconds ?? 2}×`
         : feedback.kind === "mute" ? t("playerMute")
           : feedback.kind === "unmute" ? t("playerUnmute")
             : feedback.kind === "captionsOn" ? t("captionsOn")

@@ -11,7 +11,7 @@ import { VIDEO_CARD_ACTIONS_MODES, type VideoCardActionsMode } from "../../video
 import { useSettingsPageController } from "../../pages/useSettingsPageController";
 import Popconfirm from "../Popconfirm";
 import { Button, ColorPicker, Divider, Inline, Input, InputGroup, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Text } from "../ui";
-import { SidebarNavEditor, VideoCardActionEditor } from "./SettingsEditors";
+import { SidebarNavEditor, VideoCardActionEditor } from "./SettingsEditors"; import { KeyboardShortcutSettings } from "./KeyboardShortcutSettings";
 const VideoCardSwipeSetting = lazy(() => import("./VideoCardSwipeSetting").then((module) => ({ default: module.VideoCardSwipeSetting })));
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
@@ -360,7 +360,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
               }}
             />
           </SettingRow>
-          </SettingsSection>
+          <KeyboardShortcutSettings showToast={showToast} /></SettingsSection>
           }
 
           {displaySubTab === "subtitles" && canManageArea("playback") && <SettingsSection title={t("subtitles")} className="settings-display-group">

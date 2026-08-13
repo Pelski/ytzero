@@ -297,11 +297,45 @@
     font-size: 10.5px;
   }
   .audio-mode-player {
-    gap: 4px;
-    min-height: 54px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1fr);
+    grid-template-rows: auto 88px;
+    gap: 3px 0;
+    min-height: 142px;
+  }
+  .audio-mode-timeline {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+  }
+  .audio-mode-play {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: center;
+  }
+  .audio-mode-volume {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: start;
+    align-self: center;
+    margin-left: 34px;
+  }
+  .audio-mode-rate {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: end;
+    align-self: center;
   }
   .audio-mode-player .lp-btn {
     width: 34px;
+  }
+  .audio-mode-player .audio-mode-play {
+    width: 88px;
+    height: 88px;
+  }
+  .audio-mode-play svg {
+    width: 48px;
+    height: 48px;
   }
 }
 

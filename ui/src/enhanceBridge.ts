@@ -50,6 +50,8 @@ export interface EnhancePlayerShortcut {
   code: string;
   action: string;
   repeat: boolean;
+  /** Numeric result for actions such as playback-rate changes. */
+  value?: number;
   modifiers: { alt: boolean; ctrl: boolean; meta: boolean; shift: boolean };
 }
 
@@ -67,7 +69,7 @@ export type EnhancePlayerCommand =
   | "set-playback-rate"
   | "set-captions" | "toggle-captions" | "set-caption-size"
   | "capture-frame"
-  | "toggle-fullscreen" | "enter-fullscreen" | "exit-fullscreen"
+  | "toggle-fullscreen" | "enter-fullscreen" | "exit-fullscreen" | "toggle-picture-in-picture"
   | "request-state";
 
 export type EnhancePlayerEvent = {
@@ -111,6 +113,7 @@ export function parseEnhancePlayerEvent(event: Event): EnhancePlayerEvent | null
     const modifiers = eventRecord(payload.modifiers);
     if (typeof payload.key !== "string" || typeof payload.code !== "string" || typeof payload.action !== "string" || typeof payload.repeat !== "boolean" || !modifiers) return null;
     if (["alt", "ctrl", "meta", "shift"].some((key) => typeof modifiers[key] !== "boolean")) return null;
+    if (payload.value !== undefined && (typeof payload.value !== "number" || !Number.isFinite(payload.value))) return null;
     return {
       version: 1,
       videoId: message.videoId,
@@ -120,6 +123,7 @@ export function parseEnhancePlayerEvent(event: Event): EnhancePlayerEvent | null
         code: payload.code,
         action: payload.action,
         repeat: payload.repeat,
+        ...(typeof payload.value === "number" ? { value: payload.value } : {}),
         modifiers: modifiers as EnhancePlayerShortcut["modifiers"],
       },
     };
@@ -212,7 +216,7 @@ export function createEnhanceConfiguration(settings: Partial<AppSettings>) {
       preferredQuality: settings.player_quality || "auto",
       defaultPlaybackRate: numberSetting(settings.player_speed, 1, 0.25, 4),
       keyboardSeekSeconds: numberSetting(settings.keyboard_seek_seconds, 5, 1, 120),
-      frameStepFps: 30,
+      frameStepFps: numberSetting(settings.enhance_frame_fps, 30, 1, 120),
       autoFullscreenLandscape: booleanSetting(settings.auto_fullscreen_landscape, false),
       captions: {
         enabledByDefault: booleanSetting(settings.player_cc, false),

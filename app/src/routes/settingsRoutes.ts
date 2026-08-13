@@ -6,10 +6,10 @@ import { normalizeVideoCardSetting, validateVideoCardSettings } from "../videoCa
 import { isProfilePermissionArea, serializeAdminOnlyAreas, type ProfilePermissionArea } from "../profilePermissions";
 import { computeShowFrom, SCHEDULE_BUCKETS } from "../scheduleTime";
 import { configuredTimeZone, isValidTimeZone, timeZoneIsEnvironmentLocked } from "../timeZone";
+import { normalizeKeyboardShortcutSetting } from "../keyboardShortcutSettings";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
-type Api = Hono<ApiEnvironment>;
-type ApiContext = Context<ApiEnvironment>;
+type Api = Hono<ApiEnvironment>; type ApiContext = Context<ApiEnvironment>;
 
 interface SettingsRouteAccess {
   adminOnlyAreas: () => ProfilePermissionArea[];
@@ -129,8 +129,8 @@ api.put("/settings", async (c) => {
   const body = await c.req.json();
   if ("timezone" in body && timeZoneIsEnvironmentLocked()) return c.json({ error: "timezone is controlled by the TZ environment variable" }, 409);
   if ("timezone" in body && !isValidTimeZone(body.timezone)) return c.json({ error: "invalid timezone" }, 400);
-  const videoCardSettingsError = validateVideoCardSettings(body);
-  if (videoCardSettingsError) return c.json({ error: videoCardSettingsError }, 400);
+  const videoCardSettingsError = validateVideoCardSettings(body); if (videoCardSettingsError) return c.json({ error: videoCardSettingsError }, 400);
+  if ("keyboard_shortcuts" in body && normalizeKeyboardShortcutSetting(body.keyboard_shortcuts) === null) return c.json({ error: "invalid keyboard shortcut settings" }, 400);
   if ("show_shorts" in body && body.show_shorts !== "0" && body.show_shorts !== "selected" && body.show_shorts !== "1") {
     return c.json({ error: "invalid Shorts feed mode" }, 400);
   }
@@ -141,7 +141,7 @@ api.put("/settings", async (c) => {
       // Only an administrator owns app-wide settings (name, icon, timezone).
       if (primary) await setSetting(key, String(body[key]));
     } else {
-      const value = normalizeVideoCardSetting(key, body[key]);
+      const value = key === "keyboard_shortcuts" ? normalizeKeyboardShortcutSetting(body[key])! : normalizeVideoCardSetting(key, body[key]);
       await setUserSetting(uid, key, value);
     }
   }
