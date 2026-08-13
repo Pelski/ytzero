@@ -228,7 +228,7 @@ export default function WatchPage() {
                   <AudioModePlayer
                     key={`${video.video_id}-${video.live_status}-audio-${sharedStartSeconds}`}
                     ref={playerRef}
-                    src={video.live_status === "live" ? api.liveAudioUrl(video.video_id) : api.audioUrl(video.video_id)}
+                    playlistSrc={video.live_status === "live" ? api.liveAudioUrl(video.video_id) : api.audioHlsUrl(video.video_id)} progressiveSrc={video.live_status === "live" ? undefined : api.audioUrl(video.video_id)}
                     live={video.live_status === "live"} videoId={video.video_id}
                     title={video.title} channelTitle={video.channel_title}
                     artworkUrl={img(video.thumbnail)}

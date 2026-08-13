@@ -222,6 +222,7 @@ export const api = {
   streamUrl: (id: string) => `/api/videos/${id}/stream`,
   hlsUrl: (id: string) => `/api/videos/${id}/hls/index.m3u8`,
   audioUrl: (id: string) => `/api/videos/${id}/audio`,
+  audioHlsUrl: (id: string) => `/api/videos/${id}/audio/index.m3u8`,
   liveAudioUrl: (id: string) => `/api/videos/${id}/audio-live/index.m3u8`,
   retryAudio: (id: string) => http<{ ok: true; live: boolean }>(`/videos/${id}/audio/retry`, { method: "POST", body: "{}" }),
   videoSubtitles: (id: string) => http<{ subtitles: VideoSubtitle[] }>(`/videos/${id}/subtitles`),

@@ -856,6 +856,7 @@ const {
   destroyHlsSession,
   getAudioHeadResponse,
   getAudioResponse,
+  getAudioVodPlaylist,
   getHlsPlaylist,
   getHlsSegment,
   getLiveAudioPlaylist,
@@ -876,7 +877,7 @@ const {
   ytdlpStatus,
 });
 
-export { destroyHlsSession, getAudioHeadResponse, getAudioResponse, getHlsPlaylist, getHlsSegment, getLiveAudioPlaylist, getLiveAudioResource, invalidateAudioSources, isSegmentName, liveStreamEnabled, retryAudioSource };
+export { destroyHlsSession, getAudioHeadResponse, getAudioResponse, getAudioVodPlaylist, getHlsPlaylist, getHlsSegment, getLiveAudioPlaylist, getLiveAudioResource, invalidateAudioSources, isSegmentName, liveStreamEnabled, retryAudioSource };
 // ---------- scheduler ----------
 
 let ticking = false;

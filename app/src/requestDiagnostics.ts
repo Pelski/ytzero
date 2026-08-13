@@ -6,7 +6,9 @@ export function diagnosticRequestPath(path: string): string {
 }
 
 export function isExpectedRequestMiss(path: string, status: number, imageMissMode: string | undefined): boolean {
-  return path === "/api/img" && status === 404 && imageMissMode === "error";
+  if (status !== 404) return false;
+  if (path === "/api/img" && imageMissMode === "error") return true;
+  return /^(?:\/api)?\/videos\/[^/]+\/audio\/index\.m3u8$/.test(path);
 }
 
 /** Install the shared error and slow-request diagnostics before auth middleware. */

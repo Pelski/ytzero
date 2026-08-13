@@ -38,19 +38,28 @@ regular-video path after YouTube publishes a compatible audio format.
 
 ## How streaming works
 
-For regular videos, yt-dlp resolves an AAC stream in an MP4 container. YT Zero
-proxies bounded byte ranges with explicit length and range headers so playback
-and seeking work reliably in iOS Safari. There is no transcoding and signed
-upstream media URLs are not exposed to the browser.
+For regular videos, yt-dlp resolves an AAC stream in an MP4 container. When the
+source publishes an MP4 segment index (`sidx`), YT Zero exposes its existing
+fragments as a same-origin HLS VOD playlist. This lets a seek request the
+fragment at the target time directly, including in recordings many hours long.
+The index and fragments are read through the same bounded, validated byte-range
+proxy; there is no transcoding and signed upstream URLs are never exposed to
+the browser. Sources without a usable index fall back to the regular byte-range
+audio stream.
+
+Safari consumes the VOD playlist through its native HLS support. Other
+supported browsers use the same lazily loaded `hls.js` path as live audio, with
+audio-sized buffer limits so long recordings are not fetched far ahead.
 
 For active livestreams, yt-dlp resolves an HLS audio rendition. YT Zero rewrites
 the rolling playlist and proxies its manifests and segments through opaque,
 same-origin URLs. Redirects between allowed YouTube media hosts are followed
 with every hop revalidated against the media-host allowlist.
 
-Resolved sources and live sessions are isolated by profile because yt-dlp may
-use profile-specific YouTube cookies. They are kept only as short-lived runtime
-cache entries and are invalidated when their upstream source expires or fails.
+Resolved sources, parsed VOD indexes, and live sessions are isolated by profile
+because yt-dlp may use profile-specific YouTube cookies. They are kept only as
+short-lived runtime cache entries and are invalidated when their upstream source
+expires, fails, or is explicitly retried.
 
 ## Controls and browser behavior
 
@@ -79,6 +88,7 @@ Useful server log events include:
 
 - `audio.source_attempt_failed` and `audio.source_resolution_failed`;
 - `audio.upstream_failed` and `audio.upstream_redirect`;
+- `audio.vod_index_ready` and `audio.vod_index_unavailable`;
 - `audio.live_status_probe_failed`;
 - `video.live_status_corrected`;
 - `downloads.ytdlp_js_runtime_missing` when Deno cannot be executed.

@@ -6,6 +6,7 @@ import { isChildUser } from "../childTime";
 import {
   getAudioHeadResponse,
   getAudioResponse,
+  getAudioVodPlaylist,
   getLiveAudioPlaylist,
   getLiveAudioResource,
   retryAudioSource,
@@ -77,6 +78,24 @@ export function registerAudioRoutes(api: Api, currentUserId: (context: ApiContex
     return resolved
       ? context.json({ ok: true, live: correctedLive })
       : context.json({ error: "audio unavailable" }, 502);
+  });
+
+  api.get("/videos/:id/audio/index.m3u8", async (context) => {
+    const userId = currentUserId(context);
+    if (await isChildUser(userId)) return context.json({ error: "not allowed" }, 403);
+    const videoId = context.req.param("id");
+    const video = await audioVideo(videoId);
+    if (!video) return context.json({ error: "not found" }, 404);
+    if (!audioVideoIsEligible(video)) return context.json({ error: "audio unavailable" }, 409);
+    if (!await ytdlpStatus()) return context.json({ error: "yt-dlp unavailable" }, 503);
+    const result = await getAudioVodPlaylist(userId, videoId, context.req.raw.signal);
+    if (result.kind === "playlist") {
+      return new Response(result.playlist, {
+        headers: { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store" },
+      });
+    }
+    if (result.kind === "unsupported") return context.json({ error: "indexed audio unavailable" }, 404);
+    return context.json({ error: "audio index unavailable" }, 502);
   });
 
   api.get("/videos/:id/audio", async (context) => {

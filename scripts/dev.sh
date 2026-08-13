@@ -21,13 +21,13 @@ trap cleanup EXIT INT TERM
 
 (
   cd "$ROOT_DIR/app"
-  bun run dev
+  bun run dev --host 0.0.0.0
 ) &
 APP_PID=$!
 
 (
   cd "$ROOT_DIR/ui"
-  bun run dev
+  bun run dev --host 0.0.0.0
 ) &
 UI_PID=$!
 

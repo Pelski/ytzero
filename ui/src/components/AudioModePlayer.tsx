@@ -44,7 +44,8 @@ function storedVolume(): number {
  * visible transport reuses the LocalPlayer control language.
  */
 const AudioModePlayer = forwardRef<WatchPlayerHandle, {
-  src: string;
+  playlistSrc: string;
+  progressiveSrc?: string;
   videoId: string;
   live?: boolean;
   title?: string;
@@ -56,7 +57,8 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   onEnded?: () => void;
   onReload?: () => void;
 }>(function AudioModePlayer({
-  src,
+  playlistSrc,
+  progressiveSrc,
   videoId,
   live = false,
   title,
@@ -89,13 +91,24 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   const [hoverX, setHoverX] = useState<number | null>(null);
   const [retryAttempts, setRetryAttempts] = useState(0);
   const [sourceRevision, setSourceRevision] = useState(0);
-  const retrySrc = sourceRevision > 0 ? `${src}${src.includes("?") ? "&" : "?"}retry=${sourceRevision}` : src;
+  const retryPlaylistSrc = sourceRevision > 0
+    ? `${playlistSrc}${playlistSrc.includes("?") ? "&" : "?"}retry=${sourceRevision}`
+    : playlistSrc;
+  const retryProgressiveSrc = progressiveSrc && sourceRevision > 0
+    ? `${progressiveSrc}${progressiveSrc.includes("?") ? "&" : "?"}retry=${sourceRevision}`
+    : progressiveSrc;
   const onFatalSourceError = useCallback(() => {
     setStatus("error");
     setBuffering(false);
     setPlaying(false);
   }, []);
-  useAudioMediaSource({ audioRef, live, onFatalError: onFatalSourceError, src: retrySrc });
+  useAudioMediaSource({
+    audioRef,
+    live,
+    onFatalError: onFatalSourceError,
+    playlistSrc: retryPlaylistSrc,
+    progressiveSrc: retryProgressiveSrc,
+  });
 
   const setAudioPosition = useCallback((seconds: number) => {
     const audio = audioRef.current;
@@ -193,7 +206,7 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
     if (status !== "loading") return;
     const timer = window.setTimeout(() => setStatus((current) => current === "loading" ? "error" : current), 20_000);
     return () => window.clearTimeout(timer);
-  }, [src, status]);
+  }, [playlistSrc, progressiveSrc, status]);
 
   const updateBuffered = useCallback(() => {
     const audio = audioRef.current;
@@ -245,6 +258,8 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
   const retryAudio = async () => {
     if (retryAttempts >= MAX_RETRY_ATTEMPTS) return;
     const attempt = retryAttempts + 1;
+    const resumeAt = audioRef.current?.currentTime;
+    if (!live && typeof resumeAt === "number" && Number.isFinite(resumeAt) && resumeAt > 0) startedAtRef.current = resumeAt;
     setStatus("loading");
     setBuffering(true);
     setPlaying(false);
@@ -352,7 +367,6 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
       <audio
         ref={audioRef}
         className="audio-mode-media"
-        src={live ? undefined : retrySrc}
         autoPlay
         preload="auto"
         playsInline
@@ -379,7 +393,6 @@ const AudioModePlayer = forwardRef<WatchPlayerHandle, {
           setMuted(event.currentTarget.muted);
           setVolume(event.currentTarget.volume);
         }}
-        onError={() => { setStatus("error"); setBuffering(false); setPlaying(false); }}
         onEnded={() => {
           if (endedRef.current) return;
           endedRef.current = true;

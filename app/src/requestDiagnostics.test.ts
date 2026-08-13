@@ -2,11 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { diagnosticRequestPath, isExpectedRequestMiss } from "./requestDiagnostics";
 
 describe("request diagnostics", () => {
-  test("keeps expected image fallback misses out of warning logs", () => {
+  test("keeps expected fallback misses out of warning logs", () => {
     expect(isExpectedRequestMiss("/api/img", 404, "error")).toBe(true);
     expect(isExpectedRequestMiss("/api/img", 404, undefined)).toBe(false);
     expect(isExpectedRequestMiss("/api/img", 500, "error")).toBe(false);
     expect(isExpectedRequestMiss("/api/other", 404, "error")).toBe(false);
+    expect(isExpectedRequestMiss("/api/videos/abc/audio/index.m3u8", 404, undefined)).toBe(true);
+    expect(isExpectedRequestMiss("/api/videos/abc/audio/index.m3u8", 502, undefined)).toBe(false);
   });
 
   test("redacts watch-party bearer ids", () => {

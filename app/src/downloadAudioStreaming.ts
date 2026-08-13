@@ -8,6 +8,7 @@ import {
 import { defaultAudioDiagnostic, type AudioDiagnostic } from "./audioDiagnostics";
 import { createAudioSourceResolver, type AudioSource } from "./audioSourceResolver";
 import { googleVideoHost, safeGoogleVideoUrl } from "./audioUpstreamUrl";
+import { createDownloadAudioVodStreaming } from "./downloadAudioVodStreaming";
 
 interface DownloadAudioStreamingDependencies {
   YTDLP: string;
@@ -27,10 +28,10 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
   const { audioDiagnostic = defaultAudioDiagnostic, fetchImpl = fetch } = dependencies;
   const {
     discardAudioSource,
-    invalidateAudioSources,
+    invalidateAudioSources: invalidateResolvedAudioSources,
     refreshAudioSource,
     resolveAudioSource,
-    retryAudioSource,
+    retryAudioSource: retryResolvedAudioSource,
   } = createAudioSourceResolver(dependencies);
 
   function rangeNotSatisfiable(total?: number): Response {
@@ -230,6 +231,39 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
     }
   }
 
+  async function readAudioPrefix(
+    userId: number,
+    videoId: string,
+    bytes: number,
+    signal: AbortSignal,
+  ): Promise<{ bytes: Uint8Array; source: AudioSource; total: number } | null> {
+    if (!Number.isSafeInteger(bytes) || bytes <= 0) return null;
+    const operation = requestAbortSignal(signal);
+    try {
+      const range: AudioByteRange = { start: 0, end: bytes - 1, requested: true };
+      const result = await validatedAudioUpstream(userId, videoId, range, operation.signal);
+      if (!result || result.kind === "response") return null;
+      const { source, response, contentRange, contentLength } = result.value;
+      const body = await response.arrayBuffer().catch(() => null);
+      if (!body || body.byteLength !== contentLength || operation.signal.aborted) {
+        if (!operation.signal.aborted) {
+          audioDiagnostic("warn", "audio.upstream_failed", {
+            userId,
+            videoId,
+            reason: body ? "index_body_length_mismatch" : "index_body_read_failed",
+            expectedLength: contentLength,
+            receivedLength: body?.byteLength,
+          });
+          discardAudioSource(userId, videoId, source.url);
+        }
+        return null;
+      }
+      return { bytes: new Uint8Array(body), source, total: contentRange.total };
+    } finally {
+      operation.dispose();
+    }
+  }
+
   /** Probe one byte to obtain full-resource metadata without buffering media. */
   async function getAudioHeadResponse(
     userId: number,
@@ -264,5 +298,21 @@ export function createDownloadAudioStreaming(dependencies: DownloadAudioStreamin
     }
   }
 
-  return { getAudioHeadResponse, getAudioResponse, invalidateAudioSources, retryAudioSource };
+  const audioVod = createDownloadAudioVodStreaming({
+    audioDiagnostic,
+    readPrefix: readAudioPrefix,
+    resolveAudioSource,
+  });
+
+  function invalidateAudioSources(userId: number): void {
+    audioVod.invalidateAudioVodSources(userId);
+    invalidateResolvedAudioSources(userId);
+  }
+
+  async function retryAudioSource(userId: number, videoId: string, signal?: AbortSignal): Promise<boolean> {
+    audioVod.invalidateAudioVodSource(userId, videoId);
+    return retryResolvedAudioSource(userId, videoId, signal);
+  }
+
+  return { getAudioHeadResponse, getAudioResponse, ...audioVod, invalidateAudioSources, retryAudioSource };
 }
