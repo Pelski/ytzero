@@ -51,3 +51,27 @@ export function resolveShareTimestamp(...candidates: ShareTimestampCandidate[]):
   }
   return 0;
 }
+
+/**
+ * Own the player mount with the requested route, not with whichever library
+ * row happened to resolve most recently. A missing row is a valid target while
+ * its external import runs; once that import lands, the target stays unchanged.
+ */
+export function resolveWatchPlayerTarget(
+  routeVideoId: string | undefined,
+  loadedVideoId: string | null | undefined,
+  missingVideoId: string | null,
+): string | null {
+  return routeVideoId && (loadedVideoId === routeVideoId || missingVideoId === routeVideoId) ? routeVideoId : null;
+}
+
+export function isMissingVideoError(error: Error): boolean {
+  return error.message === "not found" || error.message === "HTTP 404";
+}
+
+export function canAutoArchiveVideo(
+  video: { video_id: string; live_status: string } | null,
+  routeVideoId: string | undefined,
+): boolean {
+  return Boolean(video && video.video_id === routeVideoId && video.live_status !== "live" && video.live_status !== "upcoming");
+}

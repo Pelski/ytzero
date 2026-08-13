@@ -18,7 +18,7 @@ import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, pa
 import { subscribeServerEvent } from "../serverEvents";
 import { isPlaybackQueueContext, type PlaybackQueueContext } from "../playbackQueue";
 import { restoreSidebarVisibility } from "../app-shell/sidebarVisibility";
-import { loadYouTubeApi, resolveShareTimestamp } from "./watchRuntime";
+import { canAutoArchiveVideo, isMissingVideoError, loadYouTubeApi, resolveShareTimestamp, resolveWatchPlayerTarget } from "./watchRuntime";
 import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
 import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTubeKeyboardShortcuts";
 import { useUpNextQueue } from "./useUpNextQueue";
@@ -59,7 +59,8 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   }, [location.state, playlistId, playlistSort, feedContext, feedTags, feedShowAll, feedSort]);
   const [video, setVideo] = useState<Video | null>(null);
   const playbackQueue = routePlaybackQueue ?? video?.playback_context ?? null;
-  const [videoMissing, setVideoMissing] = useState(false);
+  const [missingVideoId, setMissingVideoId] = useState<string | null>(null);
+  const videoMissing = missingVideoId === id;
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [related, setRelated] = useState<Video[]>([]);
   const [copyKey, setCopyKey] = useState(0);
@@ -204,6 +205,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const playerRef = useRef<WatchPlayerHandle | null>(null);
   const enhancePlayerStateRef = useRef<{ state: EnhancePlayerState; updatedAt: number } | null>(null);
   const archivedRef = useRef(false);
+  const canAutoArchiveRef = useRef(false);
   const sbSegmentsRef = useRef<SponsorSegment[]>([]);
   const sbPausedRef = useRef(false);
   const disabledSegsRef = useRef<Set<string>>(new Set());
@@ -291,6 +293,8 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const downloadFeedbackVisible = downloadReadyToReload || downloadRequestError || downloadStatus === "queued" || downloadStatus === "downloading" || downloadStatus === "error";
   const privateVideoNotice = video?.is_private === 1;
   const membersOnlyNotice = video?.members_only === 1 && !isChildProfile && !privateVideoNotice;
+  const playerTargetId = resolveWatchPlayerTarget(id, video?.video_id, missingVideoId);
+  canAutoArchiveRef.current = canAutoArchiveVideo(video, id);
   const audioModeAvailable = canUseWatchAudioMode({
     childProfile: isChildProfile,
     hasVideo: Boolean(video && video.video_id === id),
@@ -588,9 +592,10 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     setDescOpen(false);
     setVideo(null);
-    setVideoMissing(false);
+    setMissingVideoId(null);
     setVideoInfo(null);
     setPlayerSource("auto");
     setSourceChoice("undecided");
@@ -602,6 +607,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     api
       .video(id)
       .then((r) => {
+        if (cancelled) return;
         setVideo(r.video);
         setRelated(r.related);
         // External video already in DB but its RSS siblings were cleared:
@@ -609,21 +615,24 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
         if (r.video.external && r.related.length === 0) {
           api.videoInfo(id)
             .then(() => api.video(id))
-            .then((r2) => setRelated(r2.related))
+            .then((r2) => { if (!cancelled) setRelated(r2.related); })
             .catch(() => {});
         }
       })
       .catch((e: Error) => {
-        if (e.message === "not found" || e.message === "HTTP 404") {
-          setVideoMissing(true);
+        if (cancelled) return;
+        if (isMissingVideoError(e)) {
+          setMissingVideoId(id);
           api.videoInfo(id)
             .then((r) => {
+              if (cancelled) return;
               setVideoInfo(r.info);
               // Video was just inserted as external — fetch the full Video object
               return api.video(id).then((full) => {
+                if (cancelled) return;
                 setVideo(full.video);
                 setRelated(full.related);
-                setVideoMissing(false);
+                setMissingVideoId(null);
                 setVideoInfo(null);
               });
             })
@@ -638,6 +647,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
       watchedVisitRef.current = id;
       api.watch(id, routePlaybackQueue ?? undefined).catch(() => {});
     }
+    return () => { cancelled = true; };
   }, [id]);
 
   // When a video finishes: record completion, advance the playlist if any.
@@ -734,9 +744,9 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   // progress every second. The poll runs against the shared YT-shaped player
   // API, so progress saving, auto-archive and SponsorBlock work for both.
   useEffect(() => {
-    if (!id || (!video && !videoMissing)) return;
+    if (!playerTargetId) return;
+    const activeVideoId = playerTargetId;
 
-    const canAutoArchive = video ? (video.live_status !== "live" && video.live_status !== "upcoming") : false;
     // In "stream" mode the reported duration is the downloaded length so far,
     // not the full video — persisting progress or auto-archiving off that ratio
     // would be wrong. The saved download handles resume on the next visit.
@@ -755,7 +765,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
         const position = enhancedState?.currentTime ?? p?.getCurrentTime();
         const playerDuration = enhancedState?.duration ?? p?.getDuration();
         if (!position || !playerDuration) return;
-        playbackPositionVideoIdRef.current = id;
+        playbackPositionVideoIdRef.current = activeVideoId;
         if (isStream) streamPositionRef.current = position;
         if (!isStream) progressRef.current = { position, duration: playerDuration };
         if (playerKind === "youtube" && !audioActive && "mediaSession" in navigator) {
@@ -770,21 +780,21 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
         const isPlaying = enhancedState ? !enhancedState.paused && !enhancedState.ended : p?.getPlayerState?.() === 1;
         if (!isPlaying) {
           if (wasPlaying && !isStream) {
-            queueProgressWrite(id, position, playerDuration);
-            flushProgressWrite(id);
+            queueProgressWrite(activeVideoId, position, playerDuration);
+            flushProgressWrite(activeVideoId);
           }
           wasPlaying = false;
           return;
         }
         wasPlaying = true;
         if (!isStream) {
-          queueProgressWrite(id, position, playerDuration);
-          if (!isIncognitoMode() && canAutoArchive && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
+          queueProgressWrite(activeVideoId, position, playerDuration);
+          if (!isIncognitoMode() && canAutoArchiveRef.current && playerDuration > 30 && position / playerDuration >= 0.9 && !archivedRef.current) {
             archivedRef.current = true;
-            queueProgressWrite(id, playerDuration, playerDuration);
-            flushProgressWrite(id);
-            api.complete(id).catch(() => {});
-            api.archiveVideo(id).catch(() => {});
+            queueProgressWrite(activeVideoId, playerDuration, playerDuration);
+            flushProgressWrite(activeVideoId);
+            api.complete(activeVideoId).catch(() => {});
+            api.archiveVideo(activeVideoId).catch(() => {});
           }
         }
         if (!watchTogetherTransportLockedRef.current && !sbPausedRef.current) {
@@ -796,7 +806,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
               showShortcutFeedback("sponsorblock", skippedSeconds, seg.category);
               if (!isIncognitoMode() && !recordedSbSegsRef.current.has(seg.UUID)) {
                 recordedSbSegsRef.current.add(seg.UUID);
-                api.recordSponsorBlockSkip(id, seg, skippedSeconds).catch((error) => {
+                api.recordSponsorBlockSkip(activeVideoId, seg, skippedSeconds).catch((error) => {
                   console.warn("SponsorBlock skip could not be recorded", error);
                   recordedSbSegsRef.current.delete(seg.UUID);
                 });
@@ -811,8 +821,8 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     const saveCurrentProgress = (keepalive: boolean) => {
       if (progressRef.current && !archivedRef.current) {
         const { position, duration } = progressRef.current;
-        queueProgressWrite(id, position, duration);
-        flushProgressWrite(id, keepalive);
+        queueProgressWrite(activeVideoId, position, duration);
+        flushProgressWrite(activeVideoId, keepalive);
       }
     };
 
@@ -890,15 +900,15 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     };
 
     const inner = document.createElement("div");
-    inner.id = `yt-inner-${id}`;
+    inner.id = `yt-inner-${activeVideoId}`;
     wrap.appendChild(inner);
 
     loadYouTubeApi().then(() => {
       if (destroyed) return;
       const w = window as any;
-      youtubePlayer = new w.YT.Player(`yt-inner-${id}`, {
+      youtubePlayer = new w.YT.Player(`yt-inner-${activeVideoId}`, {
         host: "https://www.youtube-nocookie.com",
-        videoId: id,
+        videoId: activeVideoId,
         width: "100%",
         height: "100%",
         playerVars,
@@ -956,7 +966,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
       }
       while (wrap.firstChild) wrap.removeChild(wrap.firstChild);
     };
-  }, [id, video?.video_id, videoMissing, membersOnlyNotice, playerKind, audioActive, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, playbackStartSeconds]);
+  }, [playerTargetId, membersOnlyNotice, playerKind, audioActive, requestYouTubePlayback, captionsDefaultOn, captionsDefaultLang, channelCaptionsOff, sharedStartSeconds]);
 
   useYouTubeMediaSession({ audioActive, playerKind, playerRef, video, watchTogetherTransportLocked });
 
