@@ -398,7 +398,7 @@ export const api = {
   syncChannelPlaylists: (id: string) => http<{ playlists: PlaylistInfo[]; count: number; synced: number; added: number; errors: number }>(`/channels/${id}/playlists/sync`, { method: "POST" }),
   syncChannelMetadata: (id: string) => http<{ checked: number; updated: number; dates: number; durations: number; shorts: number; failed: number; remaining: number }>(`/channels/${id}/metadata/sync`, { method: "POST" }),
   channelPlaylist: (id: string) => http<{ playlist: FollowedPlaylist }>(`/channel-playlists/${id}`),
-  channelPlaylistVideos: (id: string, sort: PlaylistSort = "oldest") => http<{ videos: Video[]; processing: Video[] }>(`/channel-playlists/${id}/videos?sort=${encodeURIComponent(sort)}`),
+  channelPlaylistVideos: (id: string, sort: PlaylistSort = "oldest") => http<{ videos: Video[]; processing: Video[]; order: string[] }>(`/channel-playlists/${id}/videos?sort=${encodeURIComponent(sort)}`),
   downloadChannelPlaylist: (id: string, sort: PlaylistSort = "playlist-order") => http<PlaylistDownloadResult>(`/channel-playlists/${id}/download?sort=${encodeURIComponent(sort)}`, { method: "POST", body: "{}" }),
   followPlaylist: (id: string, followed: boolean) => http<{ followed: boolean }>(`/channel-playlists/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
   syncPlaylist: (id: string) => http<{ added: number }>(`/channel-playlists/${id}/sync`, { method: "POST" }),

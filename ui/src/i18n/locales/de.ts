@@ -711,6 +711,7 @@ export const de: Locale = {
     playlistEmpty: "Keine Videos in dieser Playlist.",
     publicPlaylistsEmpty: "Keine öffentlichen Playlists gefunden.",
     playlistUnavailable: "Diese Playlist konnte nicht geöffnet werden.",
+    playlistPlayAll: "Alle wiedergeben",
     playlistSort: "Playlist sortieren",
     playlistSortOrder: "Playlist-Reihenfolge",
     playlistSortAddedOldest: "Hinzugefügt: älteste zuerst",

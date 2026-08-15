@@ -1,10 +1,14 @@
 .ui-page-header { align-items: flex-start; display: flex; gap: var(--space-4); justify-content: space-between; margin: 4px 0 20px; min-width: 0; }
-.ui-page-header__identity { align-items: center; display: flex; gap: 12px; min-width: 0; }
+.ui-page-header__identity { align-items: center; display: flex; flex: 1 0 220px; gap: 12px; min-width: 0; }
 .ui-page-header__icon { align-items: center; display: inline-flex; flex: 0 0 auto; }
 .ui-page-header__copy { min-width: 0; }
 .ui-page-header h1 { font-size: 19px; font-weight: 700; letter-spacing: -.2px; margin: 0; }
 .ui-page-header .ui-text { margin-top: 6px; max-width: 760px; }
-.ui-page-header__actions { align-items: center; display: flex; flex: 0 0 auto; flex-wrap: wrap; gap: var(--space-2); }
+.ui-page-header__actions { align-items: center; display: flex; flex: 0 1 auto; flex-wrap: wrap; gap: var(--space-2); justify-content: flex-end; min-width: 0; }
+@media (max-width: 720px) {
+  .ui-page-header { flex-wrap: wrap; }
+  .ui-page-header__actions { flex: 1 0 100%; justify-content: flex-start; }
+}
 .ui-section-header { align-items: flex-start; display: flex; gap: var(--space-3); justify-content: space-between; margin-bottom: 14px; min-width: 0; }
 .ui-section-header__copy { min-width: 0; }
 .ui-section-header h2, .ui-section-header h3, .ui-section-header h4 { align-items: center; display: flex; font-size: 15px; gap: 8px; margin: 0; }

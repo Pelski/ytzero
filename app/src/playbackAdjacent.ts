@@ -10,10 +10,24 @@ import { sortUserPlaylistRows, type UserPlaylistSortable } from "./userPlaylistS
 
 export type PlaybackDirection = "oldest" | "newest";
 
-export function adjacentFromOrder(ids: readonly string[], currentVideoId: string, direction: PlaybackDirection): string | null {
+export function nextFromOrder(ids: readonly string[], currentVideoId: string): string | null {
   const index = ids.indexOf(currentVideoId);
   if (index < 0) return null;
-  return ids[index + (direction === "newest" ? 1 : -1)] ?? null;
+  return ids[index + 1] ?? null;
+}
+
+export function adjacentFromOrder(ids: readonly string[], currentVideoId: string, direction: PlaybackDirection): string | null {
+  if (direction === "newest") return nextFromOrder(ids, currentVideoId);
+  const index = ids.indexOf(currentVideoId);
+  if (index < 0) return null;
+  return ids[index - 1] ?? null;
+}
+
+type OrderedPlaybackKind = Exclude<PlaybackContext["kind"], "feed">;
+
+export function adjacentFromPlaybackOrder(ids: readonly string[], currentVideoId: string, kind: OrderedPlaybackKind, direction: PlaybackDirection): string | null {
+  if (kind === "user-playlist" || kind === "channel-playlist") return nextFromOrder(ids, currentVideoId);
+  return adjacentFromOrder(ids, currentVideoId, direction);
 }
 
 async function feedAdjacent(userId: number, currentVideoId: string, context: Extract<PlaybackContext, { kind: "feed" }>, direction: PlaybackDirection) {
@@ -104,5 +118,6 @@ async function orderedVideoIds(userId: number, context: Exclude<PlaybackContext,
 
 export async function resolveAdjacentPlaybackVideoId(userId: number, currentVideoId: string, context: PlaybackContext, direction: PlaybackDirection): Promise<string | null> {
   if (context.kind === "feed") return feedAdjacent(userId, currentVideoId, context, direction);
-  return adjacentFromOrder(await orderedVideoIds(userId, context), currentVideoId, direction);
+  const ids = await orderedVideoIds(userId, context);
+  return adjacentFromPlaybackOrder(ids, currentVideoId, context.kind, direction);
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import "./UserPlaylistPage.css";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Download, Edit3, Save, Trash2, X } from "lucide-react";
+import { Download, Edit3, MoreHorizontal, Save, Trash2, X } from "lucide-react";
 import { api, type UserPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
@@ -10,8 +10,9 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import { Button, EmptyState, IconButton, Input, LocalToast, PageHeader, SelectMenu } from "../components/ui";
+import { Button, EmptyState, IconButton, Input, LocalToast, Menu, MenuItem, MenuSeparator, PageHeader, Popover, SelectMenu } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
+import PlaylistPlaybackActions from "../components/PlaylistPlaybackActions";
 import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 import { normalizeUserPlaylistSort, type UserPlaylistSort } from "../playlistSort";
 
@@ -31,6 +32,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   const [icon, setIcon] = useState("ListMusic");
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadFeedback, setDownloadFeedback] = useState("");
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!playlistId) return;
@@ -93,13 +95,39 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
       { value: "title-desc", label: t("playlistSortTitleDesc") },
     ]}
   />;
-  const downloadAction = !canDownloadPlaylist ? null : videos.some((video) => video.downloads_enabled)
-    ? <Popconfirm message={t("playlistDownloadConfirm", { count: videos.length })} onConfirm={downloadAll}><Button disabled={downloadPending} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button></Popconfirm>
-    : videos.length > 0 && videos.some((video) => video.downloads_allowed) ? <Button onClick={downloadAll} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button> : null;
-
   if (!playlist && loading) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return null;
   const playbackQueue: PlaybackQueueContext = { version: 1, kind: "user-playlist", playlistUuid: playlist.portable_uuid, sort };
+  const playPlaylistVideo = (video: Video) => onPlay(video, playbackQueue);
+  const downloadMenuItem = !canDownloadPlaylist ? null : videos.some((video) => video.downloads_enabled)
+    ? <Popconfirm
+        triggerClassName="ui-menu__popover-trigger"
+        message={t("playlistDownloadConfirm", { count: videos.length })}
+        onConfirm={() => { setActionsOpen(false); void downloadAll(); }}
+      >
+        <MenuItem disabled={downloadPending} icon={<Download />}>{t("playlistDownloadAll")}</MenuItem>
+      </Popconfirm>
+    : <MenuItem icon={<Download />} onClick={() => { setActionsOpen(false); void downloadAll(); }}>{t("playlistDownloadAll")}</MenuItem>;
+  const moreActions = <Popover
+    align="end"
+    surface="menu"
+    open={actionsOpen}
+    onOpenChange={setActionsOpen}
+    trigger={<IconButton variant={actionsOpen ? "secondary" : "ghost"} label={t("moreActions")} icon={<MoreHorizontal />} />}
+  >
+    <Menu>
+      {downloadMenuItem}
+      {!editing && <MenuItem icon={<Edit3 />} onClick={() => { setActionsOpen(false); setEditing(true); }}>{t("edit")}</MenuItem>}
+      {(downloadMenuItem !== null || !editing) && <MenuSeparator />}
+      <Popconfirm
+        triggerClassName="ui-menu__popover-trigger"
+        message={t("confirmDelete", { name: playlist.name })}
+        onConfirm={() => { setActionsOpen(false); void removePlaylist(); }}
+      >
+        <MenuItem icon={<Trash2 />}>{t("deletePlaylist")}</MenuItem>
+      </Popconfirm>
+    </Menu>
+  </Popover>;
 
   return (
     <>
@@ -114,12 +142,10 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
             </div>
           </div>
           <div className="playlist-actions">
+            <PlaylistPlaybackActions videos={videos} disabled={loading} onPlay={playPlaylistVideo} />
             {sortAction}
-            {downloadAction}
             {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
-            <Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}>
-              <Button variant="danger" leadingIcon={<Trash2 />}>{t("deletePlaylist")}</Button>
-            </Popconfirm>
+            {moreActions}
           </div>
         </div>
       ) : (
@@ -127,7 +153,12 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
           icon={<div className="playlist-icon"><PlaylistIcon icon={playlist.icon} /></div>}
           title={playlist.name}
           description={formatVideoCount(playlist.video_count, language)}
-          actions={<>{sortAction}{downloadAction}{downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}<IconButton variant="ghost" label={t("edit")} icon={<Edit3 />} onClick={() => setEditing(true)} /><Popconfirm message={t("confirmDelete", { name: playlist.name })} onConfirm={removePlaylist}><Button variant="danger" leadingIcon={<Trash2 />}>{t("deletePlaylist")}</Button></Popconfirm></>}
+          actions={<>
+            <PlaylistPlaybackActions videos={videos} disabled={loading} onPlay={playPlaylistVideo} />
+            {sortAction}
+            {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
+            {moreActions}
+          </>}
         />
       )}
 
@@ -141,7 +172,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
             <VideoCard
               key={v.video_id}
               video={v}
-              onPlay={(video) => onPlay(video, playbackQueue)}
+              onPlay={playPlaylistVideo}
               onChanged={load}
               onRemoveFromPlaylist={(videoId) => api.removeVideoFromUserPlaylist(playlist.id, videoId)}
             />

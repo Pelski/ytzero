@@ -66,7 +66,7 @@ api.get("/channel-playlists/:id/videos", async (c) => {
     WHERE cpv.playlist_id = ?
     ORDER BY cpv.position ASC`).all(id) as VideoRow[];
   const attached = sortPlaylistItems(await attachTags(uid, rows), normalizePlaylistSort(c.req.query("sort")), (video) => ({ title: video.title, publishedAt: video.published_at }));
-  return c.json({
+  return c.json({ order: attached.map((video) => video.video_id),
     videos: attached.filter((video) => video.published_at != null && video.published_at !== ""),
     processing: attached.filter((video) => video.published_at == null || video.published_at === ""),
   });

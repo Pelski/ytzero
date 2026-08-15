@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import "./ChannelPlaylistPage.css";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Download, FileClock, ListMinus, ListPlus, RefreshCw } from "lucide-react";
+import { Download, FileClock, ListMinus, ListPlus, MoreHorizontal, RefreshCw } from "lucide-react";
 import { api, type FollowedPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import { Button, EmptyState, LocalToast, SectionHeader, SelectMenu } from "../components/ui";
+import { EmptyState, IconButton, LocalToast, Menu, MenuItem, MenuSeparator, Popover, SectionHeader, SelectMenu } from "../components/ui";
 import Popconfirm from "../components/Popconfirm";
 import ChannelPlaylistHero from "../components/ChannelPlaylistHero";
+import PlaylistPlaybackActions from "../components/PlaylistPlaybackActions";
 import { normalizePlaylistSort, playlistSortSearch, type PlaylistSort } from "../playlistSort";
+import { videosInPlaylistOrder } from "../playlistPlayback";
 
 export default function ChannelPlaylistPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,10 +24,12 @@ export default function ChannelPlaylistPage() {
   useDocumentTitle(playlist?.title);
   const [videos, setVideos] = useState<Video[]>([]);
   const [processingVideos, setProcessingVideos] = useState<Video[]>([]);
+  const [videoOrder, setVideoOrder] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadFeedback, setDownloadFeedback] = useState("");
+  const [actionsOpen, setActionsOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -33,6 +37,7 @@ export default function ChannelPlaylistPage() {
     setPlaylist(details.playlist);
     setVideos(contents.videos);
     setProcessingVideos(contents.processing);
+    setVideoOrder(contents.order);
   }, [id, sort]);
 
   const changeSort = (next: PlaylistSort) => {
@@ -73,12 +78,27 @@ export default function ChannelPlaylistPage() {
   };
 
   const allPlaylistVideos = [...videos, ...processingVideos];
+  const orderedPlaylistVideos = videosInPlaylistOrder(allPlaylistVideos, videoOrder);
+  const canDownloadPlaylist = allPlaylistVideos.length > 0 && allPlaylistVideos.some((video) => video.downloads_allowed);
+  const playPlaylistVideo = (video: Video) => {
+    if (id) navigate(`/watch/${video.video_id}/playlist/${id}${playlistSortSearch(sort)}`);
+  };
 
   if (loading && !playlist) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return <EmptyState title={t("playlistUnavailable")} />;
+  const downloadMenuItem = !canDownloadPlaylist ? null : allPlaylistVideos.some((video) => video.downloads_enabled)
+    ? <Popconfirm
+        triggerClassName="ui-menu__popover-trigger"
+        message={t("playlistDownloadConfirm", { count: allPlaylistVideos.length })}
+        onConfirm={() => { setActionsOpen(false); void downloadAll(); }}
+      >
+        <MenuItem disabled={downloadPending} icon={<Download />}>{t("playlistDownloadAll")}</MenuItem>
+      </Popconfirm>
+    : <MenuItem icon={<Download />} onClick={() => { setActionsOpen(false); void downloadAll(); }}>{t("playlistDownloadAll")}</MenuItem>;
 
   return <>
     <ChannelPlaylistHero playlist={playlist} actions={<>
+          <PlaylistPlaybackActions videos={orderedPlaylistVideos} disabled={loading} onPlay={playPlaylistVideo} />
           <SelectMenu
             floating
             label={t("playlistSort")}
@@ -92,20 +112,39 @@ export default function ChannelPlaylistPage() {
               { value: "title-desc", label: t("playlistSortTitleDesc") },
             ]}
           />
-          <Button onClick={sync} disabled={pending} leadingIcon={<RefreshCw className={pending ? "spin" : undefined} />}>{t("syncPlaylist")}</Button>
-          <Button variant={playlist.followed ? "danger" : "primary"} onClick={toggleFollow} disabled={pending} leadingIcon={playlist.followed ? <ListMinus /> : <ListPlus />}>
-            {playlist.followed ? t("unfollowPlaylist") : t("followPlaylist")}
-          </Button>
-          {allPlaylistVideos.length > 0 && allPlaylistVideos.some((video) => video.downloads_allowed) && (allPlaylistVideos.some((video) => video.downloads_enabled)
-            ? <Popconfirm message={t("playlistDownloadConfirm", { count: allPlaylistVideos.length })} onConfirm={downloadAll}><Button disabled={downloadPending} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button></Popconfirm>
-            : <Button onClick={downloadAll} leadingIcon={<Download />}>{t("playlistDownloadAll")}</Button>)}
           {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
+          <Popover
+            align="end"
+            surface="menu"
+            open={actionsOpen}
+            onOpenChange={setActionsOpen}
+            trigger={<IconButton variant={actionsOpen ? "secondary" : "ghost"} label={t("moreActions")} icon={<MoreHorizontal />} />}
+          >
+            <Menu>
+              <MenuItem
+                disabled={pending}
+                icon={<RefreshCw className={pending ? "spin" : undefined} />}
+                onClick={() => { setActionsOpen(false); void sync(); }}
+              >
+                {t("syncPlaylist")}
+              </MenuItem>
+              {downloadMenuItem}
+              <MenuSeparator />
+              <MenuItem
+                disabled={pending}
+                icon={playlist.followed ? <ListMinus /> : <ListPlus />}
+                onClick={() => { setActionsOpen(false); void toggleFollow(); }}
+              >
+                {playlist.followed ? t("unfollowPlaylist") : t("followPlaylist")}
+              </MenuItem>
+            </Menu>
+          </Popover>
         </>} />
     {loading ? <VideoGridSkeleton gridSize="sm" /> : videos.length === 0 && processingVideos.length === 0 ? <EmptyState title={t("playlistIsEmpty")} /> : videos.length > 0 ?
-      <div className="video-grid video-grid--sm">{videos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}${playlistSortSearch(sort)}`)} onChanged={load} />)}</div> : null}
+      <div className="video-grid video-grid--sm">{videos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={playPlaylistVideo} onChanged={load} />)}</div> : null}
     {!loading && processingVideos.length > 0 && <section className="channel-playlist-processing">
       <SectionHeader title={t("processing")} icon={<FileClock />} />
-      <div className="video-grid video-grid--sm">{processingVideos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={() => navigate(`/watch/${video.video_id}/playlist/${playlist.playlist_id}${playlistSortSearch(sort)}`)} onChanged={load} />)}</div>
+      <div className="video-grid video-grid--sm">{processingVideos.map((video) => <VideoCard key={video.video_id} video={video} onPlay={playPlaylistVideo} onChanged={load} />)}</div>
     </section>}
   </>;
 }

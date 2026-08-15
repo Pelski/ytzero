@@ -711,6 +711,7 @@ export const en = {
     playlistEmpty: "No videos in this playlist.",
     publicPlaylistsEmpty: "No public playlists found.",
     playlistUnavailable: "This playlist could not be opened.",
+    playlistPlayAll: "Play all",
     playlistSort: "Sort playlist",
     playlistSortOrder: "Playlist order",
     playlistSortAddedOldest: "Date added: oldest first",

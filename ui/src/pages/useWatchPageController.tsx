@@ -17,6 +17,7 @@ import { DEFAULT_SCREENSHOT_FILENAME_TEMPLATE, parsePlayerScreenshotFormat } fro
 import { dispatchEnhanceEvent, ENHANCE_BRIDGE_EVENTS, ENHANCE_BRIDGE_VERSION, parseEnhanceEventDetail, parseEnhancePlayerEvent, resolveEnhanceContentType, sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
 import { subscribeServerEvent } from "../serverEvents";
 import { isPlaybackQueueContext, type PlaybackQueueContext } from "../playbackQueue";
+import { isContinuousPlaylistQueue, playbackEndAction } from "../playlistPlayback";
 import { restoreSidebarVisibility } from "../app-shell/sidebarVisibility";
 import { canAutoArchiveVideo, isMissingVideoError, loadYouTubeApi, resolveShareTimestamp, resolveWatchPlayerTarget } from "./watchRuntime";
 import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
@@ -174,9 +175,8 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const nextInPlaylistRef = useRef<string | null>(null);
   const playlistItemsRef = useRef<HTMLDivElement>(null);
   const activePlaylistItemRef = useRef<HTMLAnchorElement>(null);
-  // "Autoplay my feed" (#55): the next video in the main feed, prefetched so
-  // it's ready the instant the current one ends. Only populated when we got
-  // here from the Feed (feedContext) and the setting is on.
+  // Prefetch the next durable queue item. End-of-video policy decides whether
+  // a feed merely offers it or an explicitly ordered playlist advances to it.
   const {
     dismiss: dismissUpNextVideo,
     hasPrefetched: hasNextQueueVideo,
@@ -189,10 +189,15 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     video: upNextVideo,
   } = useUpNextQueue({
     currentVideoId: id,
-    direction: settings?.feed_autoplay_direction === "newest" ? "newest" : "oldest",
+    direction: isContinuousPlaylistQueue(playbackQueue) || settings?.feed_autoplay_direction === "newest" ? "newest" : "oldest",
     navigate,
     queue: playlistId ? null : playbackQueue,
   });
+  const queueEndAction = playbackEndAction(
+    playbackQueue,
+    hasNextQueueVideo,
+    settings?.feed_autoplay_enabled === "1",
+  );
   // Desired playback rate, read by the player's onReady/onStateChange so the
   // player effect doesn't need speed in its dependency list.
   const speedRef = useRef("1");
@@ -666,8 +671,9 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     // place instead of silently navigating the host away from every guest.
     if (watchTogetherRoomId) return;
     if (nextInPlaylistRef.current) navigate(nextInPlaylistRef.current);
-    else if (settings?.feed_autoplay_enabled === "1") showUpNextVideo();
-  }, [id, navigate, settings?.feed_autoplay_enabled, showUpNextVideo, watchTogetherRoomId]);
+    else if (queueEndAction === "advance") playNextQueueVideo();
+    else if (queueEndAction === "offer") showUpNextVideo();
+  }, [id, navigate, playNextQueueVideo, queueEndAction, showUpNextVideo, watchTogetherRoomId]);
 
   const playNextVideo = useCallback(() => {
     if (watchTogetherRoomId) return;
@@ -675,7 +681,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     else playNextQueueVideo();
   }, [navigate, nextPlaylistPath, playNextQueueVideo, watchTogetherRoomId]);
   const canPlayNextVideo = !watchTogetherRoomId && Boolean(
-    nextPlaylistPath || (settings?.feed_autoplay_enabled === "1" && hasNextQueueVideo),
+    nextPlaylistPath || queueEndAction !== "stop",
   );
   const closeWatchMode = useCallback(() => {
     if (document.querySelector(".ui-dialog")) document.dispatchEvent(new Event(SHORTCUT_CLOSE_EVENT));

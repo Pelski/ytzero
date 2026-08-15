@@ -711,6 +711,7 @@ export const pl: Locale = {
     playlistEmpty: "Brak filmów w playliście.",
     publicPlaylistsEmpty: "Nie znaleziono publicznych playlist.",
     playlistUnavailable: "Nie udało się otworzyć tej playlisty.",
+    playlistPlayAll: "Odtwórz wszystko",
     playlistSort: "Sortuj playlistę",
     playlistSortOrder: "Kolejność playlisty",
     playlistSortAddedOldest: "Data dodania: od najstarszych",
