@@ -217,6 +217,7 @@ export function formatViewsCount(views: number | null, language: Language): stri
 export function formatTimeAgo(iso: string | null, language: Language): string {
   if (!iso) return "";
   const diffMs = Date.now() - parseAppTimestamp(iso).getTime();
+  if (!Number.isFinite(diffMs)) return "";
   if (Math.abs(diffMs) < 60_000) {
     return localeFor(language).messages.notificationJustNow.toLocaleLowerCase(LOCALE_TAGS[language]);
   }
@@ -238,6 +239,6 @@ export function formatTimeAgo(iso: string | null, language: Language): string {
 
 /** Format a pre-parsed "time ago" pair (e.g. from YouTube search results) in the UI language. */
 export function formatPublishedAgo(published: { value: number; unit: Intl.RelativeTimeFormatUnit } | null, language: Language): string {
-  if (!published) return "";
+  if (!published || !Number.isFinite(published.value)) return "";
   return new Intl.RelativeTimeFormat(LOCALE_TAGS[language], { numeric: "always", style: "short" }).format(-published.value, published.unit);
 }

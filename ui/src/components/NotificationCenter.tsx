@@ -12,6 +12,7 @@ import { subscribeServerEvent } from "../serverEvents";
 
 function notificationTime(value: string, locale: string, timeZone: string, justNow: string): string {
   const date = parseAppTimestamp(value);
+  if (!Number.isFinite(date.getTime())) return "";
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
   if (Math.abs(seconds) < 60) return justNow;
   const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
