@@ -129,14 +129,36 @@
   align-items: center;
   justify-content: center;
 }
+/* Browsers that block the iframe's autoplay leave the video paused, so the
+   whole overlay is the play affordance: a click anywhere over the video
+   starts playback instead of only the centred cue. */
 .wp-autoplay-blocked {
   position: absolute;
   inset: 0;
   z-index: 2;
   display: grid;
   place-items: center;
+  border: 0;
+  padding: 0;
   background: rgba(0, 0, 0, 0.42);
+  color: var(--bg);
+  cursor: pointer;
+  font: inherit;
 }
+.wp-autoplay-blocked:hover { background: rgba(0, 0, 0, 0.36); }
+.wp-autoplay-blocked:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.wp-autoplay-blocked-cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 15px;
+  border-radius: 999px;
+  background: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.wp-autoplay-blocked:hover .wp-autoplay-blocked-cue { background: #d9d9d9; }
 .wp-panel-scrim {
   position: absolute;
   inset: 0;

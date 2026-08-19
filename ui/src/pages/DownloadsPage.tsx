@@ -46,7 +46,7 @@ const SOURCE_KEYS: Record<string, I18nKey> = {
   feed: "dlSourceFeed",
 };
 
-export default function DownloadsPage() {
+export default function DownloadsPage({ shortsEnabled }: { shortsEnabled: boolean }) {
   const { t, language } = useI18n();
   const [searchParams, setSearchParams] = useSearchParams();
   useDocumentTitle(t("downloadsTitle"));
@@ -111,8 +111,9 @@ export default function DownloadsPage() {
   ) : <PageSkeleton />;
 
   const usedFrac = data.stats.cap_bytes > 0 ? Math.min(1, data.stats.bytes / data.stats.cap_bytes) : 0;
-  const queueItems = data.downloads.filter((d) => d.status === "downloading" || d.status === "queued" || d.status === "error");
-  const doneItems = data.downloads.filter((d) => d.status === "done");
+  const visibleDownloads = data.downloads.filter((item) => shortsEnabled || item.is_short !== 1);
+  const queueItems = visibleDownloads.filter((d) => d.status === "downloading" || d.status === "queued" || d.status === "error");
+  const doneItems = visibleDownloads.filter((d) => d.status === "done");
   const visibleQueue = queueExpanded ? queueItems : queueItems.slice(0, QUEUE_COLLAPSED_COUNT);
 
   const renderRow = (item: DownloadItem) => {
@@ -220,8 +221,8 @@ export default function DownloadsPage() {
         <Alert className="dl-alert-layout" variant="warning" icon={<AlertTriangle />}>{t("downloadsYtdlpJsRuntimeMissing")}</Alert>
       )}
 
-      {view === "automation" && <DownloadAutomation />}
-      {view === "configuration" && <DownloadConfiguration />}
+      {view === "automation" && <DownloadAutomation shortsEnabled={shortsEnabled} />}
+      {view === "configuration" && <DownloadConfiguration shortsEnabled={shortsEnabled} />}
       {view === "library" && (queueItems.length === 0 && doneItems.length === 0 ? (
         <EmptyState art={<EmptyArt scene="noDownloads" />} title={t("downloadsEmptyTitle")} description={t("downloadsEmpty")} />
       ) : (

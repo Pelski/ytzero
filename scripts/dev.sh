@@ -27,12 +27,12 @@ APP_PID=$!
 
 (
   cd "$ROOT_DIR/ui"
-  bun run dev --host 0.0.0.0
+  bun run dev --host 0.0.0.0 --port 5174
 ) &
 UI_PID=$!
 
 echo "ytzero dev"
-echo "  ui:  http://localhost:5173"
+echo "  ui:  http://localhost:5174"
 echo "  api: http://localhost:3001"
 
 wait "$APP_PID" "$UI_PID"

@@ -35,6 +35,7 @@ type AppRoutesProps = {
   isAdmin: boolean;
   onPlay: (video: Video, playbackQueue?: PlaybackQueueContext) => void;
   profilePermissions: ProfilePermissions;
+  shortsEnabled: boolean;
   showTopChannels: boolean;
   showToast: (message: string, variant?: ToastVariant) => void;
 };
@@ -46,6 +47,7 @@ export default function AppRoutes({
   isAdmin,
   onPlay,
   profilePermissions,
+  shortsEnabled,
   showTopChannels,
   showToast,
 }: AppRoutesProps) {
@@ -64,23 +66,23 @@ export default function AppRoutes({
           ? <SocialPage onPlay={onPlay} showToast={showToast} />
           : <Navigate to="/" replace />} />
         <Route path="/discovery" element={<Navigate to="/recommendations" replace />} />
-        <Route path="/shorts" element={<ShortsPage />} />
-        <Route path="/shorts/:videoId" element={<ShortsPage />} />
+        <Route path="/shorts" element={shortsEnabled ? <ShortsPage /> : <Navigate to="/" replace />} />
+        <Route path="/shorts/:videoId" element={shortsEnabled ? <ShortsPage /> : <Navigate to="/" replace />} />
         <Route path="/live" element={<LivePage onPlay={onPlay} />} />
         <Route path="/watch/:id" element={<WatchPage />} />
         <Route path="/watch/:id/playlist/:playlistId" element={<WatchPage />} />
-        <Route path="/channel/:id" element={<ChannelPage onPlay={onPlay} />} />
+        <Route path="/channel/:id" element={<ChannelPage onPlay={onPlay} shortsEnabled={shortsEnabled} />} />
         <Route path="/subscriptions" element={<SubscriptionsPage />} />
         <Route path="/playlists/:id" element={<UserPlaylistPage onPlay={onPlay} />} />
         <Route path="/playlist/:id" element={<ChannelPlaylistPage />} />
         <Route path="/followed-playlists" element={<FollowedPlaylistsPage />} />
         <Route path="/watchlist" element={<WatchlistPage />} />
-        <Route path="/downloads" element={<DownloadsPage />} />
-        <Route path="/liked" element={<LikedPage onPlay={onPlay} />} />
+        <Route path="/downloads" element={<DownloadsPage shortsEnabled={shortsEnabled} />} />
+        <Route path="/liked" element={<LikedPage onPlay={onPlay} shortsEnabled={shortsEnabled} />} />
         <Route path="/history" element={<HistoryPage onPlay={onPlay} allowHistoryDeletion={childStatus?.is_child !== true} />} />
         <Route path="/archive" element={<ArchivePage onPlay={onPlay} />} />
         <Route path="/cleanup" element={<CleanupPage />} />
-        <Route path="/insights" element={<InsightsPage />} />
+        <Route path="/insights" element={<InsightsPage shortsEnabled={shortsEnabled} />} />
         <Route path="/settings" element={<SettingsPage showToast={showToast} />} />
         <Route path="/import" element={isAdmin || !profilePermissions.admin_only_areas.includes("imports")
           ? <ImportPage showToast={showToast} />

@@ -9,7 +9,7 @@ import { Button, Chip, EmptyState, PageHeader } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 
-export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
+export default function LikedPage({ onPlay, shortsEnabled }: { onPlay: PlayVideo; shortsEnabled: boolean }) {
   const { t } = useI18n();
   useDocumentTitle(t("navLiked"));
   const [videos, setVideos] = useState<Video[]>([]);
@@ -17,13 +17,14 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [showShorts, setShowShorts] = useState(true);
+  const [showShorts, setShowShorts] = useState(shortsEnabled);
+  const includeShorts = shortsEnabled && showShorts;
 
   const load = useCallback((requestedPage = page) => {
     if (requestedPage === 0) setLoading(true);
     else setLoadingMore(true);
     api
-      .feed({ liked: true, status: "all", shorts: showShorts, all_sources: true, page: requestedPage })
+      .feed({ liked: true, status: "all", shorts: includeShorts, all_sources: true, page: requestedPage })
       .then((r) => {
         setVideos((prev) => (requestedPage === 0 ? r.videos : [...prev, ...r.videos]));
         setHasMore(r.videos.length === 40);
@@ -33,7 +34,7 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
       .finally(() => {
         setLoadingMore(false);
       });
-  }, [page, showShorts]);
+  }, [page, includeShorts]);
 
   useEffect(load, [load]);
 
@@ -42,12 +43,12 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
     setVideos([]);
     setShowShorts((prev) => !prev);
   };
-  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "liked", showShorts };
+  const playbackQueue: PlaybackQueueContext = { version: 1, kind: "liked", showShorts: includeShorts };
 
   return (
     <>
       <PageHeader title={t("navLiked")} />
-      <div className="chip-bar liked-filter-bar">
+      {shortsEnabled && <div className="chip-bar liked-filter-bar">
         <Chip
           active={showShorts === true}
           onClick={toggleShorts}
@@ -55,7 +56,7 @@ export default function LikedPage({ onPlay }: { onPlay: PlayVideo }) {
           <Clapperboard size={13} />
           {t("navShorts")}
         </Chip>
-      </div>
+      </div>}
       {loading && videos.length === 0 ? (
         <VideoGridSkeleton />
       ) : videos.length === 0 ? (

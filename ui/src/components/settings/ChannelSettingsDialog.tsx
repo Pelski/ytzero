@@ -42,11 +42,12 @@ export function hasCustomChannelSettings(channel: Channel): boolean {
     || schedule.refresh_schedule_time != null;
 }
 
-export default function ChannelSettingsDialog({ channel, open, onOpenChange, onSaved }: {
+export default function ChannelSettingsDialog({ channel, open, onOpenChange, onSaved, shortsEnabled }: {
   channel: Channel | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaved?: () => void;
+  shortsEnabled: boolean;
 }) {
   const { t } = useI18n();
   const [loadedChannel, setLoadedChannel] = useState<Channel | null>(null);
@@ -195,7 +196,7 @@ export default function ChannelSettingsDialog({ channel, open, onOpenChange, onS
               onChange={(membersOnly) => setDraft((current) => current && ({ ...current, membersOnly }))}
             />
           </SettingRow>
-          <SettingRow label={t("channelShortsFeed")}>
+          {shortsEnabled && <SettingRow label={t("channelShortsFeed")}>
             <SelectMenu
               floating
               disabled={!followed}
@@ -207,7 +208,7 @@ export default function ChannelSettingsDialog({ channel, open, onOpenChange, onS
               ]}
               onChange={(shorts) => setDraft((current) => current && ({ ...current, shorts }))}
             />
-          </SettingRow>
+          </SettingRow>}
           <SettingRow label={t("channelRefreshSchedule")} description={t("channelRefreshScheduleHint")}>
             <Button disabled={!followed} leadingIcon={<CalendarClock />} onClick={() => setScheduleOpen(true)}>{t("channelRefreshSchedule")}</Button>
           </SettingRow>

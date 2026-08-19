@@ -63,7 +63,7 @@ export interface DeArrowBranding {
 }
 
 export type MembersOnlyVisibility = "default" | "everywhere" | "channel" | "hidden";
-export type ShortsFeedMode = "0" | "selected" | "1";
+export type ShortsFeedMode = "disabled" | "0" | "selected" | "1";
 export type ChannelShortsFeedVisibility = "default" | "show";
 export type ChannelManualStatus = "active" | "paused" | "broken" | "banned" | "deleted";
 

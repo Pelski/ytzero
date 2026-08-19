@@ -1,5 +1,5 @@
 import { database } from "./database";
-import { feedVisibilityWhere } from "./feedQuery";
+import { feedVisibilityWhere, shortsUiVisibilitySql } from "./feedQuery";
 import { cleanupSelectionWhere, type CleanupFilter } from "./cleanupQuery";
 import { configuredTimeZone, zonedDateTimeToUtc } from "./timeZone";
 
@@ -30,6 +30,7 @@ export function buildCleanupWhere(
   const selection = cleanupSelectionWhere(normalizedFilter, uid);
   const selectionSql = selection.where.length ? selection.where.join(" AND ") : "1=1";
   const where = [...visibility.where];
+  where.push(shortsUiVisibilitySql(uid));
   const params = [...visibility.params];
   const excludeSql = excludeVideoIds.length ? `v.video_id NOT IN (${excludeVideoIds.map(() => "?").join(",")})` : null;
 

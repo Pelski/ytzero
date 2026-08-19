@@ -124,7 +124,7 @@ describe("portable backup classification and restore", () => {
   test("round-trips the Shorts feed mode and per-channel opt-in", async () => {
     const options = await backup.backupOptions();
     const profile = options.profiles[0];
-    await setUserSetting(1, "show_shorts", "selected");
+    await setUserSetting(1, "show_shorts", "disabled");
     db.prepare("UPDATE user_channels SET shorts_feed_visibility='show' WHERE user_id=1 AND channel_id='UCportable'").run();
     const zip = await backup.createPortableBackup({ preset: "setup", profiles: [profile.id] });
 
@@ -140,7 +140,7 @@ describe("portable backup classification and restore", () => {
     });
     await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
 
-    expect(getUserSetting(1, "show_shorts")).toBe("selected");
+    expect(getUserSetting(1, "show_shorts")).toBe("disabled");
     expect((db.prepare("SELECT shorts_feed_visibility FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").get() as any)?.shorts_feed_visibility).toBe("show");
   });
 

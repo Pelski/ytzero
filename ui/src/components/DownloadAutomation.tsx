@@ -33,7 +33,7 @@ function polishForm(count: number, one: string, few: string, many: string) {
   return mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many;
 }
 
-export default function DownloadAutomation() {
+export default function DownloadAutomation({ shortsEnabled }: { shortsEnabled: boolean }) {
   const { language } = useI18n();
   const tx = (en: string, pl: string, de: string) => language === "pl" ? pl : language === "de" ? de : en;
   const [rules, setRules] = useState<DownloadRule[]>([]);
@@ -172,7 +172,7 @@ export default function DownloadAutomation() {
       <SettingsSection title={tx("Video scope", "Zakres materiałów", "Videoumfang")} description={tx("Standard videos are always included. Add other types only when you want them too.", "Standardowe filmy są uwzględniane zawsze. Pozostałe typy możesz dodać opcjonalnie.", "Standardvideos sind immer enthalten. Weitere Typen können optional ergänzt werden.")}>
         <SettingRow align="start" label={tx("Additional types", "Dodatkowe typy", "Zusätzliche Typen")} description={tx("These extend the rule beyond standard videos.", "Te opcje rozszerzają regułę poza standardowe filmy.", "Diese Optionen erweitern die Regel über Standardvideos hinaus.")}>
           <div className="dl-rule-checkboxes">
-            <Checkbox label="Shorts" description={tx("Include Shorts in addition to standard videos.", "Pobieraj Shorts dodatkowo, obok standardowych filmów.", "Shorts zusätzlich zu Standardvideos laden.")} checked={draft.include_shorts} onChange={(event) => setDraft({ ...draft, include_shorts: event.target.checked })} />
+            {shortsEnabled && <Checkbox label="Shorts" description={tx("Include Shorts in addition to standard videos.", "Pobieraj Shorts dodatkowo, obok standardowych filmów.", "Shorts zusätzlich zu Standardvideos laden.")} checked={draft.include_shorts} onChange={(event) => setDraft({ ...draft, include_shorts: event.target.checked })} />}
             <Checkbox label={tx("Members-only videos", "Filmy tylko dla wspierających", "Videos nur für Mitglieder")} description={tx("Include them in addition to standard videos. Requires working YouTube cookies and channel access.", "Pobieraj je dodatkowo, obok standardowych filmów. Wymaga działających cookies i dostępu do kanału.", "Zusätzlich zu Standardvideos laden. Erfordert Cookies und Kanalzugriff.")} checked={draft.include_members_only} onChange={(event) => setDraft({ ...draft, include_members_only: event.target.checked })} />
           </div>
         </SettingRow>

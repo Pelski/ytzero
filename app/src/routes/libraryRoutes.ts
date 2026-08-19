@@ -4,7 +4,7 @@ import { childLocalOnly } from "../childTime";
 import { cancelAutoDownloadIfUnwanted } from "../downloader";
 import { refreshDiscoveryInBackground } from "../plugins";
 import { searchYouTube } from "../youtube";
-import { feedSortSql } from "../feedQuery";
+import { feedSortSql, shortsUiVisibilitySql } from "../feedQuery";
 import { buildCleanupWhere, countCleanupMatches, listCleanupVideoIds, snapshotUserVideoState, applyCleanupAction, restoreUserVideoState, saveBulkUndo, loadBulkUndo, clearBulkUndo, type CleanupFilter } from "../cleanup";
 import { videoSelect, type VideoRow } from "../videoRoutesSupport";
 
@@ -88,6 +88,7 @@ api.get("/in-progress", async (c) => {
       AND uv.watch_position >= 3
       AND CAST(uv.watch_position AS REAL) / uv.watch_duration < 0.92
       AND COALESCE(uv.status, 'inbox') = 'inbox'
+      AND ${shortsUiVisibilitySql(uid)}
     ORDER BY lw.last_watched DESC
     LIMIT 20
   `).all() as VideoRow[];

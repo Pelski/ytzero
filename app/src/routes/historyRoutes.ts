@@ -2,6 +2,7 @@ import type { Context, Hono } from "hono";
 import { database } from "../database";
 import { isChildUser } from "../childTime";
 import { refreshDiscoveryInBackground } from "../plugins";
+import { shortsUiVisibilitySql } from "../feedQuery";
 import type { VideoRow } from "../videoRoutesSupport";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
@@ -39,6 +40,7 @@ export function registerHistoryRoutes(
          FROM latest_history h JOIN videos v ON v.video_id = h.video_id
          JOIN channels c ON c.channel_id = v.channel_id
          LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ?
+         WHERE ${shortsUiVisibilitySql(uid)}
          ORDER BY h.watched_at DESC, h.history_id DESC LIMIT ? OFFSET ?`,
       )
       .all(uid, uid, pageSize + 1, page * pageSize) as (VideoRow & { history_id: number; watched_at: string })[];

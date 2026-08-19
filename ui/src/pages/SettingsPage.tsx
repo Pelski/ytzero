@@ -1330,7 +1330,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         </SettingsSection>
       )}
         </div>
-        <ChannelSettingsDialog channel={settingsChannel} open={settingsChannel !== null} onOpenChange={(open) => { if (!open) setSettingsChannel(null); }} onSaved={() => void load()} />
+        <ChannelSettingsDialog channel={settingsChannel} open={settingsChannel !== null} onOpenChange={(open) => { if (!open) setSettingsChannel(null); }} onSaved={() => void load()} shortsEnabled={controller.shortsFeedMode !== "disabled"} />
       </div>
     </>
   );

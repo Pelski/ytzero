@@ -23,16 +23,15 @@ import { useChannelSyncActivity } from "../useChannelSyncActivity";
 import ChannelPosts from "../components/ChannelPosts";
 
 type Tab = "videos" | "shorts" | "playlists" | "posts" | "processing";
-
 // Matches the server's default /feed page size.
 const CHANNEL_PAGE_SIZE = 40;
 
-export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) {
+export default function ChannelPage({ onPlay, shortsEnabled }: { onPlay: (v: Video) => void; shortsEnabled: boolean }) {
   const { t, language, locale, timeZone } = useI18n();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = (searchParams.get("tab") as Tab) ?? "videos";
+  const requestedTab = (searchParams.get("tab") as Tab) ?? "videos"; const tab = !shortsEnabled && requestedTab === "shorts" ? "videos" : requestedTab;
   const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true });
   const [about, setAbout] = useState<ChannelAbout | null>(null);
   const [loadedBanner, setLoadedBanner] = useState<string | null>(null);
@@ -56,6 +55,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
   const [refreshScheduleOpen, setRefreshScheduleOpen] = useState(false);
   const [startedSyncJobId, setStartedSyncJobId] = useState<string | null>(null);
   const [technicalView, setTechnicalView] = useState<"root" | "speed" | "captions" | "members" | "shorts">("root");
+  useEffect(() => { if (!shortsEnabled && technicalView === "shorts") setTechnicalView("root"); }, [shortsEnabled, technicalView]);
   const [channelTags, setChannelTags] = useState<Tag[]>([]);
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [tagsLoading, setTagsLoading] = useState(true);
@@ -554,7 +554,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     {withFeedSettingsTooltip(<button className="channel-technical-item" disabled={!followed} onClick={() => setTechnicalView("members")}>
                       <Star /> <span>{t("channelMembersOnlyFeed")}</span><MenuStatus>{membersOnlyFeedLabel}</MenuStatus><ChevronRight />
                     </button>)}
-                    {withFeedSettingsTooltip(<button className="channel-technical-item" disabled={!followed} onClick={() => setTechnicalView("shorts")}>
+                    {shortsEnabled && withFeedSettingsTooltip(<button className="channel-technical-item" disabled={!followed} onClick={() => setTechnicalView("shorts")}>
                       <Zap /> <span>{t("channelShortsFeed")}</span><MenuStatus>{shortsFeedLabel}</MenuStatus><ChevronRight />
                     </button>)}
                   </>
@@ -619,7 +619,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
                     </button>
                   </>
                 )}
-                {technicalView === "shorts" && (
+                {shortsEnabled && technicalView === "shorts" && (
                   <>
                     <div className="more-menu-header"><button className="more-menu-back" onClick={() => setTechnicalView("root")}><ChevronLeft /></button>{t("channelShortsFeed")}</div>
                     <button className={shortsFeedVisibility === "default" ? "is-selected" : undefined} onClick={() => changeShortsFeedVisibility("default")}>
@@ -679,7 +679,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           onChange={setTab}
           options={[
             { value: "videos", label: t("videos"), icon: <VideoIcon />, count: videoCount },
-            ...(shortCount > 0 ? [{ value: "shorts" as const, label: "Shorts", icon: <Zap />, count: shortCount }] : []),
+            ...(shortsEnabled && shortCount > 0 ? [{ value: "shorts" as const, label: "Shorts", icon: <Zap />, count: shortCount }] : []),
             { value: "playlists", label: t("playlists"), icon: <ListVideo />, count: playlists?.length },
             ...(postsEnabled ? [{ value: "posts" as const, label: t("channelPosts"), icon: <MessageSquareText /> }] : []),
             ...(processingCount > 0 ? [{ value: "processing" as const, label: t("processing"), icon: <FileClock />, count: processingCount }] : []),
@@ -732,7 +732,7 @@ export default function ChannelPage({ onPlay }: { onPlay: (v: Video) => void }) 
           </div>
         ))}
 
-      {!searchActive && tab === "shorts" && (
+      {shortsEnabled && !searchActive && tab === "shorts" && (
         videosLoading ? (
           <VideoGridSkeleton />
         ) : (

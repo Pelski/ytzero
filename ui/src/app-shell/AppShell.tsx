@@ -44,13 +44,15 @@ export default function AppShell({ isAdmin }: { isAdmin: boolean }) {
   }
 
   const { visible: allNavItems, hidden: allHiddenNavItems } = splitNavItems(preferences.navConfig);
+  const shortsEnabled = preferences.appSettings?.show_shorts !== "disabled";
   const pluginRouteVisible = (path: string) => !plugins.knownPluginRoutes.has(path) || plugins.enabledPluginRoutes?.has(path);
   const childRouteVisible = (path: string) =>
     !(profile.childStatus?.hide_shorts && path === "/shorts")
     && !(profile.childStatus?.hide_live && path === "/live")
     && !(profile.childStatus?.is_child && (path === "/downloads" || path === "/insights"));
-  const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
-  const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to));
+  const shortsRouteVisible = (path: string) => shortsEnabled || path !== "/shorts";
+  const navItems = allNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to) && shortsRouteVisible(item.to));
+  const hiddenNavItems = allHiddenNavItems.filter((item) => pluginRouteVisible(item.to) && childRouteVisible(item.to) && shortsRouteVisible(item.to));
 
   return (
     <AppNameContext.Provider value={preferences.appName}>
@@ -91,6 +93,7 @@ export default function AppShell({ isAdmin }: { isAdmin: boolean }) {
                   isAdmin={isAdmin}
                   onPlay={play}
                   profilePermissions={preferences.profilePermissions}
+                  shortsEnabled={shortsEnabled}
                   showTopChannels={preferences.appSettings?.show_top_channels !== "0"}
                   showToast={showToast}
                 />

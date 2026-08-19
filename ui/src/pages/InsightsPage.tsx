@@ -67,7 +67,7 @@ function InsightMiniList({ title, items, empty }: { title: string; items: Insigh
   </div>;
 }
 
-export default function InsightsPage() {
+export default function InsightsPage({ shortsEnabled }: { shortsEnabled: boolean }) {
   const { t, locale } = useI18n();
   useDocumentTitle(t("insightsTitle"));
   const [days, setDays] = useState(30);
@@ -104,10 +104,10 @@ export default function InsightsPage() {
   const maxChannel = Math.max(data.channels[0]?.seconds ?? 0, 1);
   const maxTag = Math.max(data.tags[0]?.seconds ?? 0, 1);
   const visibleTagRhythms = data.tag_rhythms.filter((profile) => profile.tags.length > 0);
-  const contentTotal = data.content.reduce((sum, item) => sum + item.seconds, 0);
+  const visibleContent = data.content.filter((item) => shortsEnabled || item.key !== "shorts"); const contentTotal = visibleContent.reduce((sum, item) => sum + item.seconds, 0);
   const regular = data.content.find((item) => item.key === "regular")?.seconds ?? 0;
-  const shorts = data.content.find((item) => item.key === "shorts")?.seconds ?? 0;
-  const donut = contentTotal ? `${regular / contentTotal * 360}deg ${shorts / contentTotal * 360}deg` : "0deg 0deg";
+  const shorts = shortsEnabled ? data.content.find((item) => item.key === "shorts")?.seconds ?? 0 : 0;
+  const donut = contentTotal ? `${regular / contentTotal * 360}deg ${(regular + shorts) / contentTotal * 360}deg` : "0deg 0deg";
   const change = summary.change_percent;
   const rangeLabels: Record<number, string> = { 7: t("insightsRange7"), 30: t("insightsRange30"), 90: t("insightsRange90"), 365: t("insightsRange365") };
   const periodLabels: Record<string, string> = {
@@ -173,7 +173,7 @@ export default function InsightsPage() {
             <div className="insights-card-head"><div><h2>{t("insightsContentMix")}</h2><p>{t("insightsContentMixHint")}</p></div></div>
             <div className="insights-content-body">
               <div className="insights-donut" style={{ background: `conic-gradient(#7c5cff 0 ${donut.split(" ")[0]}, #36c5f0 ${donut.split(" ")[0]} ${donut.split(" ")[1]}, #ff4d6d ${donut.split(" ")[1]} 360deg)` }}><span>{formatDuration(contentTotal, locale)}</span></div>
-              <div className="insights-legend">{data.content.map((item) => <div key={item.key}><i className={`is-${item.key}`} /><span>{contentLabels[item.key]}</span><strong>{contentTotal ? Math.round(item.seconds / contentTotal * 100) : 0}%</strong></div>)}</div>
+              <div className="insights-legend">{visibleContent.map((item) => <div key={item.key}><i className={`is-${item.key}`} /><span>{contentLabels[item.key]}</span><strong>{contentTotal ? Math.round(item.seconds / contentTotal * 100) : 0}%</strong></div>)}</div>
             </div>
           </article>
         </section>

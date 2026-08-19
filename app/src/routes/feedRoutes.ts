@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import { database } from "../database";
 import { getUserSetting } from "../db";
 import { childHidesLive } from "../childTime";
-import { feedVisibilityWhere, feedSortSql, feedSourceExists, tagFilterSql, filterOnlySql } from "../feedQuery";
+import { feedVisibilityWhere, feedSortSql, feedSourceExists, tagFilterSql, filterOnlySql, shortsUiVisibilitySql } from "../feedQuery";
 import { videoSelect, type VideoRow } from "../videoRoutesSupport";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
@@ -110,6 +110,7 @@ api.get("/feed", async (c) => {
       params.push(...fo.params);
     }
   }
+  if (getUserSetting(uid, "show_shorts") === "disabled") where.push("COALESCE(v.is_short, 0) = 0");
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const feedSort = c.req.query("sort") === "arrival" ? "arrival" : "published";
   const rows = await database
@@ -134,6 +135,7 @@ api.get("/feed/adjacent", async (c) => {
   if (!anchor || !anchorTime) return c.json({ video: null });
 
   const { where, params } = feedVisibilityWhere(c.req.query(), uid);
+  where.push(shortsUiVisibilitySql(uid));
   const comparison = direction === "oldest" ? ">" : "<";
   where.push(`(${sortColumn} ${comparison} ? OR (${sortColumn} = ? AND v.video_id ${comparison} ?))`);
   params.push(anchorTime, anchorTime, anchor.video_id);

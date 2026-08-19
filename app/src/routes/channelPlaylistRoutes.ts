@@ -7,6 +7,7 @@ import { syncPlaylist } from "../refresher";
 import { videoSelect, type VideoRow } from "../videoRoutesSupport";
 import { profileDownloadsEnabled } from "../downloadConfig";
 import { normalizePlaylistSort, sortPlaylistItems } from "../playlistSort";
+import { shortsUiVisibilitySql } from "../feedQuery";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -64,6 +65,7 @@ api.get("/channel-playlists/:id/videos", async (c) => {
   const rows = await database.prepare(`${videoSelect(uid)}
     JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
     WHERE cpv.playlist_id = ?
+      AND ${shortsUiVisibilitySql(uid)}
     ORDER BY cpv.position ASC`).all(id) as VideoRow[];
   const attached = sortPlaylistItems(await attachTags(uid, rows), normalizePlaylistSort(c.req.query("sort")), (video) => ({ title: video.title, publishedAt: video.published_at }));
   return c.json({ order: attached.map((video) => video.video_id),
@@ -154,6 +156,7 @@ api.get("/followed-playlists/updates", async (c) => {
     const rows = await database.prepare(`${videoSelect(uid)}
       JOIN channel_playlist_videos cpv ON cpv.video_id = v.video_id
       WHERE cpv.playlist_id = ?
+        AND ${shortsUiVisibilitySql(uid)}
         AND v.published_at IS NOT NULL AND v.published_at != ''
         AND cpv.discovered_at > ?
         AND COALESCE(uv.watched, 0) = 0

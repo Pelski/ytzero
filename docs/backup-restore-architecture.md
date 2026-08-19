@@ -299,7 +299,8 @@ below.
   configuration in `profile.subscriptions` schema v2; older v1 archives inherit
   the profile default. The profile-wide Shorts feed mode is portable
   configuration in `profile.settings` schema v2. Its legacy `0` and `1` values
-  retain their existing meanings, while `selected` enables channel opt-ins.
+  retain their existing meanings, `selected` enables channel opt-ins, and
+  `disabled` removes Shorts content and controls throughout that profile's UI.
 - `user_followed_playlists`: followed playlist ID and feed preference.
 - `tags`, `channel_tags`, manual `video_tags`, `auto_tag_rules`.
 - `filter_rules`.

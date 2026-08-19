@@ -1,7 +1,7 @@
 import { childDownloadsOnly, childHidesLive } from "./childTime";
 import { database } from "./database";
 import { getUserSetting } from "./db";
-import { feedSortSql, feedVisibilityWhere } from "./feedQuery";
+import { feedSortSql, feedVisibilityWhere, shortsUiVisibilitySql } from "./feedQuery";
 import type { PlaybackContext, WatchlistSort } from "./playbackContext";
 import { sortFetchedPlaylistVideos } from "./playlistVideoOrder";
 import { recommendationQueueVideoIds } from "./plugins";
@@ -36,6 +36,7 @@ async function feedAdjacent(userId: number, currentVideoId: string, context: Ext
   const anchorTime = context.sort === "arrival" ? anchor?.created_at : anchor?.published_at;
   if (!anchor || !anchorTime) return null;
   const { where, params } = feedVisibilityWhere({ tags: context.tags.join(","), show_all: context.showAll ? "1" : undefined }, userId);
+  where.push(shortsUiVisibilitySql(userId));
   const comparison = direction === "oldest" ? ">" : "<";
   where.push(`(${sortColumn} ${comparison} ? OR (${sortColumn} = ? AND v.video_id ${comparison} ?))`);
   params.push(anchorTime, anchorTime, anchor.video_id);
@@ -85,20 +86,20 @@ export function watchlistOrder(rows: WatchlistRow[], sort: WatchlistSort, locale
 async function orderedVideoIds(userId: number, context: Exclude<PlaybackContext, { kind: "feed" }>): Promise<string[]> {
   if (context.kind === "liked") {
     const where = ["uv.user_id = ?", "uv.liked = 1", "v.published_at IS NOT NULL", "v.published_at != ''"];
-    if (!context.showShorts) where.push("COALESCE(v.is_short, 0) = 0");
+    if (!context.showShorts || getUserSetting(userId, "show_shorts") === "disabled") where.push("COALESCE(v.is_short, 0) = 0");
     if (getUserSetting(userId, "hide_live_from_feed") === "1" || childHidesLive(userId)) where.push("v.live_status NOT IN ('live', 'upcoming')");
     return (await database.prepare(`SELECT v.video_id FROM videos v JOIN user_videos uv ON uv.video_id=v.video_id WHERE ${where.join(" AND ")} ORDER BY COALESCE(v.published_at,v.created_at) DESC,v.video_id DESC`).all(userId) as { video_id: string }[]).map((row) => row.video_id);
   }
   if (context.kind === "history") {
-    return (await database.prepare(`SELECT h.video_id FROM (SELECT video_id,MAX(id) history_id,MAX(watched_at) watched_at FROM history WHERE user_id=? GROUP BY video_id) h ORDER BY h.watched_at DESC,h.history_id DESC`).all(userId) as { video_id: string }[]).map((row) => row.video_id);
+    return (await database.prepare(`SELECT h.video_id FROM (SELECT video_id,MAX(id) history_id,MAX(watched_at) watched_at FROM history WHERE user_id=? GROUP BY video_id) h JOIN videos v ON v.video_id=h.video_id WHERE ${shortsUiVisibilitySql(userId)} ORDER BY h.watched_at DESC,h.history_id DESC`).all(userId) as { video_id: string }[]).map((row) => row.video_id);
   }
   if (context.kind === "archive") {
-    return (await database.prepare("SELECT v.video_id FROM videos v JOIN user_videos uv ON uv.video_id=v.video_id AND uv.user_id=? WHERE uv.status='archived' ORDER BY COALESCE(v.published_at,v.created_at) DESC,v.video_id DESC").all(userId) as { video_id: string }[]).map((row) => row.video_id);
+    return (await database.prepare(`SELECT v.video_id FROM videos v JOIN user_videos uv ON uv.video_id=v.video_id AND uv.user_id=? WHERE uv.status='archived' AND ${shortsUiVisibilitySql(userId)} ORDER BY COALESCE(v.published_at,v.created_at) DESC,v.video_id DESC`).all(userId) as { video_id: string }[]).map((row) => row.video_id);
   }
   if (context.kind === "user-playlist") {
     const rows = await database.prepare(`SELECT upv.video_id,upv.added_at,upv.position,v.title,v.published_at
       FROM user_playlist_videos upv JOIN user_playlists up ON up.id=upv.playlist_id JOIN videos v ON v.video_id=upv.video_id
-      WHERE up.user_id=? AND up.portable_uuid=? ORDER BY upv.position ASC,upv.video_id ASC`)
+      WHERE up.user_id=? AND up.portable_uuid=? AND ${shortsUiVisibilitySql(userId)} ORDER BY upv.position ASC,upv.video_id ASC`)
       .all(userId, context.playlistUuid) as Array<{ video_id: string } & UserPlaylistSortable>;
     return sortUserPlaylistRows(rows, context.sort).map((row) => row.video_id);
   }
@@ -107,10 +108,10 @@ async function orderedVideoIds(userId: number, context: Exclude<PlaybackContext,
   }
   if (context.kind === "recommendations") return recommendationQueueVideoIds(userId, { downloadsOnly: childDownloadsOnly(userId) });
   if (context.kind === "in-progress") {
-    return (await database.prepare(`SELECT uv.video_id FROM user_videos uv JOIN (SELECT video_id,MAX(watched_at) last_watched FROM history WHERE user_id=? GROUP BY video_id) lw ON lw.video_id=uv.video_id JOIN videos v ON v.video_id=uv.video_id WHERE uv.user_id=? AND v.published_at IS NOT NULL AND v.published_at!='' AND uv.watch_position IS NOT NULL AND uv.watch_duration>30 AND uv.watch_position>=3 AND CAST(uv.watch_position AS REAL)/uv.watch_duration<0.92 AND uv.status='inbox' ORDER BY lw.last_watched DESC,uv.video_id DESC`).all(userId, userId) as { video_id: string }[]).map((row) => row.video_id);
+    return (await database.prepare(`SELECT uv.video_id FROM user_videos uv JOIN (SELECT video_id,MAX(watched_at) last_watched FROM history WHERE user_id=? GROUP BY video_id) lw ON lw.video_id=uv.video_id JOIN videos v ON v.video_id=uv.video_id WHERE uv.user_id=? AND v.published_at IS NOT NULL AND v.published_at!='' AND uv.watch_position IS NOT NULL AND uv.watch_duration>30 AND uv.watch_position>=3 AND CAST(uv.watch_position AS REAL)/uv.watch_duration<0.92 AND uv.status='inbox' AND ${shortsUiVisibilitySql(userId)} ORDER BY lw.last_watched DESC,uv.video_id DESC`).all(userId, userId) as { video_id: string }[]).map((row) => row.video_id);
   }
   const due = context.dueOnly ? "AND (uv.show_from IS NULL OR uv.show_from <= datetime('now'))" : "";
-  const rows = await database.prepare(`SELECT v.video_id,uv.bucket,uv.show_from,uv.queued_at,v.duration,v.title,COALESCE(c.custom_title,c.title) channel_title FROM user_videos uv JOIN videos v ON v.video_id=uv.video_id JOIN channels c ON c.channel_id=v.channel_id WHERE uv.user_id=? AND uv.status='queued' ${due} ORDER BY uv.queued_at DESC,v.video_id DESC`).all(userId) as WatchlistRow[];
+  const rows = await database.prepare(`SELECT v.video_id,uv.bucket,uv.show_from,uv.queued_at,v.duration,v.title,COALESCE(c.custom_title,c.title) channel_title FROM user_videos uv JOIN videos v ON v.video_id=uv.video_id JOIN channels c ON c.channel_id=v.channel_id WHERE uv.user_id=? AND uv.status='queued' AND ${shortsUiVisibilitySql(userId)} ${due} ORDER BY uv.queued_at DESC,v.video_id DESC`).all(userId) as WatchlistRow[];
   const language = getUserSetting(userId, "language") ?? "en";
   const locale = ({ pl: "pl-PL", de: "de-DE", en: "en-US" } as Record<string, string>)[language];
   return watchlistOrder(rows, context.sort, locale);

@@ -37,7 +37,7 @@ export function useAppPreferences() {
       emit("card-actions");
       const rawNavConfig = settings.sidebar_nav;
       const nextNavConfig = parseNavConfig(rawNavConfig);
-      if (!rawNavConfig && settings.shorts_tab === "1") {
+      if (!rawNavConfig && settings.shorts_tab === "1" && settings.show_shorts !== "disabled") {
         const shortsEntry = nextNavConfig.find((entry) => entry.key === "/shorts");
         if (shortsEntry) shortsEntry.hidden = false;
       }
@@ -80,7 +80,7 @@ export function useAppPreferences() {
   }, []);
   useEffect(() => {
     const events = ["app-name-changed", "sidebar-nav-changed", "watched-style-changed", "video-card-size-changed",
-      "video-card-actions-changed", "player-settings-changed", "child-watching-settings-changed", "top-channels-changed"];
+      "video-card-actions-changed", "player-settings-changed", "child-watching-settings-changed", "top-channels-changed", "shorts-settings-changed"];
     const unsubscribes = events.map((event) => subscribe(event, loadSettings));
     return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
   }, [loadSettings]);

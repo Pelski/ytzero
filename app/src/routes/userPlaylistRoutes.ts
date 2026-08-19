@@ -12,6 +12,7 @@ import { fetchPlaylistVideos } from "../youtube";
 import { importPlaylistVideos } from "../refresher";
 import type { VideoRow } from "../videoRoutesSupport";
 import { downloadableUserPlaylistVideoIds, sortUserPlaylistRows, type UserPlaylistSortable } from "../userPlaylistSort";
+import { shortsUiVisibilitySql } from "../feedQuery";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -94,6 +95,7 @@ export function registerUserPlaylistRoutes(
        FROM (${videoSelect(uid)}) playlist_video
        JOIN user_playlist_videos upv ON upv.video_id = playlist_video.video_id
        WHERE upv.playlist_id = ?
+         AND ${shortsUiVisibilitySql(uid, "playlist_video")}
        ORDER BY upv.position ASC, upv.video_id ASC`,
     ).all(id) as Array<VideoRow & UserPlaylistSortable>;
     const videos = await attachTags(uid, sortUserPlaylistRows(rows, c.req.query("sort")));

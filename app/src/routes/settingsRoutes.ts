@@ -131,7 +131,7 @@ api.put("/settings", async (c) => {
   if ("timezone" in body && !isValidTimeZone(body.timezone)) return c.json({ error: "invalid timezone" }, 400);
   const videoCardSettingsError = validateVideoCardSettings(body); if (videoCardSettingsError) return c.json({ error: videoCardSettingsError }, 400);
   if ("keyboard_shortcuts" in body && normalizeKeyboardShortcutSetting(body.keyboard_shortcuts) === null) return c.json({ error: "invalid keyboard shortcut settings" }, 400);
-  if ("show_shorts" in body && body.show_shorts !== "0" && body.show_shorts !== "selected" && body.show_shorts !== "1") {
+  if ("show_shorts" in body && body.show_shorts !== "disabled" && body.show_shorts !== "0" && body.show_shorts !== "selected" && body.show_shorts !== "1") {
     return c.json({ error: "invalid Shorts feed mode" }, 400);
   }
   for (const key of Object.keys(SETTING_DEFAULTS)) {

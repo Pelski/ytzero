@@ -12,7 +12,7 @@ const SECTION_KEYS = {
   advanced: ["experimental_streaming"],
 } as const;
 
-export default function DownloadConfiguration() {
+export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled: boolean }) {
   const { language, locale } = useI18n();
   const tx = (en: string, pl: string, de: string) => language === "pl" ? pl : language === "de" ? de : en;
   const [config, setConfig] = useState<DownloadConfigResponse | null>(null);
@@ -118,7 +118,7 @@ export default function DownloadConfiguration() {
       {ytdlpNotice && <Alert variant="success">{ytdlpNotice}</Alert>}
     </SettingsSection>}
     <fieldset className="dl-config-managed" disabled={!config.can_manage}>
-    {section(tx("Playback and quality", "Odtwarzanie i jakość", "Wiedergabe und Qualität"), tx("Defaults used by manual and automatic downloads.", "Ustawienia wspólne dla pobrań ręcznych i automatycznych.", "Standards für manuelle und automatische Downloads."), SECTION_KEYS.behavior)}
+    {section(tx("Playback and quality", "Odtwarzanie i jakość", "Wiedergabe und Qualität"), tx("Defaults used by manual and automatic downloads.", "Ustawienia wspólne dla pobrań ręcznych i automatycznych.", "Standards für manuelle und automatische Downloads."), SECTION_KEYS.behavior.filter((key) => shortsEnabled || key !== "download_shorts"))}
     <SettingsSection title={tx("Download schedule", "Harmonogram pobierania", "Download-Zeitplan")} description={tx("Keep adding items to the queue at any time, but only start downloads during this profile's allowed window.", "Dodawaj filmy do kolejki o dowolnej porze, ale rozpoczynaj pobieranie tylko w oknie dozwolonym dla tego profilu.", "Füge jederzeit Einträge zur Warteschlange hinzu, starte Downloads aber nur im erlaubten Zeitfenster dieses Profils.")}>
       <SettingRow label={tx("Use download schedule", "Używaj harmonogramu", "Download-Zeitplan verwenden")} description={tx("A download already in progress can finish after the window closes.", "Rozpoczęte pobieranie może zakończyć się po zamknięciu okna.", "Ein bereits laufender Download darf nach Ende des Zeitfensters fertig werden.")}><Switch ariaLabel={tx("Use download schedule", "Używaj harmonogramu", "Download-Zeitplan verwenden")} checked={scheduleEnabled} onCheckedChange={(checked) => void update("download_schedule_enabled", checked ? 1 : 0)} /></SettingRow>
       {scheduleEnabled && <>

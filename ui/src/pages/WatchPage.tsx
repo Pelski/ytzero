@@ -384,11 +384,11 @@ export default function WatchPage() {
               )}
               {shortcutFeedback && <WatchPlayerFeedback key={shortcutFeedback.id} feedback={shortcutFeedback} keyboardSeekSeconds={keyboardSeekSeconds} />}
               {playerKind === "youtube" && !audioActive && youtubeAutoplayBlocked && (
-                <div className="wp-autoplay-blocked">
-                  <Button variant="primary" onClick={requestYouTubePlayback}>
+                <button className="wp-autoplay-blocked" onClick={requestYouTubePlayback} aria-label={t("playerPlay")}>
+                  <span className="wp-autoplay-blocked-cue" aria-hidden="true">
                     <Play size={16} /> {t("playerPlay")}
-                  </Button>
-                </div>
+                  </span>
+                </button>
               )}
               {upNextVideo && (
                 <UpNextOverlay

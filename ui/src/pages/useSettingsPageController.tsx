@@ -449,7 +449,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
       setAppIconColor(r.settings.app_icon_color || "#0a5fff");
       setTimeZoneLocked(Boolean(r.settings_meta?.timezone_locked));
       setUpdateCheckInterval(r.settings.update_check_interval || "off");
-      setShortsFeedMode(r.settings.show_shorts === "1" || r.settings.show_shorts === "selected" ? r.settings.show_shorts : "0");
+      setShortsFeedMode(r.settings.show_shorts === "disabled" || r.settings.show_shorts === "1" || r.settings.show_shorts === "selected" ? r.settings.show_shorts : "0");
       setShowTopChannels(r.settings.show_top_channels !== "0");
       setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
       setWatchShowRelated(r.settings.watch_show_related !== "0");
@@ -645,7 +645,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     const previous = shortsFeedMode;
     setShortsFeedMode(next);
     try {
-      await api.updateSettings({ show_shorts: next });
+      await api.updateSettings({ show_shorts: next }); emit("shorts-settings-changed");
       showToast(t("displaySettingsSaved"));
     } catch (error) {
       setShortsFeedMode(previous);

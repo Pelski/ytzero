@@ -206,13 +206,13 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           <SettingRow label={t("hideLiveFromFeed")} description={t("hideLiveFromFeedHint")}>
             <Switch checked={hideLiveFromFeed} onCheckedChange={() => toggleLiveFromFeed()} />
           </SettingRow>
-
           <SettingRow label={t("showShorts")} description={t("showShortsHint")}>
             <SelectMenu
               label={t("showShorts")}
               value={shortsFeedMode}
               onChange={(next: ShortsFeedMode) => changeShortsFeedMode(next)}
               options={[
+                { value: "disabled", label: t("shortsDisabled") },
                 { value: "0", label: t("shortsFeedNone") },
                 { value: "selected", label: t("shortsFeedSelected") },
                 { value: "1", label: t("shortsFeedAll") },
@@ -550,7 +550,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           <SidebarNavEditor
             value={navConfig}
             onChange={persistNavConfig}
-            excludedKeys={new Set(plugins.filter((plugin) => !plugin.enabled).flatMap((plugin) => plugin.route ? [plugin.route] : []))}
+            excludedKeys={new Set([...(shortsFeedMode === "disabled" ? ["/shorts"] : []), ...plugins.filter((plugin) => !plugin.enabled).flatMap((plugin) => plugin.route ? [plugin.route] : [])])}
           />
           </SettingsSection>
           }

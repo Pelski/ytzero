@@ -47,6 +47,11 @@ if (process.env[ISOLATION_FLAG] !== "1") {
       expect(visibleIds()).toEqual(["regular"]);
     });
 
+    test("fully disabled mode also hides every Short", async () => {
+      await setUserSetting(1, "show_shorts", "disabled");
+      expect(visibleIds()).toEqual(["regular"]);
+    });
+
     test("shows only opted-in channels in selected mode", async () => {
       await setUserSetting(1, "show_shorts", "selected");
       expect(visibleIds()).toEqual(["regular", "selected-short"]);

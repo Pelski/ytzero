@@ -6,7 +6,7 @@ import { fetchChannelAbout, fetchChannelFeed, fetchVideoChapters, fetchVideoCrea
 import { discoveryRecommendations, dismissDiscoveryRecommendation, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow } from "../plugins";
 import { validYouTubeVideoId } from "../youtubeComments";
 import { childDownloadsOnly, childHidesLive, childLocalOnly, isChildUser, isParentLocked } from "../childTime";
-import { followedExists } from "../feedQuery";
+import { followedExists, shortsUiVisibilitySql } from "../feedQuery";
 import { getDeArrowBranding } from "../dearrow";
 import { log } from "../logger";
 import { ageMs, CHAPTERS_DB_TTL, CREATORS_DB_TTL } from "../routeCache";
@@ -122,7 +122,7 @@ api.get("/channels/:id/live", async (c) => {
 api.get("/watchlist", async (c) => {
   const uid = currentUserId(c);
   const rows = await database
-    .prepare(`${videoSelect(uid)} WHERE uv.status = 'queued' ORDER BY uv.queued_at DESC`)
+    .prepare(`${videoSelect(uid)} WHERE uv.status = 'queued' AND ${shortsUiVisibilitySql(uid)} ORDER BY uv.queued_at DESC`)
     .all() as VideoRow[];
   return c.json({ videos: await attachTags(uid, rows) });
 });
@@ -131,7 +131,7 @@ api.get("/archive", async (c) => {
   const uid = currentUserId(c);
   const page = Math.max(0, Number(c.req.query("page") ?? 0));
   const rows = await database
-    .prepare(`${videoSelect(uid)} WHERE uv.status = 'archived' ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT 60 OFFSET ?`)
+    .prepare(`${videoSelect(uid)} WHERE uv.status = 'archived' AND ${shortsUiVisibilitySql(uid)} ORDER BY COALESCE(v.published_at, v.created_at) DESC LIMIT 60 OFFSET ?`)
     .all(page * 60) as VideoRow[];
   return c.json({ videos: await attachTags(uid, rows), page });
 });

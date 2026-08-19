@@ -20,16 +20,20 @@ export interface FeedVisibilityQuery {
   shorts?: string;
 }
 
-export type ShortsFeedMode = "0" | "selected" | "1";
+export type ShortsFeedMode = "disabled" | "0" | "selected" | "1";
 
 export function shortsFeedMode(userId: number): ShortsFeedMode {
   const value = getUserSetting(userId, "show_shorts");
-  return value === "1" || value === "selected" ? value : "0";
+  return value === "disabled" || value === "1" || value === "selected" ? value : "0";
+}
+
+export function shortsUiVisibilitySql(userId: number, alias = "v"): string {
+  return shortsFeedMode(userId) === "disabled" ? `COALESCE(${alias}.is_short, 0) = 0` : "1 = 1";
 }
 
 export function appendShortsFeedVisibility(where: string[], userId: number): void {
   const mode = shortsFeedMode(userId);
-  if (mode === "0") {
+  if (mode === "disabled" || mode === "0") {
     where.push("COALESCE(v.is_short, 0) = 0");
   } else if (mode === "selected") {
     where.push(`(

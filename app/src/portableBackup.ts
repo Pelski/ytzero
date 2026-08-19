@@ -77,7 +77,7 @@ function portableGlobalSettingValue(key: string, value: unknown): string {
 }
 function portableUserSettingValue(key: string, value: unknown): string {
   if (key === "keyboard_shortcuts") return normalizeKeyboardShortcutSetting(value) ?? SETTING_DEFAULTS.keyboard_shortcuts; if (key.startsWith("video_card_")) return normalizeVideoCardSetting(key, value);
-  if (key === "show_shorts") return value === "1" || value === "selected" ? value : "0";
+  if (key === "show_shorts") return value === "disabled" || value === "1" || value === "selected" ? value : "0";
   return String(value);
 }
 export interface BackupManifestSection {
