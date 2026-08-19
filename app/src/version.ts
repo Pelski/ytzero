@@ -1,23 +1,50 @@
-// Baked in by the Docker build (YTZERO_VERSION / YTZERO_COMMIT build args) and
-// by scripts/install.sh; when running straight from a checkout the commit is
-// resolved from git so dev logs carry it too.
-export const VERSION = process.env.YTZERO_VERSION || "dev";
+// The pipeline stamps app/src/VERSION and app/src/COMMIT before the build
+// starts, so both labels travel with the sources into the image, the release
+// tarball and the native install without a build arg. YTZERO_VERSION and
+// YTZERO_COMMIT stay the fallback for unstamped builds (docker run -e, the
+// scripts/install.sh env file, a plain checkout), and the commit is still
+// resolved from git after that so dev logs carry it too.
+import { readFileSync } from "node:fs";
 
-function detectCommit(): string {
-  const env = process.env.YTZERO_COMMIT;
-  if (env && env !== "unknown") return env;
+const COMMIT_HASH = /^[0-9a-f]{7,40}$/;
+
+/** Reads a stamp the pipeline wrote next to these sources, if it is there. */
+function readStamp(name: string): string | null {
   try {
-    const proc = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: import.meta.dir });
-    const out = proc.stdout.toString().trim();
-    if (proc.success && /^[0-9a-f]{7,40}$/.test(out)) return out;
+    return readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
   } catch {
-    // git absent (e.g. release tarball) — fall through.
+    return null; // Unstamped build — the env var decides.
   }
-  return "unknown";
 }
 
+/** Label the running build reports: a stamped file wins over the env var. */
+export function pickBuildVersion(file: string | null, env: string | undefined): string {
+  return file?.trim() || env?.trim() || "dev";
+}
+
+/** Commit the running build was made from: stamp, then env var, then git.
+ * Values that are not commit hashes are ignored, so a truncated stamp or the
+ * "unknown" placeholder the Docker build defaults to cannot mask a real hash. */
+export function pickBuildCommit(file: string | null, env: string | undefined, git: () => string | null): string {
+  const stamped = [file, env].map((value) => value?.trim()).find((value) => value && COMMIT_HASH.test(value));
+  if (stamped) return stamped;
+  const head = git()?.trim(); // Only spawned when nothing was baked in.
+  return head && COMMIT_HASH.test(head) ? head : "unknown";
+}
+
+function gitHead(): string | null {
+  try {
+    const proc = Bun.spawnSync(["git", "rev-parse", "HEAD"], { cwd: import.meta.dir });
+    return proc.success ? proc.stdout.toString() : null;
+  } catch {
+    return null; // git absent (e.g. release tarball).
+  }
+}
+
+export const VERSION = pickBuildVersion(readStamp("VERSION"), process.env.YTZERO_VERSION);
+
 /** Short commit hash the running build was made from, or "unknown". */
-export const COMMIT = detectCommit().slice(0, 7);
+export const COMMIT = pickBuildCommit(readStamp("COMMIT"), process.env.YTZERO_COMMIT, gitHead).slice(0, 7);
 
 interface ParsedVersion {
   scheme: "legacy" | "calver";

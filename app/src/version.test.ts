@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { canonicalVersionKey, compareVersions, isReleaseNewer } from "./version";
+import { canonicalVersionKey, compareVersions, isReleaseNewer, pickBuildCommit, pickBuildVersion } from "./version";
 
 describe("release version comparison", () => {
   test("compares CalVer counters numerically", () => {
@@ -47,5 +47,50 @@ describe("release version comparison", () => {
   test("does not guess for development labels", () => {
     expect(isReleaseNewer("dev", "2026.08.1")).toBeNull();
     expect(isReleaseNewer("edge", "2026.08.1")).toBeNull();
+  });
+});
+
+describe("build version resolution", () => {
+  test("prefers the stamped file over the environment", () => {
+    expect(pickBuildVersion("2026.08.1\n", "edge")).toBe("2026.08.1");
+    expect(pickBuildVersion("edge\n", undefined)).toBe("edge");
+  });
+
+  test("falls back to the environment when the file is missing or blank", () => {
+    expect(pickBuildVersion(null, "2026.08.1")).toBe("2026.08.1");
+    expect(pickBuildVersion("", "2026.08.1")).toBe("2026.08.1");
+    expect(pickBuildVersion("  \n", "2026.08.1")).toBe("2026.08.1");
+  });
+
+  test("reports a development build when neither source is set", () => {
+    expect(pickBuildVersion(null, undefined)).toBe("dev");
+    expect(pickBuildVersion(null, "")).toBe("dev");
+  });
+});
+
+describe("build commit resolution", () => {
+  const head = "a".repeat(40);
+  const never = () => {
+    throw new Error("git must not be consulted once a commit is baked in");
+  };
+
+  test("prefers the stamped file, then the environment", () => {
+    expect(pickBuildCommit("330100e\n", "519e1e6", never)).toBe("330100e");
+    expect(pickBuildCommit(null, "519e1e6", never)).toBe("519e1e6");
+  });
+
+  test("falls back to git for an unstamped checkout", () => {
+    expect(pickBuildCommit(null, undefined, () => `${head}\n`)).toBe(head);
+  });
+
+  test("ignores values that are not commit hashes", () => {
+    expect(pickBuildCommit("", "unknown", () => "330100e")).toBe("330100e");
+    expect(pickBuildCommit("not-a-hash", undefined, () => "330100e")).toBe("330100e");
+    expect(pickBuildCommit("330100", undefined, () => "330100e")).toBe("330100e");
+  });
+
+  test("reports an unknown commit when no source has one", () => {
+    expect(pickBuildCommit(null, undefined, () => null)).toBe("unknown");
+    expect(pickBuildCommit(null, "unknown", () => "fatal: not a git repository")).toBe("unknown");
   });
 });

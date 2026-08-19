@@ -1,6 +1,8 @@
 node_modules/
 dist/
 app/public/
+app/src/COMMIT
+app/src/VERSION
 data/
 *.db
 *.db-wal
