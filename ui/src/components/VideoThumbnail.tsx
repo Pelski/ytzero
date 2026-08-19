@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
-import type { ReactNode } from "react";
-import { img } from "../img";
+import { useEffect, useState, type ReactNode } from "react";
+import { img, youtubeThumbnailFallback } from "../img";
 import "./VideoThumbnail.css";
 
 export type VideoThumbnailVariant =
@@ -65,6 +65,23 @@ export function VideoThumbnail({
   draggable?: boolean;
   children?: ReactNode;
 }) {
+  const [image, setImage] = useState(() => ({ source: src, displayedSource: img(src), fallbackAttempted: false }));
+
+  useEffect(() => {
+    setImage({ source: src, displayedSource: img(src), fallbackAttempted: false });
+  }, [src]);
+
+  const handleImageError = () => {
+    setImage((current) => {
+      if (current.source !== src || current.fallbackAttempted) return current;
+
+      const fallback = youtubeThumbnailFallback(src);
+      return fallback
+        ? { source: src, displayedSource: img(fallback), fallbackAttempted: true }
+        : { ...current, fallbackAttempted: true };
+    });
+  };
+
   const classes = VARIANT_CLASSES[variant];
   const watchedClass = watched ? " watched-thumbnail--watched" : "";
   const progressClass = watched || (progress != null && progress > 0) ? " watched-thumbnail--has-progress" : "";
@@ -72,10 +89,11 @@ export function VideoThumbnail({
     <span className={`video-thumbnail watched-thumbnail ${classes.frame}${watchedClass}${progressClass}`}>
       <img
         className={`video-thumbnail-image watched-thumbnail-image ${classes.image}`.trim()}
-        src={img(src)}
+        src={image.displayedSource}
         alt={alt}
         loading={loading}
         draggable={draggable}
+        onError={handleImageError}
       />
       {children}
       <PlaybackIndicator watched={watched} progress={progress} />

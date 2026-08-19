@@ -520,6 +520,19 @@ export interface DownloadConfigResponse {
   enabled: boolean;
   cookies_configured: boolean;
   time_zone: string;
+  ytdlp: YtdlpConfig;
+}
+export interface YtdlpConfig {
+  version: string | null;
+  update_channel: "stable" | "nightly";
+  update_interval_days: 0 | 1 | 3 | 7 | 30;
+}
+export interface YtdlpUpdateResult {
+  channel: "stable" | "nightly";
+  previous_version: string | null;
+  version: string | null;
+  updated: boolean;
+  message: string;
 }
 export interface VideoDownload {
   video_id: string;

@@ -6,7 +6,7 @@ downloads are allowed for that profile under **Downloads → Configuration**.
 
 ## Requirements
 
-- **yt-dlp** and **ffmpeg** available on the server. The official Docker image bundles both and self-updates yt-dlp daily; for bare-metal installs put them on `PATH` (or point `YTDLP_PATH` at the binary) and keep yt-dlp current — YouTube regularly stops serving formats to outdated versions.
+- **yt-dlp** and **ffmpeg** available on the server. The official Docker image bundles both and defaults to daily updates; for bare-metal installs put them on `PATH` (or point `YTDLP_PATH` at the binary). Administrators can update it immediately and choose the stable/nightly channel and schedule under **Downloads → Configuration**.
 - Disk space for the downloads directory (`DOWNLOADS_DIR`, `/data/downloads` in Docker). See [Configuration](Configuration#environment-variables).
 
 ## What it does
@@ -117,4 +117,4 @@ files with no remaining owner are removed. Treat it as destructive.
 | `DOWNLOAD_COOKIES_DIR` | `./data/download-cookies` (`/data/download-cookies` in Docker) | Private per-profile cookie files. |
 | `YTDLP_PATH` | `yt-dlp` | Path to the yt-dlp binary. |
 | `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg for merged downloads and experimental streaming. |
-| `YTDLP_AUTO_UPDATE` | unset (`1` in Docker) | Set to `1` to run `yt-dlp -U` daily. |
+| `YTDLP_AUTO_UPDATE` | unset (`1` in Docker) | Initial automatic-update default (`1` means daily). The Downloads UI can later select Never, 1, 3, 7, or 30 days and the stable/nightly channel. |

@@ -110,6 +110,17 @@ describe("portable backup classification and restore", () => {
     expect(archiveText).toContain('"sync_watched":0');
   });
 
+  test("excludes the machine-local yt-dlp update policy and scheduler state", async () => {
+    await setSetting("ytdlp_update_channel", "YTDLP_CHANNEL_SENTINEL");
+    await setSetting("ytdlp_update_interval_days", "YTDLP_INTERVAL_SENTINEL");
+    await setSetting("ytdlp_update_last_attempt_at", "YTDLP_ATTEMPT_SENTINEL");
+    const zip = await backup.createPortableBackup({ preset: "full" });
+    const archiveText = [...backup.readPortableZip(zip).values()].map((bytes) => decoder.decode(bytes)).join("\n");
+    expect(archiveText).not.toContain("YTDLP_CHANNEL_SENTINEL");
+    expect(archiveText).not.toContain("YTDLP_INTERVAL_SENTINEL");
+    expect(archiveText).not.toContain("YTDLP_ATTEMPT_SENTINEL");
+  });
+
   test("round-trips the Shorts feed mode and per-channel opt-in", async () => {
     const options = await backup.backupOptions();
     const profile = options.profiles[0];

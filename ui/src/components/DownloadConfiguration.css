@@ -1,4 +1,4 @@
-.dl-config { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; }
+.dl-config { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
 .dl-config-managed { border: 0; display: flex; flex-direction: column; gap: 12px; margin: 0; min-width: 0; padding: 0; }
 .dl-config > .ui-settings-section,
 .dl-config-managed > .ui-settings-section { margin-bottom: 0; }
@@ -19,6 +19,7 @@
 .dl-cookie-paste { display: flex; flex-direction: column; gap: 9px; }
 .dl-cookie-paste .ui-textarea { font-family: var(--font-mono); min-height: 150px; }
 .dl-cookie-paste .ui-button { align-self: flex-end; }
+.dl-ytdlp-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 9px; justify-content: flex-end; }
 @media (max-width: 600px) {
   .dl-config-slider { min-width: 0; width: 100%; }
   .dl-schedule-days { justify-content: flex-start; }

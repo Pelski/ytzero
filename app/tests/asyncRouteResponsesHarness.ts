@@ -53,6 +53,17 @@ const updateDownloadSettingsResponse = await api.request("http://localhost/downl
 });
 const updatedDownloadSettings = await updateDownloadSettingsResponse.json() as any;
 const reloadedDownloadSettings = await json("/downloads/config");
+const ytdlpConfigResponse = await api.request("http://localhost/downloads/ytdlp/config", {
+  method: "PUT",
+  headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
+  body: JSON.stringify({ update_channel: "stable", update_interval_days: 7 }),
+});
+const updatedYtdlpConfig = await ytdlpConfigResponse.json() as any;
+const forbiddenYtdlpConfigResponse = await api.request("http://localhost/downloads/ytdlp/config", {
+  method: "PUT",
+  headers: { Cookie: `ytzero_profile=${secondary.id}`, "Content-Type": "application/json" },
+  body: JSON.stringify({ update_channel: "nightly", update_interval_days: 1 }),
+});
 const legacyDownloadPluginRoute = await json("/plugins/downloads/settings");
 const updateSettingsResponse = await api.request("http://localhost/settings", {
   method: "PUT",
@@ -129,6 +140,10 @@ console.log("RESULT " + JSON.stringify({
   updateDownloadSettingsStatus: updateDownloadSettingsResponse.status,
   updatedDownloadSetting: updatedDownloadSettings.settings?.max_storage_gb,
   reloadedDownloadSetting: reloadedDownloadSettings.body.settings?.max_storage_gb,
+  ytdlpConfigStatus: ytdlpConfigResponse.status,
+  ytdlpUpdateChannel: updatedYtdlpConfig.update_channel,
+  ytdlpUpdateIntervalDays: updatedYtdlpConfig.update_interval_days,
+  forbiddenYtdlpConfigStatus: forbiddenYtdlpConfigResponse.status,
   legacyDownloadPluginRouteStatus: legacyDownloadPluginRoute.status,
   updateSettingsStatus: updateSettingsResponse.status,
   reloadedUserSetting: reloadedSettings.body.settings?.show_shorts,

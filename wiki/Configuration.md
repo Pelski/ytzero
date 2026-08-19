@@ -43,7 +43,7 @@ picker is read-only until `TZ` is removed and the instance restarted.
 | `DOWNLOAD_COOKIES_DIR` | `./data/download-cookies` | Machine-local directory for per-profile YouTube cookie files. Keep it private and inside persistent storage. |
 | `YTDLP_PATH` | `yt-dlp` | Path to the yt-dlp binary used by the [YT-DLP Integration](YT-DLP-Integration) plugin. |
 | `FFMPEG_PATH` | `ffmpeg` | Path to ffmpeg, used for merged downloads and experimental stream-while-downloading playback. |
-| `YTDLP_AUTO_UPDATE` | _(unset; `1` in Docker)_ | Set to `1` to run `yt-dlp -U` once a day. YouTube regularly stops serving formats to outdated yt-dlp versions, so keeping it current matters. |
+| `YTDLP_AUTO_UPDATE` | _(unset; `1` in Docker)_ | Initial default for automatic yt-dlp updates (`1` means daily). An administrator can later choose Never, 1, 3, 7, or 30 days and the stable/nightly channel in the Downloads UI. |
 | `APP_URL` | _(derived from request)_ | Public base URL. Used as the OIDC redirect origin and WebAuthn origin when behind a reverse proxy. |
 | `WEBAUTHN_RP_ID` | _(request hostname)_ | Override the WebAuthn Relying Party ID (the registrable domain) when the auto-derived hostname is wrong. |
 | `YTZERO_AUTH_METHOD` | _(unset)_ | Set to `shared` to force shared-password authentication regardless of the saved method. One-click cloud templates set this automatically. |

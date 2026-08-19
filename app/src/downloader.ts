@@ -22,11 +22,11 @@ import {
   invalidateYtdlpStatus,
   migrateLegacyDownloadCookies,
   profileDownloadsEnabled,
-  ytdlpSelfUpdate,
   ytdlpJavascriptRuntimeStatus,
   ytdlpStatus,
   type DlSettings,
 } from "./downloadConfig";
+import { ytdlpSelfUpdate } from "./ytdlpUpdater";
 import { DOWNLOAD_MANIFEST_SUFFIX, recoverDownloadsFromDisk, writeDownloadManifest } from "./downloadRecovery";
 import { downloadScheduleAllowsNow } from "./downloadSchedule";
 export {
@@ -940,7 +940,9 @@ export async function startDownloader() {
   const reportTickError = (error: unknown) => log.error("downloads.tick_failed", { error: error instanceof Error ? error.message : String(error) });
   setTimeout(() => tick().catch(reportTickError), 8_000);
   setInterval(() => tick().catch(reportTickError), TICK_INTERVAL_MS);
-  setInterval(() => ytdlpSelfUpdate().catch((error) => log.warn("downloads.ytdlp_update_failed", { error: error instanceof Error ? error.message : String(error) })), 24 * 60 * 60_000);
+  const updateYtdlp = () => ytdlpSelfUpdate().catch((error) => log.warn("downloads.ytdlp_update_failed", { error: error instanceof Error ? error.message : String(error) }));
+  setTimeout(updateYtdlp, 10_000);
+  setInterval(updateYtdlp, 60 * 60_000);
   const recordsByStatus = Object.fromEntries((await database.prepare("SELECT status AS name, COUNT(*) AS count FROM downloads GROUP BY status").all() as { name: string; count: number }[]).map((row) => [row.name, Number(row.count)]));
   log.info("scheduler.downloads", { dir: DOWNLOADS_DIR, intervalMs: TICK_INTERVAL_MS, enabled: await dlEnabled(), recordsByStatus });
 }

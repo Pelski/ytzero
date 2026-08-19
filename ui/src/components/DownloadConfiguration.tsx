@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FileText, FolderUp, Info, Trash2 } from "lucide-react";
+import { FileText, FolderUp, Info, RotateCw, Trash2 } from "lucide-react";
 import { api, type DownloadConfigResponse, type DownloadSettingDef, type DownloadSettingValue } from "../api";
 import { useI18n } from "../i18n";
 import { Alert, Badge, Button, Chip, FileDropzone, Input, MultiSelectMenu, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Textarea } from "./ui";
@@ -21,6 +21,8 @@ export default function DownloadConfiguration() {
   const [uploading, setUploading] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pastedCookies, setPastedCookies] = useState("");
+  const [updatingYtdlp, setUpdatingYtdlp] = useState(false);
+  const [ytdlpNotice, setYtdlpNotice] = useState("");
 
   const load = useCallback(() => api.downloadConfig().then((result) => { setConfig(result); setCookies(result.cookies_configured); }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason))), []);
   useEffect(() => { void load(); }, [load]);
@@ -35,6 +37,24 @@ export default function DownloadConfiguration() {
     if (!config) return;
     setConfig({ ...config, enabled });
     try { setConfig(await api.updateDownloadConfig({ enabled })); } catch { load(); }
+  };
+  const updateYtdlpConfig = async (patch: Partial<{ update_channel: "stable" | "nightly"; update_interval_days: 0 | 1 | 3 | 7 | 30 }>) => {
+    if (!config) return;
+    const next = { update_channel: config.ytdlp.update_channel, update_interval_days: config.ytdlp.update_interval_days, ...patch };
+    setConfig({ ...config, ytdlp: { ...config.ytdlp, ...next } });
+    try { const ytdlp = await api.updateYtdlpConfig(next); setConfig((current) => current ? { ...current, ytdlp } : current); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); void load(); }
+  };
+  const runYtdlpUpdate = async () => {
+    setUpdatingYtdlp(true); setError(""); setYtdlpNotice("");
+    try {
+      const result = await api.updateYtdlp();
+      setConfig((current) => current ? { ...current, ytdlp: { ...current.ytdlp, version: result.version, update_channel: result.channel } } : current);
+      setYtdlpNotice(result.updated
+        ? tx(`Updated yt-dlp from ${result.previous_version ?? "unknown"} to ${result.version ?? "unknown"}.`, `Zaktualizowano yt-dlp z ${result.previous_version ?? "nieznanej"} do ${result.version ?? "nieznanej"}.`, `yt-dlp wurde von ${result.previous_version ?? "unbekannt"} auf ${result.version ?? "unbekannt"} aktualisiert.`)
+        : tx("yt-dlp is already up to date.", "yt-dlp jest już aktualny.", "yt-dlp ist bereits aktuell."));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setUpdatingYtdlp(false); }
   };
 
   const renderControl = (definition: DownloadSettingDef) => {
@@ -85,6 +105,18 @@ export default function DownloadConfiguration() {
       <SettingRow label={tx("Allow downloads for this profile", "Pobieranie na tym profilu", "Downloads für dieses Profil erlauben")} description={tx("Controls manual and automatic downloads only for the active profile.", "Włącza ręczne i automatyczne pobieranie tylko dla aktywnego profilu.", "Steuert manuelle und automatische Downloads nur für dieses Profil.")}><Switch ariaLabel={tx("Allow downloads for this profile", "Pobieranie na tym profilu", "Downloads für dieses Profil erlauben")} disabled={!config.can_manage} checked={config.enabled} onCheckedChange={(next) => void setEnabled(next)} /></SettingRow>
     </SettingsSection>
     {!config.can_manage_admin_settings && <Alert className="dl-config-admin-info" variant="info">{tx("Settings marked Administrator affect shared files and can only be changed by an administrator.", "Opcje oznaczone jako Administrator wpływają na wspólne pliki i może je zmieniać tylko administrator.", "Als Administrator markierte Einstellungen betreffen gemeinsame Dateien und können nur von Administratoren geändert werden.")}</Alert>}
+    {config.can_manage_admin_settings && <SettingsSection title="yt-dlp" description={tx("Manage the shared yt-dlp binary used for downloads, streaming, audio, subtitles and comments.", "Zarządzaj wspólnym plikiem yt-dlp używanym do pobierania, streamingu, audio, napisów i komentarzy.", "Verwalte die gemeinsame yt-dlp-Datei für Downloads, Streaming, Audio, Untertitel und Kommentare.")}>
+      <SettingRow label={tx("Installed version", "Zainstalowana wersja", "Installierte Version")} description={config.ytdlp.version ? tx("The version currently used by YT Zero.", "Wersja używana obecnie przez YT Zero.", "Die aktuell von YT Zero verwendete Version.") : tx("yt-dlp was not found or cannot be started.", "Nie znaleziono yt-dlp lub nie można go uruchomić.", "yt-dlp wurde nicht gefunden oder kann nicht gestartet werden.")}><div className="dl-ytdlp-actions"><Badge>{config.ytdlp.version ?? tx("Unavailable", "Niedostępny", "Nicht verfügbar")}</Badge><Button variant="primary" disabled={updatingYtdlp || !config.ytdlp.version} onClick={() => void runYtdlpUpdate()} leadingIcon={<RotateCw className={updatingYtdlp ? "spin" : undefined} />}>{updatingYtdlp ? tx("Updating…", "Aktualizowanie…", "Aktualisierung…") : tx("Update now", "Aktualizuj teraz", "Jetzt aktualisieren")}</Button></div></SettingRow>
+      <SettingRow label={tx("Release channel", "Kanał wydań", "Release-Kanal")} description={tx("Nightly receives fixes fastest; stable changes less often.", "Nightly najszybciej otrzymuje poprawki; stable zmienia się rzadziej.", "Nightly erhält Korrekturen am schnellsten; Stable ändert sich seltener.")}><SelectMenu label={tx("Release channel", "Kanał wydań", "Release-Kanal")} value={config.ytdlp.update_channel} options={[{ value: "nightly", label: "Nightly" }, { value: "stable", label: "Stable" }]} onChange={(value) => void updateYtdlpConfig({ update_channel: value as "stable" | "nightly" })} /></SettingRow>
+      <SettingRow label={tx("Automatic updates", "Automatyczne aktualizacje", "Automatische Updates")} description={tx("Checks and updates yt-dlp at the selected interval.", "Sprawdza i aktualizuje yt-dlp w wybranym odstępie czasu.", "Prüft und aktualisiert yt-dlp im gewählten Intervall.")}><SelectMenu label={tx("Automatic updates", "Automatyczne aktualizacje", "Automatische Updates")} value={String(config.ytdlp.update_interval_days)} options={[
+        { value: "0", label: tx("Never", "Nigdy", "Nie") },
+        { value: "1", label: tx("Every day", "Codziennie", "Täglich") },
+        { value: "3", label: tx("Every 3 days", "Co 3 dni", "Alle 3 Tage") },
+        { value: "7", label: tx("Every week", "Co tydzień", "Wöchentlich") },
+        { value: "30", label: tx("Every 30 days", "Co 30 dni", "Alle 30 Tage") },
+      ]} onChange={(value) => void updateYtdlpConfig({ update_interval_days: Number(value) as 0 | 1 | 3 | 7 | 30 })} /></SettingRow>
+      {ytdlpNotice && <Alert variant="success">{ytdlpNotice}</Alert>}
+    </SettingsSection>}
     <fieldset className="dl-config-managed" disabled={!config.can_manage}>
     {section(tx("Playback and quality", "Odtwarzanie i jakość", "Wiedergabe und Qualität"), tx("Defaults used by manual and automatic downloads.", "Ustawienia wspólne dla pobrań ręcznych i automatycznych.", "Standards für manuelle und automatische Downloads."), SECTION_KEYS.behavior)}
     <SettingsSection title={tx("Download schedule", "Harmonogram pobierania", "Download-Zeitplan")} description={tx("Keep adding items to the queue at any time, but only start downloads during this profile's allowed window.", "Dodawaj filmy do kolejki o dowolnej porze, ale rozpoczynaj pobieranie tylko w oknie dozwolonym dla tego profilu.", "Füge jederzeit Einträge zur Warteschlange hinzu, starte Downloads aber nur im erlaubten Zeitfenster dieses Profils.")}>

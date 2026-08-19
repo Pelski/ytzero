@@ -11,6 +11,8 @@ import { SUBTITLE_LANGUAGE_CODES } from "../subtitleLanguages";
 import { configuredTimeZone } from "../timeZone";
 import { tubeArchivistResource, tubeArchivistSubtitleList, tubeArchivistSubtitleResponse } from "../tubeArchivist";
 import { registerAudioRoutes } from "./audioRoutes";
+import { registerYtdlpUpdateRoutes } from "./ytdlpUpdateRoutes";
+import { ytdlpUpdateChannel, ytdlpUpdateIntervalDays } from "../ytdlpUpdater";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -39,6 +41,7 @@ api.get("/downloads/config", async (c) => {
     ...(await downloadSettings(uid, getUserSetting(uid, "language"))),
     cookies_configured: downloadCookiesConfigured(uid),
     time_zone: configuredTimeZone(),
+    ytdlp: { version: await ytdlpStatus(), update_channel: ytdlpUpdateChannel(), update_interval_days: ytdlpUpdateIntervalDays() },
   });
 });
 
@@ -57,8 +60,10 @@ api.put("/downloads/config", async (c) => {
     : await downloadSettings(uid, getUserSetting(uid, "language"));
   const enabled = await profileDownloadsEnabled(uid);
   publishAppEvent("downloads", { enabled, config: true, userId: uid });
-  return c.json({ can_manage: true, can_manage_admin_settings: isAdmin(c), admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS], enabled, ...settings, cookies_configured: downloadCookiesConfigured(uid), time_zone: configuredTimeZone() });
+  return c.json({ can_manage: true, can_manage_admin_settings: isAdmin(c), admin_setting_keys: [...DOWNLOADS_ADMIN_SETTING_KEYS], enabled, ...settings, cookies_configured: downloadCookiesConfigured(uid), time_zone: configuredTimeZone(), ytdlp: { version: await ytdlpStatus(), update_channel: ytdlpUpdateChannel(), update_interval_days: ytdlpUpdateIntervalDays() } });
 });
+
+registerYtdlpUpdateRoutes(api, isAdmin);
 
 api.get("/downloads/automation", async (c) => {
   const uid = currentUserId(c);

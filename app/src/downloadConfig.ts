@@ -119,12 +119,3 @@ export async function ytdlpStatus(): Promise<string | null> {
   if (!ytdlpVersion) log.warn("downloads.ytdlp_missing", { path: YTDLP });
   return ytdlpVersion;
 }
-
-export async function ytdlpSelfUpdate() {
-  if (process.env.YTDLP_AUTO_UPDATE !== "1") return;
-  try {
-    const proc = Bun.spawn([YTDLP, "-U"], { stdout: "ignore", stderr: "ignore" });
-    await proc.exited;
-    ytdlpVersion = undefined; // re-read version on next status call
-  } catch {}
-}

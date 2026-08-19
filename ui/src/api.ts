@@ -85,6 +85,8 @@ import {
   type VideoDownload,
   type VideoInfo,
   type VideoSubtitle,
+  type YtdlpConfig,
+  type YtdlpUpdateResult,
 } from "./apiTypes";
 import type { ChannelPost } from "./channelPostTypes";
 export * from "./apiTypes";
@@ -205,6 +207,9 @@ export const api = {
   downloadConfig: () => sharedGet<DownloadConfigResponse>("downloads-config", "/downloads/config"),
   updateDownloadConfig: (patch: { enabled?: boolean; settings?: Record<string, DownloadSettingValue> }) =>
     http<DownloadConfigResponse>("/downloads/config", { method: "PUT", body: JSON.stringify(patch) }),
+  updateYtdlpConfig: (config: { update_channel: "stable" | "nightly"; update_interval_days: 0 | 1 | 3 | 7 | 30 }) =>
+    http<YtdlpConfig>("/downloads/ytdlp/config", { method: "PUT", body: JSON.stringify(config) }),
+  updateYtdlp: () => http<YtdlpUpdateResult>("/downloads/ytdlp/update", { method: "POST", body: "{}" }),
   downloadRules: () => http<{ rules: DownloadRule[]; can_manage: boolean }>("/downloads/automation"),
   downloadAutomationOptions: () => http<DownloadAutomationOptions>("/downloads/automation/options"),
   previewDownloadRule: (rule: DownloadRuleInput) => http<DownloadRulePreview>("/downloads/automation/preview", { method: "POST", body: JSON.stringify(rule) }),

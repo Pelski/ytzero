@@ -77,6 +77,13 @@ describe("async database route response shapes", () => {
     expect(result.reloadedDownloadSetting).toBe(17);
   });
 
+  test("stores yt-dlp update policy for administrators only", () => {
+    expect(result.ytdlpConfigStatus).toBe(200);
+    expect(result.ytdlpUpdateChannel).toBe("stable");
+    expect(result.ytdlpUpdateIntervalDays).toBe(7);
+    expect(result.forbiddenYtdlpConfigStatus).toBe(403);
+  });
+
   test("does not expose downloads through plugin routes", () => {
     expect(result.legacyDownloadPluginRouteStatus).toBe(404);
   });

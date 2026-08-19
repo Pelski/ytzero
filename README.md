@@ -102,8 +102,9 @@ The **YT-DLP Integration** plugin (disabled by default) uses [yt-dlp](https://gi
 
 The Docker image and native installer bundle yt-dlp, ffmpeg, and Deno. Deno is
 the JavaScript runtime yt-dlp uses to solve YouTube's extraction challenges;
-manual installations must provide Deno 2.3 or newer on `PATH`. YT Zero keeps
-yt-dlp updated daily. Details and the full settings reference:
+manual installations must provide Deno 2.3 or newer on `PATH`. Administrators
+can update yt-dlp from the UI and choose stable or nightly releases plus an
+automatic-update interval. Details and the full settings reference:
 **[YT-DLP Integration](https://github.com/Pelski/ytzero/wiki/YT-DLP-Integration)**.
 
 ## Audio mode
