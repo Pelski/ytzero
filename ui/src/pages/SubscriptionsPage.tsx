@@ -356,7 +356,7 @@ export default function SubscriptionsPage() {
       </div>
 
       <TagFilterBar
-        tags={tags}
+        tags={tags.filter((t) => !t.hidden_from_filters)}
         selected={selectedTags}
         onToggle={toggleTag}
         onClearAll={clearTagFilters}

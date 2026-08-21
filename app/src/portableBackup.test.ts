@@ -22,6 +22,7 @@ const backup = await import("./portableBackup");
 const permissions = await import("./profilePermissions");
 const plugins = await import("./plugins");
 const videoCardActions = await import("./videoCardActions");
+const tagFilterVisibility = await import("./tagFilterVisibility");
 const tubeArchivist = await import("./tubeArchivist");
 const { db, setSetting, setUserSetting, getSetting, getUserSetting, SETTING_DEFAULTS } = await import("./db");
 const encoder = new TextEncoder();
@@ -142,6 +143,33 @@ describe("portable backup classification and restore", () => {
 
     expect(getUserSetting(1, "show_shorts")).toBe("disabled");
     expect((db.prepare("SELECT shorts_feed_visibility FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").get() as any)?.shorts_feed_visibility).toBe("show");
+  });
+
+  test("round-trips tag filter-bar visibility only with the tags section", async () => {
+    const profile = (await backup.backupOptions()).profiles[0];
+    const tagUuid = crypto.randomUUID();
+    db.prepare("INSERT INTO tags(name,color,user_id,portable_uuid) VALUES('Hidden filter tag','#7c5cff',1,?)").run(tagUuid);
+    await setUserSetting(1, tagFilterVisibility.TAG_FILTER_VISIBILITY_SETTING, JSON.stringify([tagUuid]));
+
+    const configuration = await backup.createPortableBackup({ preset: "configuration", profiles: [profile.id] });
+    expect([...backup.readPortableZip(configuration).values()].map((value) => decoder.decode(value)).join("\n")).not.toContain(tagUuid);
+
+    const zip = await backup.createPortableBackup({ preset: "setup", profiles: [profile.id] });
+    const entries = backup.readPortableZip(zip);
+    const manifest = JSON.parse(decoder.decode(entries.get("manifest.json")!));
+    const section = manifest.sections.find((item: any) => item.id === "profile.tags" && item.profileId === profile.id);
+    expect(section.schemaVersion).toBe(2);
+    expect(decoder.decode(entries.get(section.path)!)).toContain('"hiddenFromFilters":true');
+
+    await setUserSetting(1, tagFilterVisibility.TAG_FILTER_VISIBILITY_SETTING, "[]");
+    const analyzed = await backup.analyzePortableBackup(1, zip);
+    const plan = await backup.planPortableRestore(1, analyzed.sessionId, {
+      mappings: { [profile.id]: { action: "merge" as const, targetProfileId: 1 } },
+      sections: analyzed.manifest.sections.map((item) => item.id),
+      strategy: "merge",
+    });
+    await backup.commitPortableRestore(1, analyzed.sessionId, plan.planRevision);
+    expect(tagFilterVisibility.hiddenFilterTagUuids(1).has(tagUuid)).toBe(true);
   });
 
   test("round-trips resume playback context with portable tag identifiers", async () => {

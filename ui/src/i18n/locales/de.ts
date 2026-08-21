@@ -1073,6 +1073,8 @@ export const de: Locale = {
     likedOnly: "Nur Favoriten",
     filterOnly: "Nur mit Filter",
     filterOnlyHint: "Videos mit diesem Tag erscheinen nur, wenn dieser Tag als Filter ausgewählt ist",
+    hideTagFromFilters: "In Filterleisten ausgeblendet",
+    hideTagFromFiltersHint: "Diesen Tag aus Filterleisten ausblenden, ohne die Sichtbarkeit seiner Videos und Kanäle zu ändern",
     continueWatching: "Weiterschauen",
     youtubeResults: "YouTube-Ergebnisse",
     localSearchChannels: "Passende Kanäle",

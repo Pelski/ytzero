@@ -1,7 +1,7 @@
 import type { Context, Hono } from "hono";
 import { applyRuleToAllVideos } from "../autotags";
 import { database } from "../database";
-import { applyFilterRuleToAll } from "../filterRules";
+import { applyFilterRuleToAll } from "../filterRules"; import { hiddenFilterTagUuids, setTagHiddenFromFilters } from "../tagFilterVisibility";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -15,15 +15,15 @@ export function registerTagRoutes(
 // ---------- tags ----------
 
 api.get("/tags", async (c) => {
-  const uid = currentUserId(c);
-  const tags = await database
+  const uid = currentUserId(c), hiddenUuids = hiddenFilterTagUuids(uid);
+  const tags = (await database
     .prepare(
       `SELECT t.*,
         (SELECT COUNT(*) FROM video_tags vt WHERE vt.tag_id = t.id) AS video_count,
         (SELECT COUNT(*) FROM channel_tags ct WHERE ct.tag_id = t.id) AS channel_count
        FROM tags t WHERE t.user_id = ? ORDER BY t.name COLLATE NOCASE`
     )
-    .all(uid);
+    .all(uid) as any[]).map((tag) => ({ ...tag, hidden_from_filters: hiddenUuids.has(tag.portable_uuid) ? 1 : 0 }));
   return c.json({ tags });
 });
 
@@ -39,19 +39,20 @@ api.post("/tags", async (c) => {
 
 api.patch("/tags/:id", async (c) => {
   const uid = currentUserId(c);
-  const { name, color, filter_only } = await c.req.json();
+  const { name, color, filter_only, hidden_from_filters } = await c.req.json();
   const id = c.req.param("id");
-  if (!await database.prepare("SELECT 1 FROM tags WHERE id = ? AND user_id = ?").get(id, uid)) return c.json({ error: "not found" }, 404);
+  const existing = await database.prepare("SELECT portable_uuid FROM tags WHERE id = ? AND user_id = ?").get(id, uid) as { portable_uuid: string } | null; if (!existing) return c.json({ error: "not found" }, 404);
   if (name !== undefined) await database.prepare("UPDATE tags SET name = ? WHERE id = ?").run(name.trim(), id);
   if (color !== undefined) await database.prepare("UPDATE tags SET color = ? WHERE id = ?").run(color, id);
-  if (filter_only !== undefined) await database.prepare("UPDATE tags SET filter_only = ? WHERE id = ?").run(filter_only ? 1 : 0, id);
+  if (filter_only !== undefined) await database.prepare("UPDATE tags SET filter_only = ? WHERE id = ?").run(filter_only ? 1 : 0, id); if (hidden_from_filters !== undefined) await setTagHiddenFromFilters(uid, existing.portable_uuid, Boolean(hidden_from_filters));
   const tag = await database.prepare("SELECT * FROM tags WHERE id = ?").get(id);
-  return c.json({ tag });
+  return c.json({ tag: { ...(tag as object), hidden_from_filters: hiddenFilterTagUuids(uid).has(existing.portable_uuid) ? 1 : 0 } });
 });
 
 api.delete("/tags/:id", async (c) => {
   const uid = currentUserId(c);
-  await database.prepare("DELETE FROM tags WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  const tag = await database.prepare("SELECT portable_uuid FROM tags WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { portable_uuid: string } | null; await database.prepare("DELETE FROM tags WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  if (tag) await setTagHiddenFromFilters(uid, tag.portable_uuid, false);
   return c.json({ ok: true });
 });
 
@@ -145,4 +146,3 @@ api.delete("/filter-rules/:id", async (c) => {
 });
 
 }
-

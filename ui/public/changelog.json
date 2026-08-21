@@ -1,103 +1,105 @@
 {
   "releases": [
     {
-      "version": "v0.22.0",
-      "name": "v0.22.0",
-      "publishedAt": "2026-07-29T01:06:56+02:00",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.22.0",
+      "version": "2026.08.32",
+      "name": "2026.08.32 — Fixed click to start video bounding box #192",
+      "publishedAt": "2026-08-19T22:57:59Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.32",
       "notes": [
-        "Design improvements for whole application (`69d9ebe`)",
-        "Downloading made better #88 (`44a1d01`)"
-      ],
-      "current": true
-    },
-    {
-      "version": "v0.21.0",
-      "name": "v0.21.0",
-      "publishedAt": "2026-07-28T20:48:56Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.21.0",
-      "notes": [
-        "Member-only video download fix #87 (`dc6abad`)",
-        "Download badge in sidebar #89 (`bd2f35a`)",
-        "Incognito mode, remove from history manually #90 (`2770413`)",
-        "Infinite scroll in history tab #91 (`739d324`)"
+        "Fixed click to start video bounding box #192 (`330100e`)"
       ]
     },
     {
-      "version": "v0.20.1",
-      "name": "v0.20.1",
-      "publishedAt": "2026-07-28T08:40:02Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.20.1",
+      "version": "2026.08.31",
+      "name": "2026.08.31 — Added option to update yt-dlp from UI",
+      "publishedAt": "2026-08-19T08:24:15Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.31",
       "notes": [
-        "Fixed missing duration #86 (`6f895a6`)"
+        "Added option to update yt-dlp from UI (`519e1e6`)"
       ]
     },
     {
-      "version": "v0.20.0",
-      "name": "v0.20.0",
-      "publishedAt": "2026-07-28T00:36:01Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.20.0",
+      "version": "2026.08.30",
+      "name": "2026.08.30 — Fixed loading issue #175",
+      "publishedAt": "2026-08-17T10:00:23Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.30",
       "notes": [
-        "Comment section with toggle in settings #82 (`f6f703b`)",
-        "Fixed feed sorting (`b543c81`)",
-        "Made it even faster... and added Postgres (`9de9e4c`)"
+        "Fixed loading issue #175 (`95dcb62`)"
       ]
     },
     {
-      "version": "v0.19.1",
-      "name": "v0.19.1",
-      "publishedAt": "2026-07-27T21:35:41Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.19.1",
+      "version": "2026.08.29",
+      "name": "2026.08.29 — Improvements to playlists - fixed #153 and #159",
+      "publishedAt": "2026-08-15T23:27:31Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.29",
       "notes": [
-        "Changelog for upcoming (`f88c614`)",
-        "Fixed download names (`ea8eef9`)"
+        "Improvements to playlists - fixed #153 and #159 (`2d1f765`)"
       ]
     },
     {
-      "version": "v0.19.0",
-      "name": "v0.19.0",
-      "publishedAt": "2026-07-27T17:05:14Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.19.0",
+      "version": "2026.08.28",
+      "name": "2026.08.28 — Improvements to experimental streaming",
+      "publishedAt": "2026-08-13T23:49:11Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.28",
       "notes": [
-        "Scheduler fix #72 (`0b9cc96`)",
-        "Allow download whole playlist (`c7363e9`)"
+        "Improvements to experimental streaming (`ebe8745`)",
+        "Seeking far into a long recording fixed #152 (`ba378b9`)",
+        "Added Deno to Docker image for yt-dlp cool features #151 (`dcd3509`)",
+        "Improvements to audio mode - better livestreams support #150 (`2f75538`)",
+        "Transcript improvements (`6910527`)",
+        "Fixed player flickering in some scenarios #148 (`15eae97`)",
+        "Random UUID fix for HTTP connection #147 (`b8124bb`)",
+        "Deleted video recognition mechanism #146 (`fd8d98e`)",
+        "Remember audio mode in browser and new way to check for audio track for better performance (`9340162`)"
       ]
     },
     {
-      "version": "v0.18.1",
-      "name": "v0.18.1",
-      "publishedAt": "2026-07-26T23:34:47Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.18.1",
+      "version": "2026.08.27",
+      "name": "2026.08.27 — CodeQL fixes",
+      "publishedAt": "2026-08-13T12:50:34Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.27",
       "notes": [
-        "Better logs with streaming - fixed #79 (`d792211`)"
+        "CodeQL fixes (`0d648ef`)",
+        "More options for a comment section #144 (`6b144fa`)",
+        "More shortcuts and ability to change them #138 (`c118df1`)",
+        "Improved audio-only design on mobile (`0050a89`)"
       ]
     },
     {
-      "version": "v0.18.0",
-      "name": "v0.18.0",
-      "publishedAt": "2026-07-26T19:32:06Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.18.0",
+      "version": "2026.08.26",
+      "name": "2026.08.26 — Improved audio-only design on mobile",
+      "publishedAt": "2026-08-12T23:26:39Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.26",
       "notes": [
-        "Timezone support - fixed #76 (`b446443`)",
-        "Log rotation - fixed #77 (`dc92e1d`)"
+        "Improved audio-only design on mobile (`d52bda3`)"
       ]
     },
     {
-      "version": "v0.17.6",
-      "name": "v0.17.6",
-      "publishedAt": "2026-07-26T16:57:49Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.6",
+      "version": "2026.08.25",
+      "name": "2026.08.25 — From now on you can play videos and watch livestreams in audio-only mode #141",
+      "publishedAt": "2026-08-12T23:10:28Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.25",
       "notes": [
-        "Download not working - fixed #80 (`e82cf24`)"
+        "From now on you can play videos and watch livestreams in audio-only mode #141 (`b248771`)",
+        "Add an audio-only background listening mode (#142) (`1da3615`)"
       ]
     },
     {
-      "version": "v0.17.5",
-      "name": "v0.17.5",
-      "publishedAt": "2026-07-26T14:34:42Z",
-      "url": "https://github.com/Pelski/ytzero/releases/tag/v0.17.5",
+      "version": "2026.08.24",
+      "name": "2026.08.24 — One-click deployments are now better",
+      "publishedAt": "2026-08-12T09:39:43Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.24",
       "notes": [
-        "Fixed missing changelog #78 (`b11ae4d`)"
+        "One-click deployments are now better (`cee351f`)"
+      ]
+    },
+    {
+      "version": "2026.08.23",
+      "name": "2026.08.23 — Added first version of TubArchivist integration, Shortcuts on video player fixed #136",
+      "publishedAt": "2026-08-12T08:35:46Z",
+      "url": "https://github.com/Pelski/ytzero/releases/tag/2026.08.23",
+      "notes": [
+        "Added first version of TubArchivist integration, Shortcuts on video player fixed #136 (`b37d572`)"
       ]
     }
   ]

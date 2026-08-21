@@ -1074,6 +1074,8 @@ export const pl: Locale = {
     likedOnly: "Polubione",
     filterOnly: "Tylko z filtrem",
     filterOnlyHint: "Filmy z tym tagiem pojawiają się w feedzie tylko gdy ten tag jest wybrany jako filtr",
+    hideTagFromFilters: "Ukryty na paskach filtrów",
+    hideTagFromFiltersHint: "Ukryj ten tag na paskach filtrów bez wpływu na widoczność oznaczonych nim filmów i kanałów",
     continueWatching: "Kontynuuj oglądanie",
     youtubeResults: "Wyniki z YouTube",
     localSearchChannels: "Pasujące kanały",

@@ -277,10 +277,10 @@ export default function CleanupPage() {
           </SettingRow>
         )}
 
-        {tags.length > 0 && (
+        {tags.some((t) => !t.hidden_from_filters) && (
           <SettingRow label={t("cleanupTagsLabel")} description={t("cleanupTagsHint")}>
             <TagFilterBar
-              tags={tags}
+              tags={tags.filter((t) => !t.hidden_from_filters)}
               tristate
               selected={includeTagIds}
               excludedIds={excludeTagIds}

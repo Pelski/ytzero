@@ -120,15 +120,16 @@ export function PlaylistSettingsItem({
   );
 }
 
-export function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: string; color?: string; filter_only?: number }) => Promise<void>; onRemove: () => void }) {
+export function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name?: string; color?: string; filter_only?: number; hidden_from_filters?: number }) => Promise<void>; onRemove: () => void }) {
   const { t, language } = useI18n();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(tag.name);
   const [color, setColor] = useState(tag.color);
   const [filterOnly, setFilterOnly] = useState(!!tag.filter_only);
+  const [hiddenFromFilters, setHiddenFromFilters] = useState(!!tag.hidden_from_filters);
 
   const save = async () => {
-    await onSave({ name, color, filter_only: filterOnly ? 1 : 0 });
+    await onSave({ name, color, filter_only: filterOnly ? 1 : 0, hidden_from_filters: hiddenFromFilters ? 1 : 0 });
     setEditing(false);
   };
 
@@ -143,20 +144,19 @@ export function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name
         </td>
         <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {t("tagChannelCount", { n: tag.channel_count ?? 0 })}</td>
         <td className="shrink">
-          <Tooltip text={t("filterOnlyHint")} pos="left">
-            <IconButton
-              label={t("filterOnlyHint")}
-              style={filterOnly ? { color: "var(--accent)" } : { opacity: 0.3 }}
-              onClick={() => setFilterOnly(!filterOnly)}
-            >
-              <Filter size={15} />
-            </IconButton>
-          </Tooltip>
+          <div style={{ display: "flex", gap: 4 }}>
+            <Tooltip text={t("filterOnlyHint")} pos="left">
+              <IconButton label={t("filterOnly")} style={filterOnly ? { color: "var(--accent)" } : { opacity: 0.3 }} onClick={() => setFilterOnly(!filterOnly)}><Filter size={15} /></IconButton>
+            </Tooltip>
+            <Tooltip text={t("hideTagFromFiltersHint")} pos="left">
+              <IconButton label={t("hideTagFromFilters")} style={hiddenFromFilters ? { color: "var(--accent)" } : { opacity: 0.3 }} onClick={() => setHiddenFromFilters(!hiddenFromFilters)}><EyeOff size={15} /></IconButton>
+            </Tooltip>
+          </div>
         </td>
         <td className="shrink">
           <div style={{ display: "flex", gap: 4 }}>
             <IconButton label={t("save")} onClick={save}><Check /></IconButton>
-            <IconButton label={t("cancel")} onClick={() => { setName(tag.name); setColor(tag.color); setFilterOnly(!!tag.filter_only); setEditing(false); }}><X /></IconButton>
+            <IconButton label={t("cancel")} onClick={() => { setName(tag.name); setColor(tag.color); setFilterOnly(!!tag.filter_only); setHiddenFromFilters(!!tag.hidden_from_filters); setEditing(false); }}><X /></IconButton>
           </div>
         </td>
       </tr>
@@ -168,15 +168,14 @@ export function TagRow({ tag, onSave, onRemove }: { tag: Tag; onSave: (p: { name
       <td><TagChip tag={{ ...tag, name, color }} /></td>
       <td className="muted">{formatVideoCount(tag.video_count ?? 0, language)} · {t("tagChannelCount", { n: tag.channel_count ?? 0 })}</td>
       <td className="shrink">
-        <Tooltip text={t("filterOnlyHint")} pos="left">
-          <IconButton
-            label={t("filterOnlyHint")}
-            style={tag.filter_only ? { color: "var(--accent)" } : { opacity: 0.3 }}
-            onClick={() => onSave({ filter_only: tag.filter_only ? 0 : 1 })}
-          >
-            <Filter size={15} />
-          </IconButton>
-        </Tooltip>
+        <div style={{ display: "flex", gap: 4 }}>
+          <Tooltip text={t("filterOnlyHint")} pos="left">
+            <IconButton label={t("filterOnly")} style={tag.filter_only ? { color: "var(--accent)" } : { opacity: 0.3 }} onClick={() => onSave({ filter_only: tag.filter_only ? 0 : 1 })}><Filter size={15} /></IconButton>
+          </Tooltip>
+          <Tooltip text={t("hideTagFromFiltersHint")} pos="left">
+            <IconButton label={t("hideTagFromFilters")} style={tag.hidden_from_filters ? { color: "var(--accent)" } : { opacity: 0.3 }} onClick={() => onSave({ hidden_from_filters: tag.hidden_from_filters ? 0 : 1 })}><EyeOff size={15} /></IconButton>
+          </Tooltip>
+        </div>
       </td>
       <td className="shrink">
         <div style={{ display: "flex", gap: 4 }}>

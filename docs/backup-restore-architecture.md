@@ -302,7 +302,10 @@ below.
   retain their existing meanings, `selected` enables channel opt-ins, and
   `disabled` removes Shorts content and controls throughout that profile's UI.
 - `user_followed_playlists`: followed playlist ID and feed preference.
-- `tags`, `channel_tags`, manual `video_tags`, `auto_tag_rules`.
+- `tags`, `channel_tags`, manual `video_tags`, `auto_tag_rules`. Independent
+  per-tag feed filtering and filter-bar visibility are portable organization
+  configuration in `profile.tags` schema v2. Older v1 backups preserve the
+  target filter-bar visibility on merge and use visible tags on replace.
 - `filter_rules`.
 - `user_playlists`, `user_playlist_videos`, `user_playlist_rules`.
 - shared channel choices such as `custom_title` and the explicit automatic

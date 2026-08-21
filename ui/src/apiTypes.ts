@@ -7,7 +7,7 @@ export interface Tag {
   id: number;
   name: string;
   color: string;
-  filter_only?: number;
+  filter_only?: number; hidden_from_filters?: number;
   source?: "manual" | "auto" | "channel";
   video_count?: number;
   channel_count?: number;

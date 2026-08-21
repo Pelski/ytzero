@@ -1075,6 +1075,8 @@ export const en = {
     likedOnly: "Liked only",
     filterOnly: "Filter only",
     filterOnlyHint: "Videos with this tag only appear when this tag is selected as a filter",
+    hideTagFromFilters: "Hidden from filter bars",
+    hideTagFromFiltersHint: "Hide this tag from filter bars without changing the visibility of its videos and channels",
     continueWatching: "Continue watching",
     youtubeResults: "YouTube results",
     localSearchChannels: "Matching channels",

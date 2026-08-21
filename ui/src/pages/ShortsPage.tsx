@@ -259,7 +259,7 @@ export default function ShortsPage() {
       </div>
 
       <TagFilterBar
-        tags={tags}
+        tags={tags.filter((t) => !t.hidden_from_filters)}
         selected={selectedTags}
         onToggle={toggleTag}
         onClearAll={clearTags}

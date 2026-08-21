@@ -413,7 +413,7 @@ export default function FeedPage({
       <ChildTimeRequestBanner />
       <div className="toolbar" ref={hScrollWrapRef}>
         <TagFilterBar
-          tags={tags}
+          tags={tags.filter((t) => !t.hidden_from_filters)}
           selected={selectedTags}
           onToggle={toggleTag}
           onClearAll={clearTags}
