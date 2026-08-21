@@ -1,3 +1,4 @@
+import { existsSync, unlinkSync } from "node:fs";
 import { getSetting, setSetting } from "./db";
 import { invalidateYtdlpStatus, YTDLP, ytdlpStatus } from "./downloadConfig";
 import { log } from "./logger";
@@ -14,6 +15,16 @@ export interface YtdlpUpdateResult {
 }
 
 let updatePromise: Promise<YtdlpUpdateResult> | null = null;
+
+/** Written by the container bootstrap only when it creates a new persistent
+ * binary. It makes the first update honour the stored channel even when the
+ * normal update schedule is disabled or has just run. */
+export const YTDLP_PROVISION_MARKER = process.env.YTDLP_PROVISION_MARKER;
+const YTDLP_MANAGED_PATH = process.env.YTDLP_MANAGED_PATH ?? "/data/bin/yt-dlp";
+
+export function ytdlpProvisionReconciliationPending(): boolean {
+  return YTDLP === YTDLP_MANAGED_PATH && Boolean(YTDLP_PROVISION_MARKER && existsSync(YTDLP_PROVISION_MARKER));
+}
 
 export function ytdlpUpdateChannel(): YtdlpUpdateChannel {
   return getSetting("ytdlp_update_channel") === "stable" ? "stable" : "nightly";
@@ -37,7 +48,8 @@ export async function setYtdlpUpdateConfig(channel: unknown, intervalDays: unkno
 
 export async function ytdlpSelfUpdate(options: { force?: boolean } = {}): Promise<YtdlpUpdateResult | null> {
   const intervalDays = ytdlpUpdateIntervalDays();
-  if (!options.force) {
+  const reconciliationPending = ytdlpProvisionReconciliationPending();
+  if (!options.force && !reconciliationPending) {
     if (intervalDays === 0) return null;
     const lastAttempt = Date.parse(getSetting("ytdlp_update_last_attempt_at") ?? "");
     if (Number.isFinite(lastAttempt) && Date.now() - lastAttempt < intervalDays * 24 * 60 * 60_000) return null;
@@ -58,6 +70,7 @@ export async function ytdlpSelfUpdate(options: { force?: boolean } = {}): Promis
     const version = await ytdlpStatus();
     const message = ((exitCode === 0 ? stdout.trim() || stderr.trim() : stderr.trim() || stdout.trim()) || (exitCode === 0 ? "yt-dlp is up to date" : "yt-dlp update failed")).slice(-2_000);
     if (exitCode !== 0) throw new Error(message);
+    if (reconciliationPending && YTDLP_PROVISION_MARKER) unlinkSync(YTDLP_PROVISION_MARKER);
     log.info("downloads.ytdlp_updated", { channel, previousVersion, version, updated: previousVersion !== version });
     return { channel, previous_version: previousVersion, version, updated: previousVersion !== version, message };
   })();

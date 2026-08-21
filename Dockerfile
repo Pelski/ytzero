@@ -32,6 +32,8 @@ RUN apt-get update && \
 COPY app/package.json app/bun.lock* ./
 RUN bun install --production
 COPY app/src ./src
+COPY app/scripts ./scripts
+RUN chmod 0755 ./scripts/provision-ytdlp.sh
 COPY --from=ui-build /ui/dist ./public
 
 ARG YTZERO_VERSION
@@ -49,6 +51,8 @@ ENV PORT=3001 \
     RESTORE_SESSION_DIR=/data/restore-sessions \
     AVATAR_DIR=/data/avatars \
     LOG_PATH=/data/logs/ytzero.log \
+    YTDLP_PATH=/data/bin/yt-dlp \
+    YTDLP_PROVISION_MARKER=/data/bin/.yt-dlp-channel-reconciliation-pending \
     YTDLP_AUTO_UPDATE=1 \
     UI_DIST=./public \
     YTZERO_VERSION=${YTZERO_VERSION} \
@@ -62,4 +66,4 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD bun -e 'const r = await fetch(`http://127.0.0.1:${process.env.PORT ?? 3001}/api/health`); process.exit(r.ok ? 0 : 1)'
 
-CMD ["bun", "src/index.ts"]
+CMD ["./scripts/provision-ytdlp.sh", "bun", "src/index.ts"]

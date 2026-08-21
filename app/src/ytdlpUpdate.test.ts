@@ -14,8 +14,10 @@ beforeAll(async () => {
       DB_PATH: join(root, "db", "source.db"),
       DOWNLOADS_DIR: join(root, "downloads"),
       YTDLP_PATH: join(root, "yt-dlp"),
+      YTDLP_MANAGED_PATH: join(root, "yt-dlp"),
       YTDLP_AUTO_UPDATE: "1",
       YTDLP_TEST_ROOT: root,
+      YTDLP_PROVISION_MARKER: join(root, "yt-dlp-reconciliation-pending"),
     },
     stdout: "pipe",
     stderr: "pipe",
@@ -42,5 +44,11 @@ describe("yt-dlp updater", () => {
 
   test("does not run scheduled updates when disabled", () => {
     expect(result.disabled).toBeNull();
+  });
+
+  test("reconciles a newly provisioned binary with its saved channel despite a disabled schedule", () => {
+    expect(result.failedReconciliation).toBe(true);
+    expect(result.reconciled).toMatchObject({ channel: "nightly" });
+    expect(result.reconciliationMarkerExists).toBe(false);
   });
 });

@@ -113,9 +113,13 @@ chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DATA_DIR}"
 # Kept inside APP_DIR and owned by the service user: `yt-dlp -U` rewrites its own
 # binary, and the unit mounts /usr read-only, so /usr/local/bin would break
 # auto-update for the optional downloads plugin.
-msg "Installing yt-dlp"
-curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -o "${APP_DIR}/bin/yt-dlp"
-chmod 0755 "${APP_DIR}/bin/yt-dlp"
+if [[ ! -f "${APP_DIR}/bin/yt-dlp" ]]; then
+  msg "Installing yt-dlp"
+  curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" -o "${APP_DIR}/bin/yt-dlp"
+  chmod 0755 "${APP_DIR}/bin/yt-dlp"
+else
+  msg "Keeping existing yt-dlp binary"
+fi
 
 # ---------- resolve release ----------
 
