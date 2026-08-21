@@ -8,7 +8,7 @@ import "./DownloadConfiguration.css";
 const SECTION_KEYS = {
   behavior: ["quality", "compatible_format", "watch_source_mode", "prefetch_next_playlist_video", "thumb_progress", "download_scheduled", "download_live_archives", "download_shorts"],
   files: ["output_template", "write_thumbnail", "embed_metadata", "write_info_json", "write_nfo", "write_subs", "write_auto_subs", "sub_langs"],
-  storage: ["retention_days", "delete_watched", "delete_watched_hours", "keep_liked", "max_storage_gb"],
+  storage: ["keep_downloads", "retention_days", "delete_watched", "delete_watched_hours", "keep_liked", "max_storage_gb"],
   advanced: ["experimental_streaming"],
 } as const;
 
@@ -127,7 +127,7 @@ export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled
       </>}
     </SettingsSection>
     {section(tx("Files and metadata", "Pliki i metadane", "Dateien und Metadaten"), tx("Choose which additional data and files are saved alongside each video.", "Wybierz, jakie dodatkowe dane i pliki mają być zapisywane obok filmu.", "Wähle, welche zusätzlichen Daten und Dateien neben jedem Video gespeichert werden."), SECTION_KEYS.files)}
-    {section(tx("Storage and cleanup", "Miejsce i sprzątanie", "Speicher und Bereinigung"), tx("Automatic cleanup never removes pinned or protected files.", "Automatyczne sprzątanie nie usuwa przypiętych ani chronionych plików.", "Automatische Bereinigung entfernt keine geschützten Dateien."), SECTION_KEYS.storage)}
+    {section(tx("Storage and cleanup", "Miejsce i sprzątanie", "Speicher und Bereinigung"), tx("Automatic cleanup never removes pinned or protected files.", "Automatyczne sprzątanie nie usuwa przypiętych ani chronionych plików.", "Automatische Bereinigung entfernt keine geschützten Dateien."), SECTION_KEYS.storage.filter((key) => Number(config.settings.keep_downloads) !== 1 || !["retention_days", "delete_watched", "delete_watched_hours"].includes(key)))}
     <SettingsSection title={tx("YouTube access cookies", "Cookies dostępu do YouTube", "YouTube-Zugriffscookies")} description={tx("Only needed for content your YouTube account can access, such as age-restricted or members-only videos.", "Potrzebne tylko do treści wymagających dostępu z Twojego konta YouTube.", "Nur für Inhalte nötig, auf die dein YouTube-Konto Zugriff hat.")}>
       <Alert variant="warning" icon={<Info />}>{tx("Cookies are a secret stored only on this machine. They are excluded from portable backups.", "Cookies są sekretem zapisanym tylko na tej maszynie. Nie trafiają do przenośnych backupów.", "Cookies sind geheim, lokal gespeichert und nicht Teil portabler Backups.")}</Alert>
       <strong className={`dl-cookie-status${cookies ? " is-configured" : ""}`}>{cookies ? tx("Configured", "Skonfigurowane", "Konfiguriert") : tx("Not configured", "Nieskonfigurowane", "Nicht konfiguriert")}</strong>

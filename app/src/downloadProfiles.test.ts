@@ -49,8 +49,21 @@ describe("profile-scoped downloads", () => {
     expect(result.sharedPhysicalAfterDelete).toEqual({ status: "done" });
   });
 
-  test("applies retention per owner without deleting a file retained by another profile", () => {
-    expect(result.retentionOwners).toEqual([{ user_id: result.secondaryId }]);
+  test("keeps one profile's ownership when another profile's retention expires", () => {
+    expect(result.retentionOwners).toEqual([{ user_id: 1 }]);
     expect(result.retentionPhysical).toEqual({ status: "done" });
+  });
+
+  test("disables age and watched retention, then restores both rules when turned off", () => {
+    expect(result.watchedWhileKept).toEqual({ status: "done" });
+    expect(result.watchedAfterKeepDisabled).toEqual({ status: "deleted" });
+  });
+
+  test("does not let keep downloads bypass the storage cap, while pins and likes remain protected", () => {
+    expect(result.storageCap).toEqual([
+      { video_id: "cap-kept", status: "deleted" },
+      { video_id: "cap-liked", status: "done" },
+      { video_id: "cap-pinned", status: "done" },
+    ]);
   });
 });

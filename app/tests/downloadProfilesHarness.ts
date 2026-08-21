@@ -62,11 +62,39 @@ await Bun.write(retentionPath, "retained");
 db.prepare("INSERT INTO downloads(video_id,status,source,path,size_bytes,finished_at,requested_by_user_id) VALUES('scope-retention','done','manual',?,8,datetime('now','-31 days'),1)").run(retentionPath);
 db.prepare("INSERT INTO download_owners(user_id,video_id,source) VALUES(1,'scope-retention','manual')").run();
 db.prepare("INSERT INTO download_owners(user_id,video_id,source) VALUES(?,'scope-retention','manual')").run(secondary.id);
-db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'retention_days','14') ON CONFLICT(user_id,key) DO UPDATE SET value='14'").run();
-db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(?,'retention_days','60') ON CONFLICT(user_id,key) DO UPDATE SET value='60'").run(secondary.id);
+db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'keep_downloads','1') ON CONFLICT(user_id,key) DO UPDATE SET value='1'").run();
+db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(?,'retention_days','14') ON CONFLICT(user_id,key) DO UPDATE SET value='14'").run(secondary.id);
 await cleanupDownloadsNow();
 const retentionOwners = db.prepare("SELECT user_id FROM download_owners WHERE video_id='scope-retention' ORDER BY user_id").all();
 const retentionPhysical = db.prepare("SELECT status FROM downloads WHERE video_id='scope-retention'").get();
+
+db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('scope-watched','UC-dl-scope','scope-watched','')").run();
+const watchedPath = join(Bun.env.DOWNLOADS_DIR!, "scope-watched.mp4");
+await Bun.write(watchedPath, "watched");
+db.prepare("INSERT INTO downloads(video_id,status,source,path,size_bytes,finished_at,requested_by_user_id) VALUES('scope-watched','done','manual',?,7,datetime('now','-31 days'),1)").run(watchedPath);
+db.prepare("INSERT INTO download_owners(user_id,video_id,source) VALUES(1,'scope-watched','manual')").run();
+db.prepare("INSERT INTO user_videos(user_id,video_id,status,watched) VALUES(1,'scope-watched','archived',1)").run();
+db.prepare("INSERT INTO history(user_id,video_id,watched_at) VALUES(1,'scope-watched',datetime('now','-2 days'))").run();
+await cleanupDownloadsNow();
+const watchedWhileKept = db.prepare("SELECT status FROM downloads WHERE video_id='scope-watched'").get();
+
+db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key='keep_downloads'").run();
+await cleanupDownloadsNow();
+const watchedAfterKeepDisabled = db.prepare("SELECT status FROM downloads WHERE video_id='scope-watched'").get();
+
+for (const id of ["cap-kept", "cap-pinned", "cap-liked"]) {
+  db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES(?,'UC-dl-scope',?,'')").run(id, id);
+  const path = join(Bun.env.DOWNLOADS_DIR!, `${id}.mp4`);
+  await Bun.write(path, id);
+  db.prepare("INSERT INTO downloads(video_id,status,source,path,size_bytes,finished_at,requested_by_user_id) VALUES(?,'done','manual',?,?,datetime('now'),1)")
+    .run(id, path, id === "cap-kept" ? 2 * 1024 ** 3 : 1);
+  db.prepare("INSERT INTO download_owners(user_id,video_id,source,pinned) VALUES(1,?,'manual',?)").run(id, id === "cap-pinned" ? 1 : 0);
+}
+db.prepare("INSERT INTO user_videos(user_id,video_id,liked) VALUES(1,'cap-liked',1)").run();
+db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'keep_downloads','1') ON CONFLICT(user_id,key) DO UPDATE SET value='1'").run();
+await body(1, "/downloads/config", { method: "PUT", body: JSON.stringify({ settings: { max_storage_gb: 1 } }) });
+await cleanupDownloadsNow();
+const storageCap = db.prepare("SELECT video_id,status FROM downloads WHERE video_id IN ('cap-kept','cap-pinned','cap-liked') ORDER BY video_id").all();
 
 console.log("RESULT " + JSON.stringify({
   secondaryId: secondary.id,
@@ -89,5 +117,8 @@ console.log("RESULT " + JSON.stringify({
   sharedPhysicalAfterDelete,
   retentionOwners,
   retentionPhysical,
+  watchedWhileKept,
+  watchedAfterKeepDisabled,
+  storageCap,
 }));
 db.close();

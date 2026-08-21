@@ -258,6 +258,27 @@ describe("portable backup classification and restore", () => {
       .toEqual([{ key: "compatible_format", value: "1" }, { key: "download_live_archives", value: "1" }, { key: "enabled", value: "1" }]);
   });
 
+  test("round-trips the keep-downloads preference and defaults it for older payloads", async () => {
+    const downloads = await import("./downloadBackup");
+    const options = await backup.backupOptions();
+    const profile = options.profiles[0];
+    db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'keep_downloads','1') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
+    const zip = await backup.createPortableBackup({ preset: "configuration", profiles: [profile.id] });
+    const entries = backup.readPortableZip(zip);
+    const manifest = JSON.parse(decoder.decode(entries.get("manifest.json")!));
+    const section = manifest.sections.find((item: any) => item.id === "profile.downloads");
+    expect(section.schemaVersion).toBe(4);
+    expect(JSON.parse(decoder.decode(entries.get(section.path)!)).settings.keep_downloads).toBe(1);
+
+    db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key='keep_downloads'").run();
+    await downloads.restoreDownloadPreferences(1, JSON.parse(decoder.decode(entries.get(section.path)!)));
+    expect(db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='keep_downloads'").get()).toEqual({ value: "1" });
+
+    db.prepare("UPDATE download_settings SET value='1' WHERE user_id=1 AND key='keep_downloads'").run();
+    await downloads.restoreDownloadPreferences(1, { settings: { retention_days: 30 } });
+    expect(db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='keep_downloads'").get()).toEqual({ value: "0" });
+  });
+
   test("analyze is read-only and repeated merge restore is idempotent", async () => {
     const options = await backup.backupOptions();
     const profile = options.profiles[0];

@@ -19,7 +19,7 @@ downloads are allowed for that profile under **Downloads → Configuration**.
 - **Playlist downloads** — queue every available video from a channel or personal playlist in one confirmed action.
 - **Files and metadata** — choose a filename template and optionally save thumbnails, embedded metadata, `info.json`, NFO files, and selected subtitle languages.
 - **Restricted content** — each profile can upload or paste its own Netscape-format `cookies.txt` for age-restricted or members-only videos. Cookie files are machine-local secrets and are never included in portable backups.
-- **Smart retention** — files are removed after a configurable number of days, optionally sooner once watched, and the oldest unprotected files are evicted when the storage cap is exceeded. Pinned downloads, liked videos (optional), and videos still scheduled by an unwatched profile are never auto-removed.
+- **Smart retention** — each profile can remove files after a configurable number of days, optionally sooner once watched, or keep its downloads until manually deleted. The oldest unprotected files are still evicted when the shared storage cap is exceeded. Pinned downloads, liked videos (optional), and videos still scheduled by an unwatched profile are never auto-removed.
 - **Child profiles** — a child profile can be restricted to downloaded files only; see [Child Lock](Child-Lock#child-profiles).
 
 ## Opening a video
@@ -70,8 +70,10 @@ also enable thumbnail files, embedded metadata, `info.json`, NFO, and subtitle
 sidecars. Subtitle language and automatic-caption choices are per profile.
 
 Retention defaults to 14 days, watched files receive a 24-hour grace period,
-liked videos are protected, and the shared storage cap defaults to 25 GB.
-Pinned downloads are always exempt from automatic cleanup. YouTube cookies are
+liked videos are protected, and the shared storage cap defaults to 25 GB. A
+profile can instead keep downloads, which disables its age and watched cleanup
+without protecting files from that shared cap. Pinned downloads are always
+exempt from automatic cleanup. YouTube cookies are
 stored separately for each profile and may be uploaded, pasted, replaced, or
 removed from the same page.
 

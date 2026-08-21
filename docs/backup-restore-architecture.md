@@ -449,8 +449,9 @@ administrator configures local credentials.
 
 The
 Downloads adapter exports validated per-profile preferences (including subtitle
-languages, automatic subtitles, retention, watched-file cleanup and liked-file
-protection) and that profile's automation rules. Instance storage policy
+languages, automatic subtitles, retention, watched-file cleanup, the
+keep-downloads retention override, and liked-file protection) and that profile's
+automation rules. These are portable configuration. Instance storage policy
 (including output paths/templates, administrator-selected sidecar files and the
 physical storage cap) remains administrator-owned operational configuration.
 Each profile's yt-dlp cookies are a separate machine-local secret; cookies,

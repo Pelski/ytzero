@@ -64,6 +64,7 @@ export const DL_DEFAULTS = {
   download_schedule_days: "0,1,2,3,4,5,6",
   download_schedule_start: "23:00",
   download_schedule_end: "07:00",
+  keep_downloads: 0,
   retention_days: 14,
   delete_watched: 1,
   delete_watched_hours: 24,
@@ -256,6 +257,13 @@ export const DOWNLOADS_SETTINGS: DownloadSettingSource[] = [
     label: { en: "End", pl: "Koniec", de: "Ende" },
     description: { en: "Local end time.", pl: "Lokalna godzina zakończenia.", de: "Lokale Endzeit." },
     defaultValue: DL_DEFAULTS.download_schedule_end,
+  },
+  {
+    key: "keep_downloads",
+    type: "toggle",
+    label: { en: "Keep downloads", pl: "Zachowuj pobrane pliki", de: "Downloads behalten" },
+    description: { en: "Disables removal based on file age and watched status for this profile. The shared storage cap can still remove unprotected downloads.", pl: "Wyłącza dla tego profilu usuwanie według wieku i po obejrzeniu. Wspólny limit miejsca nadal może usuwać najstarsze niechronione pliki.", de: "Deaktiviert für dieses Profil das Löschen nach Dateialter und nach dem Ansehen. Das gemeinsame Speicherlimit kann weiterhin ungeschützte Downloads entfernen." },
+    defaultValue: DL_DEFAULTS.keep_downloads,
   },
   {
     key: "retention_days",

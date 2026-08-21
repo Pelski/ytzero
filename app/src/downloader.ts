@@ -573,7 +573,10 @@ async function cleanup(s: DlSettings) {
       profileSettings = await dlSettings(owner.user_id);
       settingsByUser.set(owner.user_id, profileSettings);
     }
-    if (ownerProtected(owner, profileSettings)) continue;
+    // Keeping downloads is deliberately not part of ownerProtected(): unlike a
+    // pin, queued item or protected like, it does not exempt a physical file
+    // from the shared storage cap below.
+    if (profileSettings.keep_downloads === 1 || ownerProtected(owner, profileSettings)) continue;
     const finishedAt = sqliteTime(owner.finished_at);
     const watchedAt = sqliteTime(owner.watched_at) ?? finishedAt;
     const retentionExpired = finishedAt != null && finishedAt <= now - profileSettings.retention_days * 86_400_000;
