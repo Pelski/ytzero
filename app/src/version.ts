@@ -1,4 +1,4 @@
-// The pipeline stamps app/src/VERSION and app/src/COMMIT before the build
+// The pipeline stamps app/src/build-version.txt and app/src/build-commit.txt before the build
 // starts, so both labels travel with the sources into the image, the release
 // tarball and the native install without a build arg. YTZERO_VERSION and
 // YTZERO_COMMIT stay the fallback for unstamped builds (docker run -e, the
@@ -41,10 +41,10 @@ function gitHead(): string | null {
   }
 }
 
-export const VERSION = pickBuildVersion(readStamp("VERSION"), process.env.YTZERO_VERSION);
+export const VERSION = pickBuildVersion(readStamp("build-version.txt"), process.env.YTZERO_VERSION);
 
 /** Short commit hash the running build was made from, or "unknown". */
-export const COMMIT = pickBuildCommit(readStamp("COMMIT"), process.env.YTZERO_COMMIT, gitHead).slice(0, 7);
+export const COMMIT = pickBuildCommit(readStamp("build-commit.txt"), process.env.YTZERO_COMMIT, gitHead).slice(0, 7);
 
 interface ParsedVersion {
   scheme: "legacy" | "calver";

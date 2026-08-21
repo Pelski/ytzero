@@ -137,8 +137,8 @@ jobs:
       # vars are missing at runtime; the build args below stay as a fallback.
       - name: Stamp the build version and commit
         run: |
-          echo "${{ needs.prepare.outputs.version }}" > app/src/VERSION
-          echo "${{ needs.prepare.outputs.commit }}" > app/src/COMMIT
+          echo "${{ needs.prepare.outputs.version }}" > app/src/build-version.txt
+          echo "${{ needs.prepare.outputs.commit }}" > app/src/build-commit.txt
 
       - name: Generate OCI image metadata
         id: meta

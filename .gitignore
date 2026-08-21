@@ -1,12 +1,11 @@
 node_modules/
 dist/
 app/public/
-app/src/COMMIT
-app/src/VERSION
+app/src/build-commit.txt
+app/src/build-version.txt
 data/
 *.db
 *.db-wal
 *.db-shm
 .DS_Store
 .claude
-

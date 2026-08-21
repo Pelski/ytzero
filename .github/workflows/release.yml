@@ -42,8 +42,8 @@ jobs:
       # tarball ships no .git, so the commit stamp is all a native install has.
       - name: Stamp the build version and commit
         run: |
-          echo "${GITHUB_REF_NAME}" > app/src/VERSION
-          git rev-parse HEAD > app/src/COMMIT
+          echo "${GITHUB_REF_NAME}" > app/src/build-version.txt
+          git rev-parse HEAD > app/src/build-commit.txt
 
       - name: Set up the Bun runtime
         uses: oven-sh/setup-bun@v2
@@ -84,7 +84,7 @@ jobs:
           cp app/package.json "${stage}/package.json"
           cp app/bun.lock "${stage}/bun.lock"
           cp -r ui/dist/. "${stage}/public/"
-          cp app/src/VERSION "${stage}/VERSION"
+          cp app/src/build-version.txt "${stage}/VERSION"
 
           tar -czf "ytzero-${tag}.tar.gz" "${stage}"
           sha256sum "ytzero-${tag}.tar.gz" > "ytzero-${tag}.tar.gz.sha256"
