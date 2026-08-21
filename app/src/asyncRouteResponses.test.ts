@@ -73,8 +73,8 @@ describe("async database route response shapes", () => {
 
   test("returns and reloads the newly saved global downloads value", () => {
     expect(result.updateDownloadSettingsStatus).toBe(200);
-    expect(result.updatedDownloadSetting).toBe(17);
-    expect(result.reloadedDownloadSetting).toBe(17);
+    expect(result.updatedDownloadSetting).toBe(131_072);
+    expect(result.reloadedDownloadSetting).toBe(131_072);
   });
 
   test("stores yt-dlp update policy for administrators only", () => {

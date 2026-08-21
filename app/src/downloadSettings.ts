@@ -298,9 +298,9 @@ export const DOWNLOADS_SETTINGS: DownloadSettingSource[] = [
   {
     key: "max_storage_gb",
     type: "slider",
-    label: { en: "Storage cap (GB)", pl: "Limit dysku (GB)", de: "Speicherlimit (GB)" },
-    description: { en: "Above this the oldest unprotected downloads are removed first.", pl: "Po przekroczeniu najstarsze niechronione pliki usuwane są w pierwszej kolejności.", de: "Darüber werden die ältesten ungeschützten Downloads zuerst entfernt." },
-    min: 1, max: 500, step: 1,
+    label: { en: "Storage cap", pl: "Limit dysku", de: "Speicherlimit" },
+    description: { en: "Above this the oldest unprotected downloads are removed first. Maximum: 128 TB.", pl: "Po przekroczeniu najstarsze niechronione pliki usuwane są w pierwszej kolejności. Maksimum: 128 TB.", de: "Darüber werden die ältesten ungeschützten Downloads zuerst entfernt. Maximum: 128 TB." },
+    min: 1, max: 131_072, step: 1,
     defaultValue: DL_DEFAULTS.max_storage_gb,
   },
   {

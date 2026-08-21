@@ -70,7 +70,8 @@ also enable thumbnail files, embedded metadata, `info.json`, NFO, and subtitle
 sidecars. Subtitle language and automatic-caption choices are per profile.
 
 Retention defaults to 14 days, watched files receive a 24-hour grace period,
-liked videos are protected, and the shared storage cap defaults to 25 GB. A
+liked videos are protected, and the shared storage cap defaults to 25 GB and
+can be configured up to 128 TB. A
 profile can instead keep downloads, which disables its age and watched cleanup
 without protecting files from that shared cap. Pinned downloads are always
 exempt from automatic cleanup. YouTube cookies are

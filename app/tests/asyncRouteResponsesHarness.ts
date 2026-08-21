@@ -49,7 +49,7 @@ const downloads = await json("/downloads");
 const updateDownloadSettingsResponse = await api.request("http://localhost/downloads/config", {
   method: "PUT",
   headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
-  body: JSON.stringify({ settings: { max_storage_gb: 17 } }),
+  body: JSON.stringify({ settings: { max_storage_gb: 131_072 } }),
 });
 const updatedDownloadSettings = await updateDownloadSettingsResponse.json() as any;
 const reloadedDownloadSettings = await json("/downloads/config");

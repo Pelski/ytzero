@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, FolderUp, Info, RotateCw, Trash2 } from "lucide-react";
 import { api, type DownloadConfigResponse, type DownloadSettingDef, type DownloadSettingValue } from "../api";
 import { useI18n } from "../i18n";
-import { Alert, Badge, Button, Chip, FileDropzone, Input, MultiSelectMenu, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Textarea } from "./ui";
+import { Alert, Badge, Button, Chip, FileDropzone, Input, InputGroup, MultiSelectMenu, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Textarea } from "./ui";
 import "./DownloadConfiguration.css";
 
 const SECTION_KEYS = {
@@ -67,6 +67,7 @@ export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled
     }
     if (definition.type === "text") return <Input aria-label={definition.label} defaultValue={String(value)} onBlur={(event) => event.target.value.trim() !== String(value) && void update(definition.key, event.target.value.trim())} />;
     if (definition.type === "time") return <Input aria-label={definition.label} type="time" value={String(value)} onChange={(event) => event.target.value && void update(definition.key, event.target.value)} />;
+    if (definition.key === "max_storage_gb") return <InputGroup suffix="GB"><Input aria-label={definition.label} type="number" min={definition.min} max={definition.max} step={definition.step} value={Number(value)} onChange={(event) => void update(definition.key, Number(event.target.value))} /></InputGroup>;
     return <div className="dl-config-slider"><Slider aria-label={definition.label} min={definition.min ?? 0} max={definition.max ?? 100} step={definition.step} value={Number(value)} onChange={(next) => void update(definition.key, next)} /><Input aria-label={`${definition.label} · ${tx("numeric value", "wartość liczbowa", "Zahlenwert")}`} type="number" min={definition.min} max={definition.max} step={definition.step} value={Number(value)} onChange={(event) => void update(definition.key, Number(event.target.value))} /></div>;
   };
 
