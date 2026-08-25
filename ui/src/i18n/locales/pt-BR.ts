@@ -792,6 +792,7 @@ export const ptBR: Locale = {
     "sessionQueueRemoved": "Removido da fila de reprodução",
     "sessionQueueEmpty": "Sua fila de reprodução está vazia",
     "sessionQueueClear": "Limpar fila",
+    "sessionQueueClearConfirm": "Remover todos os vídeos da fila?",
     "sessionQueuePlay": "Reproduzir fila",
     "sessionQueueSave": "Gravar como lista de reprodução",
     "sessionQueueImportFailed": "Não foi possível adicionar este vídeo à fila de reprodução",

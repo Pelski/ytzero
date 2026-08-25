@@ -935,39 +935,48 @@ body.cinema .watch-layout.theater .watch-actions .ui-button--secondary:not(.ui-p
 .related-item .r-title:hover { color: #fff; }
 .related-item .r-meta { font-size: 11.5px; color: var(--text-2); margin-top: 4px; }
 .related-item-info { flex: 1; min-width: 0; }
-.related-schedule-actions {
+.related-card-actions {
   position: absolute;
   top: 6px;
   right: 6px;
   z-index: 4;
+  align-items: flex-end;
   display: flex;
-  gap: 4px;
-  width: max-content;
-  padding: 3px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.62);
-  backdrop-filter: blur(5px);
+  flex-direction: column;
+  gap: 3px;
   opacity: 0;
-  transform: translateY(-4px);
   pointer-events: none;
+  transform: translateY(-4px);
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
-.related-thumb-shell:hover .related-schedule-actions,
-.related-thumb-shell:focus-within .related-schedule-actions {
+.related-thumb-shell:hover .related-card-actions,
+.related-thumb-shell:focus-within .related-card-actions {
   opacity: 1;
-  transform: translateY(0);
   pointer-events: auto;
+  transform: translateY(0);
 }
+.related-schedule-actions,
+.related-card-actions__secondary {
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(5px);
+  border-radius: 8px;
+  padding: 3px;
+  width: max-content;
+}
+.related-schedule-actions {
+  display: flex;
+  gap: 4px;
+}
+.related-card-actions__secondary { display: flex; }
 .related-schedule-actions .schedule-action-label { display: none; }
 .related-schedule-actions .schedule-action-group { display: block; }
-.related-schedule-actions .schedule-action-segment .action-btn,
-.related-schedule-actions .schedule-action-group--single .action-btn {
+.related-card-actions .action-btn {
   width: 26px;
   height: 26px;
   color: rgba(255, 255, 255, 0.82);
 }
-.related-schedule-actions .schedule-action-segment .action-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.2); }
-.related-schedule-actions .schedule-action-segment .action-btn.active { color: #0f0f0f; background: var(--accent); }
+.related-card-actions .action-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.2); }
+.related-card-actions .action-btn.active { color: #0f0f0f; background: var(--accent); }
 .watch-speed-popover { min-width: 132px; }
 .watch-schedule-anchor { position: relative; }
 .watch-schedule-popover { min-width: 162px; padding: 7px; }

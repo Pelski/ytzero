@@ -60,9 +60,19 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
       sort: feedSort,
     };
   }, [location.state, playlistId, playlistSort, feedContext, feedTags, feedShowAll, feedSort]);
-  const sessionQueue = sessionPlayQueueContext(useSessionPlayQueue());
+  const sessionQueueItems = useSessionPlayQueue();
+  const sessionQueue = useMemo(() => sessionPlayQueueContext(sessionQueueItems), [sessionQueueItems]);
   const [video, setVideo] = useState<Video | null>(null);
-  const playbackQueue = effectivePlaybackQueue({ currentVideoId: id, routeQueue: routePlaybackQueue, storedQueue: video?.playback_context, sessionQueue, watchTogether: Boolean(watchTogetherRoomId) });
+  // useUpNextQueue keys its prefetch effect by queue identity. Keep that
+  // identity stable across unrelated renders so resolving the next item does
+  // not reset itself in a render/effect loop.
+  const playbackQueue = useMemo(() => effectivePlaybackQueue({
+    currentVideoId: id,
+    routeQueue: routePlaybackQueue,
+    storedQueue: video?.playback_context,
+    sessionQueue,
+    watchTogether: Boolean(watchTogetherRoomId),
+  }), [id, routePlaybackQueue, sessionQueue, video?.playback_context, watchTogetherRoomId]);
   const [missingVideoId, setMissingVideoId] = useState<string | null>(null);
   const videoMissing = missingVideoId === id;
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);

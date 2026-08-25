@@ -1,3 +1,0 @@
-.related-queue-action { align-items: center; background: rgba(0,0,0,.58); border: 0; border-radius: 6px; color: #fff; display: inline-flex; height: 28px; justify-content: center; margin: 4px; padding: 0; position: absolute; right: 0; top: 30px; width: 28px; }
-.related-queue-action:hover { background: var(--accent); }
-.related-queue-action svg { height: 16px; width: 16px; }

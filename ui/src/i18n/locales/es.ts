@@ -796,6 +796,7 @@ export const es: Locale = {
     sessionQueueRemoved: "Eliminado de la cola de reproducción",
     sessionQueueEmpty: "Tu cola de reproducción está vacía",
     sessionQueueClear: "Vaciar cola",
+    sessionQueueClearConfirm: "¿Quitar todos los vídeos de la cola?",
     sessionQueuePlay: "Reproducir cola",
     sessionQueueSave: "Guardar como lista",
     sessionQueueImportFailed: "No se ha podido añadir este vídeo a la cola de reproducción",

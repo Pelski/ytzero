@@ -5,7 +5,6 @@ import { emitToast } from "../events";
 import { useI18n } from "../i18n";
 import { addToSessionPlayQueue, removeFromSessionPlayQueue, useSessionPlayQueue } from "../sessionPlayQueue";
 import Tooltip from "./Tooltip";
-import "./SessionPlayQueueAction.css";
 
 export function SessionPlayQueueAction({ video, compact = false }: { video: Pick<Video, "video_id" | "title" | "thumbnail" | "channel_title">; compact?: boolean }) {
   const { t } = useI18n();
@@ -18,6 +17,6 @@ export function SessionPlayQueueAction({ video, compact = false }: { video: Pick
     void api.importVideo(video.video_id).catch(() => { removeFromSessionPlayQueue(video.video_id); emitToast(t("sessionQueueImportFailed"), "danger"); });
   };
   const label = t(queued ? "sessionQueueRemove" : "sessionQueueAdd");
-  const button = <button type="button" className={compact ? "related-queue-action" : "action-btn"} aria-label={label} title={label} onClick={toggle}>{queued ? <ListMinus /> : <ListPlus />}</button>;
+  const button = <button type="button" className={`action-btn${queued ? " active" : ""}`} aria-label={label} title={label} onClick={toggle}>{queued ? <ListMinus /> : <ListPlus />}</button>;
   return compact ? button : <Tooltip text={label}>{button}</Tooltip>;
 }

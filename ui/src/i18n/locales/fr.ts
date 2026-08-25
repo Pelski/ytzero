@@ -792,6 +792,7 @@ export const fr: Locale = {
     "sessionQueueRemoved": "Supprimé de la file d'attente de lecture",
     "sessionQueueEmpty": "Votre file d'attente est vide",
     "sessionQueueClear": "Effacer la file d'attente",
+    "sessionQueueClearConfirm": "Supprimer toutes les vidéos de la file d'attente ?",
     "sessionQueuePlay": "Lire la file d'attente",
     "sessionQueueSave": "Enregistrer comme liste de lecture",
     "sessionQueueImportFailed": "Impossible d'ajouter cette vidéo à la file de lecture",

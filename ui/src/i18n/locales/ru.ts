@@ -792,6 +792,7 @@ export const ru: Locale = {
     "sessionQueueRemoved": "Удалены из игровой очереди",
     "sessionQueueEmpty": "Ваша игровая очередь пуста",
     "sessionQueueClear": "Чистая очередь",
+    "sessionQueueClearConfirm": "Удалить все видео из очереди?",
     "sessionQueuePlay": "Играть в очередь",
     "sessionQueueSave": "Сохранить как playlist",
     "sessionQueueImportFailed": "Не удалось добавить это видео в игровую очередь",

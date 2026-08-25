@@ -792,6 +792,7 @@ export const ja: Locale = {
     "sessionQueueRemoved": "再生キューから削除",
     "sessionQueueEmpty": "再生キューが空",
     "sessionQueueClear": "クリアキュー",
+    "sessionQueueClearConfirm": "キューからすべての動画を削除しますか？",
     "sessionQueuePlay": "キューを再生する",
     "sessionQueueSave": "プレイリストとして保存",
     "sessionQueueImportFailed": "この動画を再生キューに追加できません",

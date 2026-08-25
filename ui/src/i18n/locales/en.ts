@@ -700,6 +700,7 @@ export const en = {
     sessionQueueRemoved: "Removed from play queue",
     sessionQueueEmpty: "Your play queue is empty",
     sessionQueueClear: "Clear queue",
+    sessionQueueClearConfirm: "Clear every video from the queue?",
     sessionQueuePlay: "Play queue",
     sessionQueueSave: "Save as playlist",
     sessionQueueImportFailed: "Could not add this video to the play queue",

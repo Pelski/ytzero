@@ -63,12 +63,15 @@ import { resolveWatchAudioSources } from "./watchAudioMode";
 import { useWatchPageController } from "./useWatchPageController";
 import WatchPlayerFeedback from "./WatchPlayerFeedback";
 import { useProfileAudioMode } from "../audioModePreference";
+import { useAppliedVideoCardActionConfig } from "../videoCardActionConfig";
 const TranscriptDialog = lazy(() => import("../components/TranscriptDialog"));
 const AudioModePlayer = lazy(() => import("../components/AudioModePlayer"));
 
 export default function WatchPage() {
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [audioMode, setAudioMode] = useProfileAudioMode();
+  const videoCardActionConfig = useAppliedVideoCardActionConfig();
+  const showSessionQueueAction = videoCardActionConfig.actions.some((action) => action.id === "sessionQueue" && !action.hidden);
   // The controller derives the effective active state from video/profile/room
   // eligibility before it decides whether to mount the iframe.
   const controller = useWatchPageController(audioMode);
@@ -981,16 +984,20 @@ export default function WatchPage() {
                   )}
                 </VideoThumbnail>
               </Link>
-              <VideoScheduleActions
-                video={v}
-                variant="compact"
-                onToggle={(event, bucket, active) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  toggleRelatedSchedule(v, bucket, active).catch(console.error);
-                }}
-              />
-              <SessionPlayQueueAction video={v} compact />
+              <div className="related-card-actions">
+                <VideoScheduleActions
+                  video={v}
+                  variant="compact"
+                  onToggle={(event, bucket, active) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleRelatedSchedule(v, bucket, active).catch(console.error);
+                  }}
+                />
+                {showSessionQueueAction && <div className="related-card-actions__secondary">
+                  <SessionPlayQueueAction video={v} compact />
+                </div>}
+              </div>
             </div>
             <div className="related-item-info">
               <Link className="r-title" to={`/watch/${v.video_id}`} title={v.title}>{v.title}</Link>

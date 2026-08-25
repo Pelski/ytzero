@@ -700,6 +700,7 @@ export const de: Locale = {
     sessionQueueRemoved: "Aus der Wiedergabewarteschlange entfernt",
     sessionQueueEmpty: "Deine Wiedergabewarteschlange ist leer",
     sessionQueueClear: "Warteschlange leeren",
+    sessionQueueClearConfirm: "Alle Videos aus der Warteschlange entfernen?",
     sessionQueuePlay: "Warteschlange abspielen",
     sessionQueueSave: "Als Playlist speichern",
     sessionQueueImportFailed: "Dieses Video konnte nicht zur Warteschlange hinzugefügt werden",
