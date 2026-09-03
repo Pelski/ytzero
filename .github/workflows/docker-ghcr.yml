@@ -153,9 +153,10 @@ jobs:
           tar -czf "${archive}" "${stage}"
           sha256sum "${archive}" > "${archive}.sha256"
 
-      # gh creates a draft internally, uploads both assets, and only then
-      # publishes it. This is required because published releases are immutable.
-      - name: Publish the GitHub release with native assets
+      # Release notes are prepared by the external release tool. It leaves a
+      # draft behind; CI owns the final upload, verification and publication so
+      # an asset-less release can never become `latest`.
+      - name: Upload native assets and publish the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -163,12 +164,39 @@ jobs:
 
           version="${{ needs.prepare.outputs.version }}"
           archive="ytzero-${version}.tar.gz"
-          gh release create "${version}" \
-            --generate-notes \
-            --latest \
-            --verify-tag \
+          release_id="$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"${version}\" and .draft == true) | .id"
+          )"
+
+          if [[ -z "${release_id}" ]]; then
+            published_id="$(
+              gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+                --jq ".[] | select(.tag_name == \"${version}\" and .draft == false) | .id"
+            )"
+            if [[ -n "${published_id}" ]]; then
+              echo "Release ${version} is already published. The release tool must leave it as a draft for CI." >&2
+            else
+              echo "Draft release ${version} was not found. Create the draft before running the release workflow." >&2
+            fi
+            exit 1
+          fi
+
+          gh release upload "${version}" \
             "${archive}" \
-            "${archive}.sha256"
+            "${archive}.sha256" \
+            --clobber
+
+          assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets" --jq '.[].name')"
+          grep -Fxq "${archive}" <<< "${assets}" \
+            || { echo "Release asset ${archive} was not uploaded." >&2; exit 1; }
+          grep -Fxq "${archive}.sha256" <<< "${assets}" \
+            || { echo "Release asset ${archive}.sha256 was not uploaded." >&2; exit 1; }
+
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+            -F draft=false \
+            -f make_latest=true \
+            >/dev/null
 
   build:
     name: Build the Linux image for ${{ matrix.platform }}

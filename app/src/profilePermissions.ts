@@ -61,6 +61,7 @@ export function permissionAreaForMutation(path: string): ProfilePermissionArea |
   // Instance-wide plugin enablement/reset has a hard admin check in its
   // handler. Only profile-scoped plugin settings are delegated here.
   if (/^\/plugins\/[^/]+\/settings$/.test(path)) return "plugins";
+  if (path === "/feed-builder" || path.startsWith("/feed-builder/") || path === "/feed/compositions" || path.startsWith("/feed/compositions/")) return "feed";
   if (path === "/profiles") return "profiles";
   if (path === "/filter-rules" || path.startsWith("/filter-rules/")) return "filters";
   if (path === "/tags" || path.startsWith("/tags/") || path === "/rules" || path.startsWith("/rules/")

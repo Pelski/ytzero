@@ -33,6 +33,7 @@ import { registerBookmarkRoutes } from "./routes/bookmarkRoutes";
 import { registerUserPlaylistRoutes } from "./routes/userPlaylistRoutes";
 import { registerBackupRoutes } from "./routes/backupRoutes";
 import { registerFeedRoutes } from "./routes/feedRoutes";
+import { registerFeedBuilderRoutes } from "./routes/feedBuilderRoutes";
 import { registerLibraryRoutes } from "./routes/libraryRoutes";
 import { registerChildRoutes } from "./routes/childRoutes";
 import { registerInsightRoutes } from "./routes/insightRoutes";
@@ -326,6 +327,7 @@ const attachTags = (userId: number, videos: VideoRow[]) => attachVideoTags(userI
 registerBackupRoutes(api, { isAdmin, currentUserId });
 
 registerFeedRoutes(api, { currentUserId, attachTags });
+registerFeedBuilderRoutes(api, { currentUserId, attachTags });
 
 registerLibraryRoutes(api, { currentUserId, attachTags, attachWatchedState });
 

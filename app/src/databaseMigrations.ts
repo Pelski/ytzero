@@ -415,6 +415,29 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_followed_playlist_download_protections_video ON followed_playlist_download_protections(video_id)" },
     ],
   },
+  {
+    version: 111,
+    // Preserve the identity already recorded by development databases that
+    // received this migration before it entered the shared registry.
+    name: "profile-feed-builder",
+    schemaHashes: {
+      "app/src/schema.sql": "8259bf588c8829ee6388d5d4b877208b5f4c33effb090bf63341211a35cb7849",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "30b7c3fc889aedc977e2e5cd834cfd48d9e51870530213433359ed24333e03a0",
+    },
+    sqlite: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS user_feed_configs (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, revision INTEGER NOT NULL DEFAULT 0, config_json TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT (datetime('now')))" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS feed_composition_sessions (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, config_revision INTEGER NOT NULL, columns_count INTEGER NOT NULL, seed TEXT NOT NULL, request_json TEXT NOT NULL, state_json TEXT NOT NULL, created_at_ms INTEGER NOT NULL, last_accessed_at_ms INTEGER NOT NULL, expires_at_ms INTEGER NOT NULL)" },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_feed_composition_sessions_expiry ON feed_composition_sessions(expires_at_ms)" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS feed_composition_pages (composition_id TEXT NOT NULL REFERENCES feed_composition_sessions(id) ON DELETE CASCADE, page_index INTEGER NOT NULL, response_json TEXT NOT NULL, PRIMARY KEY (composition_id, page_index))" },
+    ],
+    postgres: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS user_feed_configs (user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, revision INTEGER NOT NULL DEFAULT 0, config_json TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS feed_composition_sessions (id TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, config_revision INTEGER NOT NULL, columns_count INTEGER NOT NULL, seed TEXT NOT NULL, request_json TEXT NOT NULL, state_json TEXT NOT NULL, created_at_ms BIGINT NOT NULL, last_accessed_at_ms BIGINT NOT NULL, expires_at_ms BIGINT NOT NULL)" },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_feed_composition_sessions_expiry ON feed_composition_sessions(expires_at_ms)" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS feed_composition_pages (composition_id TEXT NOT NULL REFERENCES feed_composition_sessions(id) ON DELETE CASCADE, page_index INTEGER NOT NULL, response_json TEXT NOT NULL, PRIMARY KEY (composition_id, page_index))" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

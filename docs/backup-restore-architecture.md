@@ -105,6 +105,7 @@ instance/access-control.json
 instance/channels.jsonl
 profiles/index.json
 profiles/<profile-uuid>/settings.json
+profiles/<profile-uuid>/feed-builder.json
 profiles/<profile-uuid>/notification-preferences.jsonl
 profiles/<profile-uuid>/access-control.json
 profiles/<profile-uuid>/downloads.json
@@ -232,6 +233,7 @@ state and are likewise excluded.
   recorded by `profile.settings` schema v9; schemas 1–8 remain readable and use
   the application default when the key is absent.
   This includes `feed_sort`, the portable per-profile choice between publication and first-seen chronology, `watch_show_comments`, the opt-in presentation preference for the on-demand comments section, and `channel_posts_tab`, the opt-in presentation preference for Community Posts on channel pages. Comment payloads remain transient; the persisted Community Post catalog and its synchronization state are rebuildable cache data. Neither is exported.
+  Feed-builder configuration is portable personal configuration in the separate versioned `profile.feed-builder` section. It references portable tag and personal-playlist UUIDs plus channel and followed-playlist IDs, so that section depends on the corresponding organization sections. Its revision is preserved for optimistic concurrency; expired composed-feed session snapshots are rebuildable cache and are never exported.
   The visibility of the child-watching shortcut is also a portable per-profile
   presentation preference. It defaults to visible; live child activity remains
   transient and is never included in a backup.

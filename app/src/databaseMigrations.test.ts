@@ -30,8 +30,8 @@ describe("cross-database schema migrations", () => {
     await database.exec("CREATE TABLE downloads (video_id TEXT PRIMARY KEY)");
     await database.exec("INSERT INTO user_playlist_videos VALUES (1, 'later', '2026-01-02'), (1, 'earlier', '2026-01-01')");
 
-    expect(await applyDatabaseMigrations(database)).toBe(110);
-    expect(await applyDatabaseMigrations(database)).toBe(110);
+    expect(await applyDatabaseMigrations(database)).toBe(111);
+    expect(await applyDatabaseMigrations(database)).toBe(111);
     expect((await database.prepare("PRAGMA table_info(auth_sessions)").all() as Array<{ name: string }>).some((column) => column.name === "permission_group_uuid")).toBe(true);
 
     const columns = await database.prepare('PRAGMA table_info("user_channels")').all<{ name: string }>();
@@ -57,6 +57,8 @@ describe("cross-database schema migrations", () => {
     expect(await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='user_playlist_download_protections'").get<{ count: number }>())
       .toEqual({ count: 1 });
     expect(await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='followed_playlist_download_protections'").get<{ count: number }>())
+      .toEqual({ count: 1 });
+    expect(await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='user_feed_configs'").get<{ count: number }>())
       .toEqual({ count: 1 });
     expect(await database.prepare("SELECT 1 AS present FROM sqlite_master WHERE type='index' AND name='idx_videos_shorts_retry'").get<{ present: number }>())
       .toEqual({ present: 1 });
@@ -90,7 +92,7 @@ describe("cross-database schema migrations", () => {
         .run(migration.version, migration.name, "2026-09-03T00:00:00.000Z");
     }
 
-    expect(await applyDatabaseMigrations(database)).toBe(110);
+    expect(await applyDatabaseMigrations(database)).toBe(111);
     const columns = await database.prepare('PRAGMA table_info("downloads")').all<{ name: string }>();
     for (const name of ["progress_percent", "progress_total_bytes", "progress_speed", "worker_id", "worker_heartbeat_at_ms"]) {
       expect(columns.some((column) => column.name === name)).toBe(true);

@@ -674,6 +674,37 @@ CREATE TABLE IF NOT EXISTS cluster_instances (
 );
 CREATE INDEX IF NOT EXISTS idx_cluster_instances_last_seen ON cluster_instances(last_seen_at_ms);
 
+-- Portable per-profile feed composition preferences. Composition sessions are
+-- a rebuildable, short-lived cache and intentionally remain separate below.
+CREATE TABLE IF NOT EXISTS user_feed_configs (
+  user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  revision   INTEGER NOT NULL DEFAULT 0,
+  config_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Rebuildable pagination snapshots for the composed feed. They expire quickly
+-- and are not part of portable backups.
+CREATE TABLE IF NOT EXISTS feed_composition_sessions (
+  id                  TEXT PRIMARY KEY,
+  user_id             INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  config_revision     INTEGER NOT NULL,
+  columns_count       INTEGER NOT NULL,
+  seed                TEXT NOT NULL,
+  request_json        TEXT NOT NULL,
+  state_json          TEXT NOT NULL,
+  created_at_ms       INTEGER NOT NULL,
+  last_accessed_at_ms INTEGER NOT NULL,
+  expires_at_ms       INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_feed_composition_sessions_expiry ON feed_composition_sessions(expires_at_ms);
+CREATE TABLE IF NOT EXISTS feed_composition_pages (
+  composition_id TEXT NOT NULL REFERENCES feed_composition_sessions(id) ON DELETE CASCADE,
+  page_index     INTEGER NOT NULL,
+  response_json  TEXT NOT NULL,
+  PRIMARY KEY (composition_id, page_index)
+);
+
 -- One undo slot per profile for the "clean up the feed" bulk action — a fresh
 -- run always replaces the previous slot, there is no history stack.
 CREATE TABLE IF NOT EXISTS bulk_undo (

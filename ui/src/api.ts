@@ -4,6 +4,7 @@ import type { EmojiSkinTone } from "./emojiSkinTone";
 import { createSocialWatchPartyApi } from "./socialWatchPartyApi";
 import type { PlaylistSort, UserPlaylistSort } from "./playlistSort";
 import type { PlaybackQueueContext } from "./playbackQueue";
+import type { FeedBuilderConfig, FeedBuilderInput, FeedMediaMode, FeedRecipe, FeedRecipeSources } from "../../shared/feedBuilder";
 import type {
   PluginManifest,
   PluginSettingValue,
@@ -101,6 +102,9 @@ import type { ChannelPost } from "./channelPostTypes";
 export * from "./apiTypes";
 export * from "./pluginTypes";
 export { ApiError } from "./apiHttp";
+export type { FeedBuilderConfig, FeedMediaMode, FeedRecipe, FeedRecipeSources } from "../../shared/feedBuilder";
+export interface FeedBuilderOption { id: string; label: string; color?: string; filter_only?: number; }
+export interface FeedBuilderOptions { channels: FeedBuilderOption[]; tags: FeedBuilderOption[]; youtubePlaylists: FeedBuilderOption[]; userPlaylists: FeedBuilderOption[]; }
 export const api = {
   health: () => http<AppHealth>("/health"),
   clusterStatus: () => http<ClusterStatus>("/cluster/status"),
@@ -122,6 +126,10 @@ export const api = {
   restoreCommit: (sessionId: string, planRevision: number) =>
     http<{ ok: true; snapshot: string; counts: { created: number; updated: number; skipped: number; warnings: string[] } }>("/restore/commit", { method: "POST", body: JSON.stringify({ sessionId, planRevision }) }),
   deleteRestoreSession: (id: string) => http<{ ok: true }>(`/restore/session/${id}`, { method: "DELETE" }),
+  feedBuilder: () => http<{ config: FeedBuilderConfig }>("/feed-builder"),
+  feedBuilderOptions: () => http<FeedBuilderOptions>("/feed-builder/options"),
+  updateFeedBuilder: (config: FeedBuilderInput, expectedRevision: number) => http<{ config: FeedBuilderConfig }>("/feed-builder", { method: "PUT", body: JSON.stringify({ config, expectedRevision }) }),
+  previewFeedRecipe: (recipe: FeedRecipe, columns: number) => http<{ count: number; canFillRow: boolean }>("/feed-builder/preview", { method: "POST", body: JSON.stringify({ recipe, columns }) }),
   feed: (p: {
     page?: number;
     tags?: number[];

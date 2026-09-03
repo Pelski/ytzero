@@ -1,0 +1,56 @@
+.feed-builder-settings {
+  container-type: inline-size;
+}
+
+.feed-builder-recipes-header,
+.feed-builder-recipe__header,
+.feed-builder-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.feed-builder-recipe {
+  display: grid;
+  gap: 16px;
+}
+
+.feed-builder-heading {
+  color: var(--text);
+  font-weight: 650;
+}
+
+.feed-builder-recipe__header .ui-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.feed-builder-source-grid,
+.feed-builder-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.feed-builder-source-column {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.feed-builder-settings .ui-select-menu__trigger {
+  max-width: 100%;
+}
+
+@container (max-width: 600px) {
+  .feed-builder-source-grid,
+  .feed-builder-rule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feed-builder-recipes-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

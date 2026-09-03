@@ -25,6 +25,7 @@ import { exportPlaybackContext, restorePlaybackContext } from "./playbackContext
 import { hiddenFilterTagUuids, parseHiddenFilterTagUuids, serializeHiddenFilterTagUuids, TAG_FILTER_VISIBILITY_SETTING } from "./tagFilterVisibility";
 import { normalizePlaybackSpeed, normalizePlaybackSpeedOptionsSetting } from "../../shared/playbackSpeeds";
 import { NOTIFICATION_CATEGORIES } from "./notificationPreferences";
+import { normalizeFeedBuilderConfig } from "../../shared/feedBuilder";
 export const BACKUP_FORMAT = "ytzero.portable-backup"; export const BACKUP_FORMAT_VERSION = 1;
 export const BACKUP_TTL_MS = 30 * 60_000;
 const SESSION_DIR = process.env.RESTORE_SESSION_DIR ?? resolve(import.meta.dir, "../../data/restore-sessions");
@@ -52,6 +53,7 @@ export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
   { id: "profiles.index", schemaVersion: 1, scope: "instance", sensitivity: "normal", dependencies: [], category: "profiles", path: () => "profiles/index.json" },
   { id: "profile.avatar", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "profiles", optional: true, path: (uuid = "") => `assets/avatars/${uuid}` },
   { id: "profile.settings", schemaVersion: 9, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("settings.json") },
+  { id: "profile.feed-builder", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "profile.subscriptions", "profile.followed-playlists", "profile.tags", "profile.playlists"], category: "configuration", path: profilePath("feed-builder.json") },
   { id: "profile.notification-preferences", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index"], category: "configuration", path: profilePath("notification-preferences.jsonl") },
   { id: "profile.access-control", schemaVersion: 1, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.access-control"], category: "configuration", path: profilePath("access-control.json") },
   { id: "profile.downloads", schemaVersion: DOWNLOAD_PROFILE_BACKUP_SCHEMA_VERSION, scope: "profile", sensitivity: "normal", dependencies: ["profiles.index", "instance.channels"], category: "configuration", path: profilePath("downloads.json") },
@@ -70,7 +72,7 @@ export const BACKUP_SECTIONS: readonly BackupSectionDefinition[] = [
 ] as const;
 export const BACKUP_PRESETS: Record<string, string[]> = {
   configuration: ["instance.settings", "instance.access-control", "instance.plugins", "instance.downloads", "profile.settings", "profile.notification-preferences", "profile.access-control", "profile.downloads"],
-  setup: ["instance.settings", "instance.access-control", "instance.plugins", "instance.downloads", "profiles.index", "profile.avatar", "profile.settings", "profile.notification-preferences", "profile.access-control", "profile.downloads", "profile.subscriptions", "profile.followed-playlists", "profile.tags", "profile.rules", "profile.playlists", "instance.channels", "library.referenced-videos"],
+  setup: ["instance.settings", "instance.access-control", "instance.plugins", "instance.downloads", "profiles.index", "profile.avatar", "profile.settings", "profile.feed-builder", "profile.notification-preferences", "profile.access-control", "profile.downloads", "profile.subscriptions", "profile.followed-playlists", "profile.tags", "profile.rules", "profile.playlists", "instance.channels", "library.referenced-videos"],
   full: BACKUP_SECTIONS.filter((section) => section.sensitivity !== "secret").map((section) => section.id),
 };
 const SECTION_BY_ID = new Map(BACKUP_SECTIONS.map((section) => [section.id, section]));
@@ -196,6 +198,11 @@ async function sectionData(id: string, profile: any | null, referenced: Set<stri
       const plugins: Record<string, unknown> = {};
       for (const adapter of PLUGIN_BACKUP_ADAPTERS.filter((item) => item.scope === "profile")) plugins[adapter.id] = { schemaVersion: adapter.schemaVersion, payload: await adapter.export(uid) };
       return { settings, plugins };
+    }
+    case "profile.feed-builder": {
+      const row = await database.prepare("SELECT revision, config_json FROM user_feed_configs WHERE user_id=?").get(uid) as { revision: number; config_json: string } | null;
+      if (!row) return null;
+      try { return normalizeFeedBuilderConfig(JSON.parse(row.config_json), row.revision); } catch { return null; }
     }
     case "profile.notification-preferences": return await database.prepare("SELECT kind,source_id,enabled FROM notification_preferences WHERE user_id=? ORDER BY kind,source_id").all(uid);
     case "profile.access-control": {
@@ -408,6 +415,7 @@ export async function commitPortableRestore(adminId: number, id: string, revisio
       for (const profile of state.manifest.profiles) {
         const uid = profileIds.get(profile.id); if (!uid) continue; const get = (section: string) => data.get(`${section}:${profile.id}`);
         if (selected.has("profile.settings")) { const doc = get("profile.settings") ?? {}; if (state.plan!.strategy === "replace") await database.prepare(`DELETE FROM user_settings WHERE user_id=? AND key IN (${USER_SETTING_KEYS.map(() => "?").join(",")})`).run(uid, ...USER_SETTING_KEYS); for (const [key, value] of Object.entries(doc.settings ?? {})) if (USER_SETTING_KEYS.includes(key) && key in SETTING_DEFAULTS) await database.prepare("INSERT INTO user_settings(user_id,key,value) VALUES(?,?,?) ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run(uid, key, portableUserSettingValue(key, value)); for (const [pluginId, wrapped] of Object.entries(doc.plugins ?? {})) { if (pluginId === "downloads") { if (state.plan!.strategy === "replace") { await database.prepare("DELETE FROM download_settings WHERE user_id=?").run(uid); await database.prepare("DELETE FROM download_rules WHERE user_id=?").run(uid); } await restoreDownloadPreferences(uid,(wrapped as any)?.payload,typeof legacyDownloadsEnabled === "boolean" ? legacyDownloadsEnabled : undefined); continue; } const adapter=PLUGIN_BACKUP_ADAPTERS.find((item)=>item.id===pluginId&&item.scope==="profile"); if(adapter) await adapter.restore(uid,(wrapped as any)?.payload); else counts.warnings.push(`Plugin ${pluginId} is unavailable`); } }
+        if (selected.has("profile.feed-builder")) { const doc = get("profile.feed-builder"); if (doc && typeof doc === "object") { const config = normalizeFeedBuilderConfig(doc, Number((doc as any).revision) || 0); await database.prepare("INSERT INTO user_feed_configs(user_id,revision,config_json,updated_at) VALUES(?,?,?,datetime('now')) ON CONFLICT(user_id) DO UPDATE SET revision=excluded.revision,config_json=excluded.config_json,updated_at=excluded.updated_at").run(uid, config.revision, JSON.stringify({ ...config, revision: undefined })); } else if (state.plan!.strategy === "replace") await database.prepare("DELETE FROM user_feed_configs WHERE user_id=?").run(uid); }
         if (selected.has("profile.notification-preferences")) { if (state.plan!.strategy === "replace") await database.prepare("DELETE FROM notification_preferences WHERE user_id=?").run(uid); for (const row of get("profile.notification-preferences") ?? []) { const validKind = row?.kind === "*" || NOTIFICATION_CATEGORIES.includes(row?.kind); const validSource = typeof row?.source_id === "string" && row.source_id.length <= 200 && (row.source_id === "" || row.kind === "channel_video" || row.kind === "playlist_video"); if (validKind && validSource && !(row.kind === "*" && row.source_id !== "") && (row.enabled === 0 || row.enabled === 1 || row.enabled === false || row.enabled === true)) await database.prepare("INSERT INTO notification_preferences(user_id,kind,source_id,enabled) VALUES(?,?,?,?) ON CONFLICT(user_id,kind,source_id) DO UPDATE SET enabled=excluded.enabled").run(uid,row.kind,row.source_id,row.enabled?1:0); } }
         if (selected.has("profile.access-control")) { const doc = get("profile.access-control") ?? {}; const group = typeof doc.group === "string" ? await database.prepare("SELECT id FROM permission_groups WHERE portable_uuid=?").get(doc.group) as { id: number } | null : null; if (group) { const overrides = doc.overrides && typeof doc.overrides === "object" ? Object.fromEntries(Object.entries(doc.overrides).filter(([permission, value]) => isProfilePermissionArea(permission) && (value === "allow" || value === "deny"))) as any : {}; await updateProfileAccess(uid, group.id, overrides); } }
         if (selected.has("profile.downloads")) { if (state.plan!.strategy === "replace") { await database.prepare("DELETE FROM download_settings WHERE user_id=?").run(uid); await database.prepare("DELETE FROM download_rules WHERE user_id=?").run(uid); } await restoreDownloadPreferences(uid,get("profile.downloads")); }

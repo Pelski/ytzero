@@ -1,11 +1,13 @@
 import type { Locale } from "../types";
 import { localeFormats } from "../localeFormats";
 import { surfaceMessages } from "./surfaceMessages";
+import { feedBuilderMessages } from "./feedBuilder";
 import { clusterMessages } from "./cluster";
 
 export const ru: Locale = {
   messages: {
     ...surfaceMessages.ru,
+    ...feedBuilderMessages.ru,
     ...clusterMessages.ru,
     "navToday": "Главная",
     "navSocial": "Общение",

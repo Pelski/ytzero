@@ -3,10 +3,12 @@ import { localeFormats } from "../localeFormats";
 import { featureMessages } from "./featureMessages";
 import { surfaceMessages } from "./surfaceMessages";
 import { clusterMessages } from "./cluster";
+import { feedBuilderMessages } from "./feedBuilder";
 export const de: Locale = {
   messages: {
     ...surfaceMessages.de,
     ...clusterMessages.de,
+    ...feedBuilderMessages.de,
     navToday: "Start",
     navSocial: "Social",
     navDiscovery: "Entdecken",
