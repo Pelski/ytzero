@@ -15,24 +15,25 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  width: 72px;
+  gap: 3px;
+  flex: 0 0 58px;
+  width: 58px;
   text-decoration: none;
   color: var(--text);
-  padding: 8px 4px 6px;
-  border-radius: 10px;
+  padding: 6px 3px 5px;
+  border-radius: 8px;
   transition: background 0.15s;
 }
 .channel-avatar-item:hover { background: var(--surface); }
 .channel-avatar-wrap {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 38px;
+  height: 38px;
   flex-shrink: 0;
 }
 .channel-avatar-img {
-  width: 48px;
-  height: 48px;
+  width: 38px;
+  height: 38px;
   border-radius: 50%;
   object-fit: cover;
   background: var(--surface-2);
@@ -42,28 +43,28 @@
 }
 .channel-avatar-live {
   position: absolute;
-  bottom: -4px;
+  bottom: -3px;
   left: 50%;
   transform: translateX(-50%);
   background: #f00;
   color: #fff;
-  font-size: 9px;
+  font-size: 7.5px;
   font-weight: 700;
-  letter-spacing: 0.4px;
-  padding: 1px 5px;
-  border-radius: 3px;
-  line-height: 14px;
+  letter-spacing: 0.3px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  line-height: 11px;
   white-space: nowrap;
 }
 .channel-avatar-item:has(.channel-avatar-live) .channel-avatar-img {
-  outline: 2px solid #f00;
-  outline-offset: 2px;
+  outline: 1.5px solid #f00;
+  outline-offset: 1.5px;
 }
 .channel-avatar-name {
-  font-size: 11px;
+  font-size: 9px;
   font-weight: 500;
   text-align: center;
-  max-width: 64px;
+  max-width: 51px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -71,7 +72,7 @@
   line-height: 1.3;
 }
 .channel-avatar-subs {
-  font-size: 10px;
+  font-size: 8px;
   color: var(--text-3);
   text-align: center;
   white-space: nowrap;
