@@ -25,12 +25,13 @@ describe("cross-database schema migrations", () => {
     await database.exec("CREATE TABLE user_videos (user_id INTEGER, video_id TEXT)");
     await database.exec("CREATE TABLE user_playlist_videos (playlist_id INTEGER, video_id TEXT, added_at TEXT)");
     await database.exec("CREATE TABLE user_playlists (id INTEGER PRIMARY KEY)");
+    await database.exec("CREATE TABLE user_followed_playlists (user_id INTEGER, playlist_id TEXT, PRIMARY KEY (user_id, playlist_id))");
     await database.exec("CREATE TABLE videos (video_id TEXT PRIMARY KEY)");
     await database.exec("CREATE TABLE downloads (video_id TEXT PRIMARY KEY)");
     await database.exec("INSERT INTO user_playlist_videos VALUES (1, 'later', '2026-01-02'), (1, 'earlier', '2026-01-01')");
 
-    expect(await applyDatabaseMigrations(database)).toBe(109);
-    expect(await applyDatabaseMigrations(database)).toBe(109);
+    expect(await applyDatabaseMigrations(database)).toBe(110);
+    expect(await applyDatabaseMigrations(database)).toBe(110);
     expect((await database.prepare("PRAGMA table_info(auth_sessions)").all() as Array<{ name: string }>).some((column) => column.name === "permission_group_uuid")).toBe(true);
 
     const columns = await database.prepare('PRAGMA table_info("user_channels")').all<{ name: string }>();
@@ -51,7 +52,11 @@ describe("cross-database schema migrations", () => {
     expect(downloadColumns.some((column) => column.name === "worker_heartbeat_at_ms")).toBe(true);
     const playlistColumns = await database.prepare('PRAGMA table_info("user_playlists")').all<{ name: string }>();
     expect(playlistColumns.some((column) => column.name === "offline_policy")).toBe(true);
+    const followedPlaylistColumns = await database.prepare('PRAGMA table_info("user_followed_playlists")').all<{ name: string }>();
+    expect(followedPlaylistColumns.some((column) => column.name === "offline_policy")).toBe(true);
     expect(await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='user_playlist_download_protections'").get<{ count: number }>())
+      .toEqual({ count: 1 });
+    expect(await database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name='followed_playlist_download_protections'").get<{ count: number }>())
       .toEqual({ count: 1 });
     expect(await database.prepare("SELECT 1 AS present FROM sqlite_master WHERE type='index' AND name='idx_videos_shorts_retry'").get<{ present: number }>())
       .toEqual({ present: 1 });
@@ -78,13 +83,14 @@ describe("cross-database schema migrations", () => {
     const database = new AsyncDatabaseClient("sqlite", ":memory:");
     await database.exec("CREATE TABLE downloads (video_id TEXT PRIMARY KEY)");
     await database.exec("CREATE TABLE user_playlists (id INTEGER PRIMARY KEY)");
+    await database.exec("CREATE TABLE user_followed_playlists (user_id INTEGER, playlist_id TEXT, PRIMARY KEY (user_id, playlist_id))");
     await database.exec("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)");
     for (const migration of DATABASE_MIGRATIONS.filter((item) => item.version < 108)) {
       await database.prepare("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)")
         .run(migration.version, migration.name, "2026-09-03T00:00:00.000Z");
     }
 
-    expect(await applyDatabaseMigrations(database)).toBe(109);
+    expect(await applyDatabaseMigrations(database)).toBe(110);
     const columns = await database.prepare('PRAGMA table_info("downloads")').all<{ name: string }>();
     for (const name of ["progress_percent", "progress_total_bytes", "progress_speed", "worker_id", "worker_heartbeat_at_ms"]) {
       expect(columns.some((column) => column.name === name)).toBe(true);

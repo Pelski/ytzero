@@ -190,6 +190,7 @@ export interface FollowedPlaylist {
   followed_at?: string;
   include_in_feed?: number;
   followed?: number;
+  offline_policy: "none" | "download" | "keep";
 }
 
 export interface FollowedPlaylistUpdates extends FollowedPlaylist {
@@ -474,7 +475,7 @@ export interface DownloadItem {
   attempts: number;
   pinned: number;
   playlist_protected: number;
-  playlists: Array<{ id: number; name: string; icon: string; protects_download: number }>;
+  playlists: Array<{ id: number | string; name: string; icon: string; protects_download: number }>;
   created_at: string;
   finished_at: string | null;
   automation_rule_id: number | null;

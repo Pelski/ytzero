@@ -433,6 +433,8 @@ export const api = {
   channelPlaylistVideos: (id: string, sort: PlaylistSort = "oldest") => http<{ videos: Video[]; processing: Video[]; order: string[] }>(`/channel-playlists/${id}/videos?sort=${encodeURIComponent(sort)}`),
   downloadChannelPlaylist: (id: string, sort: PlaylistSort = "playlist-order") => http<PlaylistDownloadResult>(`/channel-playlists/${id}/download?sort=${encodeURIComponent(sort)}`, { method: "POST", body: "{}" }),
   followPlaylist: (id: string, followed: boolean) => http<{ followed: boolean }>(`/channel-playlists/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
+  updateFollowedPlaylistOfflinePolicy: (id: string, offline_policy: FollowedPlaylist["offline_policy"]) =>
+    http<{ offline_policy: FollowedPlaylist["offline_policy"]; queued: number; skipped: number; total: number }>(`/channel-playlists/${id}/offline-policy`, { method: "PUT", body: JSON.stringify({ offline_policy }) }),
   syncPlaylist: (id: string) => http<{ added: number }>(`/channel-playlists/${id}/sync`, { method: "POST" }),
   followedPlaylists: () => http<{ playlists: FollowedPlaylist[] }>("/followed-playlists"),
   followedPlaylistUpdates: () => http<{ playlists: FollowedPlaylistUpdates[] }>("/followed-playlists/updates"),

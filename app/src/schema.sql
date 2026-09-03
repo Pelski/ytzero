@@ -340,9 +340,20 @@ CREATE TABLE IF NOT EXISTS user_followed_playlists (
   followed_at  TEXT NOT NULL DEFAULT (datetime('now')),
   feed_from    TEXT NOT NULL DEFAULT (datetime('now')),
   include_in_feed INTEGER NOT NULL DEFAULT 1,
+  -- none | download | keep. `keep` adds followed-playlist cleanup protection.
+  offline_policy TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep')),
   PRIMARY KEY (user_id, playlist_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_followed_playlists_playlist ON user_followed_playlists(playlist_id);
+
+CREATE TABLE IF NOT EXISTS followed_playlist_download_protections (
+  user_id INTEGER NOT NULL,
+  playlist_id TEXT NOT NULL,
+  video_id TEXT NOT NULL REFERENCES downloads(video_id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, playlist_id, video_id),
+  FOREIGN KEY (user_id, playlist_id) REFERENCES user_followed_playlists(user_id, playlist_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_followed_playlist_download_protections_video ON followed_playlist_download_protections(video_id);
 
 -- A profile's per-video state. No row = default inbox / unwatched; a row is
 -- created only when the profile acts on the video (queue/archive/like/progress).

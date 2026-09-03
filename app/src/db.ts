@@ -129,6 +129,15 @@ db.exec(`CREATE TABLE IF NOT EXISTS user_followed_playlists (
   PRIMARY KEY (user_id, playlist_id)
 )`);
 db.exec("CREATE INDEX IF NOT EXISTS idx_user_followed_playlists_playlist ON user_followed_playlists(playlist_id)");
+try { db.exec("ALTER TABLE user_followed_playlists ADD COLUMN offline_policy TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep'))"); } catch {}
+db.exec(`CREATE TABLE IF NOT EXISTS followed_playlist_download_protections (
+  user_id INTEGER NOT NULL,
+  playlist_id TEXT NOT NULL,
+  video_id TEXT NOT NULL REFERENCES downloads(video_id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, playlist_id, video_id),
+  FOREIGN KEY (user_id, playlist_id) REFERENCES user_followed_playlists(user_id, playlist_id) ON DELETE CASCADE
+)`);
+db.exec("CREATE INDEX IF NOT EXISTS idx_followed_playlist_download_protections_video ON followed_playlist_download_protections(video_id)");
 try { db.exec("ALTER TABLE videos ADD COLUMN show_from TEXT"); } catch {}
 try { db.exec("ALTER TABLE videos ADD COLUMN liked INTEGER"); } catch {}
 try { db.exec("ALTER TABLE user_videos ADD COLUMN watched INTEGER"); } catch {}

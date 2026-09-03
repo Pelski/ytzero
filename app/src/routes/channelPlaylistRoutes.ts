@@ -1,6 +1,6 @@
 import type { Context, Hono } from "hono";
 import { database } from "../database";
-import { enqueuePlaylistDownloads } from "../downloader";
+import { enqueuePlaylistDownloads, syncFollowedPlaylistOfflinePolicy } from "../downloader";
 import { isChildUser } from "../childTime";
 import { log } from "../logger";
 import { syncPlaylist } from "../refresher";
@@ -31,17 +31,18 @@ api.get("/channel-playlists/:id", async (c) => {
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
            ch.thumbnail AS channel_thumbnail,
-           EXISTS(SELECT 1 FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id) AS followed
+           EXISTS(SELECT 1 FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id) AS followed,
+           COALESCE((SELECT ufp.offline_policy FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id), 'none') AS offline_policy
     FROM channel_playlists cp JOIN channels ch ON ch.channel_id = cp.channel_id
     WHERE cp.playlist_id = ?
-  `).get(uid, id) as any;
+  `).get(uid, uid, id) as any;
   if (!playlist) {
     try {
       await syncPlaylist(id);
       playlist = await database.prepare(`
         SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
                cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
-               ch.thumbnail AS channel_thumbnail, 0 AS followed
+               ch.thumbnail AS channel_thumbnail, 0 AS followed, 'none' AS offline_policy
         FROM channel_playlists cp JOIN channels ch ON ch.channel_id = cp.channel_id
         WHERE cp.playlist_id = ?
       `).get(id) as any;
@@ -78,7 +79,12 @@ api.post("/channel-playlists/:id/download", async (c) => {
   const uid = currentUserId(c);
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
-  const playlist = await database.prepare("SELECT title FROM channel_playlists WHERE playlist_id = ?").get(c.req.param("id")) as { title: string } | null;
+  const playlist = await database.prepare(`
+    SELECT catalog.title, followed.offline_policy
+    FROM channel_playlists catalog
+    LEFT JOIN user_followed_playlists followed ON followed.playlist_id=catalog.playlist_id AND followed.user_id=?
+    WHERE catalog.playlist_id=?
+  `).get(uid, c.req.param("id")) as { title: string; offline_policy: "none" | "download" | "keep" | null } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
   const rows = await database.prepare(`
     SELECT v.video_id, v.title, v.published_at FROM channel_playlist_videos cpv
@@ -88,7 +94,9 @@ api.post("/channel-playlists/:id/download", async (c) => {
     ORDER BY cpv.position ASC
   `).all(c.req.param("id")) as Array<{ video_id: string; title: string; published_at: string | null }>;
   const videoIds = sortPlaylistItems(rows, normalizePlaylistSort(c.req.query("sort")), (video) => ({ title: video.title, publishedAt: video.published_at })).map((row) => row.video_id);
-  const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.title);
+  const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.title, {
+    protectFollowedPlaylistId: playlist.offline_policy === "keep" ? c.req.param("id") : undefined,
+  });
   log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.title, ...result });
   return c.json(result);
 });
@@ -114,6 +122,22 @@ api.put("/channel-playlists/:id/follow", async (c) => {
   }
 });
 
+api.put("/channel-playlists/:id/offline-policy", async (c) => {
+  const uid = currentUserId(c);
+  const id = c.req.param("id");
+  const { offline_policy: offlinePolicy } = await c.req.json<{ offline_policy?: string }>();
+  if (!offlinePolicy || !["none", "download", "keep"].includes(offlinePolicy)) return c.json({ error: "invalid offline policy" }, 400);
+  if (offlinePolicy !== "none" && await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  const updated = await database.prepare(`
+    UPDATE user_followed_playlists SET offline_policy=?
+    WHERE user_id=? AND playlist_id=?
+    RETURNING offline_policy
+  `).get(offlinePolicy, uid, id) as { offline_policy: "none" | "download" | "keep" } | null;
+  if (!updated) return c.json({ error: "not found" }, 404);
+  const result = await syncFollowedPlaylistOfflinePolicy(uid, id);
+  return c.json({ offline_policy: updated.offline_policy, ...result });
+});
+
 api.post("/channel-playlists/:id/sync", async (c) => {
   if (await playlistChannelSyncIsDisabled(c.req.param("id"))) return c.json({ error: "channel sync disabled" }, 409);
   try {
@@ -129,7 +153,7 @@ api.get("/followed-playlists", async (c) => {
   const playlists = await database.prepare(`
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
-           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.include_in_feed
+           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.include_in_feed, ufp.offline_policy
     FROM user_followed_playlists ufp
     JOIN channel_playlists cp ON cp.playlist_id = ufp.playlist_id
     JOIN channels ch ON ch.channel_id = cp.channel_id
@@ -144,7 +168,7 @@ api.get("/followed-playlists/updates", async (c) => {
   const playlists = await database.prepare(`
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
-           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.feed_from, ufp.include_in_feed
+           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.feed_from, ufp.include_in_feed, ufp.offline_policy
     FROM user_followed_playlists ufp
     JOIN channel_playlists cp ON cp.playlist_id = ufp.playlist_id
     JOIN channels ch ON ch.channel_id = cp.channel_id

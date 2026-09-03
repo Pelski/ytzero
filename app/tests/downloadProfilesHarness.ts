@@ -118,6 +118,22 @@ await body(1, `/playlists/${offlinePlaylist.id}`, { method: "PUT", body: JSON.st
 await cleanupDownloadsNow();
 const playlistUnprotected = db.prepare("SELECT status FROM downloads WHERE video_id='playlist-kept'").get();
 
+db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('followed-playlist-kept','UC-dl-scope','followed-playlist-kept','')").run();
+db.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail) VALUES('PL-followed-offline','UC-dl-scope','Followed repairs','')").run();
+db.prepare("INSERT INTO channel_playlist_videos(playlist_id,video_id) VALUES('PL-followed-offline','followed-playlist-kept')").run();
+db.prepare("INSERT INTO user_followed_playlists(user_id,playlist_id) VALUES(1,'PL-followed-offline')").run();
+const followedPlaylistPath = join(Bun.env.DOWNLOADS_DIR!, "followed-playlist-kept.mp4");
+await Bun.write(followedPlaylistPath, "followed-playlist-kept");
+db.prepare("INSERT INTO downloads(video_id,status,source,path,size_bytes,finished_at,requested_by_user_id) VALUES('followed-playlist-kept','done','manual',?,13,datetime('now','-31 days'),1)").run(followedPlaylistPath);
+db.prepare("INSERT INTO download_owners(user_id,video_id,source) VALUES(1,'followed-playlist-kept','manual')").run();
+await body(1, "/channel-playlists/PL-followed-offline/offline-policy", { method: "PUT", body: JSON.stringify({ offline_policy: "keep" }) });
+await cleanupDownloadsNow();
+const followedPlaylistProtected = db.prepare("SELECT status FROM downloads WHERE video_id='followed-playlist-kept'").get();
+const followedPlaylistLibrary = await body(1, "/downloads");
+await body(1, "/channel-playlists/PL-followed-offline/offline-policy", { method: "PUT", body: JSON.stringify({ offline_policy: "none" }) });
+await cleanupDownloadsNow();
+const followedPlaylistUnprotected = db.prepare("SELECT status FROM downloads WHERE video_id='followed-playlist-kept'").get();
+
 db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('playlist-rule-future','UC-dl-scope','Future repair guide','')").run();
 const rulePlaylist = db.prepare("INSERT INTO user_playlists(name,user_id,portable_uuid,offline_policy) VALUES('Automatic repairs',1,?,'keep') RETURNING id").get(crypto.randomUUID()) as { id: number };
 db.prepare("INSERT INTO user_playlist_rules(playlist_id,pattern,match_type,field) VALUES(?,'repair','contains','title')").run(rulePlaylist.id);
@@ -156,6 +172,9 @@ console.log("RESULT " + JSON.stringify({
   playlistProtected,
   playlistUnprotected,
   playlistLibraryItem: playlistLibrary.value.downloads.find((item: any) => item.video_id === "playlist-kept"),
+  followedPlaylistProtected,
+  followedPlaylistUnprotected,
+  followedPlaylistLibraryItem: followedPlaylistLibrary.value.downloads.find((item: any) => item.video_id === "followed-playlist-kept"),
   ruleOfflineResult,
 }));
 db.close();

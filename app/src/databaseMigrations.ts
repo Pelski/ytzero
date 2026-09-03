@@ -396,6 +396,25 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_user_playlist_download_protections_video ON user_playlist_download_protections(video_id)" },
     ],
   },
+  {
+    version: 110,
+    name: "followed-playlist-offline-policies",
+    schemaHashes: {
+      "app/src/schema.sql": "cd063217769b7a5184cbb80a370d64f6ecc37ab15cf26b94e0bc7f8685a4bdce",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "30b7c3fc889aedc977e2e5cd834cfd48d9e51870530213433359ed24333e03a0",
+    },
+    sqlite: [
+      { kind: "add-column", table: "user_followed_playlists", column: "offline_policy", definition: "TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep'))" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS followed_playlist_download_protections (user_id INTEGER NOT NULL, playlist_id TEXT NOT NULL, video_id TEXT NOT NULL REFERENCES downloads(video_id) ON DELETE CASCADE, PRIMARY KEY (user_id, playlist_id, video_id), FOREIGN KEY (user_id, playlist_id) REFERENCES user_followed_playlists(user_id, playlist_id) ON DELETE CASCADE)" },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_followed_playlist_download_protections_video ON followed_playlist_download_protections(video_id)" },
+    ],
+    postgres: [
+      { kind: "add-column", table: "user_followed_playlists", column: "offline_policy", definition: "TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep'))" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS followed_playlist_download_protections (user_id BIGINT NOT NULL, playlist_id TEXT NOT NULL, video_id TEXT NOT NULL REFERENCES downloads(video_id) ON DELETE CASCADE, PRIMARY KEY (user_id, playlist_id, video_id), FOREIGN KEY (user_id, playlist_id) REFERENCES user_followed_playlists(user_id, playlist_id) ON DELETE CASCADE)" },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_followed_playlist_download_protections_video ON followed_playlist_download_protections(video_id)" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

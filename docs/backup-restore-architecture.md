@@ -296,6 +296,11 @@ state and are likewise excluded.
   playlist-protection rows remain machine-bound runtime state and are rebuilt
   from that policy. Older archives default a newly restored playlist to `none`
   and leave an existing target playlist's policy unchanged during merge.
+- A followed YouTube playlist's equivalent offline policy is portable
+  configuration in `profile.followed-playlists` schema v2. Schema v1 archives
+  remain readable and default to no automatic download. Its download queue,
+  media files, and profile-scoped protection rows are derived machine-bound
+  runtime state and are rebuilt from the policy and fetched playlist membership.
 - A profile's assigned access-control group and explicit allow/deny overrides
   are portable configuration in `profile.access-control`. Merge updates only
   selected mapped profiles; replace clears just their overrides and assignment.

@@ -87,4 +87,13 @@ describe("profile-scoped downloads", () => {
       protection: { present: 1 },
     });
   });
+
+  test("protects and groups downloads owned by followed playlists", () => {
+    expect(result.followedPlaylistProtected).toEqual({ status: "done" });
+    expect(result.followedPlaylistUnprotected).toEqual({ status: "deleted" });
+    expect(result.followedPlaylistLibraryItem.playlist_protected).toBe(1);
+    expect(result.followedPlaylistLibraryItem.playlists).toEqual([
+      { id: "PL-followed-offline", name: "Followed repairs", icon: "ListMusic", protects_download: 1 },
+    ]);
+  });
 });

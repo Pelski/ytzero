@@ -301,7 +301,7 @@ export async function enqueuePlaylistDownloads(
   userId: number,
   videoIds: string[],
   playlistTitle: string,
-  options: { protectPlaylistId?: number; preserveErrors?: boolean } = {},
+  options: { protectPlaylistId?: number; protectFollowedPlaylistId?: string; preserveErrors?: boolean } = {},
 ) {
   let queued = 0;
   const existingDownload = database.prepare("SELECT status FROM downloads WHERE video_id = ?");
@@ -317,12 +317,44 @@ export async function enqueuePlaylistDownloads(
       await database.prepare("INSERT INTO user_playlist_download_protections (playlist_id, video_id) VALUES (?, ?) ON CONFLICT (playlist_id, video_id) DO NOTHING")
         .run(options.protectPlaylistId, videoId);
     }
+    if (options.protectFollowedPlaylistId && await database.prepare("SELECT 1 FROM download_owners WHERE user_id=? AND video_id=?").get(userId, videoId)) {
+      await database.prepare("INSERT INTO followed_playlist_download_protections (user_id, playlist_id, video_id) VALUES (?, ?, ?) ON CONFLICT (user_id, playlist_id, video_id) DO NOTHING")
+        .run(userId, options.protectFollowedPlaylistId, videoId);
+    }
   }
   if (queued > 0) {
     publishAppEvent("downloads", { playlistTitle, queued });
     kickDownloader();
   }
   return { queued, skipped: videoIds.length - queued, total: videoIds.length };
+}
+
+export async function syncFollowedPlaylistOfflinePolicy(userId: number, playlistId: string) {
+  const playlist = await database.prepare(`
+    SELECT followed.playlist_id, catalog.title, followed.offline_policy, user.is_child
+    FROM user_followed_playlists followed
+    JOIN channel_playlists catalog ON catalog.playlist_id=followed.playlist_id
+    JOIN users user ON user.id=followed.user_id
+    WHERE followed.user_id=? AND followed.playlist_id=?
+  `).get(userId, playlistId) as { playlist_id: string; title: string; offline_policy: "none" | "download" | "keep"; is_child: number } | null;
+  if (!playlist) return { queued: 0, skipped: 0, total: 0 };
+  if (playlist.offline_policy !== "keep" || playlist.is_child === 1) {
+    await database.prepare("DELETE FROM followed_playlist_download_protections WHERE user_id=? AND playlist_id=?").run(userId, playlistId);
+  }
+  if (playlist.is_child === 1 || playlist.offline_policy === "none" || !await profileDownloadsEnabled(userId)) {
+    return { queued: 0, skipped: 0, total: 0 };
+  }
+  const rows = await database.prepare(`
+    SELECT v.video_id FROM channel_playlist_videos membership
+    JOIN videos v ON v.video_id=membership.video_id
+    WHERE membership.playlist_id=? AND v.is_private=0 AND v.is_unavailable=0
+      AND v.live_status NOT IN ('live', 'upcoming')
+    ORDER BY membership.position, membership.video_id
+  `).all(playlistId) as { video_id: string }[];
+  return enqueuePlaylistDownloads(userId, rows.map((row) => row.video_id), playlist.title, {
+    protectFollowedPlaylistId: playlist.offline_policy === "keep" ? playlistId : undefined,
+    preserveErrors: true,
+  });
 }
 
 export async function syncUserPlaylistOfflinePolicy(userId: number, playlistId: number) {
@@ -469,7 +501,7 @@ export async function listDownloads(userId: number, includeAllProfiles = false) 
     ORDER BY CASE d.status WHEN 'downloading' THEN 0 WHEN 'queued' THEN 1 WHEN 'error' THEN 2 ELSE 3 END,
              COALESCE(d.finished_at, d.created_at) DESC
   `).all(includeAllProfiles ? 1 : 0, userId) as any[];
-  const memberships = await database.prepare(`
+  const personalMemberships = await database.prepare(`
     SELECT owner.user_id, owner.video_id, playlist.id, playlist.name, playlist.icon,
            CASE WHEN protection.video_id IS NULL THEN 0 ELSE 1 END AS protects_download
     FROM download_owners owner
@@ -480,6 +512,19 @@ export async function listDownloads(userId: number, includeAllProfiles = false) 
     WHERE (?=1 OR owner.user_id=? )
     ORDER BY playlist.sort_order, playlist.name
   `).all(includeAllProfiles ? 1 : 0, userId) as Array<{ user_id: number; video_id: string; id: number; name: string; icon: string; protects_download: number }>;
+  const followedMemberships = await database.prepare(`
+    SELECT owner.user_id, owner.video_id, playlist.playlist_id AS id, playlist.title AS name, 'ListMusic' AS icon,
+           CASE WHEN protection.video_id IS NULL THEN 0 ELSE 1 END AS protects_download
+    FROM download_owners owner
+    JOIN channel_playlist_videos membership ON membership.video_id=owner.video_id
+    JOIN user_followed_playlists followed ON followed.playlist_id=membership.playlist_id AND followed.user_id=owner.user_id
+    JOIN channel_playlists playlist ON playlist.playlist_id=followed.playlist_id
+    LEFT JOIN followed_playlist_download_protections protection
+      ON protection.user_id=owner.user_id AND protection.playlist_id=followed.playlist_id AND protection.video_id=owner.video_id
+    WHERE (?=1 OR owner.user_id=?)
+    ORDER BY playlist.title
+  `).all(includeAllProfiles ? 1 : 0, userId) as Array<{ user_id: number; video_id: string; id: string; name: string; icon: string; protects_download: number }>;
+  const memberships = [...personalMemberships, ...followedMemberships];
   const byOwner = new Map<string, typeof memberships>();
   for (const membership of memberships) {
     const key = `${membership.user_id}:${membership.video_id}`;
@@ -595,6 +640,21 @@ async function autoEnqueue() {
           )
       `).all(user.id) as { id: number }[];
       for (const playlist of playlists) await syncUserPlaylistOfflinePolicy(user.id, playlist.id);
+      const followedPlaylists = await database.prepare(`
+        SELECT followed.playlist_id FROM user_followed_playlists followed
+        WHERE followed.user_id=? AND followed.offline_policy!='none'
+          AND EXISTS (
+            SELECT 1 FROM channel_playlist_videos membership
+            LEFT JOIN downloads download ON download.video_id=membership.video_id
+            LEFT JOIN download_owners owner ON owner.video_id=membership.video_id AND owner.user_id=followed.user_id
+            LEFT JOIN followed_playlist_download_protections protection
+              ON protection.user_id=followed.user_id AND protection.playlist_id=followed.playlist_id AND protection.video_id=membership.video_id
+            WHERE membership.playlist_id=followed.playlist_id
+              AND (owner.video_id IS NULL OR download.status='deleted'
+                OR (followed.offline_policy='keep' AND protection.video_id IS NULL))
+          )
+      `).all(user.id) as { playlist_id: string }[];
+      for (const playlist of followedPlaylists) await syncFollowedPlaylistOfflinePolicy(user.id, playlist.playlist_id);
     }
   }
 
@@ -639,6 +699,7 @@ function ownerProtected(row: CleanupOwnerRow, settings: DlSettings) {
 
 async function physicalDownloadProtected(videoId: string) {
   if (await database.prepare("SELECT 1 FROM user_playlist_download_protections WHERE video_id=? LIMIT 1").get(videoId)) return true;
+  if (await database.prepare("SELECT 1 FROM followed_playlist_download_protections WHERE video_id=? LIMIT 1").get(videoId)) return true;
   const owners = await database.prepare(`
     SELECT owner.user_id, owner.video_id, owner.pinned, d.finished_at,
            uv.status, COALESCE(uv.watched, 0) AS watched,
@@ -695,6 +756,10 @@ async function cleanup(s: DlSettings) {
       SELECT 1 FROM user_playlist_download_protections protection
       JOIN user_playlists playlist ON playlist.id=protection.playlist_id
       WHERE protection.video_id=? AND playlist.user_id=? LIMIT 1
+    `).get(owner.video_id, owner.user_id)) continue;
+    if (await database.prepare(`
+      SELECT 1 FROM followed_playlist_download_protections
+      WHERE video_id=? AND user_id=? LIMIT 1
     `).get(owner.video_id, owner.user_id)) continue;
     const finishedAt = sqliteTime(owner.finished_at);
     const watchedAt = sqliteTime(owner.watched_at) ?? finishedAt;

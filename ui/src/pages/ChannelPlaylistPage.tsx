@@ -34,9 +34,10 @@ export default function ChannelPlaylistPage() {
   const [downloadFeedback, setDownloadFeedback] = useState("");
   const [actionsOpen, setActionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsView, setSettingsView] = useState<"root" | "sort" | "notifications">("root");
+  const [settingsView, setSettingsView] = useState<"root" | "sort" | "notifications" | "downloads">("root");
   const [notificationMode, setNotificationMode] = useState<NotificationSourceMode>("default");
   const [notificationSaving, setNotificationSaving] = useState(false);
+  const [offlinePolicySaving, setOfflinePolicySaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -64,7 +65,7 @@ export default function ChannelPlaylistPage() {
     try {
       const next = !Boolean(playlist.followed);
       await api.followPlaylist(id, next);
-      setPlaylist({ ...playlist, followed: next ? 1 : 0 });
+      setPlaylist({ ...playlist, followed: next ? 1 : 0, offline_policy: next ? playlist.offline_policy : "none" });
     } finally { setPending(false); }
   };
 
@@ -85,6 +86,24 @@ export default function ChannelPlaylistPage() {
       setNotificationMode(previous);
       console.error(error);
     } finally { setNotificationSaving(false); }
+  };
+
+  const changeOfflinePolicy = async (next: FollowedPlaylist["offline_policy"]) => {
+    if (!id || offlinePolicySaving || !playlist?.followed) return;
+    const previous = playlist.offline_policy;
+    setPlaylist({ ...playlist, offline_policy: next });
+    setOfflinePolicySaving(true);
+    setDownloadFeedback("");
+    try {
+      await api.updateFollowedPlaylistOfflinePolicy(id, next);
+      setDownloadFeedback(t(next === "none" ? "playlistOfflineDisabled" : next === "download" ? "playlistOfflineEnabled" : "playlistKeepOfflineEnabled"));
+    } catch (error) {
+      setPlaylist((current) => current ? { ...current, offline_policy: previous } : current);
+      setDownloadFeedback(t("playlistOfflineFailed"));
+      console.error(error);
+    } finally {
+      setOfflinePolicySaving(false);
+    }
   };
 
   const downloadAll = async () => {
@@ -139,6 +158,12 @@ export default function ChannelPlaylistPage() {
             {settingsView === "root" && <>
               <HeaderSettingsItem icon={<ListFilter />} label={t("playlistSort")} status={sortLabel} onClick={() => setSettingsView("sort")} />
               {playlist.followed && <HeaderSettingsItem icon={<Bell />} label={t("notificationPlaylistUpdates")} status={notificationMode === "default" ? t("notificationSourceDefaultOn") : notificationMode === "on" ? t("notificationSourceAlwaysOn") : t("notificationSourceAlwaysOff")} onClick={() => setSettingsView("notifications")} />}
+              {playlist.followed && <HeaderSettingsItem
+                icon={<Download />}
+                label={t("playlistOfflinePolicy")}
+                status={t(playlist.offline_policy === "none" ? "playlistOfflineNone" : playlist.offline_policy === "download" ? "playlistOfflineDownload" : "playlistOfflineKeep")}
+                onClick={() => setSettingsView("downloads")}
+              />}
             </>}
             {settingsView === "sort" && <>
               <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistSort")}</HeaderSettingsHeader>
@@ -152,6 +177,17 @@ export default function ChannelPlaylistPage() {
               onBack={() => setSettingsView("root")}
               onChange={(mode) => void changeNotificationMode(mode)}
             />}
+            {settingsView === "downloads" && <>
+              <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistOfflinePolicy")}</HeaderSettingsHeader>
+              {(["none", "download", "keep"] as const).map((option) => <HeaderSettingsOption
+                key={option}
+                selected={playlist.offline_policy === option}
+                disabled={offlinePolicySaving}
+                onClick={() => void changeOfflinePolicy(option)}
+              >
+                {t(option === "none" ? "playlistOfflineNone" : option === "download" ? "playlistOfflineDownload" : "playlistOfflineKeep")}
+              </HeaderSettingsOption>)}
+            </>}
           </HeaderSettingsPopover>
           <Popover
             align="end"

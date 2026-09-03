@@ -126,7 +126,7 @@ export default function DownloadsPage({ shortsEnabled }: { shortsEnabled: boolea
   const keptItems = matchingDoneItems.filter((item) => item.pinned === 1 || item.playlist_protected === 1);
   const displayedDoneItems = libraryFilter === "kept" ? keptItems : matchingDoneItems;
   const keptGroups = libraryFilter === "kept" ? (() => {
-    const groups = new Map<string, { id: number | null; name: string; icon: string; items: DownloadItem[] }>();
+    const groups = new Map<string, { id: number | string | null; name: string; icon: string; items: DownloadItem[] }>();
     for (const item of keptItems) {
       const playlists = item.playlists.length > 0 ? item.playlists : [{ id: null, name: t("downloadsWithoutPlaylist"), icon: "", protects_download: 0 }];
       for (const playlist of playlists) {

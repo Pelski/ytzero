@@ -411,6 +411,8 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "child_watching_monitor_enabled", "0");
     setUserSetting(1, "channel_posts_tab", "1");
     db.prepare("INSERT INTO notification_preferences(user_id,kind,source_id,enabled) VALUES(1,'*','',1),(1,'playlist_video','PLportable',0),(1,'channel_video','UCportable',1)").run();
+    db.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail) VALUES('PLportable','UCportable','Portable followed playlist','')").run();
+    db.prepare("INSERT INTO user_followed_playlists(user_id,playlist_id,offline_policy) VALUES(1,'PLportable','keep')").run();
     db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1'),(1,'prefetch_next_playlist_video','1'),(1,'download_schedule_enabled','1'),(1,'download_schedule_days','1,3,5'),(1,'download_schedule_start','23:00'),(1,'download_schedule_end','07:00') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
     await setSetting("downloads_output_template", "portable/{id}");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
@@ -435,11 +437,15 @@ describe("portable backup classification and restore", () => {
     const exportedEntries = backup.readPortableZip(zip);
     const exportedManifest = JSON.parse(decoder.decode(exportedEntries.get("manifest.json")!));
     expect(exportedManifest.sections.find((section: any) => section.id === "profile.settings").schemaVersion).toBe(9);
+    const followedSection = exportedManifest.sections.find((section: any) => section.id === "profile.followed-playlists");
+    expect(followedSection.schemaVersion).toBe(2);
+    expect(decoder.decode(exportedEntries.get(followedSection.path)!)).toContain('"offline_policy":"keep"');
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
     db.prepare("UPDATE channels SET refresh_schedule_days=NULL, refresh_schedule_time=NULL WHERE channel_id='UCportable'").run();
     db.prepare("UPDATE channels SET external=1 WHERE channel_id='UCportable'").run();
     db.prepare("DELETE FROM user_channels WHERE user_id=1 AND channel_id='UCportable'").run();
+    db.prepare("DELETE FROM user_followed_playlists WHERE user_id=1 AND playlist_id='PLportable'").run();
     setUserSetting(1, "player_screenshot_filename", "changed");
     setUserSetting(1, "enhance_frame_fps", "24");
     setUserSetting(1, "player_speed_options", "[]");
@@ -517,6 +523,7 @@ describe("portable backup classification and restore", () => {
       JOIN user_playlists up ON up.id=upv.playlist_id WHERE up.portable_uuid=? AND upv.video_id='portable001'`).get(playlistUuid))
       .toEqual({ added_at: "2024-02-03 04:05:06", position: 7 });
     expect(db.prepare("SELECT offline_policy FROM user_playlists WHERE portable_uuid=?").get(playlistUuid)).toEqual({ offline_policy: "keep" });
+    expect(db.prepare("SELECT offline_policy FROM user_followed_playlists WHERE user_id=1 AND playlist_id='PLportable'").get()).toEqual({ offline_policy: "keep" });
     expect(db.prepare("SELECT body,video_id FROM social_posts WHERE id=?").get(socialPostId)).toEqual({ body: "Sprawdź @Default", video_id: "portable001" });
     expect((db.prepare("SELECT COUNT(*) AS n FROM social_comments WHERE id=?").get(socialCommentId) as { n: number }).n).toBe(1);
     expect((db.prepare("SELECT COUNT(*) AS n FROM social_reactions WHERE post_id=?").get(socialPostId) as { n: number }).n).toBe(2);
