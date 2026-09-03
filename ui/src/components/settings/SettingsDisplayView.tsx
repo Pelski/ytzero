@@ -15,7 +15,9 @@ import { SidebarNavEditor, VideoCardActionEditor } from "./SettingsEditors"; imp
 import PlaybackSpeedOptionsSetting from "./PlaybackSpeedOptionsSetting";
 import { resolvePlaybackSpeeds, serializeCustomPlaybackSpeeds } from "../../../../shared/playbackSpeeds";
 const VideoCardSwipeSetting = lazy(() => import("./VideoCardSwipeSetting").then((module) => ({ default: module.VideoCardSwipeSetting })));
-const FeedBuilderSettings = lazy(() => import("./FeedBuilderSettings").then((module) => ({ default: module.FeedBuilderSettings })));
+const FeedBuilderSettings = (import.meta as ImportMeta & { env: { DEV: boolean } }).env.DEV
+  ? lazy(() => import("./FeedBuilderSettings").then((module) => ({ default: module.FeedBuilderSettings })))
+  : null;
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
   const supported = intl.supportedValuesOf?.("timeZone") ?? [
@@ -279,7 +281,9 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
 
           </SettingsSection>
           }
-          {displaySubTab === "feed" && canManageArea("feed") && <Suspense fallback={null}><FeedBuilderSettings showToast={showToast} /></Suspense>}
+          {FeedBuilderSettings && displaySubTab === "feed" && canManageArea("feed") && (
+            <Suspense fallback={null}><FeedBuilderSettings showToast={showToast} /></Suspense>
+          )}
           {displaySubTab === "playback" && canManageArea("playback") && <SettingsSection title={t("displayPlayback")} className="settings-display-group">
           <SettingRow label={t("videoCardActionsLabel")} description={t("videoCardActionsHint")}>
             <SelectMenu
