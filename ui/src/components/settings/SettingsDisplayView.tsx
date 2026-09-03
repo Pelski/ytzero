@@ -119,11 +119,10 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     youtubeTitleLanguage,
   } = controller;
 
+  if (isCurrentTabLocked || tab !== "display") return null;
+
   return (
-    <>
-      {!isCurrentTabLocked && tab === "display" && (
-        <>
-          <div className="settings-display-groups">
+    <div className="settings-display-groups">
 
           {displaySubTab === "appearance" && canManageArea("appearance") && <SettingsSection title={t("displayAppearance")} className="settings-display-group">
           {isPrimary ? (
@@ -605,10 +604,6 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           />
           </SettingsSection>
           }
-          </div>
-        </>
-      )}
-
-    </>
+    </div>
   );
 }
