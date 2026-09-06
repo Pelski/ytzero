@@ -1,5 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { ArrowDownToLine, Camera, Clapperboard, LoaderCircle, Maximize, Minimize, MonitorPlay, Pause, PictureInPicture2, Play, Volume2, VolumeX } from "lucide-react";
 import type { AvailableSubtitle, SponsorSegment, VideoChapter, VideoSubtitle } from "../api";
 import { api, SB_CATEGORIES } from "../api";
@@ -10,6 +10,13 @@ import { downloadScreenshotCanvas, type PlayerScreenshotFormat } from "../player
 import { enforceLocalPlayerVolume } from "../localPlayerVolume";
 import { stepPlaybackRate } from "../playbackSpeedStep";
 import { resolveShortcutBindings, shortcutActionMatches } from "../keyboardShortcuts";
+import {
+  isMatchingLocalPlayerDoubleTap,
+  LOCAL_PLAYER_DOUBLE_TAP_MS,
+  localPlayerTapSide,
+  resolveLocalPlayerDoubleActivation,
+  type LocalPlayerTap,
+} from "../localPlayerTapGesture";
 import { useVideoHlsSource } from "./useVideoHlsSource";
 import "./LocalPlayer.css";
 import "./PlayerVolume.css";
@@ -139,6 +146,10 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   const videoRef = useRef<HTMLVideoElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
+  const touchTapTimerRef = useRef<number | null>(null);
+  const previousTouchTapRef = useRef<LocalPlayerTap | null>(null);
+  const lastVideoPointerTypeRef = useRef("");
+  const suppressTouchClickRef = useRef(false);
   const endedRef = useRef(false);
   const spaceHoldTimerRef = useRef<number | null>(null);
   const spaceHoldActiveRef = useRef(false);
@@ -256,6 +267,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
 
   useEffect(() => () => {
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    if (touchTapTimerRef.current) window.clearTimeout(touchTapTimerRef.current);
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -375,6 +387,74 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     if (document.fullscreenElement) document.exitFullscreen?.();
     else el.requestFullscreen?.();
   }, []);
+
+  const clearPendingTouchTap = useCallback(() => {
+    if (touchTapTimerRef.current !== null) window.clearTimeout(touchTapTimerRef.current);
+    touchTapTimerRef.current = null;
+  }, []);
+
+  const onVideoPointerUp = useCallback((event: ReactPointerEvent<HTMLVideoElement>) => {
+    lastVideoPointerTypeRef.current = event.pointerType;
+    suppressTouchClickRef.current = event.pointerType === "touch";
+    if (event.pointerType !== "touch") return;
+
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const tap: LocalPlayerTap = {
+      side: localPlayerTapSide(event.clientX, rect.left, rect.width),
+      timestamp: event.timeStamp,
+    };
+    if (isMatchingLocalPlayerDoubleTap(previousTouchTapRef.current, tap)) {
+      clearPendingTouchTap();
+      previousTouchTapRef.current = null;
+      if (!transportLocked) {
+        const seconds = tap.side === "back" ? -keyboardSeekSeconds : keyboardSeekSeconds;
+        seekBy(seconds);
+        onShortcut?.(tap.side, keyboardSeekSeconds);
+      } else {
+        showControls();
+      }
+      return;
+    }
+
+    clearPendingTouchTap();
+    previousTouchTapRef.current = tap;
+    touchTapTimerRef.current = window.setTimeout(() => {
+      touchTapTimerRef.current = null;
+      previousTouchTapRef.current = null;
+      togglePlay();
+    }, LOCAL_PLAYER_DOUBLE_TAP_MS);
+  }, [clearPendingTouchTap, keyboardSeekSeconds, onShortcut, seekBy, showControls, togglePlay, transportLocked]);
+
+  const onVideoPointerCancel = useCallback(() => {
+    clearPendingTouchTap();
+    previousTouchTapRef.current = null;
+  }, [clearPendingTouchTap]);
+
+  const onVideoClick = useCallback((event: ReactMouseEvent<HTMLVideoElement>) => {
+    if (suppressTouchClickRef.current) {
+      suppressTouchClickRef.current = false;
+      event.preventDefault();
+      return;
+    }
+    togglePlay();
+  }, [togglePlay]);
+
+  const onVideoDoubleClick = useCallback((event: ReactMouseEvent<HTMLVideoElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const action = resolveLocalPlayerDoubleActivation(
+      lastVideoPointerTypeRef.current,
+      event.clientX,
+      rect.left,
+      rect.width,
+    );
+    if (action !== "fullscreen") {
+      event.preventDefault();
+      clearPendingTouchTap();
+      return;
+    }
+    toggleFullscreen();
+  }, [clearPendingTouchTap, toggleFullscreen]);
 
   const togglePip = useCallback(() => {
     const v = videoRef.current as any;
@@ -628,8 +708,10 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
         autoPlay={autoplay}
         playsInline
         aria-disabled={transportLocked || undefined}
-        onClick={togglePlay}
-        onDoubleClick={toggleFullscreen}
+        onPointerUp={onVideoPointerUp}
+        onPointerCancel={onVideoPointerCancel}
+        onClick={onVideoClick}
+        onDoubleClick={onVideoDoubleClick}
         onLoadedMetadata={onLoadedMetadata}
         onPlay={() => { setPlaying(true); endedRef.current = false; showControls(); }}
         onPause={() => { setPlaying(false); setControlsVisible(true); }}

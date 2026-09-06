@@ -19,6 +19,7 @@
   display: block;
   object-fit: contain;
   cursor: pointer;
+  touch-action: manipulation;
 }
 /* Blurred still of the video shown behind the spinner while it buffers. */
 .lp-loading-bg {
