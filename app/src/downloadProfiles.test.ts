@@ -85,7 +85,11 @@ describe("profile-scoped downloads", () => {
       membership: { present: 1 },
       owner: { present: 1 },
       protection: { present: 1 },
+      requestedQuality: { requested_quality: "480" },
     });
+    expect(result.playlistQualityUpdate).toEqual({ status: 200, value: "480" });
+    expect(result.invalidPlaylistQualityStatus).toBe(400);
+    expect(result.playlistPrefetchRequestedQuality).toEqual({ requested_quality: "480" });
   });
 
   test("protects and groups downloads owned by followed playlists", () => {
@@ -95,5 +99,6 @@ describe("profile-scoped downloads", () => {
     expect(result.followedPlaylistLibraryItem.playlists).toEqual([
       { id: "PL-followed-offline", name: "Followed repairs", icon: "ListMusic", protects_download: 1 },
     ]);
+    expect(result.followedPlaylistRequestedQuality).toEqual({ requested_quality: "1080" });
   });
 });

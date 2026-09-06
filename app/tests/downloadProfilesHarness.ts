@@ -118,15 +118,16 @@ await body(1, `/playlists/${offlinePlaylist.id}`, { method: "PUT", body: JSON.st
 await cleanupDownloadsNow();
 const playlistUnprotected = db.prepare("SELECT status FROM downloads WHERE video_id='playlist-kept'").get();
 
-db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('followed-playlist-kept','UC-dl-scope','followed-playlist-kept','')").run();
+db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('followed-playlist-kept','UC-dl-scope','followed-playlist-kept',''),('followed-quality-queue','UC-dl-scope','followed-quality-queue','')").run();
 db.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail) VALUES('PL-followed-offline','UC-dl-scope','Followed repairs','')").run();
-db.prepare("INSERT INTO channel_playlist_videos(playlist_id,video_id) VALUES('PL-followed-offline','followed-playlist-kept')").run();
+db.prepare("INSERT INTO channel_playlist_videos(playlist_id,video_id) VALUES('PL-followed-offline','followed-playlist-kept'),('PL-followed-offline','followed-quality-queue')").run();
 db.prepare("INSERT INTO user_followed_playlists(user_id,playlist_id) VALUES(1,'PL-followed-offline')").run();
 const followedPlaylistPath = join(Bun.env.DOWNLOADS_DIR!, "followed-playlist-kept.mp4");
 await Bun.write(followedPlaylistPath, "followed-playlist-kept");
 db.prepare("INSERT INTO downloads(video_id,status,source,path,size_bytes,finished_at,requested_by_user_id) VALUES('followed-playlist-kept','done','manual',?,13,datetime('now','-31 days'),1)").run(followedPlaylistPath);
 db.prepare("INSERT INTO download_owners(user_id,video_id,source) VALUES(1,'followed-playlist-kept','manual')").run();
-await body(1, "/channel-playlists/PL-followed-offline/offline-policy", { method: "PUT", body: JSON.stringify({ offline_policy: "keep" }) });
+await body(1, "/channel-playlists/PL-followed-offline/offline-policy", { method: "PUT", body: JSON.stringify({ offline_policy: "keep", download_quality: "1080" }) });
+const followedPlaylistRequestedQuality = db.prepare("SELECT requested_quality FROM downloads WHERE video_id='followed-quality-queue'").get();
 await cleanupDownloadsNow();
 const followedPlaylistProtected = db.prepare("SELECT status FROM downloads WHERE video_id='followed-playlist-kept'").get();
 const followedPlaylistLibrary = await body(1, "/downloads");
@@ -135,13 +136,21 @@ await cleanupDownloadsNow();
 const followedPlaylistUnprotected = db.prepare("SELECT status FROM downloads WHERE video_id='followed-playlist-kept'").get();
 
 db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('playlist-rule-future','UC-dl-scope','Future repair guide','')").run();
-const rulePlaylist = db.prepare("INSERT INTO user_playlists(name,user_id,portable_uuid,offline_policy) VALUES('Automatic repairs',1,?,'keep') RETURNING id").get(crypto.randomUUID()) as { id: number };
+const rulePlaylistUuid = crypto.randomUUID();
+const rulePlaylist = db.prepare("INSERT INTO user_playlists(name,user_id,portable_uuid,offline_policy,download_quality) VALUES('Automatic repairs',1,?,'keep','720') RETURNING id").get(rulePlaylistUuid) as { id: number };
 db.prepare("INSERT INTO user_playlist_rules(playlist_id,pattern,match_type,field) VALUES(?,'repair','contains','title')").run(rulePlaylist.id);
 await applyPlaylistRulesToVideo("playlist-rule-future");
+const playlistQualityUpdate = await body(1, `/playlists/${rulePlaylist.id}`, { method: "PUT", body: JSON.stringify({ download_quality: "480" }) });
+const invalidPlaylistQuality = await body(1, `/playlists/${rulePlaylist.id}`, { method: "PUT", body: JSON.stringify({ download_quality: "2160" }) });
+db.prepare("INSERT INTO videos(video_id,channel_id,title,thumbnail) VALUES('playlist-prefetch','UC-dl-scope','playlist-prefetch','')").run();
+db.prepare("INSERT INTO user_playlist_videos(playlist_id,video_id) VALUES(?,'playlist-prefetch')").run(rulePlaylist.id);
+await body(1, "/videos/playlist-prefetch/download", { method: "POST", body: JSON.stringify({ playlist_context: { kind: "user-playlist", playlistUuid: rulePlaylistUuid } }) });
+const playlistPrefetchRequestedQuality = db.prepare("SELECT requested_quality FROM downloads WHERE video_id='playlist-prefetch'").get();
 const ruleOfflineResult = {
   membership: db.prepare("SELECT 1 AS present FROM user_playlist_videos WHERE playlist_id=? AND video_id='playlist-rule-future'").get(rulePlaylist.id),
   owner: db.prepare("SELECT 1 AS present FROM download_owners WHERE user_id=1 AND video_id='playlist-rule-future'").get(),
   protection: db.prepare("SELECT 1 AS present FROM user_playlist_download_protections WHERE playlist_id=? AND video_id='playlist-rule-future'").get(rulePlaylist.id),
+  requestedQuality: db.prepare("SELECT requested_quality FROM downloads WHERE video_id='playlist-rule-future'").get(),
 };
 
 console.log("RESULT " + JSON.stringify({
@@ -175,6 +184,10 @@ console.log("RESULT " + JSON.stringify({
   followedPlaylistProtected,
   followedPlaylistUnprotected,
   followedPlaylistLibraryItem: followedPlaylistLibrary.value.downloads.find((item: any) => item.video_id === "followed-playlist-kept"),
+  followedPlaylistRequestedQuality,
+  playlistQualityUpdate: { status: playlistQualityUpdate.status, value: playlistQualityUpdate.value.playlist?.download_quality },
+  invalidPlaylistQualityStatus: invalidPlaylistQuality.status,
+  playlistPrefetchRequestedQuality,
   ruleOfflineResult,
 }));
 db.close();

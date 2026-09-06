@@ -8,6 +8,7 @@ import { videoSelect, type VideoRow } from "../videoRoutesSupport";
 import { profileDownloadsEnabled } from "../downloadConfig";
 import { normalizePlaylistSort, sortPlaylistItems } from "../playlistSort";
 import { shortsUiVisibilitySql } from "../feedQuery";
+import { isDownloadQuality, type DownloadQuality } from "../downloadSettings";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -32,17 +33,18 @@ api.get("/channel-playlists/:id", async (c) => {
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
            ch.thumbnail AS channel_thumbnail,
            EXISTS(SELECT 1 FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id) AS followed,
-           COALESCE((SELECT ufp.offline_policy FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id), 'none') AS offline_policy
+           COALESCE((SELECT ufp.offline_policy FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id), 'none') AS offline_policy,
+           (SELECT ufp.download_quality FROM user_followed_playlists ufp WHERE ufp.user_id = ? AND ufp.playlist_id = cp.playlist_id) AS download_quality
     FROM channel_playlists cp JOIN channels ch ON ch.channel_id = cp.channel_id
     WHERE cp.playlist_id = ?
-  `).get(uid, uid, id) as any;
+  `).get(uid, uid, uid, id) as any;
   if (!playlist) {
     try {
       await syncPlaylist(id);
       playlist = await database.prepare(`
         SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
                cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
-               ch.thumbnail AS channel_thumbnail, 0 AS followed, 'none' AS offline_policy
+               ch.thumbnail AS channel_thumbnail, 0 AS followed, 'none' AS offline_policy, NULL AS download_quality
         FROM channel_playlists cp JOIN channels ch ON ch.channel_id = cp.channel_id
         WHERE cp.playlist_id = ?
       `).get(id) as any;
@@ -80,11 +82,11 @@ api.post("/channel-playlists/:id/download", async (c) => {
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
   const playlist = await database.prepare(`
-    SELECT catalog.title, followed.offline_policy
+    SELECT catalog.title, followed.offline_policy, followed.download_quality
     FROM channel_playlists catalog
     LEFT JOIN user_followed_playlists followed ON followed.playlist_id=catalog.playlist_id AND followed.user_id=?
     WHERE catalog.playlist_id=?
-  `).get(uid, c.req.param("id")) as { title: string; offline_policy: "none" | "download" | "keep" | null } | null;
+  `).get(uid, c.req.param("id")) as { title: string; offline_policy: "none" | "download" | "keep" | null; download_quality: DownloadQuality | null } | null;
   if (!playlist) return c.json({ error: "not found" }, 404);
   const rows = await database.prepare(`
     SELECT v.video_id, v.title, v.published_at FROM channel_playlist_videos cpv
@@ -96,6 +98,7 @@ api.post("/channel-playlists/:id/download", async (c) => {
   const videoIds = sortPlaylistItems(rows, normalizePlaylistSort(c.req.query("sort")), (video) => ({ title: video.title, publishedAt: video.published_at })).map((row) => row.video_id);
   const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.title, {
     protectFollowedPlaylistId: playlist.offline_policy === "keep" ? c.req.param("id") : undefined,
+    downloadQuality: playlist.download_quality,
   });
   log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.title, ...result });
   return c.json(result);
@@ -125,17 +128,25 @@ api.put("/channel-playlists/:id/follow", async (c) => {
 api.put("/channel-playlists/:id/offline-policy", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
-  const { offline_policy: offlinePolicy } = await c.req.json<{ offline_policy?: string }>();
-  if (!offlinePolicy || !["none", "download", "keep"].includes(offlinePolicy)) return c.json({ error: "invalid offline policy" }, 400);
-  if (offlinePolicy !== "none" && await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
+  const body = await c.req.json<{ offline_policy?: string; download_quality?: unknown }>();
+  if (body.offline_policy === undefined && body.download_quality === undefined) return c.json({ error: "download setting required" }, 400);
+  const current = await database.prepare("SELECT offline_policy, download_quality FROM user_followed_playlists WHERE user_id=? AND playlist_id=?")
+    .get(uid, id) as { offline_policy: "none" | "download" | "keep"; download_quality: DownloadQuality | null } | null;
+  if (!current) return c.json({ error: "not found" }, 404);
+  const offlinePolicy = body.offline_policy ?? current.offline_policy;
+  if (!["none", "download", "keep"].includes(offlinePolicy)) return c.json({ error: "invalid offline policy" }, 400);
+  const downloadQuality = body.download_quality === undefined ? current.download_quality : body.download_quality;
+  if (downloadQuality !== null && !isDownloadQuality(downloadQuality)) return c.json({ error: "invalid download quality" }, 400);
+  if (body.offline_policy !== undefined && offlinePolicy !== "none" && await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   const updated = await database.prepare(`
-    UPDATE user_followed_playlists SET offline_policy=?
+    UPDATE user_followed_playlists SET offline_policy=?, download_quality=?
     WHERE user_id=? AND playlist_id=?
-    RETURNING offline_policy
-  `).get(offlinePolicy, uid, id) as { offline_policy: "none" | "download" | "keep" } | null;
-  if (!updated) return c.json({ error: "not found" }, 404);
-  const result = await syncFollowedPlaylistOfflinePolicy(uid, id);
-  return c.json({ offline_policy: updated.offline_policy, ...result });
+    RETURNING offline_policy, download_quality
+  `).get(offlinePolicy, downloadQuality, uid, id) as { offline_policy: "none" | "download" | "keep"; download_quality: DownloadQuality | null };
+  const result = offlinePolicy !== current.offline_policy || downloadQuality !== current.download_quality
+    ? await syncFollowedPlaylistOfflinePolicy(uid, id)
+    : { queued: 0, skipped: 0, total: 0 };
+  return c.json({ ...updated, ...result });
 });
 
 api.post("/channel-playlists/:id/sync", async (c) => {
@@ -153,7 +164,7 @@ api.get("/followed-playlists", async (c) => {
   const playlists = await database.prepare(`
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
-           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.include_in_feed, ufp.offline_policy
+           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.include_in_feed, ufp.offline_policy, ufp.download_quality
     FROM user_followed_playlists ufp
     JOIN channel_playlists cp ON cp.playlist_id = ufp.playlist_id
     JOIN channels ch ON ch.channel_id = cp.channel_id
@@ -168,7 +179,7 @@ api.get("/followed-playlists/updates", async (c) => {
   const playlists = await database.prepare(`
     SELECT cp.playlist_id, cp.title, cp.thumbnail, cp.video_count, cp.last_synced_at,
            cp.channel_id, COALESCE(NULLIF(ch.custom_title, ''), ch.title) AS channel_title,
-           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.feed_from, ufp.include_in_feed, ufp.offline_policy
+           ch.thumbnail AS channel_thumbnail, ufp.followed_at, ufp.feed_from, ufp.include_in_feed, ufp.offline_policy, ufp.download_quality
     FROM user_followed_playlists ufp
     JOIN channel_playlists cp ON cp.playlist_id = ufp.playlist_id
     JOIN channels ch ON ch.channel_id = cp.channel_id

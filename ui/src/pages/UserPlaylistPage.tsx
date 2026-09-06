@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import "./UserPlaylistPage.css";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Download, Edit3, MoreHorizontal, Save, Trash2, X } from "lucide-react";
-import { api, type UserPlaylist, type Video } from "../api";
+import { Download, Edit3, Gauge, ListFilter, MoreHorizontal, Save, Trash2, X } from "lucide-react";
+import { api, type DownloadQuality, type UserPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { PlaylistIcon, PlaylistIconPicker } from "../components/PlaylistIcon";
@@ -10,11 +10,12 @@ import Popconfirm from "../components/Popconfirm";
 import { emit } from "../events";
 import { formatVideoCount, useI18n } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import { Button, EmptyState, IconButton, Input, LocalToast, Menu, MenuItem, MenuSeparator, PageHeader, Popover, SelectMenu } from "../components/ui";
+import { Button, EmptyState, IconButton, Input, LocalToast, Menu, MenuItem, MenuSeparator, PageHeader, Popover } from "../components/ui";
 import EmptyArt from "../components/illustrations/EmptyArt";
 import PlaylistPlaybackActions from "../components/PlaylistPlaybackActions";
 import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 import { normalizeUserPlaylistSort, type UserPlaylistSort } from "../playlistSort";
+import { HeaderSettingsHeader, HeaderSettingsItem, HeaderSettingsOption, HeaderSettingsPopover } from "../components/HeaderSettingsMenu";
 
 export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   const { t, language } = useI18n();
@@ -33,7 +34,10 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   const [downloadPending, setDownloadPending] = useState(false);
   const [downloadFeedback, setDownloadFeedback] = useState("");
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsView, setSettingsView] = useState<"root" | "sort" | "downloads" | "download-quality">("root");
   const [offlinePolicyPending, setOfflinePolicyPending] = useState(false);
+  const [downloadQualityPending, setDownloadQualityPending] = useState(false);
 
   const load = useCallback(async () => {
     if (!playlistId) return;
@@ -96,36 +100,96 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
     }
   };
 
+  const downloadQualityOptions: Array<{ value: DownloadQuality | "default"; label: string }> = [
+    { value: "default", label: t("playlistDownloadQualityDefault") },
+    { value: "best", label: t("playlistDownloadQualityBest") },
+    ...(["1440", "1080", "720", "480"] as const).map((quality) => ({ value: quality, label: `${quality}p` })),
+  ];
+  const downloadQualityLabel = (quality: DownloadQuality | null) => quality === null
+    ? t("playlistDownloadQualityDefault")
+    : quality === "best" ? t("playlistDownloadQualityBest") : `${quality}p`;
+  const changeDownloadQuality = async (value: DownloadQuality | "default") => {
+    if (!playlist || downloadQualityPending) return;
+    const download_quality = value === "default" ? null : value;
+    setDownloadQualityPending(true);
+    setDownloadFeedback("");
+    try {
+      const result = await api.updateUserPlaylist(playlist.id, { download_quality });
+      setPlaylist(result.playlist);
+      setDownloadFeedback(t("playlistDownloadQualityUpdated", { quality: downloadQualityLabel(result.playlist.download_quality) }));
+    } catch {
+      setDownloadFeedback(t("playlistDownloadQualityFailed"));
+    } finally {
+      setDownloadQualityPending(false);
+    }
+  };
+
   const canDownloadPlaylist = videos.length > 0 && videos.some((video) => video.downloads_allowed);
-  const sortAction = <SelectMenu
-    floating
-    label={t("playlistSort")}
-    value={sort}
-    onChange={(next: UserPlaylistSort) => setSearchParams({ sort: next }, { replace: true })}
-    options={[
-      { value: "playlist-order", label: t("playlistSortOrder") },
-      { value: "added-newest", label: t("playlistSortAddedNewest") },
-      { value: "added-oldest", label: t("playlistSortAddedOldest") },
-      { value: "newest", label: t("playlistSortNewest") },
-      { value: "oldest", label: t("playlistSortOldest") },
-      { value: "title-asc", label: t("playlistSortTitleAsc") },
-      { value: "title-desc", label: t("playlistSortTitleDesc") },
-    ]}
-  />;
-  const offlineAction = <SelectMenu
-    floating
-    disabled={offlinePolicyPending}
-    label={t("playlistOfflinePolicy")}
-    value={playlist?.offline_policy ?? "none"}
-    onChange={changeOfflinePolicy}
-    options={[
-      { value: "none", label: t("playlistOfflineNone") },
-      { value: "download", label: t("playlistOfflineDownload") },
-      { value: "keep", label: t("playlistOfflineKeep") },
-    ]}
-  />;
+  const sortOptions: Array<{ value: UserPlaylistSort; label: string }> = [
+    { value: "playlist-order", label: t("playlistSortOrder") },
+    { value: "added-newest", label: t("playlistSortAddedNewest") },
+    { value: "added-oldest", label: t("playlistSortAddedOldest") },
+    { value: "newest", label: t("playlistSortNewest") },
+    { value: "oldest", label: t("playlistSortOldest") },
+    { value: "title-asc", label: t("playlistSortTitleAsc") },
+    { value: "title-desc", label: t("playlistSortTitleDesc") },
+  ];
+  const sortLabel = sortOptions.find((option) => option.value === sort)?.label ?? t("playlistSortAddedNewest");
   if (!playlist && loading) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return null;
+  const playlistSettingsAction = <HeaderSettingsPopover
+    open={settingsOpen}
+    onOpenChange={(open) => { setSettingsOpen(open); if (!open) setSettingsView("root"); }}
+    label={t("playlistSettings")}
+  >
+    {settingsView === "root" && <>
+      <HeaderSettingsItem icon={<ListFilter />} label={t("playlistSort")} status={sortLabel} onClick={() => setSettingsView("sort")} />
+      <HeaderSettingsItem
+        icon={<Download />}
+        label={t("playlistOfflinePolicy")}
+        status={t(playlist.offline_policy === "none" ? "playlistOfflineNone" : playlist.offline_policy === "download" ? "playlistOfflineDownload" : "playlistOfflineKeep")}
+        onClick={() => setSettingsView("downloads")}
+      />
+      <HeaderSettingsItem
+        icon={<Gauge />}
+        label={t("playlistDownloadQuality")}
+        status={downloadQualityLabel(playlist.download_quality)}
+        onClick={() => setSettingsView("download-quality")}
+      />
+    </>}
+    {settingsView === "sort" && <>
+      <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistSort")}</HeaderSettingsHeader>
+      {sortOptions.map((option) => <HeaderSettingsOption
+        key={option.value}
+        selected={sort === option.value}
+        onClick={() => setSearchParams({ sort: option.value }, { replace: true })}
+      >
+        {option.label}
+      </HeaderSettingsOption>)}
+    </>}
+    {settingsView === "downloads" && <>
+      <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistOfflinePolicy")}</HeaderSettingsHeader>
+      {(["none", "download", "keep"] as const).map((option) => <HeaderSettingsOption
+        key={option}
+        selected={playlist.offline_policy === option}
+        disabled={offlinePolicyPending}
+        onClick={() => void changeOfflinePolicy(option)}
+      >
+        {t(option === "none" ? "playlistOfflineNone" : option === "download" ? "playlistOfflineDownload" : "playlistOfflineKeep")}
+      </HeaderSettingsOption>)}
+    </>}
+    {settingsView === "download-quality" && <>
+      <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistDownloadQuality")}</HeaderSettingsHeader>
+      {downloadQualityOptions.map((option) => <HeaderSettingsOption
+        key={option.value}
+        selected={(playlist.download_quality ?? "default") === option.value}
+        disabled={downloadQualityPending}
+        onClick={() => void changeDownloadQuality(option.value)}
+      >
+        {option.label}
+      </HeaderSettingsOption>)}
+    </>}
+  </HeaderSettingsPopover>;
   const playbackQueue: PlaybackQueueContext = { version: 1, kind: "user-playlist", playlistUuid: playlist.portable_uuid, sort };
   const playPlaylistVideo = (video: Video) => onPlay(video, playbackQueue);
   const downloadMenuItem = !canDownloadPlaylist ? null : videos.some((video) => video.downloads_enabled)
@@ -172,8 +236,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
           </div>
           <div className="playlist-actions">
             <PlaylistPlaybackActions videos={videos} disabled={loading} onPlay={playPlaylistVideo} />
-            {offlineAction}
-            {sortAction}
+            {playlistSettingsAction}
             {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
             {moreActions}
           </div>
@@ -185,8 +248,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
           description={formatVideoCount(playlist.video_count, language)}
           actions={<>
             <PlaylistPlaybackActions videos={videos} disabled={loading} onPlay={playPlaylistVideo} />
-            {offlineAction}
-            {sortAction}
+            {playlistSettingsAction}
             {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
             {moreActions}
           </>}

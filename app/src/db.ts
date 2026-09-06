@@ -39,6 +39,7 @@ for (const stmt of [
 ]) {
   try { db.exec(stmt); } catch {}
 }
+try { db.exec("ALTER TABLE user_playlists ADD COLUMN download_quality TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480'))"); } catch {}
 
 try { db.exec("ALTER TABLE scheduling_event_log ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'"); } catch {}
 
@@ -130,6 +131,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS user_followed_playlists (
 )`);
 db.exec("CREATE INDEX IF NOT EXISTS idx_user_followed_playlists_playlist ON user_followed_playlists(playlist_id)");
 try { db.exec("ALTER TABLE user_followed_playlists ADD COLUMN offline_policy TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep'))"); } catch {}
+try { db.exec("ALTER TABLE user_followed_playlists ADD COLUMN download_quality TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480'))"); } catch {}
 db.exec(`CREATE TABLE IF NOT EXISTS followed_playlist_download_protections (
   user_id INTEGER NOT NULL,
   playlist_id TEXT NOT NULL,
@@ -197,6 +199,9 @@ try { db.exec("ALTER TABLE downloads ADD COLUMN output_base TEXT"); } catch {}
 // Snapshot of the playlist name only for downloads explicitly queued from a
 // playlist view. It feeds the optional {playlist} output-template token.
 try { db.exec("ALTER TABLE downloads ADD COLUMN playlist_title TEXT"); } catch {}
+// Playlist-specific quality is snapshotted onto a queued job so a later profile
+// settings change cannot alter the requested resolution before the worker runs.
+try { db.exec("ALTER TABLE downloads ADD COLUMN requested_quality TEXT CHECK (requested_quality IS NULL OR requested_quality IN ('best', '1440', '1080', '720', '480'))"); } catch {}
 // Rule attribution makes automatic decisions explainable without coupling
 // queue rows to the lifecycle of a rule (deleted rules leave useful history).
 try { db.exec("ALTER TABLE downloads ADD COLUMN automation_rule_id INTEGER"); } catch {}

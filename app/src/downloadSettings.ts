@@ -6,6 +6,17 @@ export type DownloadSettingValue = number | string;
 export type DownloadSettingType = "slider" | "select" | "toggle" | "text" | "time" | "multiselect";
 type LocalizedText = BaseLocalizedText;
 
+export const DOWNLOAD_QUALITIES = ["best", "1440", "1080", "720", "480"] as const;
+export type DownloadQuality = (typeof DOWNLOAD_QUALITIES)[number];
+
+export function isDownloadQuality(value: unknown): value is DownloadQuality {
+  return typeof value === "string" && (DOWNLOAD_QUALITIES as readonly string[]).includes(value);
+}
+
+export function resolveDownloadQuality(profileDefault: string, playlistOverride: unknown): string {
+  return isDownloadQuality(playlistOverride) ? playlistOverride : profileDefault;
+}
+
 export interface DownloadSettingSource {
   key: string;
   label: LocalizedText;

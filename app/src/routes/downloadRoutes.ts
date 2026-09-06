@@ -17,12 +17,38 @@ import { registerAudioRoutes } from "./audioRoutes";
 import { registerYtdlpUpdateRoutes } from "./ytdlpUpdateRoutes";
 import { ytdlpUpdateChannel, ytdlpUpdateIntervalDays } from "../ytdlpUpdater";
 import { ensureOnDemandVideo, OnDemandVideoImportError } from "../onDemandVideoImport";
+import type { DownloadQuality } from "../downloadSettings";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
 type ApiContext = Context<ApiEnvironment>;
 
 const videoExistsStmt = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
+
+async function playlistDownloadContext(userId: number, videoId: string, value: unknown): Promise<{ playlistTitle?: string; downloadQuality?: DownloadQuality | null }> {
+  if (!value || typeof value !== "object") return {};
+  const context = value as Record<string, unknown>;
+  if (context.kind === "user-playlist" && typeof context.playlistUuid === "string") {
+    const playlist = await database.prepare(`
+      SELECT playlist.name, playlist.download_quality
+      FROM user_playlists playlist
+      JOIN user_playlist_videos membership ON membership.playlist_id=playlist.id
+      WHERE playlist.user_id=? AND playlist.portable_uuid=? AND membership.video_id=?
+    `).get(userId, context.playlistUuid, videoId) as { name: string; download_quality: DownloadQuality | null } | null;
+    return playlist ? { playlistTitle: playlist.name, downloadQuality: playlist.download_quality } : {};
+  }
+  if (context.kind === "channel-playlist" && typeof context.playlistId === "string") {
+    const playlist = await database.prepare(`
+      SELECT catalog.title, followed.download_quality
+      FROM user_followed_playlists followed
+      JOIN channel_playlists catalog ON catalog.playlist_id=followed.playlist_id
+      JOIN channel_playlist_videos membership ON membership.playlist_id=followed.playlist_id
+      WHERE followed.user_id=? AND followed.playlist_id=? AND membership.video_id=?
+    `).get(userId, context.playlistId, videoId) as { title: string; download_quality: DownloadQuality | null } | null;
+    return playlist ? { playlistTitle: playlist.title, downloadQuality: playlist.download_quality } : {};
+  }
+  return {};
+}
 
 export function registerDownloadRoutes(
   api: Api,
@@ -213,9 +239,9 @@ api.post("/videos/:id/download", async (c) => {
   if (video.live_status === "live" || video.live_status === "upcoming") {
     return c.json({ error: "live streams cannot be downloaded while they are active" }, 409);
   }
-  const body = await c.req.json().catch(() => ({} as { priority?: boolean; keep?: boolean }));
+  const body = await c.req.json().catch(() => ({})) as { priority?: boolean; keep?: boolean; playlist_context?: unknown };
   if (body.priority) await prioritizeDownload(uid, id);
-  else await enqueueDownload(uid, id, "manual");
+  else await enqueueDownload(uid, id, "manual", false, false, await playlistDownloadContext(uid, id, body.playlist_context));
   if (body.keep) await setDownloadPinned(uid, id, true);
   return c.json({ ok: true, download: await getDownload(uid, id) });
 });

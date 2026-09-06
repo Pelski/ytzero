@@ -47,6 +47,7 @@ import {
   type DiscoveryRecommendation,
   type DownloadAutomationOptions,
   type DownloadConfigResponse,
+  type DownloadQuality,
   type DownloadSettingValue,
   type DownloadRule,
   type DownloadRuleInput,
@@ -235,8 +236,8 @@ export const api = {
   createDownloadRule: (rule: DownloadRuleInput) => http<{ rule: DownloadRule }>("/downloads/automation", { method: "POST", body: JSON.stringify(rule) }),
   updateDownloadRule: (id: number, patch: Partial<DownloadRuleInput>) => http<{ rule: DownloadRule }>(`/downloads/automation/${id}`, { method: "PUT", body: JSON.stringify(patch) }),
   removeDownloadRule: (id: number) => http<{ ok: true }>(`/downloads/automation/${id}`, { method: "DELETE" }),
-  requestDownload: (id: string, priority = false, keep = false) =>
-    http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download`, { method: "POST", body: JSON.stringify({ priority, keep }) }),
+  requestDownload: (id: string, priority = false, keep = false, playlist_context?: { kind: "user-playlist"; playlistUuid: string } | { kind: "channel-playlist"; playlistId: string }) =>
+    http<{ ok: true; download: VideoDownload | null }>(`/videos/${id}/download`, { method: "POST", body: JSON.stringify({ priority, keep, playlist_context }) }),
   videoDownload: (id: string) =>
     http<{ download: VideoDownload | null; progress: { percent: number; total_bytes: number | null; speed: string | null } | null }>(`/videos/${id}/download`),
   removeDownload: (id: string, profileId?: number) =>
@@ -441,8 +442,8 @@ export const api = {
   channelPlaylistVideos: (id: string, sort: PlaylistSort = "oldest") => http<{ videos: Video[]; processing: Video[]; order: string[] }>(`/channel-playlists/${id}/videos?sort=${encodeURIComponent(sort)}`),
   downloadChannelPlaylist: (id: string, sort: PlaylistSort = "playlist-order") => http<PlaylistDownloadResult>(`/channel-playlists/${id}/download?sort=${encodeURIComponent(sort)}`, { method: "POST", body: "{}" }),
   followPlaylist: (id: string, followed: boolean) => http<{ followed: boolean }>(`/channel-playlists/${id}/follow`, { method: "PUT", body: JSON.stringify({ followed }) }),
-  updateFollowedPlaylistOfflinePolicy: (id: string, offline_policy: FollowedPlaylist["offline_policy"]) =>
-    http<{ offline_policy: FollowedPlaylist["offline_policy"]; queued: number; skipped: number; total: number }>(`/channel-playlists/${id}/offline-policy`, { method: "PUT", body: JSON.stringify({ offline_policy }) }),
+  updateFollowedPlaylistDownloadSettings: (id: string, settings: { offline_policy?: FollowedPlaylist["offline_policy"]; download_quality?: DownloadQuality | null }) =>
+    http<{ offline_policy: FollowedPlaylist["offline_policy"]; download_quality: DownloadQuality | null; queued: number; skipped: number; total: number }>(`/channel-playlists/${id}/offline-policy`, { method: "PUT", body: JSON.stringify(settings) }),
   syncPlaylist: (id: string) => http<{ added: number }>(`/channel-playlists/${id}/sync`, { method: "POST" }),
   followedPlaylists: () => http<{ playlists: FollowedPlaylist[] }>("/followed-playlists"),
   followedPlaylistUpdates: () => http<{ playlists: FollowedPlaylistUpdates[] }>("/followed-playlists/updates"),
@@ -456,7 +457,7 @@ export const api = {
     http<{ playlist: UserPlaylist }>("/playlists", { method: "POST", body: JSON.stringify(p) }),
   createUserPlaylistFromSessionQueue: (p: { name: string; icon?: string; video_ids: string[] }) =>
     http<{ playlist: UserPlaylist }>("/playlists/from-session-queue", { method: "POST", body: JSON.stringify(p) }),
-  updateUserPlaylist: (id: number, p: Partial<Pick<UserPlaylist, "name" | "icon" | "sort_order" | "offline_policy">>) =>
+  updateUserPlaylist: (id: number, p: Partial<Pick<UserPlaylist, "name" | "icon" | "sort_order" | "offline_policy" | "download_quality">>) =>
     http<{ playlist: UserPlaylist }>(`/playlists/${id}`, { method: "PUT", body: JSON.stringify(p) }),
   deleteUserPlaylist: (id: number) => http(`/playlists/${id}`, { method: "DELETE" }),
   userPlaylist: (id: number, sort: UserPlaylistSort = "added-newest") => http<{ playlist: UserPlaylist; videos: Video[] }>(`/playlists/${id}?sort=${encodeURIComponent(sort)}`),

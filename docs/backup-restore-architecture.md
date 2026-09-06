@@ -298,11 +298,19 @@ state and are likewise excluded.
   playlist-protection rows remain machine-bound runtime state and are rebuilt
   from that policy. Older archives default a newly restored playlist to `none`
   and leave an existing target playlist's policy unchanged during merge.
+- A personal playlist's optional download-quality override (`best`, `1440p`,
+  `1080p`, `720p`, or `480p`) is portable configuration in
+  `profile.playlists` schema v4. `null` inherits the profile download default.
+  Older archives inherit for a new or replace restore and leave an existing
+  target playlist's override unchanged during merge.
 - A followed YouTube playlist's equivalent offline policy is portable
   configuration in `profile.followed-playlists` schema v2. Schema v1 archives
   remain readable and default to no automatic download. Its download queue,
   media files, and profile-scoped protection rows are derived machine-bound
   runtime state and are rebuilt from the policy and fetched playlist membership.
+- The equivalent followed-playlist download-quality override is portable
+  configuration in `profile.followed-playlists` schema v3, with the same
+  inheritance and old-backup merge behavior as personal playlists.
 - A profile's assigned access-control group and explicit allow/deny overrides
   are portable configuration in `profile.access-control`. Merge updates only
   selected mapped profiles; replace clears just their overrides and assignment.
@@ -462,7 +470,7 @@ state and are likewise excluded.
 - active Social Watch together rooms, participant presence, playback
   synchronization state, and session chat messages
 - in-progress download jobs, errors, output paths, and temporary playlist-name
-  context used to render local filenames
+  and requested-quality context used to render or select local files
 - `user_playlist_download_protections`; these cleanup guards are derived from
   portable playlist policies and local download ownership, then rebuilt rather
   than serialized

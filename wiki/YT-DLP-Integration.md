@@ -16,7 +16,7 @@ downloads are allowed for that profile under **Downloads → Configuration**.
 - **Downloads tab** — a sidebar view with the active queue (collapsible), finished files, storage usage, per-item retry / pin / delete, and live progress. Removing an item from the queue rejects it permanently — automatic policies will not re-download it (a manual download request still can).
 - **Thumbnail indicators** — a thin blue bar on top of a video's thumbnail shows download progress (dimmed while queued); downloaded videos get a small badge. The bar can be turned off (see settings below).
 - **Automatic rules** — build profile-owned rules from all subscriptions or selected channels and followed playlists, required and excluded phrases, duration, content type, and a starting time range. A real preview shows how many items match before activation.
-- **Playlist downloads** — queue every available video from a channel or personal playlist in one confirmed action.
+- **Playlist downloads** — queue every available video from a followed channel playlist or personal playlist in one confirmed action. Each playlist can inherit the profile's download quality or override it with best available, 1440p, 1080p, 720p, or 480p; the override also applies to automatic playlist downloads and next-video prefetch.
 - **Files and metadata** — choose a filename template and optionally save thumbnails, embedded metadata, `info.json`, NFO files, and selected subtitle languages.
 - **Restricted content** — each profile can upload or paste its own Netscape-format `cookies.txt` for age-restricted or members-only videos. Cookie files are machine-local secrets and are never included in portable backups.
 - **Smart retention** — each profile can remove files after a configurable number of days, optionally sooner once watched, or keep its downloads until manually deleted. The oldest unprotected files are still evicted when the shared storage cap is exceeded. Pinned downloads, liked videos (optional), and videos still scheduled by an unwatched profile are never auto-removed.
@@ -54,6 +54,13 @@ whole instance.
 | **Opening a video** | Play from YouTube | Chooses YouTube immediately, asks each time, or waits for a local download. |
 | **Progress bar on thumbnails** | on | Shows queue and download progress on video cards. |
 | **Download scheduled videos** | on | Automatically downloads videos placed in a watch-later bucket by this profile. |
+
+Personal playlists and followed YouTube playlists expose a **Download
+resolution** setting in their header settings. It defaults to the profile value
+above. The selected override is captured when a video enters the queue, so a
+later settings change cannot silently alter that queued job. Existing local
+files are shared and are not re-downloaded merely because a playlist override
+changes.
 
 ### Download schedule
 

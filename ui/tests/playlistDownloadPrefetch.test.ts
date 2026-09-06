@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { playlistPrefetchVideoId } from "../src/pages/usePlaylistDownloadPrefetch";
+import { playlistDownloadContext, playlistPrefetchVideoId } from "../src/pages/usePlaylistDownloadPrefetch";
 
 describe("playlist download prefetch", () => {
   test("uses the next video from an open YouTube playlist", () => {
@@ -13,5 +13,13 @@ describe("playlist download prefetch", () => {
 
   test("does not prefetch downloads for non-playlist queues", () => {
     expect(playlistPrefetchVideoId(undefined, undefined, { version: 1, kind: "history" }, "next-history")).toBeNull();
+  });
+});
+
+describe("playlist download context", () => {
+  test("identifies the playlist whose quality should be used", () => {
+    expect(playlistDownloadContext("PL1234567890", null)).toEqual({ kind: "channel-playlist", playlistId: "PL1234567890" });
+    expect(playlistDownloadContext(undefined, { version: 1, kind: "user-playlist", playlistUuid: "playlist", sort: "added-newest" })).toEqual({ kind: "user-playlist", playlistUuid: "playlist" });
+    expect(playlistDownloadContext(undefined, { version: 1, kind: "feed", tags: [], showAll: false, sort: "published" })).toBeUndefined();
   });
 });

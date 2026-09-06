@@ -32,6 +32,7 @@ import { ytdlpSelfUpdate } from "./ytdlpUpdater";
 import { DOWNLOAD_MANIFEST_SUFFIX, recoverDownloadsFromDisk, writeDownloadManifest } from "./downloadRecovery";
 import { downloadScheduleAllowsNow } from "./downloadSchedule";
 import { backgroundTasksEnabled } from "./deploymentMode";
+import { resolveDownloadQuality, type DownloadQuality } from "./downloadSettings";
 export {
   DL_DEFAULTS,
   dlSettings,
@@ -267,31 +268,39 @@ async function claimDownload(userId: number, videoId: string, source: "manual" |
   `).run(userId, videoId, source, source === "feed" ? automationRuleId ?? null : null);
 }
 
-export async function enqueueDownload(userId: number, videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; notify?: boolean; automationRuleId?: number | null } = {}): Promise<boolean> {
+export async function enqueueDownload(userId: number, videoId: string, source: "manual" | "scheduled" | "feed", priority = false, reviveDeleted = false, context: { playlistTitle?: string | null; downloadQuality?: DownloadQuality | null; notify?: boolean; automationRuleId?: number | null } = {}): Promise<boolean> {
   if (source !== "manual") {
     // Re-check at the queue boundary as classification may have changed since
     // the scheduler selected its candidates.
     const video = await database.prepare("SELECT is_short FROM videos WHERE video_id=? AND is_private=0 AND is_unavailable=0").get(videoId) as { is_short: number | null } | null;
     if (!video || !shouldAutoDownloadVideo(video.is_short, (await dlSettings(userId)).download_shorts === 1)) return false;
   }
-  const row = await database.prepare("SELECT status, path FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null } | null;
+  const row = await database.prepare("SELECT status, path, requested_quality FROM downloads WHERE video_id = ?").get(videoId) as { status: string; path: string | null; requested_quality: DownloadQuality | null } | null;
   if (row) {
     await claimDownload(userId, videoId, source, context.automationRuleId);
     if (row.status === "downloading") return false;
     if (row.status === "done" && row.path && existsSync(row.path)) return false;
+    if (row.status === "queued" && context.downloadQuality !== undefined) {
+      await database.prepare("UPDATE downloads SET requested_quality = ?, playlist_title = COALESCE(?, playlist_title), requested_by_user_id = ? WHERE video_id = ? AND status = 'queued'")
+        .run(context.downloadQuality, context.playlistTitle ?? null, userId, videoId);
+      return false;
+    }
     // Auto policies never resurrect rows they've already handled (incl. the
     // 'deleted' removal tombstone); a manual request always re-queues, and the
     // scheduled policy may revive a tombstone when the user re-queued the video
     // after the file was removed (reviveDeleted).
     if (source !== "manual" && !(reviveDeleted && row.status === "deleted")) return false;
-    await database.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, automation_rule_id = ?, requested_by_user_id = ?, error = NULL, attempts = 0, created_at = datetime('now'), worker_id = NULL, worker_heartbeat_at_ms = NULL WHERE video_id = ?")
-      .run(source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null, userId, videoId);
+    const requestedQuality = context.downloadQuality !== undefined
+      ? context.downloadQuality
+      : row.status === "error" ? row.requested_quality : null;
+    await database.prepare("UPDATE downloads SET status = 'queued', source = ?, priority = ?, playlist_title = ?, requested_quality = ?, automation_rule_id = ?, requested_by_user_id = ?, error = NULL, attempts = 0, created_at = datetime('now'), worker_id = NULL, worker_heartbeat_at_ms = NULL WHERE video_id = ?")
+      .run(source, priority ? 1 : 0, context.playlistTitle ?? null, requestedQuality, source === "feed" ? context.automationRuleId ?? null : null, userId, videoId);
     if (context.notify !== false) notifyDownloadChanged(videoId);
     return true;
   }
   const exists = await database.prepare("SELECT 1 FROM videos WHERE video_id = ? AND is_private = 0 AND is_unavailable = 0").get(videoId);
   if (!exists) return false;
-  await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title, automation_rule_id, requested_by_user_id) VALUES (?, 'queued', ?, ?, ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null, source === "feed" ? context.automationRuleId ?? null : null, userId);
+  await database.prepare("INSERT INTO downloads (video_id, status, source, priority, playlist_title, requested_quality, automation_rule_id, requested_by_user_id) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?)").run(videoId, source, priority ? 1 : 0, context.playlistTitle ?? null, context.downloadQuality ?? null, source === "feed" ? context.automationRuleId ?? null : null, userId);
   await claimDownload(userId, videoId, source, context.automationRuleId);
   if (context.notify !== false) notifyDownloadChanged(videoId);
   return true;
@@ -301,7 +310,7 @@ export async function enqueuePlaylistDownloads(
   userId: number,
   videoIds: string[],
   playlistTitle: string,
-  options: { protectPlaylistId?: number; protectFollowedPlaylistId?: string; preserveErrors?: boolean } = {},
+  options: { protectPlaylistId?: number; protectFollowedPlaylistId?: string; downloadQuality?: DownloadQuality | null; preserveErrors?: boolean } = {},
 ) {
   let queued = 0;
   const existingDownload = database.prepare("SELECT status FROM downloads WHERE video_id = ?");
@@ -311,7 +320,10 @@ export async function enqueuePlaylistDownloads(
     const alreadyHandled = existing?.status === "queued" || existing?.status === "downloading" || existing?.status === "done"
       || (options.preserveErrors && existing?.status === "error");
     if (!(owned && alreadyHandled)) {
-      if (await enqueueDownload(userId, videoId, "manual", false, false, { playlistTitle, notify: false })) queued++;
+      if (await enqueueDownload(userId, videoId, "manual", false, false, { playlistTitle, downloadQuality: options.downloadQuality, notify: false })) queued++;
+    } else if (existing?.status === "queued" && options.downloadQuality !== undefined) {
+      await database.prepare("UPDATE downloads SET requested_quality = ?, playlist_title = ?, requested_by_user_id = ? WHERE video_id = ? AND status = 'queued'")
+        .run(options.downloadQuality, playlistTitle, userId, videoId);
     }
     if (options.protectPlaylistId && await database.prepare("SELECT 1 FROM download_owners WHERE user_id=? AND video_id=?").get(userId, videoId)) {
       await database.prepare("INSERT INTO user_playlist_download_protections (playlist_id, video_id) VALUES (?, ?) ON CONFLICT (playlist_id, video_id) DO NOTHING")
@@ -331,12 +343,12 @@ export async function enqueuePlaylistDownloads(
 
 export async function syncFollowedPlaylistOfflinePolicy(userId: number, playlistId: string) {
   const playlist = await database.prepare(`
-    SELECT followed.playlist_id, catalog.title, followed.offline_policy, user.is_child
+    SELECT followed.playlist_id, catalog.title, followed.offline_policy, followed.download_quality, user.is_child
     FROM user_followed_playlists followed
     JOIN channel_playlists catalog ON catalog.playlist_id=followed.playlist_id
     JOIN users user ON user.id=followed.user_id
     WHERE followed.user_id=? AND followed.playlist_id=?
-  `).get(userId, playlistId) as { playlist_id: string; title: string; offline_policy: "none" | "download" | "keep"; is_child: number } | null;
+  `).get(userId, playlistId) as { playlist_id: string; title: string; offline_policy: "none" | "download" | "keep"; download_quality: DownloadQuality | null; is_child: number } | null;
   if (!playlist) return { queued: 0, skipped: 0, total: 0 };
   if (playlist.offline_policy !== "keep" || playlist.is_child === 1) {
     await database.prepare("DELETE FROM followed_playlist_download_protections WHERE user_id=? AND playlist_id=?").run(userId, playlistId);
@@ -353,16 +365,17 @@ export async function syncFollowedPlaylistOfflinePolicy(userId: number, playlist
   `).all(playlistId) as { video_id: string }[];
   return enqueuePlaylistDownloads(userId, rows.map((row) => row.video_id), playlist.title, {
     protectFollowedPlaylistId: playlist.offline_policy === "keep" ? playlistId : undefined,
+    downloadQuality: playlist.download_quality,
     preserveErrors: true,
   });
 }
 
 export async function syncUserPlaylistOfflinePolicy(userId: number, playlistId: number) {
   const playlist = await database.prepare(`
-    SELECT playlist.id, playlist.name, playlist.offline_policy, user.is_child
+    SELECT playlist.id, playlist.name, playlist.offline_policy, playlist.download_quality, user.is_child
     FROM user_playlists playlist JOIN users user ON user.id=playlist.user_id
     WHERE playlist.id=? AND playlist.user_id=?
-  `).get(playlistId, userId) as { id: number; name: string; offline_policy: "none" | "download" | "keep"; is_child: number } | null;
+  `).get(playlistId, userId) as { id: number; name: string; offline_policy: "none" | "download" | "keep"; download_quality: DownloadQuality | null; is_child: number } | null;
   if (!playlist) return { queued: 0, skipped: 0, total: 0 };
   if (playlist.offline_policy !== "keep" || playlist.is_child === 1) {
     await database.prepare("DELETE FROM user_playlist_download_protections WHERE playlist_id=?").run(playlist.id);
@@ -379,6 +392,7 @@ export async function syncUserPlaylistOfflinePolicy(userId: number, playlistId: 
   `).all(playlist.id) as { video_id: string }[];
   return enqueuePlaylistDownloads(userId, rows.map((row) => row.video_id), playlist.name, {
     protectPlaylistId: playlist.offline_policy === "keep" ? playlist.id : undefined,
+    downloadQuality: playlist.download_quality,
     preserveErrors: true,
   });
 }
@@ -826,11 +840,11 @@ function pruneAllEmptyDirs(dir: string, isRoot = true) {
 
 async function pickNext(): Promise<{ videoId: string; userId: number; settings: DlSettings } | null> {
   const rows = await database.prepare(`
-    SELECT d.video_id, d.requested_by_user_id FROM downloads d
+    SELECT d.video_id, d.requested_by_user_id, d.requested_quality FROM downloads d
     JOIN videos v ON v.video_id = d.video_id
     WHERE d.status = 'queued' AND v.is_private = 0 AND v.is_unavailable = 0
     ORDER BY d.priority DESC, CASE d.source WHEN 'manual' THEN 0 WHEN 'scheduled' THEN 1 ELSE 2 END, d.created_at ASC
-  `).all() as { video_id: string; requested_by_user_id: number | null }[];
+  `).all() as { video_id: string; requested_by_user_id: number | null; requested_quality: string | null }[];
   const settingsByUser = new Map<number, DlSettings>();
   for (const row of rows) {
     const owners = await database.prepare(`
@@ -846,7 +860,11 @@ async function pickNext(): Promise<{ videoId: string; userId: number; settings: 
         settings = await dlSettings(owner.user_id);
         settingsByUser.set(owner.user_id, settings);
       }
-      if (downloadScheduleAllowsNow(settings)) return { videoId: row.video_id, userId: owner.user_id, settings };
+      if (downloadScheduleAllowsNow(settings)) return {
+        videoId: row.video_id,
+        userId: owner.user_id,
+        settings: { ...settings, quality: resolveDownloadQuality(settings.quality, row.requested_quality) },
+      };
     }
   }
   return null;

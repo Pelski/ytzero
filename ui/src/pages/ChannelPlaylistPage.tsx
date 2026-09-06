@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import "./ChannelPlaylistPage.css";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { Bell, Download, FileClock, ListFilter, ListMinus, ListPlus, MoreHorizontal, RefreshCw } from "lucide-react";
-import { api, type FollowedPlaylist, type Video } from "../api";
+import { Bell, Download, FileClock, Gauge, ListFilter, ListMinus, ListPlus, MoreHorizontal, RefreshCw } from "lucide-react";
+import { api, type DownloadQuality, type FollowedPlaylist, type Video } from "../api";
 import VideoCard from "../components/VideoCard";
 import { VideoGridSkeleton } from "../components/LoadingState";
 import { useI18n } from "../i18n";
@@ -34,10 +34,11 @@ export default function ChannelPlaylistPage() {
   const [downloadFeedback, setDownloadFeedback] = useState("");
   const [actionsOpen, setActionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsView, setSettingsView] = useState<"root" | "sort" | "notifications" | "downloads">("root");
+  const [settingsView, setSettingsView] = useState<"root" | "sort" | "notifications" | "downloads" | "download-quality">("root");
   const [notificationMode, setNotificationMode] = useState<NotificationSourceMode>("default");
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [offlinePolicySaving, setOfflinePolicySaving] = useState(false);
+  const [downloadQualitySaving, setDownloadQualitySaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -65,7 +66,7 @@ export default function ChannelPlaylistPage() {
     try {
       const next = !Boolean(playlist.followed);
       await api.followPlaylist(id, next);
-      setPlaylist({ ...playlist, followed: next ? 1 : 0, offline_policy: next ? playlist.offline_policy : "none" });
+      setPlaylist({ ...playlist, followed: next ? 1 : 0, offline_policy: next ? playlist.offline_policy : "none", download_quality: next ? playlist.download_quality : null });
     } finally { setPending(false); }
   };
 
@@ -95,7 +96,7 @@ export default function ChannelPlaylistPage() {
     setOfflinePolicySaving(true);
     setDownloadFeedback("");
     try {
-      await api.updateFollowedPlaylistOfflinePolicy(id, next);
+      await api.updateFollowedPlaylistDownloadSettings(id, { offline_policy: next });
       setDownloadFeedback(t(next === "none" ? "playlistOfflineDisabled" : next === "download" ? "playlistOfflineEnabled" : "playlistKeepOfflineEnabled"));
     } catch (error) {
       setPlaylist((current) => current ? { ...current, offline_policy: previous } : current);
@@ -103,6 +104,34 @@ export default function ChannelPlaylistPage() {
       console.error(error);
     } finally {
       setOfflinePolicySaving(false);
+    }
+  };
+
+  const downloadQualityOptions: Array<{ value: DownloadQuality | "default"; label: string }> = [
+    { value: "default", label: t("playlistDownloadQualityDefault") },
+    { value: "best", label: t("playlistDownloadQualityBest") },
+    ...(["1440", "1080", "720", "480"] as const).map((quality) => ({ value: quality, label: `${quality}p` })),
+  ];
+  const downloadQualityLabel = (quality: DownloadQuality | null) => quality === null
+    ? t("playlistDownloadQualityDefault")
+    : quality === "best" ? t("playlistDownloadQualityBest") : `${quality}p`;
+  const changeDownloadQuality = async (value: DownloadQuality | "default") => {
+    if (!id || downloadQualitySaving || !playlist?.followed) return;
+    const previous = playlist.download_quality;
+    const download_quality = value === "default" ? null : value;
+    setPlaylist({ ...playlist, download_quality });
+    setDownloadQualitySaving(true);
+    setDownloadFeedback("");
+    try {
+      const result = await api.updateFollowedPlaylistDownloadSettings(id, { download_quality });
+      setPlaylist((current) => current ? { ...current, download_quality: result.download_quality } : current);
+      setDownloadFeedback(t("playlistDownloadQualityUpdated", { quality: downloadQualityLabel(result.download_quality) }));
+    } catch (error) {
+      setPlaylist((current) => current ? { ...current, download_quality: previous } : current);
+      setDownloadFeedback(t("playlistDownloadQualityFailed"));
+      console.error(error);
+    } finally {
+      setDownloadQualitySaving(false);
     }
   };
 
@@ -164,6 +193,12 @@ export default function ChannelPlaylistPage() {
                 status={t(playlist.offline_policy === "none" ? "playlistOfflineNone" : playlist.offline_policy === "download" ? "playlistOfflineDownload" : "playlistOfflineKeep")}
                 onClick={() => setSettingsView("downloads")}
               />}
+              {playlist.followed && <HeaderSettingsItem
+                icon={<Gauge />}
+                label={t("playlistDownloadQuality")}
+                status={downloadQualityLabel(playlist.download_quality)}
+                onClick={() => setSettingsView("download-quality")}
+              />}
             </>}
             {settingsView === "sort" && <>
               <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistSort")}</HeaderSettingsHeader>
@@ -186,6 +221,17 @@ export default function ChannelPlaylistPage() {
                 onClick={() => void changeOfflinePolicy(option)}
               >
                 {t(option === "none" ? "playlistOfflineNone" : option === "download" ? "playlistOfflineDownload" : "playlistOfflineKeep")}
+              </HeaderSettingsOption>)}
+            </>}
+            {settingsView === "download-quality" && <>
+              <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistDownloadQuality")}</HeaderSettingsHeader>
+              {downloadQualityOptions.map((option) => <HeaderSettingsOption
+                key={option.value}
+                selected={(playlist.download_quality ?? "default") === option.value}
+                disabled={downloadQualitySaving}
+                onClick={() => void changeDownloadQuality(option.value)}
+              >
+                {option.label}
               </HeaderSettingsOption>)}
             </>}
           </HeaderSettingsPopover>

@@ -191,6 +191,7 @@ export interface FollowedPlaylist {
   include_in_feed?: number;
   followed?: number;
   offline_policy: "none" | "download" | "keep";
+  download_quality: DownloadQuality | null;
 }
 
 export interface FollowedPlaylistUpdates extends FollowedPlaylist {
@@ -261,8 +262,11 @@ export interface UserPlaylist {
   sort_order: number;
   video_count: number;
   offline_policy: "none" | "download" | "keep";
+  download_quality: DownloadQuality | null;
   has_video?: 0 | 1;
 }
+
+export type DownloadQuality = "best" | "1440" | "1080" | "720" | "480";
 export interface UserPlaylistRule {
   id: number;
   playlist_id: number;

@@ -15,6 +15,7 @@ import { downloadableUserPlaylistVideoIds, sortUserPlaylistRows, type UserPlayli
 import { shortsUiVisibilitySql } from "../feedQuery";
 import { ensureOnDemandVideo, OnDemandVideoImportError } from "../onDemandVideoImport";
 import { validYouTubeVideoId } from "../youtubeComments";
+import { isDownloadQuality, type DownloadQuality } from "../downloadSettings";
 
 const SESSION_PLAY_QUEUE_MAX_ITEMS = 100;
 
@@ -40,13 +41,13 @@ export function registerUserPlaylistRoutes(
     const uid = currentUserId(c);
     const videoId = c.req.query("video_id");
     const rows = await database.prepare(
-      `SELECT p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy,
+      `SELECT p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy, p.download_quality,
               COUNT(pv.video_id) AS video_count
               ${videoId ? ", EXISTS(SELECT 1 FROM user_playlist_videos cpv WHERE cpv.playlist_id = p.id AND cpv.video_id = ?) AS has_video" : ""}
        FROM user_playlists p
        LEFT JOIN user_playlist_videos pv ON pv.playlist_id = p.id
        WHERE p.user_id = ?
-       GROUP BY p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy
+       GROUP BY p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy, p.download_quality
        ORDER BY p.sort_order ASC, p.name COLLATE NOCASE`,
     ).all(...(videoId ? [videoId] : []), uid);
     return c.json({ playlists: rows });
@@ -57,7 +58,7 @@ export function registerUserPlaylistRoutes(
     if (!name?.trim()) return c.json({ error: "name required" }, 400);
     const nextOrder = await database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS sort_order FROM user_playlists WHERE user_id = ?").get(uid) as { sort_order: number };
     const row = await database.prepare(
-      "INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, portable_uuid, name, icon, sort_order, created_at, offline_policy",
+      "INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, portable_uuid, name, icon, sort_order, created_at, offline_policy, download_quality",
     ).get(name.trim(), String(icon || "ListMusic").trim() || "ListMusic", nextOrder.sort_order, uid, crypto.randomUUID());
     return c.json({ playlist: row });
   });
@@ -83,7 +84,7 @@ export function registerUserPlaylistRoutes(
     const playlist = await database.transaction(async () => {
       const nextOrder = await database.prepare("SELECT COALESCE(MAX(sort_order), -1) + 1 AS sort_order FROM user_playlists WHERE user_id = ?").get(uid) as { sort_order: number };
       const row = await database.prepare(
-        "INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, portable_uuid, name, icon, sort_order, created_at, offline_policy",
+        "INSERT INTO user_playlists (name, icon, sort_order, user_id, portable_uuid) VALUES (?, ?, ?, ?, ?) RETURNING id, portable_uuid, name, icon, sort_order, created_at, offline_policy, download_quality",
       ).get(name, icon, nextOrder.sort_order, uid, crypto.randomUUID()) as Record<string, unknown>;
       for (const [position, videoId] of videoIds.entries()) {
         await database.prepare("INSERT INTO user_playlist_videos (playlist_id, video_id, position) VALUES (?, ?, ?)").run(row.id, videoId, position);
@@ -105,11 +106,13 @@ export function registerUserPlaylistRoutes(
     const sortOrder = Number.isFinite(Number(body.sort_order)) ? Number(body.sort_order) : current.sort_order;
     const offlinePolicy = body.offline_policy === undefined ? current.offline_policy : body.offline_policy;
     if (!["none", "download", "keep"].includes(offlinePolicy)) return c.json({ error: "invalid offline policy" }, 400);
+    const downloadQuality = body.download_quality === undefined ? current.download_quality : body.download_quality;
+    if (downloadQuality !== null && !isDownloadQuality(downloadQuality)) return c.json({ error: "invalid download quality" }, 400);
     if (body.offline_policy !== undefined && offlinePolicy !== "none" && await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
     const row = await database.prepare(
-      "UPDATE user_playlists SET name = ?, icon = ?, sort_order = ?, offline_policy = ? WHERE id = ? RETURNING id, portable_uuid, name, icon, sort_order, created_at, offline_policy",
-    ).get(name, icon, sortOrder, offlinePolicy, id);
-    if (offlinePolicy !== current.offline_policy) await syncUserPlaylistOfflinePolicy(uid, id);
+      "UPDATE user_playlists SET name = ?, icon = ?, sort_order = ?, offline_policy = ?, download_quality = ? WHERE id = ? RETURNING id, portable_uuid, name, icon, sort_order, created_at, offline_policy, download_quality",
+    ).get(name, icon, sortOrder, offlinePolicy, downloadQuality, id);
+    if (offlinePolicy !== current.offline_policy || downloadQuality !== current.download_quality) await syncUserPlaylistOfflinePolicy(uid, id);
     return c.json({ playlist: row });
   });
 
@@ -123,11 +126,11 @@ export function registerUserPlaylistRoutes(
     const uid = currentUserId(c);
     const id = Number(c.req.param("id"));
     const playlist = await database.prepare(
-      `SELECT p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy, COUNT(pv.video_id) AS video_count
+      `SELECT p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy, p.download_quality, COUNT(pv.video_id) AS video_count
        FROM user_playlists p
        LEFT JOIN user_playlist_videos pv ON pv.playlist_id = p.id
        WHERE p.id = ? AND p.user_id = ?
-       GROUP BY p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy`,
+       GROUP BY p.id, p.portable_uuid, p.name, p.icon, p.sort_order, p.created_at, p.offline_policy, p.download_quality`,
     ).get(id, uid) as any;
     if (!playlist) return c.json({ error: "not found" }, 404);
     const rows = await database.prepare(
@@ -146,10 +149,10 @@ export function registerUserPlaylistRoutes(
     const uid = currentUserId(c);
     if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
     if (!await profileDownloadsEnabled(uid)) return c.json({ error: "downloads disabled" }, 409);
-    const playlist = await database.prepare("SELECT id, name, offline_policy FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { id: number; name: string; offline_policy: string } | null;
+    const playlist = await database.prepare("SELECT id, name, offline_policy, download_quality FROM user_playlists WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { id: number; name: string; offline_policy: string; download_quality: DownloadQuality | null } | null;
     if (!playlist) return c.json({ error: "not found" }, 404);
     const videoIds = await downloadableUserPlaylistVideoIds(c.req.param("id"), c.req.query("sort"));
-    const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.name, { protectPlaylistId: playlist.offline_policy === "keep" ? playlist.id : undefined });
+    const result = await enqueuePlaylistDownloads(uid, videoIds, playlist.name, { protectPlaylistId: playlist.offline_policy === "keep" ? playlist.id : undefined, downloadQuality: playlist.download_quality });
     log.info("downloads.playlist_queued", { playlistId: c.req.param("id"), playlistTitle: playlist.name, ...result });
     return c.json(result);
   });

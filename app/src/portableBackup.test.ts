@@ -56,6 +56,27 @@ async function asLegacyDownloadsPluginArchive(bytes: Uint8Array): Promise<Uint8A
   return backup.createZip([...entries].map(([name, content]) => ({ name, bytes: content })));
 }
 
+async function asLegacyPlaylistQualityArchive(bytes: Uint8Array): Promise<Uint8Array> {
+  const entries = backup.readPortableZip(bytes);
+  const manifest = JSON.parse(decoder.decode(entries.get("manifest.json")!));
+  for (const section of manifest.sections.filter((item: any) => item.id === "profile.playlists" || item.id === "profile.followed-playlists")) {
+    const rows = decoder.decode(entries.get(section.path)!).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    for (const row of rows) {
+      if (section.id === "profile.playlists") delete row.downloadQuality;
+      else delete row.download_quality;
+    }
+    const content = encoder.encode(`${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+    entries.set(section.path, content);
+    section.schemaVersion = section.id === "profile.playlists" ? 3 : 2;
+    section.bytes = content.byteLength;
+    const digestInput = content.buffer.slice(content.byteOffset, content.byteOffset + content.byteLength) as ArrayBuffer;
+    const digest = await crypto.subtle.digest("SHA-256", digestInput);
+    section.sha256 = [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  entries.set("manifest.json", encoder.encode(`${JSON.stringify(manifest, null, 2)}\n`));
+  return backup.createZip([...entries].map(([name, content]) => ({ name, bytes: content })));
+}
+
 beforeAll(async () => {
   mkdirSync(avatarDir, { recursive: true });
   const avatar = await sharp({ create: { width: 900, height: 500, channels: 4, background: { r: 36, g: 118, b: 210, alpha: 1 } } }).png().toBuffer();
@@ -412,7 +433,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "channel_posts_tab", "1");
     db.prepare("INSERT INTO notification_preferences(user_id,kind,source_id,enabled) VALUES(1,'*','',1),(1,'playlist_video','PLportable',0),(1,'channel_video','UCportable',1)").run();
     db.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail) VALUES('PLportable','UCportable','Portable followed playlist','')").run();
-    db.prepare("INSERT INTO user_followed_playlists(user_id,playlist_id,offline_policy) VALUES(1,'PLportable','keep')").run();
+    db.prepare("INSERT INTO user_followed_playlists(user_id,playlist_id,offline_policy,download_quality) VALUES(1,'PLportable','keep','720')").run();
     db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1'),(1,'prefetch_next_playlist_video','1'),(1,'download_schedule_enabled','1'),(1,'download_schedule_days','1,3,5'),(1,'download_schedule_start','23:00'),(1,'download_schedule_end','07:00') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
     await setSetting("downloads_output_template", "portable/{id}");
     setSetting("profile_admin_only_areas", '["channels","plugins"]');
@@ -421,7 +442,7 @@ describe("portable backup classification and restore", () => {
     db.prepare(`INSERT INTO download_rules(portable_uuid,user_id,name,source_mode,channel_ids_json,include_keywords_json,exclude_keywords_json,backfill_mode)
       VALUES(?, 1, 'Portable downloads', 'selected', '["UCportable"]', '["episode"]', '["trailer"]', 'all')`).run(ruleUuid);
     const playlistUuid = crypto.randomUUID();
-    const playlist = db.prepare("INSERT INTO user_playlists(name,user_id,portable_uuid,offline_policy) VALUES('Portable playlist',1,?,'keep') RETURNING id").get(playlistUuid) as { id: number };
+    const playlist = db.prepare("INSERT INTO user_playlists(name,user_id,portable_uuid,offline_policy,download_quality) VALUES('Portable playlist',1,?,'keep','1080') RETURNING id").get(playlistUuid) as { id: number };
     db.prepare("INSERT INTO user_playlist_videos(playlist_id,video_id,added_at,position) VALUES(?,'portable001','2024-02-03 04:05:06',7)").run(playlist.id);
     const socialPostId = "64f616b4-fda8-4f31-a9da-5646bbf2a311";
     const socialCommentId = "15142485-66a7-4700-871f-173fd9be74d0";
@@ -438,8 +459,12 @@ describe("portable backup classification and restore", () => {
     const exportedManifest = JSON.parse(decoder.decode(exportedEntries.get("manifest.json")!));
     expect(exportedManifest.sections.find((section: any) => section.id === "profile.settings").schemaVersion).toBe(9);
     const followedSection = exportedManifest.sections.find((section: any) => section.id === "profile.followed-playlists");
-    expect(followedSection.schemaVersion).toBe(2);
+    expect(followedSection.schemaVersion).toBe(3);
     expect(decoder.decode(exportedEntries.get(followedSection.path)!)).toContain('"offline_policy":"keep"');
+    expect(decoder.decode(exportedEntries.get(followedSection.path)!)).toContain('"download_quality":"720"');
+    const playlistSection = exportedManifest.sections.find((section: any) => section.id === "profile.playlists");
+    expect(playlistSection.schemaVersion).toBe(4);
+    expect(decoder.decode(exportedEntries.get(playlistSection.path)!)).toContain('"downloadQuality":"1080"');
     const before = (db.prepare("SELECT count(*) n FROM history").get() as { n: number }).n;
     db.prepare("UPDATE channels SET manual_status='active' WHERE channel_id='UCportable'").run();
     db.prepare("UPDATE channels SET refresh_schedule_days=NULL, refresh_schedule_time=NULL WHERE channel_id='UCportable'").run();
@@ -522,8 +547,8 @@ describe("portable backup classification and restore", () => {
     expect(db.prepare(`SELECT upv.added_at,upv.position FROM user_playlist_videos upv
       JOIN user_playlists up ON up.id=upv.playlist_id WHERE up.portable_uuid=? AND upv.video_id='portable001'`).get(playlistUuid))
       .toEqual({ added_at: "2024-02-03 04:05:06", position: 7 });
-    expect(db.prepare("SELECT offline_policy FROM user_playlists WHERE portable_uuid=?").get(playlistUuid)).toEqual({ offline_policy: "keep" });
-    expect(db.prepare("SELECT offline_policy FROM user_followed_playlists WHERE user_id=1 AND playlist_id='PLportable'").get()).toEqual({ offline_policy: "keep" });
+    expect(db.prepare("SELECT offline_policy,download_quality FROM user_playlists WHERE portable_uuid=?").get(playlistUuid)).toEqual({ offline_policy: "keep", download_quality: "1080" });
+    expect(db.prepare("SELECT offline_policy,download_quality FROM user_followed_playlists WHERE user_id=1 AND playlist_id='PLportable'").get()).toEqual({ offline_policy: "keep", download_quality: "720" });
     expect(db.prepare("SELECT body,video_id FROM social_posts WHERE id=?").get(socialPostId)).toEqual({ body: "Sprawdź @Default", video_id: "portable001" });
     expect((db.prepare("SELECT COUNT(*) AS n FROM social_comments WHERE id=?").get(socialCommentId) as { n: number }).n).toBe(1);
     expect((db.prepare("SELECT COUNT(*) AS n FROM social_reactions WHERE post_id=?").get(socialPostId) as { n: number }).n).toBe(2);
@@ -531,6 +556,18 @@ describe("portable backup classification and restore", () => {
     expect((db.prepare("SELECT COUNT(*) AS n FROM social_post_mentions WHERE post_id=?").get(socialPostId) as { n: number }).n).toBe(1);
     expect((db.prepare("SELECT reaction_key FROM social_recent_emojis WHERE user_id=1 ORDER BY used_at DESC").all() as Array<{ reaction_key: string }>).map((row) => row.reaction_key)).toEqual(["👨‍👩‍👧‍👦", "🤯"]);
     expect((db.prepare("SELECT value FROM plugin_state WHERE plugin_id='social' AND user_id=1 AND key='emoji_skin_tone'").get() as { value: string }).value).toBe("1f3fd");
+    db.prepare("UPDATE user_playlists SET download_quality='480' WHERE portable_uuid=?").run(playlistUuid);
+    db.prepare("UPDATE user_followed_playlists SET download_quality='1440' WHERE user_id=1 AND playlist_id='PLportable'").run();
+    const legacyPlaylistZip = await asLegacyPlaylistQualityArchive(zip);
+    const legacyPlaylistAnalysis = await backup.analyzePortableBackup(1, legacyPlaylistZip);
+    const legacyPlaylistPlan = await backup.planPortableRestore(1, legacyPlaylistAnalysis.sessionId, {
+      mappings,
+      sections: ["profile.playlists", "profile.followed-playlists"],
+      strategy: "merge",
+    });
+    await backup.commitPortableRestore(1, legacyPlaylistAnalysis.sessionId, legacyPlaylistPlan.planRevision);
+    expect(db.prepare("SELECT download_quality FROM user_playlists WHERE portable_uuid=?").get(playlistUuid)).toEqual({ download_quality: "480" });
+    expect(db.prepare("SELECT download_quality FROM user_followed_playlists WHERE user_id=1 AND playlist_id='PLportable'").get()).toEqual({ download_quality: "1440" });
     const restoredAvatar = (db.prepare("SELECT avatar FROM users WHERE id=1").get() as { avatar: string }).avatar;
     expect(restoredAvatar).toContain("1.webp:optimized-webp-v1:");
     expect(existsSync(resolve(avatarDir, "1.png"))).toBe(false);

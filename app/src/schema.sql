@@ -109,6 +109,9 @@ CREATE TABLE IF NOT EXISTS downloads (
   status      TEXT NOT NULL DEFAULT 'queued',
   -- manual (user asked) | scheduled (watch-later bucket) | feed (fresh upload)
   source      TEXT NOT NULL DEFAULT 'manual',
+  -- Snapshot of a playlist-specific quality override while the job is queued.
+  -- NULL means the requesting profile's download default.
+  requested_quality TEXT CHECK (requested_quality IS NULL OR requested_quality IN ('best', '1440', '1080', '720', '480')),
   quality     TEXT,
   path        TEXT,
   size_bytes  INTEGER,
@@ -201,7 +204,9 @@ CREATE TABLE IF NOT EXISTS user_playlists (
   sort_order  INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   -- none | download | keep. `keep` adds playlist-owned cleanup protection.
-  offline_policy TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep'))
+  offline_policy TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep')),
+  -- NULL inherits the profile's default download quality.
+  download_quality TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480'))
 );
 
 CREATE TABLE IF NOT EXISTS user_playlist_videos (
@@ -342,6 +347,8 @@ CREATE TABLE IF NOT EXISTS user_followed_playlists (
   include_in_feed INTEGER NOT NULL DEFAULT 1,
   -- none | download | keep. `keep` adds followed-playlist cleanup protection.
   offline_policy TEXT NOT NULL DEFAULT 'none' CHECK (offline_policy IN ('none', 'download', 'keep')),
+  -- NULL inherits the profile's default download quality.
+  download_quality TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480')),
   PRIMARY KEY (user_id, playlist_id)
 );
 CREATE INDEX IF NOT EXISTS idx_user_followed_playlists_playlist ON user_followed_playlists(playlist_id);

@@ -438,6 +438,25 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS feed_composition_pages (composition_id TEXT NOT NULL REFERENCES feed_composition_sessions(id) ON DELETE CASCADE, page_index INTEGER NOT NULL, response_json TEXT NOT NULL, PRIMARY KEY (composition_id, page_index))" },
     ],
   },
+  {
+    version: 112,
+    name: "playlist-download-quality",
+    schemaHashes: {
+      "app/src/schema.sql": "41f7f19c62c9af2d2f79983c130ec5d7ecf94ba85274ec8a713887838cc81670",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "30b7c3fc889aedc977e2e5cd834cfd48d9e51870530213433359ed24333e03a0",
+    },
+    sqlite: [
+      { kind: "add-column", table: "user_playlists", column: "download_quality", definition: "TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480'))" },
+      { kind: "add-column", table: "user_followed_playlists", column: "download_quality", definition: "TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480'))" },
+      { kind: "add-column", table: "downloads", column: "requested_quality", definition: "TEXT CHECK (requested_quality IS NULL OR requested_quality IN ('best', '1440', '1080', '720', '480'))" },
+    ],
+    postgres: [
+      { kind: "add-column", table: "user_playlists", column: "download_quality", definition: "TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480'))" },
+      { kind: "add-column", table: "user_followed_playlists", column: "download_quality", definition: "TEXT CHECK (download_quality IS NULL OR download_quality IN ('best', '1440', '1080', '720', '480'))" },
+      { kind: "add-column", table: "downloads", column: "requested_quality", definition: "TEXT CHECK (requested_quality IS NULL OR requested_quality IN ('best', '1440', '1080', '720', '480'))" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

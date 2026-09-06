@@ -7,6 +7,13 @@ export function playlistPrefetchVideoId(playlistId: string | undefined, routeNex
   return queue?.kind === "user-playlist" || queue?.kind === "channel-playlist" ? queueNextVideoId ?? null : null;
 }
 
+export function playlistDownloadContext(playlistId: string | undefined, queue: PlaybackQueueContext | null) {
+  if (playlistId) return { kind: "channel-playlist" as const, playlistId };
+  if (queue?.kind === "user-playlist") return { kind: "user-playlist" as const, playlistUuid: queue.playlistUuid };
+  if (queue?.kind === "channel-playlist") return { kind: "channel-playlist" as const, playlistId: queue.playlistId };
+  return undefined;
+}
+
 export function usePlaylistDownloadPrefetch({ enabled, playlistId, routeNextVideoId, queue, queueNextVideoId }: {
   enabled: boolean;
   playlistId?: string;
@@ -17,8 +24,10 @@ export function usePlaylistDownloadPrefetch({ enabled, playlistId, routeNextVide
   const requestedRef = useRef<string | null>(null);
   useEffect(() => {
     const nextVideoId = playlistPrefetchVideoId(playlistId, routeNextVideoId, queue, queueNextVideoId);
-    if (!enabled || !nextVideoId || nextVideoId === requestedRef.current) return;
-    requestedRef.current = nextVideoId;
-    api.requestDownload(nextVideoId).catch(() => {});
-  }, [enabled, playlistId, queue?.kind, queueNextVideoId, routeNextVideoId]);
+    const context = playlistDownloadContext(playlistId, queue);
+    const requestKey = nextVideoId && context ? `${context.kind}:${"playlistId" in context ? context.playlistId : context.playlistUuid}:${nextVideoId}` : nextVideoId;
+    if (!enabled || !nextVideoId || !requestKey || requestKey === requestedRef.current) return;
+    requestedRef.current = requestKey;
+    api.requestDownload(nextVideoId, false, false, context).catch(() => {});
+  }, [enabled, playlistId, queue, queueNextVideoId, routeNextVideoId]);
 }
