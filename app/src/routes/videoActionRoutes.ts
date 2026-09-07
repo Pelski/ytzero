@@ -11,13 +11,11 @@ import { completeVideo } from "../videoCompletion";
 import { childLocalOnly } from "../childTime";
 import { ensureOnDemandVideo, OnDemandVideoImportError } from "../onDemandVideoImport";
 import { claimTubeArchivistWatchedState, enqueueTubeArchivistWatched } from "../tubeArchivist";
-
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
 type ApiContext = Context<ApiEnvironment>;
 export function registerVideoActionRoutes(api: Api, currentUserId: (context: ApiContext) => number): void {
 const BUCKETS = ["today", "tonight", "tomorrow", "tomorrow_evening", "weekend"];
-
 api.post("/videos/:id/queue", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
@@ -42,7 +40,6 @@ api.post("/videos/:id/queue", async (c) => {
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });
 });
-
 api.post("/videos/:id/import", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");

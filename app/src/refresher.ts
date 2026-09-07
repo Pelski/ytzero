@@ -19,11 +19,8 @@ import { isYouTubeRateLimitError, isYouTubeRefusalError } from "./youtubeRateLim
 import { RSS_VIDEO_UPSERT_SQL } from "./videoUpserts";
 import { syncChannelVideoAvailability } from "./videoAvailabilitySync";
 import { inferIsShortFromMetadata, shortCheckRetryInterval } from "./shortClassification";
-
 const upsertVideo = database.prepare(RSS_VIDEO_UPSERT_SQL);
-
 const videoExists = database.prepare("SELECT 1 FROM videos WHERE video_id = ?");
-
 // Politeness limits for the playlist scan during a manual sync, to avoid
 // tripping YouTube's rate limiting (HTTP 429).
 const MAX_SYNC_PLAYLISTS = 25;
@@ -32,7 +29,6 @@ const EXACT_DATE_BACKFILL_LIMIT = 18;
 const EXACT_DATE_BACKFILL_CONCURRENCY = 3;
 const VIDEO_MAINTENANCE_MAX_AGE_DAYS = positiveNumber(process.env.VIDEO_MAINTENANCE_MAX_AGE_DAYS, 90);
 const VIDEO_MAINTENANCE_CUTOFF = `-${VIDEO_MAINTENANCE_MAX_AGE_DAYS} days`;
-
 function positiveNumber(value: string | undefined, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;

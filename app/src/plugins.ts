@@ -36,24 +36,20 @@ import {
 import { localizeServerMessage } from "./serverMessages";
 export { PLUGINS } from "./pluginCatalog";
 export type { PluginManifest, PluginSettingDef, PluginSettingOption, PluginSettingType, PluginSettingValue, PluginTermState } from "./pluginCatalog";
-
 for (const plugin of PLUGINS) {
   await database.prepare("INSERT OR IGNORE INTO plugins (id, enabled, version) VALUES (?, ?, ?)")
     .run(plugin.id, 0, plugin.version);
   await database.prepare("UPDATE plugins SET version = ? WHERE id = ?").run(plugin.version, plugin.id);
 }
-
 // Social reactions are now arbitrary emoji; the former global allow-list is
 // obsolete and must not silently return through an old installation backup.
 if (getSetting("plugin_social_enabled_reactions") != null) {
   await database.prepare("DELETE FROM settings WHERE key='plugin_social_enabled_reactions'").run();
   await reloadSettingCache();
 }
-
 function text(value: LocalizedText, language: string | null | undefined) {
   return localizeServerMessage(value, language);
 }
-
 function localizeSetting(def: PluginSettingSource, language: string | null | undefined): PluginSettingDef {
   return {
     ...def,
@@ -63,7 +59,6 @@ function localizeSetting(def: PluginSettingSource, language: string | null | und
     options: def.options?.map((option) => ({ value: option.value, label: text(option.label, language) })),
   };
 }
-
 function localizePlugin(manifest: PluginManifest, language: string | null | undefined): PluginManifest {
   const copy = PLUGIN_TEXT[manifest.id];
   if (!copy) return manifest;
@@ -74,7 +69,6 @@ function localizePlugin(manifest: PluginManifest, language: string | null | unde
     permissions: manifest.permissions.map((permission) => text(copy.permissions[permission] ?? { en: permission, pl: permission, de: permission }, language)),
   };
 }
-
 export async function listPlugins(language?: string | null) {
   const states = await database.prepare("SELECT id, enabled, version FROM plugins").all() as { id: string; enabled: number; version: string }[];
   const byId = new Map(states.map((s) => [s.id, s]));
@@ -83,16 +77,13 @@ export async function listPlugins(language?: string | null) {
     return { ...localizePlugin(manifest, language), enabled: state?.enabled !== 0 };
   });
 }
-
 const pluginEnabledCache = new Map(
   (await database.prepare("SELECT id, enabled FROM plugins").all() as { id: string; enabled: number }[])
     .map((row) => [row.id, row.enabled !== 0]),
 );
-
 export function pluginEnabled(id: string) {
   return pluginEnabledCache.get(id) ?? true;
 }
-
 export async function reloadPluginEnabledCache(): Promise<string[]> {
   const rows = await database.prepare("SELECT id, enabled FROM plugins").all() as { id: string; enabled: number }[];
   const changed: string[] = [];
@@ -102,7 +93,6 @@ export async function reloadPluginEnabledCache(): Promise<string[]> {
   if (changed.includes("social") && !pluginEnabled("social")) socialWatchPartyStore.closeAll("social_disabled");
   return changed;
 }
-
 export async function setPluginEnabled(id: string, enabled: boolean, options: { activate?: boolean } = {}) {
   const manifest = PLUGINS.find((p) => p.id === id);
   if (!manifest) throw new Error("plugin not found");
@@ -117,7 +107,6 @@ export async function setPluginEnabled(id: string, enabled: boolean, options: { 
     else integration.stopTubeArchivistSync();
   }
 }
-
 function settingDefs(pluginId: string): PluginSettingSource[] {
   if (pluginId === "discovery") return DISCOVERY_SETTINGS;
   if (pluginId === "social") return SOCIAL_SETTINGS;
@@ -125,7 +114,6 @@ function settingDefs(pluginId: string): PluginSettingSource[] {
   if (pluginId === "notifications") return NOTIFICATION_PROVIDER_SETTINGS;
   return [];
 }
-
 function settingScope(pluginId: string, manifest: PluginManifest, def: PluginSettingSource): "user" | "global" {
   return def.scope ?? manifest.settingsScope ?? "user";
 }

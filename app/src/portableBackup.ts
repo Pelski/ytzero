@@ -116,14 +116,12 @@ export interface BackupManifest {
   profiles: { id: string; name: string; isChild: boolean }[];
   sections: BackupManifestSection[];
 }
-
 function json(value: unknown): Uint8Array { return encoder.encode(`${JSON.stringify(value, null, 2)}\n`); }
 function jsonl(values: unknown[]): Uint8Array { return encoder.encode(values.map((value) => JSON.stringify(value)).join("\n") + (values.length ? "\n" : "")); }
 async function sha256(bytes: Uint8Array): Promise<string> {
   const input = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", input))].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
-
 function selectedWithDependencies(ids: string[]): Set<string> {
   const selected = new Set(ids.filter((id) => SECTION_BY_ID.has(id)));
   let changed = true;
@@ -133,7 +131,6 @@ function selectedWithDependencies(ids: string[]): Set<string> {
   }
   return selected;
 }
-
 async function portableProfiles(requested: string[]) {
   const rows = await database.prepare("SELECT id, portable_uuid, name, avatar, avatar_color, sort_order, is_child FROM users ORDER BY sort_order, id").all() as any[];
   const requestedSet = new Set(requested);

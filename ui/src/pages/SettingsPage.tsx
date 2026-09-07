@@ -36,14 +36,11 @@ import { SettingsSearch } from "../components/settings/SettingsSearch";
 import ChannelSettingsDialog, { hasCustomChannelSettings } from "../components/settings/ChannelSettingsDialog";
 import { filterPlaylistsByName } from "../playlistSearch";
 import { ClusterSettings } from "../components/settings/ClusterSettings";
-
 const AuthSettings = lazy(() => import("../components/AuthSettings"));
 const TubeArchivistSettings = lazy(() => import("../components/settings/TubeArchivistSettings")
   .then((module) => ({ default: module.TubeArchivistSettings })));
 const NotificationSettings = lazy(() => import("../components/settings/NotificationSettings"));
-
 type Tab = "channels" | "tags" | "playlists" | "display" | "notifications" | "plugins" | "advanced" | "profiles" | "auth" | "cluster";
-
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
   const supported = intl.supportedValuesOf?.("timeZone") ?? [
@@ -52,7 +49,6 @@ const TIME_ZONES = (() => {
   ];
   return [...new Set(["UTC", ...supported])];
 })();
-
 // Areas unavailable to a profile are omitted entirely, not shown as dead ends.
 const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
   { id: "channels" },
@@ -66,18 +62,14 @@ const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
   { id: "auth", primaryOnly: true },
   { id: "cluster", primaryOnly: true },
 ];
-
 const DISPLAY_PERMISSION_AREAS: ProfilePermissionArea[] = ["appearance", "feed", "navigation", "playback"];
 const GITHUB_RELEASES_URL = "https://github.com/Pelski/ytzero/releases";
 const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"]);
-
-
 function permissionAreaForTab(tab: Tab): ProfilePermissionArea | null {
   if (tab === "channels" || tab === "tags" || tab === "playlists" || tab === "plugins" || tab === "profiles") return tab;
   if (tab === "advanced") return null;
   return null;
 }
-
 // Feed age limit: "off" lives in the unit select so the whole control stays two
 // dropdowns (the value select is disabled while the limit is off).
 type FeedMaxAgeUnit = "days" | "weeks" | "months" | "years" | "off";

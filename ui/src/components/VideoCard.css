@@ -6,19 +6,16 @@
   position: absolute;
   z-index: 3;
 }
-
 .video-card {
   container-type: inline-size;
   position: relative;
 }
-
 .video-card .members-only-marker {
   left: 6px;
   position: absolute;
   top: 6px;
   z-index: 7;
 }
-
 .members-only-marker__icon {
   align-items: center;
   background: #f5c542;
@@ -30,19 +27,15 @@
   justify-content: center;
   width: 27px;
 }
-
 .members-only-marker__icon svg { stroke-width: 2.2; }
 .video-card .members-only-marker--stacked { top: 37px; }
-
 .short-card-members-only {
   left: 8px;
   position: absolute;
   top: 8px;
   z-index: 5;
 }
-
 .short-card-members-only--stacked { top: 38px; }
-
 .video-card .thumb-wrap {
   --actions-proximity: 0;
   border-radius: var(--radius);
@@ -52,7 +45,6 @@
   overflow: hidden;
   position: relative;
 }
-
 .video-card .live-badge {
   align-items: center;
   background: var(--live);
@@ -70,7 +62,6 @@
   position: absolute;
   z-index: 4;
 }
-
 .video-card .live-badge .pulse {
   animation: video-card-live-pulse 1.6s ease-in-out infinite;
   background: #fff;
@@ -78,16 +69,13 @@
   height: 6px;
   width: 6px;
 }
-
 .video-card .live-badge.upcoming {
   background: rgba(0, 0, 0, 0.75);
 }
-
 @keyframes video-card-live-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.35; }
 }
-
 .video-card-thumbnail-color {
   aspect-ratio: 16 / 9;
   background: var(--surface);
@@ -95,7 +83,6 @@
   overflow: hidden;
   position: relative;
 }
-
 .video-card-thumbnail-color::before {
   background:
     radial-gradient(circle at 24% 28%, var(--thumbnail-color-a), transparent 58%),

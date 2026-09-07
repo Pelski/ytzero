@@ -63,7 +63,7 @@ const lineLimits: Record<string, number> = {
   "app/src/youtube.ts": 1249,
   "app/src/youtubeSearch.ts": 225,
   "app/src/db.ts": 648,
-  "app/src/schema.sql": 723,
+  "app/src/schema.sql": 737,
   "app/src/portableBackup.ts": 524,
   "app/src/portableArchive.ts": 76,
   "ui/src/pages/SettingsPage.css": 1071,

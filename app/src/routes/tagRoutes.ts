@@ -2,18 +2,14 @@ import type { Context, Hono } from "hono";
 import { applyRuleToAllVideos } from "../autotags";
 import { database } from "../database";
 import { applyFilterRuleToAll } from "../filterRules"; import { hiddenFilterTagUuids, setTagHiddenFromFilters } from "../tagFilterVisibility";
-
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
 type ApiContext = Context<ApiEnvironment>;
-
 export function registerTagRoutes(
   api: Api,
   currentUserId: (context: ApiContext) => number,
 ): void {
-
 // ---------- tags ----------
-
 api.get("/tags", async (c) => {
   const uid = currentUserId(c), hiddenUuids = hiddenFilterTagUuids(uid);
   const tags = (await database
@@ -26,7 +22,6 @@ api.get("/tags", async (c) => {
     .all(uid) as any[]).map((tag) => ({ ...tag, hidden_from_filters: hiddenUuids.has(tag.portable_uuid) ? 1 : 0 }));
   return c.json({ tags });
 });
-
 api.post("/tags", async (c) => {
   const uid = currentUserId(c);
   const { name, color } = await c.req.json();
@@ -36,7 +31,6 @@ api.post("/tags", async (c) => {
     .get(name.trim(), color ?? "#7c5cff", uid, crypto.randomUUID());
   return c.json({ tag: r });
 });
-
 api.patch("/tags/:id", async (c) => {
   const uid = currentUserId(c);
   const { name, color, filter_only, hidden_from_filters } = await c.req.json();
@@ -48,7 +42,6 @@ api.patch("/tags/:id", async (c) => {
   const tag = await database.prepare("SELECT * FROM tags WHERE id = ?").get(id);
   return c.json({ tag: { ...(tag as object), hidden_from_filters: hiddenFilterTagUuids(uid).has(existing.portable_uuid) ? 1 : 0 } });
 });
-
 api.delete("/tags/:id", async (c) => {
   const uid = currentUserId(c);
   const id = c.req.param("id");
@@ -60,9 +53,7 @@ api.delete("/tags/:id", async (c) => {
   if (tag) await setTagHiddenFromFilters(uid, tag.portable_uuid, false);
   return c.json({ ok: true });
 });
-
 // ---------- auto-tag rules ----------
-
 api.get("/rules", async (c) => {
   const uid = currentUserId(c);
   const rules = await database

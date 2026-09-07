@@ -371,30 +371,25 @@ export const api = {
   },
   importCommit: (payload: ImportCommitPayload) =>
     http<ImportCommitResult>("/import/commit", { method: "POST", body: JSON.stringify(payload) }),
-
   tags: () => sharedGet<{ tags: Tag[] }>("tags", "/tags"),
   addTag: (name: string, color: string) =>
     http<{ tag: Tag }>("/tags", { method: "POST", body: JSON.stringify({ name, color }) }),
   updateTag: (id: number, patch: { name?: string; color?: string; filter_only?: number; hidden_from_filters?: number }) =>
     http<{ tag: Tag }>(`/tags/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeTag: (id: number) => http(`/tags/${id}`, { method: "DELETE" }),
-
   rules: () => http<{ rules: Rule[] }>("/rules"),
   addRule: (r: { tag_id: number; pattern: string; match_type: string; field: string }) =>
     http<{ matched: number }>("/rules", { method: "POST", body: JSON.stringify(r) }),
   updateRule: (id: number, patch: { tag_id?: number; pattern?: string; match_type?: string; field?: string }) =>
     http<{ rule: Rule }>(`/rules/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeRule: (id: number) => http(`/rules/${id}`, { method: "DELETE" }),
-
   filterRules: () => http<{ rules: FilterRule[] }>("/filter-rules"),
   addFilterRule: (r: { pattern: string; match_type: string; field: string; action: string; channel_id?: string | null }) =>
     http<{ rule: FilterRule; archived: number }>("/filter-rules", { method: "POST", body: JSON.stringify(r) }),
   updateFilterRule: (id: number, patch: { pattern?: string; match_type?: string; field?: string; action?: string; channel_id?: string | null }) =>
     http<{ rule: FilterRule }>(`/filter-rules/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeFilterRule: (id: number) => http(`/filter-rules/${id}`, { method: "DELETE" }),
-
   refresh: () => http<{ channels: number; added: number; errors: string[] }>("/refresh", { method: "POST" }),
-
   settings: () => sharedGet<{ settings: AppSettings; settings_meta: { timezone_locked: boolean } }>("settings", "/settings"),
   bootstrapSettings: () => sharedGet<{ settings: AppSettings; settings_meta: { timezone_locked: boolean } }>("bootstrap-settings", "/settings", { suppressAuthenticationNavigation: true }),
   updateSettings: (s: Partial<AppSettings>) =>

@@ -58,7 +58,6 @@ export interface Video {
   source_playlist_id?: string | null;
   playback_context?: PlaybackQueueContext | null;
 }
-
 export interface Bookmark {
   id: string;
   video_id: string;
@@ -67,7 +66,6 @@ export interface Bookmark {
   created_at: string;
   updated_at: string;
 }
-
 export interface BookmarkVideo extends Video {
   bookmark_id: string;
   position_seconds: number;
@@ -75,17 +73,14 @@ export interface BookmarkVideo extends Video {
   bookmarked_at: string;
   bookmark_updated_at: string;
 }
-
 export interface DeArrowBranding {
   title: string | null;
   thumbnail: string | null;
 }
-
 export type MembersOnlyVisibility = "default" | "everywhere" | "channel" | "hidden";
 export type ShortsFeedMode = "disabled" | "0" | "selected" | "1";
 export type ChannelShortsFeedVisibility = "default" | "show";
 export type ChannelManualStatus = "active" | "paused" | "broken" | "banned" | "deleted";
-
 export interface ChannelRefreshScheduleDetails {
   mode: "adaptive" | "manual";
   days: number[];
@@ -101,7 +96,6 @@ export interface ChannelRefreshScheduleDetails {
     nextRefreshAt: string | null;
   };
 }
-
 export interface Channel {
   channel_id: string;
   title: string;
@@ -130,7 +124,6 @@ export interface Channel {
   tags: Tag[];
 }
 export type { ChannelSyncChannelStatus, ChannelSyncJob, ChannelSyncJobChannel } from "./channelSyncTypes";
-
 export interface Rule {
   id: number;
   tag_id: number;
@@ -140,7 +133,6 @@ export interface Rule {
   tag_name: string;
   tag_color: string;
 }
-
 export interface FilterRule {
   id: number;
   pattern: string;
@@ -150,12 +142,10 @@ export interface FilterRule {
   channel_id: string | null;
   channel_title: string | null;
 }
-
 export interface ChannelLink {
   title: string;
   url: string;
 }
-
 export interface ChannelAbout {
   channelId: string;
   title: string;
@@ -178,7 +168,6 @@ export interface PlaylistInfo {
   videoCount: string;
   followed?: boolean;
 }
-
 export interface FollowedPlaylist {
   playlist_id: string;
   title: string;
@@ -194,23 +183,19 @@ export interface FollowedPlaylist {
   offline_policy: "none" | "download" | "keep";
   download_quality: DownloadQuality | null;
 }
-
 export interface FollowedPlaylistUpdates extends FollowedPlaylist {
   new_video_count: number;
   new_videos: Video[];
 }
-
 export interface PlaylistDownloadResult {
   queued: number;
   skipped: number;
   total: number;
 }
-
 export interface VideoChannelPlaylist extends PlaylistInfo {
   channelId: string;
   channelTitle: string;
 }
-
 export interface VideoCreator {
   channelId: string;
   title: string;
@@ -219,7 +204,6 @@ export interface VideoCreator {
   handle: string;
   isOwner: boolean;
 }
-
 export interface VideoComment {
   id: string;
   parent: string | null;
@@ -235,7 +219,6 @@ export interface VideoComment {
   isFavorited: boolean;
   authorIsUploader: boolean;
 }
-
 export interface VideoCommentsResponse {
   comments: VideoComment[];
   fetchedAt: string;
@@ -254,7 +237,6 @@ export interface PlaylistVideo {
   watch_position: number | null;
   watch_duration: number | null;
 }
-
 export interface UserPlaylist {
   id: number;
   portable_uuid: string;
@@ -275,7 +257,6 @@ export interface UserPlaylistRule {
   match_type: "contains" | "regex";
   field: "title" | "description" | "both";
 }
-
 export interface AppSettings {
   language: import("../../shared/uiLanguages").Language;
   youtube_title_language: "profile" | import("../../shared/uiLanguages").Language;
@@ -328,7 +309,6 @@ export interface AppSettings {
   feed_autoplay_direction: string;
   feed_sort: string;
 }
-
 export interface AppNotification {
   id: number;
   kind: "app_update" | string;
@@ -360,11 +340,9 @@ export interface AppNotification {
   read_at: string | null;
   created_at: string;
 }
-
 export type NotificationCategory = "channel_video" | "playlist_video" | "tag_rule" | "download_failed" | "social" | "app_update";
 export type NotificationSourceType = "channel" | "playlist" | "tag_rule";
 export type NotificationProvider = "off" | "apprise" | "webhook" | "ntfy";
-
 /** Where one profile's notifications are forwarded outside YT Zero. */
 export interface NotificationDelivery {
   /** Instance-wide choice made by the administrator in the plugin. */
@@ -379,7 +357,6 @@ export interface NotificationDelivery {
   enabled: boolean;
   targets: string;
 }
-
 export interface NotificationPreferences {
   enabled: boolean;
   categories: Record<NotificationCategory, boolean>;
@@ -389,7 +366,6 @@ export interface NotificationPreferences {
   rules: Array<{ rule_id: number; pattern: string; match_type: string; field: string; tag_name: string; tag_color: string; notification_enabled: number | null }>;
   delivery: NotificationDelivery;
 }
-
 export interface SearchResult {
   videoId: string;
   title: string;
@@ -408,7 +384,6 @@ export interface SearchResult {
   downloads_enabled: boolean;
   downloads_allowed: boolean;
 }
-
 export interface ChannelSearchResult {
   channelId: string;
   title: string;
