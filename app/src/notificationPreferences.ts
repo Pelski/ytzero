@@ -3,30 +3,47 @@ import { database } from "./database";
 export const NOTIFICATION_CATEGORIES = [
   "channel_video",
   "playlist_video",
+  "tag_rule",
   "download_failed",
   "social",
   "app_update",
 ] as const;
 
 export type NotificationCategory = (typeof NOTIFICATION_CATEGORIES)[number];
-export type NotificationSourceType = "channel" | "playlist";
+export type NotificationSourceType = "channel" | "playlist" | "tag_rule";
+
+export const NOTIFICATION_SOURCE_TYPES: readonly NotificationSourceType[] = ["channel", "playlist", "tag_rule"];
 
 export const NOTIFICATION_CATEGORY_DEFAULTS: Record<NotificationCategory, boolean> = {
-  // Channel-upload notifications are new and intentionally opt-in. Existing
-  // notification types retain their historical enabled behaviour.
+  // Channel-upload and tag-rule notifications are opt-in: both can fire on every
+  // discovered video. Existing notification types retain their historical
+  // enabled behaviour.
   channel_video: false,
   playlist_video: true,
+  tag_rule: false,
   download_failed: true,
   social: true,
   app_update: true,
 };
+
+// Categories whose notifications are attributed to an individual source
+// (a channel, a followed playlist, or one auto-tag rule) and therefore support
+// per-source overrides in `notification_preferences.source_id`.
+export const NOTIFICATION_SOURCE_KINDS: readonly NotificationCategory[] = ["channel_video", "playlist_video", "tag_rule"];
 
 export function notificationCategory(kind: string): NotificationCategory | string {
   return kind.startsWith("social_") ? "social" : kind;
 }
 
 export function sourceKind(sourceType: NotificationSourceType): NotificationCategory {
-  return sourceType === "channel" ? "channel_video" : "playlist_video";
+  if (sourceType === "channel") return "channel_video";
+  return sourceType === "playlist" ? "playlist_video" : "tag_rule";
+}
+
+export function sourceTypeOf(kind: string): NotificationSourceType | null {
+  if (kind === "channel_video") return "channel";
+  if (kind === "playlist_video") return "playlist";
+  return kind === "tag_rule" ? "tag_rule" : null;
 }
 
 function defaultEnabled(kind: string): boolean {
@@ -70,7 +87,9 @@ export async function notificationPreferenceSnapshot(userId: number) {
   const enabled = values.get("*:") ?? true;
   const categories = Object.fromEntries(NOTIFICATION_CATEGORIES.map((kind) => [kind, values.get(`${kind}:`) ?? NOTIFICATION_CATEGORY_DEFAULTS[kind]]));
   const overrides = rows
-    .filter((row) => row.source_id && (row.kind === "channel_video" || row.kind === "playlist_video"))
-    .map((row) => ({ sourceType: row.kind === "channel_video" ? "channel" as const : "playlist" as const, sourceId: row.source_id, enabled: row.enabled === 1 }));
+    .flatMap((row) => {
+      const sourceType = row.source_id ? sourceTypeOf(row.kind) : null;
+      return sourceType ? [{ sourceType, sourceId: row.source_id, enabled: row.enabled === 1 }] : [];
+    });
   return { enabled, categories, overrides };
 }

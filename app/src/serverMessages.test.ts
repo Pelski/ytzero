@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DOWNLOADS_SETTINGS } from "./downloadSettings";
-import { DISCOVERY_SETTINGS, PLUGIN_TEXT, SOCIAL_SETTINGS, TUBE_ARCHIVIST_SETTINGS } from "./pluginCatalog";
+import { DISCOVERY_SETTINGS, NOTIFICATION_PROVIDER_SETTINGS, PLUGIN_TEXT, SOCIAL_SETTINGS, TUBE_ARCHIVIST_SETTINGS } from "./pluginCatalog";
 import { SERVER_MESSAGES, type BaseLocalizedText, type ServerCatalogueLanguage } from "./serverMessages";
 
 function collectLocalizedText(value: unknown, messages = new Map<string, BaseLocalizedText>()): Map<string, BaseLocalizedText> {
@@ -25,6 +25,7 @@ describe("server-owned localization catalogues", () => {
       SOCIAL_SETTINGS,
       TUBE_ARCHIVIST_SETTINGS,
       DISCOVERY_SETTINGS,
+      NOTIFICATION_PROVIDER_SETTINGS,
       PLUGIN_TEXT,
     ]);
 

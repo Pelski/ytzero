@@ -63,7 +63,9 @@ import {
   type ImportManifest,
   type MembersOnlyVisibility,
   type NotificationCategory,
+  type NotificationDelivery,
   type NotificationPreferences,
+  type NotificationSourceType,
   type PlaylistDownloadResult,
   type PlaylistInfo,
   type PlaylistVideo,
@@ -283,8 +285,11 @@ export const api = {
   notificationPreferences: () => http<NotificationPreferences>("/notification-preferences"),
   updateNotificationPreferences: (input: { enabled?: boolean; categories?: Partial<Record<NotificationCategory, boolean>> }) =>
     http<Pick<NotificationPreferences, "enabled" | "categories" | "overrides">>("/notification-preferences", { method: "PUT", body: JSON.stringify(input) }),
-  updateNotificationSource: (sourceType: "channel" | "playlist", sourceId: string, enabled: boolean | null) =>
+  updateNotificationSource: (sourceType: NotificationSourceType, sourceId: string, enabled: boolean | null) =>
     http<{ ok: true }>(`/notification-preferences/sources/${sourceType}/${encodeURIComponent(sourceId)}`, { method: "PUT", body: JSON.stringify({ enabled }) }),
+  updateNotificationDelivery: (input: { enabled?: boolean; targets?: string; appriseServerUrl?: string; ntfyServerUrl?: string; publicBaseUrl?: string }) =>
+    http<NotificationDelivery>("/notification-preferences/delivery", { method: "PUT", body: JSON.stringify(input) }),
+  testNotificationDelivery: () => http<{ ok: true }>("/notification-preferences/delivery/test", { method: "POST", body: "{}" }),
   live: () => http<{ videos: Video[] }>("/live"),
   channelLive: (id: string) => http<{ videos: Video[] }>(`/channels/${id}/live`),
   video: (id: string) => sharedGet<{ video: Video; related: Video[] }>(`video:${id}`, `/videos/${id}`),

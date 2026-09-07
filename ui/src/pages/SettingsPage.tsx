@@ -4,7 +4,7 @@ import { useSettingsPageController } from "./useSettingsPageController";
 import { SettingsDisplayView } from "../components/settings/SettingsDisplayView";
 import { createPortal } from "react-dom";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, LoaderCircle, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
+import { AlertTriangle, ArchiveRestore, ArrowRight, BellRing, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, LoaderCircle, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, Search, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChildLockStatus, type FilterRule, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
@@ -35,12 +35,12 @@ import { ChangelogNote, LogLine, SettingsLoadingState } from "../components/sett
 import { SettingsSearch } from "../components/settings/SettingsSearch";
 import ChannelSettingsDialog, { hasCustomChannelSettings } from "../components/settings/ChannelSettingsDialog";
 import { filterPlaylistsByName } from "../playlistSearch";
-import NotificationSettings from "../components/settings/NotificationSettings";
 import { ClusterSettings } from "../components/settings/ClusterSettings";
 
 const AuthSettings = lazy(() => import("../components/AuthSettings"));
 const TubeArchivistSettings = lazy(() => import("../components/settings/TubeArchivistSettings")
   .then((module) => ({ default: module.TubeArchivistSettings })));
+const NotificationSettings = lazy(() => import("../components/settings/NotificationSettings"));
 
 type Tab = "channels" | "tags" | "playlists" | "display" | "notifications" | "plugins" | "advanced" | "profiles" | "auth" | "cluster";
 
@@ -473,7 +473,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
         <AuthSettings showToast={showToast} />
       </Suspense>}
 
-      {!isCurrentTabLocked && tab === "notifications" && <NotificationSettings />}
+      {!isCurrentTabLocked && tab === "notifications" && <Suspense fallback={<SettingsLoadingState />}><NotificationSettings /></Suspense>}
 
       {!isCurrentTabLocked && tab === "cluster" && isPrimary && clusterAvailable && <ClusterSettings />}
 
@@ -902,7 +902,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                 <div className="plugin-modal" role="dialog" aria-modal="true" aria-labelledby="plugin-settings-title" onMouseDown={(e) => e.stopPropagation()}>
                   <div className="plugin-modal-hero">
                     <div className="plugin-modal-icon" aria-hidden="true">
-                      {plugin.icon === "Sparkles" ? <Sparkles /> : plugin.icon === "Download" ? <Download /> : plugin.icon === "UsersRound" ? <UsersRound /> : <Plug />}
+                      {plugin.icon === "Sparkles" ? <Sparkles /> : plugin.icon === "Download" ? <Download /> : plugin.icon === "UsersRound" ? <UsersRound /> : plugin.icon === "BellRing" ? <BellRing /> : <Plug />}
                     </div>
                     <div className="plugin-modal-identity">
                       <div className="plugin-modal-eyebrow">{t("pluginDetailsLabel")}</div>
@@ -978,6 +978,7 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                                 ) : def.type === "select" ? (
                                   <SelectMenu
                                     label={def.label}
+                                    className="plugin-setting-select"
                                     value={String(value)}
                                     options={def.options?.map((option) => ({ value: option.value, label: option.label })) ?? []}
                                     disabled={Boolean(def.adminOnly && !isPrimary)}
@@ -996,6 +997,19 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
                         </div>
                       </section>
                     ))}
+                  {plugin.id === "notifications" && String(config.settings.provider ?? "off") !== "off" && (
+                    <div className="plugin-notification-settings-link">
+                      <Button
+                        leadingIcon={<BellRing />}
+                        onClick={() => {
+                          setPluginSettingsModalId(null);
+                          setSettingsView("notifications");
+                        }}
+                      >
+                        {t("notificationSettingsNav")}
+                      </Button>
+                    </div>
+                  )}
                   {config.terms && (
                     <section className="plugin-config-section plugin-terms-panel">
                       <div className="plugin-terms-head">

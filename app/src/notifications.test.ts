@@ -49,3 +49,58 @@ describe("download failure notifications", () => {
     expect(result.masterDisabledCreated).toBe(0);
   });
 });
+
+describe("auto-tag rule notifications", () => {
+  test("reports only owned rules while still tagging the video", () => {
+    expect(result.taggedVideo.count).toBe(1);
+    expect(result.ruleMatches).toHaveLength(1);
+    expect(result.ruleMatches[0].userId).toBe(1);
+    expect(result.ruleMatches[0].tagName).toBe("Rust");
+    expect(result.ruleMatches[0].pattern).toBe("rust");
+  });
+
+  test("is opt-in per category and never repeats for the same rule and video", () => {
+    expect(result.tagRuleDefaultCreated).toBe(0);
+    expect(result.tagRuleCategoryCreated).toBe(1);
+    expect(result.tagRuleDuplicateCreated).toBe(0);
+    expect(result.tagRuleRows).toHaveLength(1);
+    expect(result.tagRuleRows[0].target).toBe("/watch/rustvideo1");
+    const payload = JSON.parse(result.tagRuleRows[0].payload);
+    expect(payload.tagName).toBe("Rust");
+    expect(payload.rulePattern).toBe("rust");
+    expect(payload.channelTitle).toBe("Notification channel");
+  });
+
+  test("lets a per-rule override switch one rule off", () => {
+    expect(result.tagRuleSourceOffCreated).toBe(0);
+  });
+});
+
+describe("external notification provider", () => {
+  test("hides provider connection details from regular profiles", () => {
+    expect(result.adminDeliverySnapshot.appriseServerUrl).toBe("http://apprise.local:8000");
+    expect(result.adminDeliverySnapshot.publicBaseUrl).toBe("https://ytzero.example");
+    expect(result.profileDeliverySnapshot.appriseServerUrl).toBe("");
+    expect(result.profileDeliverySnapshot.publicBaseUrl).toBe("");
+    expect(result.profileDeliverySnapshot.providerConfigured).toBe(true);
+    expect(result.profileDeliverySnapshot.publicBaseUrlConfigured).toBe(true);
+  });
+
+  test("rejects provider connection changes from a regular profile", () => {
+    expect(result.unauthorizedProviderError).toBe("administrator setting");
+  });
+
+  test("sends a provider-neutral bell notification through Apprise", () => {
+    expect(result.delivered).toBe(true);
+    expect(result.deliveredRequest.url).toBe("http://apprise.local:8000/notify");
+    expect(result.deliveredRequest.body.urls).toEqual(["tgram://token/chat", "discord://id/token"]);
+    expect(result.deliveredRequest.body.title).toBe("Rust in 2026");
+    expect(result.deliveredRequest.body.body).toContain("https://ytzero.example/watch/rustvideo1");
+  });
+
+  test("resetting the plugin resets only its provider choice", () => {
+    expect(result.resetDeliverySnapshot.provider).toBe("off");
+    expect(result.resetDeliverySnapshot.appriseServerUrl).toBe("http://apprise.local:8000");
+    expect(result.resetDeliveryRows).toEqual([{ provider: "apprise", enabled: 1, targets: "tgram://token/chat\ndiscord://id/token" }]);
+  });
+});

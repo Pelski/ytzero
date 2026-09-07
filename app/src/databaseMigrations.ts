@@ -457,6 +457,21 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "add-column", table: "downloads", column: "requested_quality", definition: "TEXT CHECK (requested_quality IS NULL OR requested_quality IN ('best', '1440', '1080', '720', '480'))" },
     ],
   },
+  {
+    version: 113,
+    name: "external-notification-delivery",
+    schemaHashes: {
+      "app/src/schema.sql": "b3eed272dc7687831970765bc2c12f023e72ac3809e71626cf5b078a8d56d026",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "30b7c3fc889aedc977e2e5cd834cfd48d9e51870530213433359ed24333e03a0",
+    },
+    sqlite: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS notification_delivery (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)), targets TEXT NOT NULL DEFAULT '', PRIMARY KEY (user_id, provider))" },
+    ],
+    postgres: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS notification_delivery (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)), targets TEXT NOT NULL DEFAULT '', PRIMARY KEY (user_id, provider))" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

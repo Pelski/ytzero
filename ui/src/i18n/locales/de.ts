@@ -3,11 +3,13 @@ import { localeFormats } from "../localeFormats";
 import { featureMessages } from "./featureMessages";
 import { surfaceMessages } from "./surfaceMessages";
 import { clusterMessages } from "./cluster";
+import { notificationMessages } from "./notifications";
 import { feedBuilderMessages } from "./feedBuilder";
 export const de: Locale = {
   messages: {
     ...surfaceMessages.de,
     ...clusterMessages.de,
+    ...notificationMessages.de,
     ...feedBuilderMessages.de,
     navToday: "Start",
     navSocial: "Social",
@@ -516,9 +518,9 @@ export const de: Locale = {
     notificationSocialActivityHint: "Beiträge, Kommentare, Erwähnungen, Reaktionen und Kommentar-Likes zu diesem Profil.",
     notificationAppUpdates: "YT-Zero-Updates",
     notificationAppUpdatesHint: "Benachrichtige mich, wenn eine neue Version von YT Zero verfügbar ist.",
-    notificationSourceOverrides: "Einstellungen für Kanäle und Playlists",
+    notificationSourceOverrides: "Einstellungen für Kanäle, Playlists und Tag-Regeln",
     notificationSourceOverridesHint: "Diese Einstellungen überschreiben die Kategorie-Vorgaben. Das Deaktivieren aller Profilbenachrichtigungen hat weiterhin Vorrang.",
-    notificationSourceSearch: "Kanäle und Playlists suchen",
+    notificationSourceSearch: "Kanäle, Playlists und Tag-Regeln suchen",
     notificationSourceDefaultOn: "Standard (an)",
     notificationSourceDefaultOff: "Standard (aus)",
     notificationSourceAlwaysOn: "Immer benachrichtigen",

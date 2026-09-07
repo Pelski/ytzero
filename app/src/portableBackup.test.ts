@@ -431,7 +431,11 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
     setUserSetting(1, "channel_posts_tab", "1");
-    db.prepare("INSERT INTO notification_preferences(user_id,kind,source_id,enabled) VALUES(1,'*','',1),(1,'playlist_video','PLportable',0),(1,'channel_video','UCportable',1)").run();
+    db.prepare("INSERT INTO notification_preferences(user_id,kind,source_id,enabled) VALUES(1,'*','',1),(1,'playlist_video','PLportable',0),(1,'channel_video','UCportable',1),(1,'tag_rule','',1),(1,'tag_rule','4242',0)").run();
+    await plugins.setPluginSettings(1, "notifications", { provider: "apprise" });
+    await setSetting("plugin_notifications_apprise_server_url", "http://apprise-secret@apprise.portable:8000");
+    await setSetting("plugin_notifications_public_base_url", "https://ytzero.portable");
+    db.prepare("INSERT INTO notification_delivery(user_id,provider,enabled,targets) VALUES(1,'apprise',1,'tgram://secret-token/4242')").run();
     db.prepare("INSERT INTO channel_playlists(playlist_id,channel_id,title,thumbnail) VALUES('PLportable','UCportable','Portable followed playlist','')").run();
     db.prepare("INSERT INTO user_followed_playlists(user_id,playlist_id,offline_policy,download_quality) VALUES(1,'PLportable','keep','720')").run();
     db.prepare("INSERT INTO download_settings(user_id,key,value) VALUES(1,'enabled','1'),(1,'compatible_format','1'),(1,'download_live_archives','1'),(1,'prefetch_next_playlist_video','1'),(1,'download_schedule_enabled','1'),(1,'download_schedule_days','1,3,5'),(1,'download_schedule_start','23:00'),(1,'download_schedule_end','07:00') ON CONFLICT(user_id,key) DO UPDATE SET value=excluded.value").run();
@@ -494,6 +498,10 @@ describe("portable backup classification and restore", () => {
     db.prepare("DELETE FROM user_playlists WHERE portable_uuid=?").run(playlistUuid);
     db.prepare("DELETE FROM social_posts WHERE id=?").run(socialPostId);
     db.prepare("DELETE FROM notification_preferences WHERE user_id=1").run();
+    await plugins.setPluginSettings(1, "notifications", { provider: "off" });
+    await setSetting("plugin_notifications_apprise_server_url", "");
+    await setSetting("plugin_notifications_public_base_url", "");
+    db.prepare("DELETE FROM notification_delivery WHERE user_id=1").run();
     db.prepare("DELETE FROM social_recent_emojis WHERE user_id=1").run();
     db.prepare("DELETE FROM plugin_state WHERE plugin_id='social' AND user_id=1 AND key='emoji_skin_tone'").run();
     const analyzed = await backup.analyzePortableBackup(1, zip);
@@ -523,11 +531,25 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "dearrow_thumbnails_enabled")).toBe("1");
     expect(getUserSetting(1, "child_watching_monitor_enabled")).toBe("0");
     expect(getUserSetting(1, "channel_posts_tab")).toBe("1");
+    // The local auto-tag rule id has no portable identity, so only the
+    // category-wide `tag_rule` default comes back.
     expect(db.prepare("SELECT kind,source_id,enabled FROM notification_preferences WHERE user_id=1 ORDER BY kind,source_id").all()).toEqual([
       { kind: "*", source_id: "", enabled: 1 },
       { kind: "channel_video", source_id: "UCportable", enabled: 1 },
       { kind: "playlist_video", source_id: "PLportable", enabled: 0 },
+      { kind: "tag_rule", source_id: "", enabled: 1 },
     ]);
+    const restoredDelivery = (await plugins.getPluginSettings(1, "notifications")).settings;
+    expect(restoredDelivery.provider).toBe("apprise");
+    expect(Object.keys(restoredDelivery)).toEqual(["provider"]);
+    // Provider connection details are configured under Notifications and stay
+    // instance-local; restoring the plugin only restores the provider choice.
+    expect(getSetting("plugin_notifications_apprise_server_url")).toBe("");
+    expect(getSetting("plugin_notifications_public_base_url")).toBe("");
+    // Delivery targets embed bot tokens and must never travel in an archive.
+    expect(db.prepare("SELECT count(*) n FROM notification_delivery WHERE user_id=1").get()).toEqual({ n: 0 });
+    expect([...backup.readPortableZip(zip).values()].map((bytes) => decoder.decode(bytes)).join("\n")).not.toContain("secret-token");
+    expect([...backup.readPortableZip(zip).values()].map((bytes) => decoder.decode(bytes)).join("\n")).not.toContain("apprise-secret");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='compatible_format'").get() as { value: string }).value).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='download_live_archives'").get() as { value: string }).value).toBe("1");
     expect((db.prepare("SELECT value FROM download_settings WHERE user_id=1 AND key='prefetch_next_playlist_video'").get() as { value: string }).value).toBe("1");

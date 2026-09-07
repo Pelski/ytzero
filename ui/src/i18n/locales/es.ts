@@ -2,6 +2,7 @@ import { localeFormats } from "../localeFormats";
 import { surfaceMessages } from "./surfaceMessages";
 import { feedBuilderMessages } from "./feedBuilder";
 import { clusterMessages } from "./cluster";
+import { notificationMessages } from "./notifications";
 import type { Locale } from "../types";
 
 export const es: Locale = {
@@ -9,6 +10,7 @@ export const es: Locale = {
     ...surfaceMessages.es,
     ...feedBuilderMessages.es,
     ...clusterMessages.es,
+    ...notificationMessages.es,
     navToday: "Inicio",
     navSocial: "Social",
     navDiscovery: "Descubrir",
@@ -611,9 +613,9 @@ export const es: Locale = {
     notificationSocialActivityHint: "Publicaciones, comentarios, menciones, reacciones y Me gusta relacionados con este perfil.",
     notificationAppUpdates: "Actualizaciones de YT Zero",
     notificationAppUpdatesHint: "Avísame cuando haya una nueva versión de YT Zero.",
-    notificationSourceOverrides: "Ajustes de canales y listas",
+    notificationSourceOverrides: "Ajustes de canales, listas y reglas de etiquetas",
     notificationSourceOverridesHint: "Estos ajustes sustituyen los valores predeterminados de la categoría. Desactivar todas las notificaciones del perfil sigue teniendo prioridad.",
-    notificationSourceSearch: "Buscar canales y listas",
+    notificationSourceSearch: "Buscar canales, listas y reglas de etiquetas",
     notificationSourceDefaultOn: "Predeterminado (activadas)",
     notificationSourceDefaultOff: "Predeterminado (desactivadas)",
     notificationSourceAlwaysOn: "Notificar siempre",

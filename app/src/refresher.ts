@@ -6,7 +6,7 @@ import { applyFilterRules } from "./filterRules";
 import { log } from "./logger";
 import { CHANNEL_PLAYLIST_CACHE_VERSION, ensureChannelPlaylist, saveChannelPlaylists, savePlaylistMemberships } from "./channelPlaylists";
 import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
-import { notifyChannelVideos, notifyFollowedPlaylistVideos } from "./notifications";
+import { notifyChannelVideos, notifyFollowedPlaylistVideos, notifyTagRuleMatches } from "./notifications";
 import { IMPORTED_CHANNEL_ID } from "./takeout";
 import { beginMutation, maintenanceActive } from "./maintenance";
 import { estimateUploadCadenceMs, selectRefreshBatch, targetRefreshIntervalMs, type AdaptiveRefreshOptions, type RefreshCandidate } from "./adaptiveRefresh";
@@ -299,6 +299,9 @@ export async function importPlaylistVideos(playlistId: string, force = false, us
   );
 
   let added = 0;
+  // Rule notifications are collected here and sent after the import transaction
+  // commits, so an external provider never runs inside an open transaction.
+  const tagRuleMatches: Array<{ videoId: string; matches: Awaited<ReturnType<typeof applyAutoTags>> }> = [];
   const importAll = database.transaction(async (videos: typeof snapshot.videos) => {
     for (const v of videos) {
       const rich = richById.get(v.videoId);
@@ -318,7 +321,7 @@ export async function importPlaylistVideos(playlistId: string, force = false, us
         v.duration || null,
       );
       if (isNew) {
-        await applyAutoTags(v.videoId, rich?.title || v.title, rich?.description || "");
+        tagRuleMatches.push({ videoId: v.videoId, matches: await applyAutoTags(v.videoId, rich?.title || v.title, rich?.description || "") });
         await applyFilterRules(v.videoId, ownerChannelId, rich?.title || v.title, rich?.description || "");
         await applyPlaylistRulesToVideo(v.videoId);
         await inheritChannelTags.run(v.videoId, ownerChannelId);
@@ -327,6 +330,7 @@ export async function importPlaylistVideos(playlistId: string, force = false, us
     }
   });
   await importAll(snapshot.videos);
+  for (const entry of tagRuleMatches) await notifyTagRuleMatches(entry.videoId, entry.matches);
   const discoveredVideoIds = await savePlaylistMemberships(playlistId, snapshot.videos.map((video) => video.videoId), snapshot.complete);
   const notificationsCreated = await notifyFollowedPlaylistVideos(playlistId, discoveredVideoIds);
   await database.prepare("UPDATE channel_playlists SET last_synced_at = datetime('now'), sync_attempted_at = datetime('now') WHERE playlist_id = ?").run(playlistId);
@@ -400,7 +404,7 @@ export async function refreshChannel(channelId: string, userId?: number): Promis
     const isNew = !await videoExists.get(v.videoId);
     await upsertVideo.run(v.videoId, channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes);
     if (isNew) {
-      await applyAutoTags(v.videoId, v.title, v.description);
+      await notifyTagRuleMatches(v.videoId, await applyAutoTags(v.videoId, v.title, v.description));
       await applyFilterRules(v.videoId, channelId, v.title, v.description);
       await applyPlaylistRulesToVideo(v.videoId);
       await inheritChannelTags.run(v.videoId, channelId);
@@ -719,7 +723,7 @@ export async function refreshLiveStatus(channelId: string, options: { notify?: b
         `INSERT INTO videos (video_id, channel_id, title, thumbnail, published_at, live_status)
          VALUES (?, ?, ?, ?, datetime('now'), ?)`
       ).run(live.videoId, channelId, live.title, live.thumbnail, live.status);
-      await applyAutoTags(live.videoId, live.title, "");
+      await notifyTagRuleMatches(live.videoId, await applyAutoTags(live.videoId, live.title, ""));
       await applyPlaylistRulesToVideo(live.videoId);
       log.info("live.video_added", { channelId, videoId: live.videoId, status: live.status, title: live.title });
     }
@@ -825,7 +829,7 @@ async function runChannelSync(channelId: string, userId?: number): Promise<Chann
       else await markArchivedStream.run(v.videoId);
     }
     if (isNew) {
-      await applyAutoTags(v.videoId, rss?.title ?? v.title, rss?.description ?? "");
+      await notifyTagRuleMatches(v.videoId, await applyAutoTags(v.videoId, rss?.title ?? v.title, rss?.description ?? ""));
       await applyFilterRules(v.videoId, channelId, rss?.title ?? v.title, rss?.description ?? "");
       await applyPlaylistRulesToVideo(v.videoId);
       await inheritChannelTags.run(v.videoId, channelId);
@@ -842,7 +846,7 @@ async function runChannelSync(channelId: string, userId?: number): Promise<Chann
     const isNew = !await videoExists.get(v.videoId);
     await upsertVideo.run(v.videoId, channelId, v.title, v.description, v.thumbnail, v.publishedAt, v.views, v.likes);
     if (isNew) {
-      await applyAutoTags(v.videoId, v.title, v.description);
+      await notifyTagRuleMatches(v.videoId, await applyAutoTags(v.videoId, v.title, v.description));
       await applyFilterRules(v.videoId, channelId, v.title, v.description);
       await applyPlaylistRulesToVideo(v.videoId);
       await inheritChannelTags.run(v.videoId, channelId);

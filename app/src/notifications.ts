@@ -1,6 +1,8 @@
 import { database } from "./database";
 import { publishAppEvent } from "./appEvents";
 import { notificationEnabled } from "./notificationPreferences";
+import { deliverNotificationInBackground } from "./notificationDelivery";
+import type { AutoTagMatch } from "./autotags";
 
 const insertNotification = database.prepare(`
   INSERT OR IGNORE INTO notifications (user_id, kind, dedupe_key, payload, target)
@@ -10,7 +12,12 @@ const insertNotification = database.prepare(`
 export async function createNotification(userId: number, kind: string, dedupeKey: string, payload: Record<string, unknown>, target: string, sourceId = ""): Promise<boolean> {
   if (!await notificationEnabled(userId, kind, sourceId)) return false;
   const created = (await insertNotification.run(userId, kind, dedupeKey, JSON.stringify(payload), target)).changes > 0;
-  if (created) publishAppEvent("notifications");
+  if (created) {
+    publishAppEvent("notifications");
+    // Forwarding is best effort and must never delay or fail the bell entry,
+    // so the external provider is contacted outside this call.
+    deliverNotificationInBackground(userId, kind, payload, target);
+  }
   return created;
 }
 
@@ -109,6 +116,47 @@ export async function notifyDownloadFailed(videoId: string, error: string): Prom
   for (const user of users) {
     const dedupeKey = `download_failed:${video.video_id}:${video.created_at}`;
     if (await createNotification(user.id, "download_failed", dedupeKey, payload, "/downloads")) created++;
+  }
+  return created;
+}
+
+/**
+ * Notify each auto-tag rule's owner that one of their rules matched a newly
+ * discovered video. Matches arrive from `applyAutoTags`, so a rule only fires
+ * once per video and re-processing an existing video never notifies again.
+ */
+export async function notifyTagRuleMatches(videoId: string, matches: AutoTagMatch[]): Promise<number> {
+  if (matches.length === 0) return 0;
+  const video = await database.prepare(`
+    SELECT v.video_id, v.title, v.thumbnail, v.channel_id,
+           COALESCE(NULLIF(c.custom_title, ''), c.title) AS channel_title,
+           c.thumbnail AS channel_thumbnail
+    FROM videos v JOIN channels c ON c.channel_id = v.channel_id
+    WHERE v.video_id = ?
+  `).get<{
+    video_id: string;
+    title: string;
+    thumbnail: string;
+    channel_id: string;
+    channel_title: string;
+    channel_thumbnail: string;
+  }>(videoId);
+  if (!video) return 0;
+  let created = 0;
+  for (const match of matches) {
+    const payload = {
+      videoId: video.video_id,
+      videoTitle: video.title,
+      thumbnail: video.thumbnail,
+      channelId: video.channel_id,
+      channelTitle: video.channel_title,
+      channelThumbnail: video.channel_thumbnail,
+      ruleId: match.ruleId,
+      rulePattern: match.pattern,
+      tagName: match.tagName,
+      tagColor: match.tagColor,
+    };
+    if (await createNotification(match.userId, "tag_rule", `tag_rule:${match.ruleId}:${video.video_id}`, payload, `/watch/${video.video_id}`, String(match.ruleId))) created++;
   }
   return created;
 }

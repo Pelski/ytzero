@@ -1,2 +1,14 @@
 .notification-settings { display: grid; gap: 12px; }
 .notification-settings__loading { min-height: 120px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--text-2); }
+.notification-settings__group { display: grid; gap: 8px; }
+.notification-settings__search { margin-bottom: 16px; }
+.notification-settings__group h3 { margin: 0; font-size: 14px; font-weight: 600; }
+.notification-settings__group p { margin: 0; font-size: 13px; color: var(--text-2); }
+.notification-settings__empty { padding: 12px 0; }
+.notification-settings__avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; }
+.notification-settings__thumbnail { width: 56px; height: 32px; border-radius: 6px; object-fit: cover; }
+.notification-settings__icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--text-2); }
+.notification-settings__icon svg { width: 16px; height: 16px; }
+.notification-settings__provider { font-variant: small-caps; color: var(--text-2); }
+.notification-settings__url { min-width: min(420px, 100%); }
+.notification-settings__targets { min-width: min(420px, 100%); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }

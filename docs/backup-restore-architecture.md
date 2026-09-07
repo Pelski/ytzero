@@ -287,6 +287,23 @@ state and are likewise excluded.
   the profile-wide master switch, category defaults, and explicit overrides
   keyed by stable YouTube channel or playlist IDs. Generated notification rows,
   read state, and deduplication keys remain transient and are not exported.
+  Overrides for the `tag_rule` category are keyed by a local auto-tag rule id,
+  which is not a portable identity, so those source rows are excluded from the
+  archive. A restored installation applies the profile's `tag_rule` category
+  default to every rule until the profile overrides one again.
+- `notification_delivery`: a secret. Apprise URLs, webhook endpoints, and ntfy
+  topics routinely embed bot tokens, chat identifiers, and webhook signatures,
+  so a profile's delivery targets and its forwarding switch never leave the
+  installation in any category. A restored profile starts with external
+  forwarding off and no targets.
+- `plugin_notifications_apprise_server_url` and
+  `plugin_notifications_ntfy_server_url`: machine-bound provider connection
+  settings edited under Notifications. They may contain connection credentials
+  and are excluded from every archive.
+- `plugin_notifications_public_base_url`: machine-bound deployment metadata
+  edited under Notifications and excluded from portable backup. It can be
+  reconstructed from the target installation or its `APP_URL` environment
+  variable.
 - Personal playlist membership is portable organization data. Its source
   addition timestamp and stable playlist position are included in
   `profile.playlists` schema v2. Older schema v1 archives restore membership in
@@ -542,6 +559,15 @@ interface BackupSectionDefinition {
   restore(context: BackupRestoreContext): Promise<BackupSectionResult>;
 }
 ```
+
+The External notifications adapter exports only the instance-wide provider
+choice exposed by the plugin. Provider connection details are edited under
+Notifications instead: the Apprise/ntfy server URL is machine-bound and may
+contain credentials, while the public app URL is deployment-specific. They are
+therefore excluded alongside the secret per-profile targets in
+`notification_delivery`. Restoring the plugin recreates the provider choice,
+but an administrator must reconnect it and every profile must re-enter its own
+targets before anything is forwarded.
 
 The Discovery adapter exports validated settings, `blocked_terms`, and optional
 feedback; it does not export generated recommendations or `last_terms`. The

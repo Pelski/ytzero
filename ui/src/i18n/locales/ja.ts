@@ -3,12 +3,14 @@ import { localeFormats } from "../localeFormats";
 import { surfaceMessages } from "./surfaceMessages";
 import { feedBuilderMessages } from "./feedBuilder";
 import { clusterMessages } from "./cluster";
+import { notificationMessages } from "./notifications";
 
 export const ja: Locale = {
   messages: {
     ...surfaceMessages.ja,
     ...feedBuilderMessages.ja,
     ...clusterMessages.ja,
+    ...notificationMessages.ja,
     "navToday": "メインページ",
     "navSocial": "社会招聘",
     "navDiscovery": "ディスカバリー",
@@ -607,9 +609,9 @@ export const ja: Locale = {
     "notificationSocialActivityHint": "このプロフィールに関する投稿、コメント、メンション、リアクション、コメントへのいいね。",
     "notificationAppUpdates": "YT Zero の更新",
     "notificationAppUpdatesHint": "新しいバージョンの YT Zero が利用可能になったときに通知します。",
-    "notificationSourceOverrides": "チャンネルと再生リストの設定",
+    "notificationSourceOverrides": "チャンネル、再生リスト、タグルールの設定",
     "notificationSourceOverridesHint": "この設定はカテゴリーの初期設定より優先されます。プロフィールの通知をすべて無効にした場合は、そちらが優先されます。",
-    "notificationSourceSearch": "チャンネルと再生リストを検索",
+    "notificationSourceSearch": "チャンネル、再生リスト、タグルールを検索",
     "notificationSourceDefaultOn": "デフォルト（オン）",
     "notificationSourceDefaultOff": "デフォルト（オフ）",
     "notificationSourceAlwaysOn": "常に通知",

@@ -1,9 +1,17 @@
 import type { ReactNode } from "react";
+import { ChevronDown } from "lucide-react";
 import { cx } from "./utils";
 import { SectionHeader, Text } from "./Layout";
 import "./Settings.css";
 
-export function SettingsSection({ title, description, children, className }: { title?: ReactNode; description?: ReactNode; children: ReactNode; className?: string }) {
+export function SettingsSection({ title, description, children, className, collapsible = false, defaultOpen = false }: { title?: ReactNode; description?: ReactNode; children: ReactNode; className?: string; collapsible?: boolean; defaultOpen?: boolean }) {
+  if (collapsible && title) return <details className={cx("ui-settings-section", "ui-settings-section--collapsible", className)} open={defaultOpen}>
+    <summary className="ui-settings-section__summary">
+      <SectionHeader title={title} description={description} />
+      <ChevronDown aria-hidden="true" />
+    </summary>
+    <div className="ui-settings-section__body">{children}</div>
+  </details>;
   return <section className={cx("ui-settings-section", className)}>{title ? <SectionHeader title={title} description={description} /> : description ? <Text tone="secondary" className="ui-settings-section__description">{description}</Text> : null}<div className="ui-settings-section__body">{children}</div></section>;
 }
 

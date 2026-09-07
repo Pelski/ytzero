@@ -2,12 +2,14 @@ import { localeFormats } from "../localeFormats";
 import { featureMessages } from "./featureMessages";
 import { surfaceMessages } from "./surfaceMessages";
 import { clusterMessages } from "./cluster";
+import { notificationMessages } from "./notifications";
 import { feedBuilderMessages } from "./feedBuilder";
 // English defines the message keys; `pl` and `de` are type-checked against them.
 export const en = {
   messages: {
     ...surfaceMessages.en,
     ...clusterMessages.en,
+    ...notificationMessages.en,
     ...feedBuilderMessages.en,
     navToday: "Main",
     navSocial: "Social",
@@ -516,9 +518,9 @@ export const en = {
     notificationSocialActivityHint: "Posts, comments, mentions, reactions, and comment likes involving this profile.",
     notificationAppUpdates: "YT Zero updates",
     notificationAppUpdatesHint: "Notify me when a new version of YT Zero is available.",
-    notificationSourceOverrides: "Channel and playlist settings",
+    notificationSourceOverrides: "Channel, playlist and tag-rule settings",
     notificationSourceOverridesHint: "These settings override the category defaults. Disabling all profile notifications still takes priority.",
-    notificationSourceSearch: "Search channels and playlists",
+    notificationSourceSearch: "Search channels, playlists and tag rules",
     notificationSourceDefaultOn: "Default (on)",
     notificationSourceDefaultOff: "Default (off)",
     notificationSourceAlwaysOn: "Always notify",

@@ -3,6 +3,7 @@ import { featureMessages } from "./featureMessages";
 import { surfaceMessages } from "./surfaceMessages";
 import { feedBuilderMessages } from "./feedBuilder";
 import { clusterMessages } from "./cluster";
+import { notificationMessages } from "./notifications";
 import type { Locale } from "../types";
 
 export const hu: Locale = {
@@ -10,6 +11,7 @@ export const hu: Locale = {
     ...surfaceMessages.hu,
     ...feedBuilderMessages.hu,
     ...clusterMessages.hu,
+    ...notificationMessages.hu,
     navToday: "Kezdőlap",
     navSocial: "Közösség",
     navDiscovery: "Felfedezés",
@@ -514,9 +516,9 @@ export const hu: Locale = {
     notificationSocialActivityHint: "A profilt érintő bejegyzések, hozzászólások, említések, reakciók és kedvelések.",
     notificationAppUpdates: "YT Zero-frissítések",
     notificationAppUpdatesHint: "Értesítsen, amikor elérhető a YT Zero új verziója.",
-    notificationSourceOverrides: "Csatornák és lejátszási listák beállításai",
+    notificationSourceOverrides: "Csatornák, lejátszási listák és címkeszabályok beállításai",
     notificationSourceOverridesHint: "Ezek a beállítások felülírják a kategória alapértékét. A profil összes értesítésének kikapcsolása továbbra is elsőbbséget élvez.",
-    notificationSourceSearch: "Csatornák és lejátszási listák keresése",
+    notificationSourceSearch: "Csatornák, lejátszási listák és címkeszabályok keresése",
     notificationSourceDefaultOn: "Alapértelmezett (bekapcsolva)",
     notificationSourceDefaultOff: "Alapértelmezett (kikapcsolva)",
     notificationSourceAlwaysOn: "Mindig értesítsen",

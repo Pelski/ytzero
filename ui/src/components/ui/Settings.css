@@ -1,6 +1,13 @@
 .ui-settings-section { background: var(--surface); border-radius: 16px; box-sizing: border-box; container-name: settings-section; container-type: inline-size; margin-bottom: 18px; max-width: 980px; min-width: 0; padding: 20px 22px; width: 100%; }
 .ui-settings-section__body { display: grid; min-width: 0; }
 .ui-settings-section__body > * { min-width: 0; }
+.ui-settings-section__summary { align-items: center; cursor: pointer; display: flex; gap: 16px; justify-content: space-between; list-style: none; }
+.ui-settings-section__summary::-webkit-details-marker { display: none; }
+.ui-settings-section__summary > .ui-section-header { flex: 1; margin: 0; min-width: 0; }
+.ui-settings-section__summary > svg { color: var(--text-2); flex: 0 0 auto; height: 18px; transition: transform .16s ease; width: 18px; }
+.ui-settings-section--collapsible[open] > .ui-settings-section__summary { margin-bottom: 14px; }
+.ui-settings-section--collapsible[open] > .ui-settings-section__summary > svg { transform: rotate(180deg); }
+.ui-settings-section__summary:focus-visible { border-radius: 8px; outline: 2px solid var(--accent); outline-offset: 5px; }
 .ui-settings-section__body > .ui-text { margin-bottom: 16px; }
 .ui-settings-section__description, .settings-block-hint { margin-bottom: 14px; }
 .ui-settings-section__body > .ui-alert { margin-bottom: 16px; }

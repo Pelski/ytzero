@@ -3,12 +3,14 @@ import { localeFormats } from "../localeFormats";
 import { surfaceMessages } from "./surfaceMessages";
 import { feedBuilderMessages } from "./feedBuilder";
 import { clusterMessages } from "./cluster";
+import { notificationMessages } from "./notifications";
 
 export const ru: Locale = {
   messages: {
     ...surfaceMessages.ru,
     ...feedBuilderMessages.ru,
     ...clusterMessages.ru,
+    ...notificationMessages.ru,
     "navToday": "Главная",
     "navSocial": "Общение",
     "navDiscovery": "Открытия",
@@ -607,9 +609,9 @@ export const ru: Locale = {
     "notificationSocialActivityHint": "Публикации, комментарии, упоминания, реакции и отметки комментариев для этого профиля.",
     "notificationAppUpdates": "Обновления YT Zero",
     "notificationAppUpdatesHint": "Уведомлять меня, когда выходит новая версия YT Zero.",
-    "notificationSourceOverrides": "Настройки каналов и плейлистов",
+    "notificationSourceOverrides": "Настройки каналов, плейлистов и правил тегов",
     "notificationSourceOverridesHint": "Эти настройки заменяют параметры категории по умолчанию. Отключение всех уведомлений профиля по-прежнему имеет приоритет.",
-    "notificationSourceSearch": "Поиск каналов и плейлистов",
+    "notificationSourceSearch": "Поиск каналов, плейлистов и правил тегов",
     "notificationSourceDefaultOn": "По умолчанию (включено)",
     "notificationSourceDefaultOff": "По умолчанию (выключено)",
     "notificationSourceAlwaysOn": "Всегда уведомлять",

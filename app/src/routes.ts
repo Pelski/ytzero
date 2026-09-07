@@ -455,4 +455,4 @@ registerAuthRoutes(api, {
 });
 
 registerSystemRoutes(api, { isAdmin, currentUserId });
-registerNotificationRoutes(api, currentUserId);
+registerNotificationRoutes(api, { currentUserId, isAdmin });

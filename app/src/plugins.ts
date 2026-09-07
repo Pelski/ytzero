@@ -21,6 +21,7 @@ import {
 } from "./recommendationRanking";
 import {
   DISCOVERY_SETTINGS,
+  NOTIFICATION_PROVIDER_SETTINGS,
   PLUGINS,
   PLUGIN_TEXT,
   SOCIAL_SETTINGS,
@@ -121,6 +122,7 @@ function settingDefs(pluginId: string): PluginSettingSource[] {
   if (pluginId === "discovery") return DISCOVERY_SETTINGS;
   if (pluginId === "social") return SOCIAL_SETTINGS;
   if (pluginId === "tubearchivist") return TUBE_ARCHIVIST_SETTINGS;
+  if (pluginId === "notifications") return NOTIFICATION_PROVIDER_SETTINGS;
   return [];
 }
 
@@ -241,7 +243,28 @@ export interface PortablePluginBackupAdapter {
   restore(userId: number, value: unknown): Promise<void>;
 }
 
+// The plugin owns only the provider choice. Connection details and profile
+// targets are notification settings and deliberately remain instance-local.
+const NOTIFICATION_PORTABLE_KEYS = ["provider"];
+
 export const PLUGIN_BACKUP_ADAPTERS: readonly PortablePluginBackupAdapter[] = [
+  {
+    // Only the instance-wide provider choice travels. Per-profile delivery
+    // targets embed bot tokens and webhook secrets, so `notification_delivery`
+    // is deliberately absent from every portable archive.
+    id: "notifications",
+    scope: "instance",
+    schemaVersion: 1,
+    async export(userId) {
+      const settings = (await getPluginSettings(userId, "notifications")).settings;
+      return { settings: Object.fromEntries(Object.entries(settings).filter(([key]) => NOTIFICATION_PORTABLE_KEYS.includes(key))) };
+    },
+    async restore(userId, value) {
+      const input = value && typeof value === "object" ? value as any : {};
+      const settings = Object.fromEntries(Object.entries(input.settings ?? {}).filter(([key]) => NOTIFICATION_PORTABLE_KEYS.includes(key)));
+      await setPluginSettings(userId, "notifications", settings);
+    },
+  },
   {
     id: "tubearchivist",
     scope: "instance",
@@ -352,6 +375,13 @@ export async function resetPluginState(uid: number, pluginId: string, language?:
       await database.prepare("DELETE FROM settings WHERE key LIKE 'plugin_social_%'").run();
       await database.prepare("DELETE FROM notifications WHERE kind LIKE 'social_%'").run();
     })();
+    await reloadSettingCache();
+    return getPluginSettings(uid, pluginId, language);
+  }
+  if (pluginId === "notifications") {
+    // The plugin owns only the provider choice. Connection details and targets
+    // live under Notifications and survive a plugin reset/disable cycle.
+    await database.prepare("DELETE FROM settings WHERE key='plugin_notifications_provider'").run();
     await reloadSettingCache();
     return getPluginSettings(uid, pluginId, language);
   }

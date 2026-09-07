@@ -415,6 +415,20 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
 );
 CREATE INDEX IF NOT EXISTS idx_notification_preferences_user ON notification_preferences(user_id);
 
+-- Where a profile's notifications are forwarded outside YT Zero. The provider
+-- itself is an instance-wide choice made in the External notifications plugin;
+-- one row per profile and provider keeps a profile's targets from being lost
+-- when the administrator switches providers. `targets` holds provider-specific
+-- addresses (Apprise URLs, webhook endpoints, or ntfy topics) and is a secret:
+-- it commonly embeds bot tokens and must never leave the installation.
+CREATE TABLE IF NOT EXISTS notification_delivery (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider TEXT    NOT NULL,
+  enabled  INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+  targets  TEXT    NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, provider)
+);
+
 CREATE TABLE IF NOT EXISTS update_check_state (
   user_id         INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   last_checked_at TEXT NOT NULL DEFAULT (datetime('now'))

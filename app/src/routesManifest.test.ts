@@ -55,13 +55,16 @@ describe("HTTP route manifest", () => {
       "GET /notification-preferences",
       "PUT /notification-preferences",
       "PUT /notification-preferences/sources/:type/:id",
+      "GET /notification-preferences/delivery",
+      "PUT /notification-preferences/delivery",
+      "POST /notification-preferences/delivery/test",
     ];
     const accessControlRoutes = [
       "GET /access-control", "PUT /access-control/groups/:id", "POST /access-control/groups",
       "PUT /access-control/group-order", "PUT /access-control/default-group", "PUT /access-control/profiles/:id",
       "DELETE /access-control/groups/:id",
     ];
-    expect(routes).toHaveLength(257);
+    expect(routes).toHaveLength(260);
     expect(routes).toContain(transcriptRoute);
     expect(routes).toContain(playbackAdjacentRoute);
     expect(routes).toContain(liveAudioRoute);

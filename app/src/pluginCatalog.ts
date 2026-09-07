@@ -149,6 +149,28 @@ export const TUBE_ARCHIVIST_SETTINGS: PluginSettingSource[] = [
   },
 ];
 
+export const NOTIFICATION_PROVIDER_SETTINGS: PluginSettingSource[] = [
+  {
+    key: "provider",
+    type: "select",
+    scope: "global",
+    adminOnly: true,
+    label: { en: "Notification provider", pl: "Dostawca powiadomień", de: "Benachrichtigungsanbieter" },
+    description: {
+      en: "Where notifications leave this installation. Each profile chooses its own targets in Settings → Notifications.",
+      pl: "Gdzie powiadomienia opuszczają tę instalację. Każdy profil wybiera własne cele w Ustawieniach → Powiadomienia.",
+      de: "Wohin Benachrichtigungen diese Installation verlassen. Jedes Profil wählt eigene Ziele unter Einstellungen → Benachrichtigungen.",
+    },
+    options: [
+      { value: "off", label: { en: "No external delivery", pl: "Bez wysyłki zewnętrznej", de: "Kein externer Versand" } },
+      { value: "apprise", label: { en: "Apprise", pl: "Apprise", de: "Apprise" } },
+      { value: "ntfy", label: { en: "ntfy", pl: "ntfy", de: "ntfy" } },
+      { value: "webhook", label: { en: "Webhook", pl: "Webhook", de: "Webhook" } },
+    ],
+    defaultValue: "off",
+  },
+];
+
 export const DISCOVERY_SETTINGS: PluginSettingSource[] = [
   { key: "total_limit", label: { en: "Number of suggestions", pl: "Liczba propozycji", de: "Anzahl der Vorschläge" }, description: { en: "How many videos Recommendations should prepare at once.", pl: "Ile filmów Rekomendacje mają przygotować naraz.", de: "Wie viele Videos Empfehlungen auf einmal vorbereiten soll." }, min: 8, max: 80, step: 1, defaultValue: 32 },
   { key: "per_channel_limit", label: { en: "Videos from one channel", pl: "Filmy z jednego kanału", de: "Videos von einem Kanal" }, description: { en: "Prevents one channel from taking over the whole list.", pl: "Pilnuje, żeby jeden kanał nie zajął całej listy.", de: "Verhindert, dass ein Kanal die ganze Liste dominiert." }, min: 1, max: 20, step: 1, defaultValue: 5 },
@@ -188,6 +210,15 @@ export const PLUGINS: PluginManifest[] = [
     settingsScope: "user",
   },
   {
+    id: "notifications",
+    name: "External notifications",
+    version: "0.1.0",
+    description: "Forwards everything that reaches the notification bell to an external service.",
+    icon: "BellRing",
+    permissions: ["read:notifications", "write:external"],
+    settingsScope: "global",
+  },
+  {
     id: "tubearchivist",
     name: "TubeArchivist",
     version: "0.1.0",
@@ -222,6 +253,18 @@ export const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: Loc
       "read:profiles": { en: "shows participating profile names and avatars", pl: "pokazuje nazwy i avatary uczestniczących profili", de: "zeigt Namen und Avatare teilnehmender Profile" },
       "read:library": { en: "reads videos from the local library", pl: "czyta filmy z lokalnej biblioteki", de: "liest Videos aus der lokalen Bibliothek" },
       "write:social": { en: "stores posts, reactions, mentions and comments locally", pl: "zapisuje lokalnie posty, reakcje, oznaczenia i komentarze", de: "speichert Beiträge, Reaktionen, Erwähnungen und Kommentare lokal" },
+    },
+  },
+  notifications: {
+    name: { en: "External notifications", pl: "Powiadomienia zewnętrzne", de: "Externe Benachrichtigungen" },
+    description: {
+      en: "Sends every notification from the bell to another service through Apprise, ntfy or a webhook. Which events fire, and where each profile receives them, stays in Settings → Notifications.",
+      pl: "Wysyła każde powiadomienie z dzwoneczka do innej usługi przez Apprise, ntfy lub webhook. Wybór zdarzeń i celów każdego profilu pozostaje w Ustawieniach → Powiadomienia.",
+      de: "Sendet jede Benachrichtigung aus der Glocke über Apprise, ntfy oder einen Webhook an einen anderen Dienst. Welche Ereignisse ausgelöst werden und wohin jedes Profil sie erhält, bleibt unter Einstellungen → Benachrichtigungen.",
+    },
+    permissions: {
+      "read:notifications": { en: "reads the notifications shown in the bell", pl: "czyta powiadomienia widoczne w dzwoneczku", de: "liest die in der Glocke angezeigten Benachrichtigungen" },
+      "write:external": { en: "sends them to the configured external service", pl: "wysyła je do skonfigurowanej usługi zewnętrznej", de: "sendet sie an den konfigurierten externen Dienst" },
     },
   },
   tubearchivist: {

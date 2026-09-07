@@ -51,7 +51,12 @@ api.patch("/tags/:id", async (c) => {
 
 api.delete("/tags/:id", async (c) => {
   const uid = currentUserId(c);
-  const tag = await database.prepare("SELECT portable_uuid FROM tags WHERE id = ? AND user_id = ?").get(c.req.param("id"), uid) as { portable_uuid: string } | null; await database.prepare("DELETE FROM tags WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  const id = c.req.param("id");
+  const tag = await database.prepare("SELECT portable_uuid FROM tags WHERE id = ? AND user_id = ?").get(id, uid) as { portable_uuid: string } | null;
+  await database.transaction(async () => {
+    await database.prepare("DELETE FROM notification_preferences WHERE user_id=? AND kind='tag_rule' AND source_id IN (SELECT CAST(id AS TEXT) FROM auto_tag_rules WHERE tag_id=? AND user_id=?)").run(uid, id, uid);
+    await database.prepare("DELETE FROM tags WHERE id = ? AND user_id = ?").run(id, uid);
+  })();
   if (tag) await setTagHiddenFromFilters(uid, tag.portable_uuid, false);
   return c.json({ ok: true });
 });
@@ -99,7 +104,11 @@ api.patch("/rules/:id", async (c) => {
 
 api.delete("/rules/:id", async (c) => {
   const uid = currentUserId(c);
-  await database.prepare("DELETE FROM auto_tag_rules WHERE id = ? AND user_id = ?").run(c.req.param("id"), uid);
+  const id = c.req.param("id");
+  await database.transaction(async () => {
+    await database.prepare("DELETE FROM notification_preferences WHERE user_id=? AND kind='tag_rule' AND source_id=? AND EXISTS (SELECT 1 FROM auto_tag_rules WHERE id=? AND user_id=?)").run(uid, id, id, uid);
+    await database.prepare("DELETE FROM auto_tag_rules WHERE id = ? AND user_id = ?").run(id, uid);
+  })();
   return c.json({ ok: true });
 });
 

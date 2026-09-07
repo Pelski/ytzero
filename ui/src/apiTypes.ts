@@ -345,6 +345,10 @@ export interface AppNotification {
     channelThumbnail?: string;
     error?: string;
     attempts?: number;
+    ruleId?: number;
+    rulePattern?: string;
+    tagName?: string;
+    tagColor?: string;
     actor?: SocialProfileRef;
     postId?: string;
     commentId?: string;
@@ -356,13 +360,33 @@ export interface AppNotification {
   created_at: string;
 }
 
-export type NotificationCategory = "channel_video" | "playlist_video" | "download_failed" | "social" | "app_update";
+export type NotificationCategory = "channel_video" | "playlist_video" | "tag_rule" | "download_failed" | "social" | "app_update";
+export type NotificationSourceType = "channel" | "playlist" | "tag_rule";
+export type NotificationProvider = "off" | "apprise" | "webhook" | "ntfy";
+
+/** Where one profile's notifications are forwarded outside YT Zero. */
+export interface NotificationDelivery {
+  /** Instance-wide choice made by the administrator in the plugin. */
+  provider: NotificationProvider;
+  appriseServerUrl: string;
+  ntfyServerUrl: string;
+  publicBaseUrl: string;
+  pluginEnabled: boolean;
+  providerConfigured: boolean;
+  publicBaseUrlConfigured: boolean;
+  canConfigureProvider: boolean;
+  enabled: boolean;
+  targets: string;
+}
+
 export interface NotificationPreferences {
   enabled: boolean;
   categories: Record<NotificationCategory, boolean>;
-  overrides: Array<{ sourceType: "channel" | "playlist"; sourceId: string; enabled: boolean }>;
+  overrides: Array<{ sourceType: NotificationSourceType; sourceId: string; enabled: boolean }>;
   channels: Array<{ channel_id: string; title: string; thumbnail: string; notification_enabled: number | null }>;
   playlists: Array<{ playlist_id: string; title: string; thumbnail: string; channel_title: string; notification_enabled: number | null }>;
+  rules: Array<{ rule_id: number; pattern: string; match_type: string; field: string; tag_name: string; tag_color: string; notification_enabled: number | null }>;
+  delivery: NotificationDelivery;
 }
 
 export interface SearchResult {
