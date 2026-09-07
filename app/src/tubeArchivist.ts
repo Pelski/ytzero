@@ -136,6 +136,49 @@ function hasNextPage(body: any, count: number): boolean {
   return count > 0;
 }
 
+function remoteWatchedState(raw: any): 0 | 1 | null {
+  const value = raw?.player?.watched ?? raw?.watched ?? raw?.is_watched;
+  if (value === true || value === 1 || value === "1" || value === "true") return 1;
+  if (value === false || value === 0 || value === "0" || value === "false") return 0;
+  return null;
+}
+
+async function importWatchedState(videoId: string, watched: 0 | 1 | null): Promise<void> {
+  if (watched == null || getSetting("plugin_tubearchivist_sync_watched") === "0") return;
+  // A local action waiting to reach TubeArchivist is newer than the catalog
+  // snapshot. Let the outbox win so a stale remote response cannot undo it.
+  if (await database.prepare("SELECT 1 FROM tube_archivist_watch_outbox WHERE video_id=?").get(videoId)) return;
+  if (watched === 0) {
+    // Clear only state previously introduced by TubeArchivist. A profile may
+    // already have watched the same YouTube video independently.
+    await database.prepare(`
+      UPDATE user_videos SET watched=NULL
+      WHERE video_id=? AND watched=1 AND EXISTS (
+        SELECT 1 FROM tube_archivist_imported_watched imported
+        WHERE imported.user_id=user_videos.user_id AND imported.video_id=user_videos.video_id
+      )
+    `).run(videoId);
+    await database.prepare("DELETE FROM tube_archivist_imported_watched WHERE video_id=?").run(videoId);
+    return;
+  }
+  // TubeArchivist has one global watched flag. Its catalog is likewise shared
+  // by every YT Zero profile, so an imported watched flag is visible to each
+  // profile without manufacturing watch-history entries.
+  const users = await database.prepare(`
+    SELECT users.id, user_videos.watched
+    FROM users LEFT JOIN user_videos ON user_videos.user_id=users.id AND user_videos.video_id=?
+  `).all(videoId) as Array<{ id: number; watched: number | null }>;
+  for (const user of users) {
+    if (user.watched === 1) continue;
+    await database.prepare(`
+      INSERT INTO user_videos (user_id, video_id, watched) VALUES (?, ?, 1)
+      ON CONFLICT(user_id, video_id) DO UPDATE SET watched=1
+    `).run(user.id, videoId);
+    await database.prepare("INSERT INTO tube_archivist_imported_watched(user_id,video_id) VALUES(?,?) ON CONFLICT(user_id,video_id) DO NOTHING")
+      .run(user.id, videoId);
+  }
+}
+
 async function importPage(items: any[], generation: number): Promise<number> {
   let imported = 0;
   await database.transaction(async () => {
@@ -181,6 +224,7 @@ async function importPage(items: any[], generation: number): Promise<number> {
         ON CONFLICT(video_id) DO UPDATE SET media_url=excluded.media_url, metadata_json=excluded.metadata_json,
           available=1, generation=excluded.generation, downloaded_at=excluded.downloaded_at, updated_at=datetime('now')
       `).run(videoId, text(raw?.media_url) || null, JSON.stringify(raw), generation, downloadedAt);
+      await importWatchedState(videoId, remoteWatchedState(raw));
       imported++;
     }
   })();
@@ -399,10 +443,20 @@ export async function tubeArchivistComments(videoId: string): Promise<VideoComme
   return { comments: normalizeVideoComments(compatible), fetchedAt: new Date().toISOString(), cached: true };
 }
 
-export async function enqueueTubeArchivistWatched(videoId: string): Promise<void> {
+export async function claimTubeArchivistWatchedState(userId: number, videoId: string): Promise<void> {
+  // An explicit profile action now owns this state. A later remote unwatch may
+  // clear other imported flags, but must not erase this local choice.
+  await database.prepare("DELETE FROM tube_archivist_imported_watched WHERE user_id=? AND video_id=?").run(userId, videoId);
+}
+
+export async function enqueueTubeArchivistWatched(videoId: string, isWatched = true): Promise<void> {
   if (!pluginEnabled(PLUGIN_ID) || getSetting("plugin_tubearchivist_sync_watched") === "0") return;
   if (!await storedItem(videoId)) return;
-  await database.prepare("INSERT INTO tube_archivist_watch_outbox(video_id) VALUES(?) ON CONFLICT(video_id) DO NOTHING").run(videoId);
+  await database.prepare(`
+    INSERT INTO tube_archivist_watch_outbox(video_id,is_watched) VALUES(?,?)
+    ON CONFLICT(video_id) DO UPDATE SET
+      is_watched=excluded.is_watched, attempts=0, next_attempt_at=datetime('now'), last_error=NULL
+  `).run(videoId, isWatched ? 1 : 0);
   // The local completion transaction must commit independently from the remote
   // service. A later task drains this durable row with retry/backoff.
   scheduleWatchedFlush(0);
@@ -410,17 +464,17 @@ export async function enqueueTubeArchivistWatched(videoId: string): Promise<void
 
 export async function flushTubeArchivistWatched(): Promise<void> {
   if (!pluginEnabled(PLUGIN_ID) || !tubeArchivistConfigured()) return;
-  const rows = await database.prepare("SELECT video_id,attempts FROM tube_archivist_watch_outbox WHERE next_attempt_at <= datetime('now') ORDER BY created_at LIMIT 25").all() as any[];
+  const rows = await database.prepare("SELECT video_id,is_watched,attempts FROM tube_archivist_watch_outbox WHERE next_attempt_at <= datetime('now') ORDER BY created_at LIMIT 25").all() as any[];
   for (const row of rows) {
     try {
-      const response = await request("/api/watched/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: row.video_id, is_watched: true }) });
+      const response = await request("/api/watched/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: row.video_id, is_watched: row.is_watched === 1 }) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      await database.prepare("DELETE FROM tube_archivist_watch_outbox WHERE video_id=?").run(row.video_id);
+      await database.prepare("DELETE FROM tube_archivist_watch_outbox WHERE video_id=? AND is_watched=?").run(row.video_id, row.is_watched);
     } catch (error) {
       const attempts = Number(row.attempts) + 1;
       const delayMinutes = Math.min(360, 2 ** Math.min(attempts, 8));
-      await database.prepare("UPDATE tube_archivist_watch_outbox SET attempts=?,next_attempt_at=datetime('now', ?),last_error=? WHERE video_id=?")
-        .run(attempts, `+${delayMinutes} minutes`, error instanceof Error ? error.message.slice(0, 300) : "failed", row.video_id);
+      await database.prepare("UPDATE tube_archivist_watch_outbox SET attempts=?,next_attempt_at=datetime('now', ?),last_error=? WHERE video_id=? AND is_watched=?")
+        .run(attempts, `+${delayMinutes} minutes`, error instanceof Error ? error.message.slice(0, 300) : "failed", row.video_id, row.is_watched);
     }
   }
   scheduleWatchedFlush();

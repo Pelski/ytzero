@@ -65,7 +65,8 @@ export function postgresQuery(sql: string): string {
 const KNOWN_INTEGER_COLUMNS = new Set([
   "id", "user_id", "tag_id", "local_id", "sort_order", "hour", "rank", "attempts", "priority",
   "is_owner", "is_child", "is_short", "is_private", "is_unavailable", "published_at_approximate", "members_only",
-  "enabled", "followed", "include_in_feed", "filter_only", "watched", "liked", "external", "pinned",
+  "enabled", "followed", "include_in_feed", "filter_only", "watched", "is_watched", "liked", "external", "pinned",
+  "tubearchivist_available",
   "hide_members_only_from_feed", "hide_members_only_on_channel", "auto_download_min_duration_override",
   "feed_refresh_failures", "count", "n",
   "profile_id", "post_author_user_id", "like_count", "comments_count",

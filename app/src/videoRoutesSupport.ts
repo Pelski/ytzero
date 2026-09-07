@@ -25,6 +25,7 @@ export interface VideoRow {
   likes: number | null;
   liked: number | null;
   watched: number | null;
+  tubearchivist_available?: number;
   playback_context_json?: string | null;
   in_history: number;
   channel_title: string;

@@ -47,6 +47,7 @@ export interface Video {
   download_pinned?: number;
   download_playlist_protected?: number;
   local_media_source?: "download" | "tubearchivist" | null;
+  tubearchivist_available?: number;
   downloads_enabled?: boolean;
   downloads_allowed?: boolean;
   download_progress?: number | null;

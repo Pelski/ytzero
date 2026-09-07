@@ -10,6 +10,7 @@ import { savePlaybackContext } from "./playbackRoutes";
 import { completeVideo } from "../videoCompletion";
 import { childLocalOnly } from "../childTime";
 import { ensureOnDemandVideo, OnDemandVideoImportError } from "../onDemandVideoImport";
+import { claimTubeArchivistWatchedState, enqueueTubeArchivistWatched } from "../tubeArchivist";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -136,6 +137,8 @@ api.delete("/videos/:id/complete", async (c) => {
          )`
       ).run(uid, id);
     }
+    await claimTubeArchivistWatchedState(uid, id);
+    if (state?.watched === 1) await enqueueTubeArchivistWatched(id, false);
   })();
   refreshDiscoveryInBackground(uid);
   return c.json({ ok: true });

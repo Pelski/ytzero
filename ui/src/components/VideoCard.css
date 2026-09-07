@@ -220,9 +220,22 @@
   max-width: 20px;
   opacity: 1;
   overflow: visible;
-  pointer-events: auto;
+  pointer-events: none;
 }
 .video-card .thumb-card-status-badges .thumb-dl-badge { inset: auto; position: static; }
+
+.video-card .thumb-ta-badge {
+  align-items: center;
+  background: rgba(0, 0, 0, .68);
+  border-radius: 50%;
+  color: #70b8ff;
+  display: flex;
+  height: 20px;
+  justify-content: center;
+  margin-left: 5px;
+  pointer-events: auto;
+  width: 20px;
+}
 
 .dearrow-preview-toggle {
   align-items: center;

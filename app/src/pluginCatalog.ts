@@ -144,7 +144,7 @@ export const TUBE_ARCHIVIST_SETTINGS: PluginSettingSource[] = [
     scope: "global",
     adminOnly: true,
     label: { en: "Sync watched status", pl: "Synchronizuj obejrzane", de: "Gesehen-Status synchronisieren" },
-    description: { en: "Mark a TubeArchivist video watched after it is completed in YTZero.", pl: "Oznacz film w TubeArchivist jako obejrzany po ukończeniu go w YTZero.", de: "Markiert ein TubeArchivist-Video nach dem Abschluss in YTZero als gesehen." },
+    description: { en: "Synchronize watched and unwatched changes between TubeArchivist and all YT Zero profiles.", pl: "Synchronizuje zmiany stanu obejrzenia w obie strony między TubeArchivist a wszystkimi profilami YT Zero.", de: "Synchronisiert Gesehen- und Ungesehen-Änderungen zwischen TubeArchivist und allen YT-Zero-Profilen." },
     defaultValue: 1,
   },
 ];
@@ -193,7 +193,7 @@ export const PLUGINS: PluginManifest[] = [
   {
     id: "discovery",
     name: "Recommendations",
-    version: "0.1.0",
+    version: "0.2.0",
     description: "Ranks eligible videos already stored in your local library.",
     route: "/recommendations",
     icon: "Sparkles",
@@ -276,7 +276,7 @@ export const PLUGIN_TEXT: Record<string, { name: LocalizedText; description: Loc
     },
     permissions: {
       "read:tubearchivist": { en: "reads your TubeArchivist catalog and comments", pl: "czyta katalog i komentarze TubeArchivist", de: "liest den TubeArchivist-Katalog und Kommentare" },
-      "write:watched": { en: "marks completed videos watched in TubeArchivist", pl: "oznacza ukończone filmy jako obejrzane w TubeArchivist", de: "markiert abgeschlossene Videos in TubeArchivist als gesehen" },
+      "write:watched": { en: "updates watched status in TubeArchivist", pl: "aktualizuje stan obejrzenia w TubeArchivist", de: "aktualisiert den Gesehen-Status in TubeArchivist" },
       "read:library": { en: "adds archived videos to the local feed", pl: "dodaje zarchiwizowane filmy do lokalnego feedu", de: "fügt archivierte Videos zum lokalen Feed hinzu" },
     },
   },

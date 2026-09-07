@@ -472,6 +472,23 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS notification_delivery (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, provider TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)), targets TEXT NOT NULL DEFAULT '', PRIMARY KEY (user_id, provider))" },
     ],
   },
+  {
+    version: 114,
+    name: "tubearchivist-two-way-watched",
+    schemaHashes: {
+      "app/src/schema.sql": "b3eed272dc7687831970765bc2c12f023e72ac3809e71626cf5b078a8d56d026",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "31e77b7af023276f38d1075b0a5a2197fef150513f010b90bab5909971871056",
+    },
+    sqlite: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS tube_archivist_imported_watched (user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tube_archivist_items(video_id) ON DELETE CASCADE, PRIMARY KEY (user_id, video_id))" },
+      { kind: "add-column", table: "tube_archivist_watch_outbox", column: "is_watched", definition: "INTEGER NOT NULL DEFAULT 1 CHECK (is_watched IN (0,1))" },
+    ],
+    postgres: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS tube_archivist_imported_watched (user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, video_id TEXT NOT NULL REFERENCES tube_archivist_items(video_id) ON DELETE CASCADE, PRIMARY KEY (user_id, video_id))" },
+      { kind: "add-column", table: "tube_archivist_watch_outbox", column: "is_watched", definition: "INTEGER NOT NULL DEFAULT 1 CHECK (is_watched IN (0,1))" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

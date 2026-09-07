@@ -689,7 +689,7 @@ export function VideoCard({
           {isLiked && video.is_short === 1 && (
             <span className="thumb-liked-badge"><Heart size={12} fill="currentColor" /></span>
           )}
-          {(hasDeArrowBranding || downloadStatus === "done") && (
+          {(hasDeArrowBranding || downloadStatus === "done" || video.tubearchivist_available === 1) && (
             <div className="thumb-card-status-badges">
               {hasDeArrowBranding && (
                 <span className="dearrow-preview-toggle-wrap">
@@ -710,6 +710,9 @@ export function VideoCard({
               )}
               {downloadStatus === "done" && (
                 <span className="thumb-dl-badge" role="img" aria-label={t("downloaded")}><ArrowDownToLine size={11} aria-hidden="true" /></span>
+              )}
+              {video.tubearchivist_available === 1 && (
+                <span className="thumb-ta-badge" role="img" aria-label={t("Available in TubeArchivist")}><Archive size={11} aria-hidden="true" /></span>
               )}
             </div>
           )}

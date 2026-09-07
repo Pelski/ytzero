@@ -148,8 +148,8 @@ normal feed—there is no separate TubeArchivist page:
   so the browser can seek without receiving the API token;
 - archived comments, thumbnails, and subtitles use the existing watch-page and
   local-player UI;
-- completing a video updates YT Zero immediately and sends TubeArchivist's
-  global watched status through a durable retry queue.
+- cards identify media already available in TubeArchivist, and watched or
+  unwatched changes synchronize in both directions through a durable queue.
 
 Configure it under **Settings → Plugins → TubeArchivist** with the server URL
 and API token. The YT Zero server/container must be able to reach that address;

@@ -27,9 +27,15 @@ describe("TubeArchivist source plugin", () => {
     expect(result.callsBeforeEnable).toBe(0);
   });
   test("imports archived videos into the existing feed", () => {
-    expect(result.synced).toEqual({ imported: 1, pages: 1 });
+    expect(result.synced).toEqual({ imported: 3, pages: 1 });
     expect(result.feedIds).toContain("taVideo01");
+    expect(result.feedIds).not.toContain("taSeen001");
+    expect(result.feedIds).not.toContain("taRemote02");
     expect(result.localMediaSource).toBe("tubearchivist");
+    expect(result.tubeArchivistAvailable).toBe(1);
+    expect(result.remoteWatchedImported).toBe(1);
+    expect(result.remoteUnwatchedImported).toBeNull();
+    expect(result.localWatchedPreserved).toBe(1);
   });
   test("proxies range playback and syncs completion without leaking the token", () => {
     expect(result.streamStatus).toBe(206);
@@ -43,7 +49,13 @@ describe("TubeArchivist source plugin", () => {
     expect(result.openEndedStreamContentRange).toBe("bytes 4-11/12");
     expect(result.rangeLessStreamStatus).toBe(206);
     expect(result.invalidStreamStatus).toBe(416);
-    expect(JSON.parse(result.watchedCall)).toEqual({ id: "taVideo01", is_watched: true });
+    expect(result.watchedCalls).toEqual(expect.arrayContaining([
+      { id: "taVideo01", is_watched: true },
+      { id: "taSeen001", is_watched: false },
+    ]));
+    expect(result.watchedCalls.filter((call: any) => call.id === "taSeen001")).toEqual([
+      { id: "taSeen001", is_watched: false },
+    ]);
     expect(result.everyUpstreamCallAuthenticated).toBe(true);
     expect(result.statusLeaksToken).toBe(false);
   });

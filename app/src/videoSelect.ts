@@ -9,6 +9,11 @@ function localMediaSourceSelect(uid: number): string {
          END`;
 }
 
+function tubeArchivistAvailableSelect(): string {
+  if (!pluginEnabled("tubearchivist")) return "0";
+  return "CASE WHEN EXISTS(SELECT 1 FROM tube_archivist_items tai WHERE tai.video_id=v.video_id AND tai.available=1) THEN 1 ELSE 0 END";
+}
+
 // Per-profile video projection: status/bucket/liked/progress come from the
 // active user's user_videos row (absent = default inbox); history is per user.
 // uid is a validated integer, safe to inline.
@@ -40,6 +45,7 @@ export function videoSelect(uid: number): string {
            WHERE playlist.user_id=${uid} AND protection.video_id=v.video_id
          ) AS download_playlist_protected,
          ${localMediaSourceSelect(uid)} AS local_media_source,
+         ${tubeArchivistAvailableSelect()} AS tubearchivist_available,
          COALESCE(c.custom_title, c.title) AS channel_title, c.thumbnail AS channel_thumbnail, c.subscriber_count AS channel_subscriber_count
   FROM videos v JOIN channels c ON c.channel_id = v.channel_id
   LEFT JOIN user_videos uv ON uv.video_id = v.video_id AND uv.user_id = ${uid}`;

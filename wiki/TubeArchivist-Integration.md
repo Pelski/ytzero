@@ -45,7 +45,7 @@ inactive.
 | Setting | Default | Description |
 | --- | --- | --- |
 | **Library refresh** | Every hour | Refreshes the TubeArchivist catalog every 15 minutes, every hour, every 6 hours, or daily. Synchronizations never overlap. |
-| **Sync watched status** | On | Marks a TubeArchivist item watched after a profile completes it in YT Zero. |
+| **Sync watched status** | On | Imports TubeArchivist's watched flag and sends watched or unwatched changes from YT Zero back to TubeArchivist. |
 
 ## Catalog synchronization
 
@@ -63,7 +63,9 @@ TubeArchivist media.
 Videos are deduplicated by their YouTube video ID. If an item is already known
 from a followed channel, playlist, search, or YT Zero download, the user sees
 one video rather than a second TubeArchivist copy. The source record simply
-makes the existing item locally playable.
+makes the existing item locally playable. A small archive badge on video cards
+identifies media already available from TubeArchivist, including videos that
+also have a separate YT Zero download.
 
 Each complete synchronization uses a new catalog generation. Items missing
 from a successful refresh are marked unavailable only after every page has
@@ -85,9 +87,11 @@ without silently following its channel for any profile.
 - Older archive items remain available through search and channel pages. Turn
   off the feed age limit if the whole archive should be eligible for the main
   feed.
-- Feed actions remain profile-owned: watching, liking, rejecting, scheduling,
-  tagging, progress, history, and personal playlists do not become shared just
-  because the media source is global.
+- Feed actions remain profile-owned: liking, rejecting, scheduling, tagging,
+  progress, history, and personal playlists do not become shared just because
+  the media source is global. Watched state is the exception when watched sync
+  is enabled, because the installation has one configured TubeArchivist API
+  user and no mapping between TubeArchivist users and YT Zero profiles.
 
 No separate TubeArchivist view or source-specific inbox is created.
 
@@ -140,18 +144,20 @@ timestamps, likes, pinned state, and safe author images/links where available.
 This also lets local-only child profiles read comments already present in the
 archive without fetching them from YouTube.
 
-Completing a TubeArchivist video updates the active YT Zero profile immediately
-and places one video-ID entry in a durable outbound queue. A background worker
-then calls TubeArchivist's watched endpoint. Failures do not roll back local
-history; they are retried with increasing backoff and duplicate completions are
-coalesced.
+Each catalog refresh imports the configured TubeArchivist API user's watched
+flag. Because there is no user-to-profile mapping, an imported watched or
+unwatched change is applied to every YT Zero profile. It does not create a fake
+history entry or change a profile's archive, schedule, or playback-progress
+choices. A remote unwatched change clears only a watched flag previously
+imported from TubeArchivist; an independent local watched choice is preserved.
 
-TubeArchivist watched state is global to its archive, while YT Zero watched
-state remains per profile. Consequently, completion by any eligible YT Zero
-profile can mark the shared TubeArchivist item watched. The current integration
-is outbound-only: it does not import TubeArchivist watched state, synchronize
-partial progress, or send an unwatch action when completion is undone in YT
-Zero.
+Completing or marking a TubeArchivist video unwatched updates the active YT Zero
+profile immediately and places the latest desired state in a durable outbound
+queue. A background worker then calls TubeArchivist's watched endpoint. Failures
+do not roll back local state; they are retried with increasing backoff, and
+rapid watched/unwatched changes are coalesced so the newest choice wins. While
+an outbound change is pending, it also wins over an older catalog snapshot.
+Partial playback progress is not synchronized.
 
 ## Security model
 
@@ -252,8 +258,6 @@ directory in addition to backing up TubeArchivist itself. See
 - TubeArchivist's API does not guarantee long-term backward compatibility; a
   future TubeArchivist update may require an adapter update in YT Zero.
 - There is no server-side transcoding or codec conversion.
-- Watched synchronization is outbound and completion-only.
-- Partial playback progress, likes, playlists, and unwatch actions are not sent
-  to TubeArchivist.
+- Partial playback progress, likes, and playlists are not synchronized.
 - The integration uses TubeArchivist's API and protected media URLs; it does
   not scan or mount TubeArchivist's filesystem directly.
