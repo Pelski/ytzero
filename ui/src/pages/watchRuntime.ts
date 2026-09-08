@@ -1,5 +1,40 @@
 let ytApiReady: Promise<void> | null = null;
 
+export interface WatchRoutePreview {
+  videoId: string;
+  title: string;
+  channelId: string;
+  channelTitle: string;
+}
+
+export function createWatchRoutePreview(video: {
+  video_id: string;
+  title: string;
+  channel_id: string;
+  channel_title: string;
+}): WatchRoutePreview {
+  return {
+    videoId: video.video_id,
+    title: video.title,
+    channelId: video.channel_id,
+    channelTitle: video.channel_title,
+  };
+}
+
+export function resolveWatchRoutePreview(state: unknown, routeVideoId: string | undefined): WatchRoutePreview | null {
+  if (!state || typeof state !== "object" || !routeVideoId) return null;
+  const preview = (state as { watchPreview?: unknown }).watchPreview;
+  if (!preview || typeof preview !== "object") return null;
+  const candidate = preview as Partial<WatchRoutePreview>;
+  if (
+    candidate.videoId !== routeVideoId
+    || typeof candidate.title !== "string"
+    || typeof candidate.channelId !== "string"
+    || typeof candidate.channelTitle !== "string"
+  ) return null;
+  return candidate as WatchRoutePreview;
+}
+
 export function loadYouTubeApi(): Promise<void> {
   if (!ytApiReady) {
     ytApiReady = new Promise<void>((resolve) => {

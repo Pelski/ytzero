@@ -10,9 +10,15 @@
 @media (max-width: 1280px) {
   .watch-layout { grid-template-columns: 1fr; }
 }
+.watch-actions-placeholder { display: none; }
 @media (max-width: 1120px) {
   .watch-actions {
     flex: 0 0 100%;
+  }
+  .watch-actions-placeholder {
+    display: block;
+    flex: 0 0 100%;
+    height: 36px;
   }
 }
 @media (max-width: 640px) {
@@ -74,7 +80,7 @@
     transition: height 0.42s cubic-bezier(.22, 1, .36, 1);
   }
   .watch-player--audio {
-    height: max(56.25cqw, min(72svh, 680px));
+    height: auto;
   }
 }
 .watch-actions .dl-done { color: #7ee08a; }
@@ -280,6 +286,10 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 14px;
+}
+.watch-row--pending .watch-channel {
+  justify-content: center;
+  min-height: 36px;
 }
 .watch-actions {
   display: flex;
@@ -828,6 +838,12 @@ body.cinema .content:has(.watch-layout.theater) {
 .watch-layout.theater .watch-player-shell {
   border-radius: 0;
   width: min(100%, calc((100dvh - var(--topbar-h) - 98px) * 16 / 9));
+}
+@media (max-width: 900px) {
+  .watch-layout.theater .watch-player--audio {
+    width: 100%;
+    aspect-ratio: auto;
+  }
 }
 
 /* Restore horizontal padding for text content below the player */

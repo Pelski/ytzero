@@ -21,7 +21,7 @@ import { sessionPlayQueueContext, useSessionPlayQueue } from "../sessionPlayQueu
 import { effectivePlaybackQueue } from "../sessionPlayQueuePlayback";
 import { isContinuousPlaylistQueue, playbackEndAction } from "../playlistPlayback";
 import { restoreSidebarVisibility } from "../app-shell/sidebarVisibility";
-import { canAutoArchiveVideo, isMissingVideoError, loadYouTubeApi, resolveShareTimestamp, resolveWatchPlayerTarget } from "./watchRuntime";
+import { canAutoArchiveVideo, isMissingVideoError, loadYouTubeApi, resolveShareTimestamp, resolveWatchPlayerTarget, resolveWatchRoutePreview } from "./watchRuntime";
 import { useWatchTogetherPlayback } from "./useWatchTogetherPlayback";
 import { useYouTubeKeyboardShortcuts, type WatchShortcutKind } from "./useYouTubeKeyboardShortcuts";
 import { useUpNextQueue } from "./useUpNextQueue";
@@ -47,6 +47,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const feedSort = searchParams.get("sort") === "arrival" ? "arrival" : "published";
   const playlistSort = normalizePlaylistSort(searchParams.get("sort"));
   const watchTogetherRoomId = searchParams.get("room")?.trim() || null;
+  const routePreview = resolveWatchRoutePreview(location.state, id);
   const routePlaybackQueue = useMemo<PlaybackQueueContext | null>(() => {
     const stateQueue = (location.state as { playbackQueue?: unknown } | null)?.playbackQueue;
     if (isPlaybackQueueContext(stateQueue)) return stateQueue;
@@ -1543,6 +1544,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     video,
     videoCreators,
     videoInfo,
+    routePreview,
     videoMissing,
     videoPlaylists,
     waitError,

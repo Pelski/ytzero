@@ -202,6 +202,7 @@ export default function WatchPage() {
     video,
     videoCreators,
     videoInfo,
+    routePreview,
     videoMissing,
     videoPlaylists,
     waitError,
@@ -215,6 +216,7 @@ export default function WatchPage() {
     ytWrapRef,
   } = controller;
   const playbackSpeeds = resolvePlaybackSpeeds(settings?.player_speed_options, speed, video?.channel_playback_speed);
+  const pendingVideoInfo = videoInfo ?? routePreview;
 
   const { errorText: watchTogetherError, transportLockLabel: watchTogetherTransportLockLabel } = getWatchTogetherLabels(watchTogether, t);
   return (
@@ -439,9 +441,9 @@ export default function WatchPage() {
         {playerKind === "youtube" && !audioActive && youtubeError === 153 && (
           <Alert className="youtube-referrer-alert-layout" variant="warning" icon={<AlertTriangle />} title={t("youtubeReferrerErrorTitle")}>{t("youtubeReferrerErrorHint")}</Alert>
         )}
-        {(video ?? videoInfo) && (
+        {(video ?? pendingVideoInfo) && (
           <div className="watch-title-row">
-            <h1 className="watch-title">{video?.title ?? videoInfo?.title}</h1>
+            <h1 className="watch-title">{video?.title ?? pendingVideoInfo?.title}</h1>
             {playerKind === "local" && !audioActive && (
               <Tooltip text={t("watchLocalPlaybackTooltip")} pos="top" className="watch-local-source-tooltip">
                 <span className="watch-local-source-icon" aria-label={t("watchLocalPlaybackTooltip")} tabIndex={0}>
@@ -463,25 +465,26 @@ export default function WatchPage() {
             )}
           </div>
         )}
-        {videoMissing && videoInfo && (
-          <div className="watch-row">
+        {videoMissing && pendingVideoInfo && (
+          <div className="watch-row watch-row--pending">
             <div className="watch-channel">
               <div className="watch-channel-top">
                 <div>
-                  <Link to={`/channel/${videoInfo.channelId}`} className="name channel-link">
-                    {videoInfo.channelTitle}
+                  <Link to={`/channel/${pendingVideoInfo.channelId}`} className="name channel-link">
+                    {pendingVideoInfo.channelTitle}
                   </Link>
                 </div>
               </div>
             </div>
             {!isChildProfile && (
               <ButtonAnchor
-                href={markYouTubeUrl(`https://www.youtube.com/watch?v=${videoInfo.videoId}`)}
+                href={markYouTubeUrl(`https://www.youtube.com/watch?v=${pendingVideoInfo.videoId}`)}
                 target="_blank"
                 rel="noreferrer"
                 leadingIcon={<ExternalLink size={15} />}
               >YouTube</ButtonAnchor>
             )}
+            <div className="watch-actions-placeholder" aria-hidden="true" />
           </div>
         )}
         {videoMissing && videoInfo && (

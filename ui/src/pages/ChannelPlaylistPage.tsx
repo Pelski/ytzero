@@ -16,6 +16,7 @@ import { videosInPlaylistOrder } from "../playlistPlayback";
 import NotificationSourceMenu from "../components/NotificationSourceMenu";
 import type { NotificationSourceMode } from "../components/NotificationSourceSelect";
 import { HeaderSettingsHeader, HeaderSettingsItem, HeaderSettingsOption, HeaderSettingsPopover } from "../components/HeaderSettingsMenu";
+import { createWatchRoutePreview } from "./watchRuntime";
 
 export default function ChannelPlaylistPage() {
   const { id } = useParams<{ id: string }>();
@@ -151,7 +152,9 @@ export default function ChannelPlaylistPage() {
   const orderedPlaylistVideos = videosInPlaylistOrder(allPlaylistVideos, videoOrder);
   const canDownloadPlaylist = allPlaylistVideos.length > 0 && allPlaylistVideos.some((video) => video.downloads_allowed);
   const playPlaylistVideo = (video: Video) => {
-    if (id) navigate(`/watch/${video.video_id}/playlist/${id}${playlistSortSearch(sort)}`);
+    if (id) navigate(`/watch/${video.video_id}/playlist/${id}${playlistSortSearch(sort)}`, {
+      state: { watchPreview: createWatchRoutePreview(video) },
+    });
   };
 
   const sortOptions: Array<{ value: PlaylistSort; label: string }> = [

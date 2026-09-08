@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { colonDurationToSeconds, formatWatchTime, resolveShareTimestamp, resolveWatchPlayerTarget } from "./watchRuntime";
+import { colonDurationToSeconds, createWatchRoutePreview, formatWatchTime, resolveShareTimestamp, resolveWatchPlayerTarget, resolveWatchRoutePreview } from "./watchRuntime";
 
 describe("watch runtime formatting", () => {
   test("parses YouTube-style clock durations", () => {
@@ -38,5 +38,25 @@ describe("watch player target ownership", () => {
 
   test("does not let a missing result from the previous route own the player", () => {
     expect(resolveWatchPlayerTarget("new-video", null, "old-video")).toBe(null);
+  });
+});
+
+describe("watch route preview", () => {
+  const video = {
+    video_id: "video-a",
+    title: "Known title",
+    channel_id: "channel-a",
+    channel_title: "Known channel",
+  };
+
+  test("carries stable card copy into the matching watch route", () => {
+    const watchPreview = createWatchRoutePreview(video);
+    expect(resolveWatchRoutePreview({ watchPreview }, "video-a")).toEqual(watchPreview);
+  });
+
+  test("does not show stale or malformed navigation copy", () => {
+    const watchPreview = createWatchRoutePreview(video);
+    expect(resolveWatchRoutePreview({ watchPreview }, "video-b")).toBe(null);
+    expect(resolveWatchRoutePreview({ watchPreview: { videoId: "video-a" } }, "video-a")).toBe(null);
   });
 });
