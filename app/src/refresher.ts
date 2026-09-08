@@ -1,5 +1,6 @@
 import { database } from "./database";
 import { classifyIsShort, fetchChannelAbout, fetchChannelFeed, fetchChannelPlaylists, fetchChannelStreams, fetchChannelSubscriberCountFromWatch, fetchChannelVideos, fetchChannelVideosDurations, fetchLiveInfo, fetchPlaylistFeed, fetchPlaylistSnapshot, fetchVideoInfo, fetchVideoPublishedAt, isPrivateVideoError } from "./youtube";
+import { MetadataCookieFallbackBudget } from "./videoMetadataFallback";
 import { applyAutoTags } from "./autotags";
 import { applyPlaylistRulesToVideo } from "./userPlaylists";
 import { applyFilterRules } from "./filterRules";
@@ -611,6 +612,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
   let shorts = 0;
   let failed = 0;
   const concurrency = 3;
+  const cookieFallbackBudget = new MetadataCookieFallbackBudget();
 
   for (let offset = 0; offset < rows.length; offset += concurrency) {
     await Promise.all(rows.slice(offset, offset + concurrency).map(async (row) => {
@@ -620,7 +622,7 @@ export async function syncChannelMissingMetadata(channelId: string): Promise<Cha
       const needsDuration = !row.duration && !['live', 'upcoming'].includes(row.live_status);
       if (needsDate || needsDuration) {
         try {
-          const info = await fetchVideoInfo(row.video_id);
+          const info = await fetchVideoInfo(row.video_id, { cookieFallbackBudget });
           const result = await saveInfo.run(
             needsDuration ? info.duration : null, needsDuration ? info.duration : null, needsDuration ? info.duration : null,
             needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null, needsDate ? info.publishedAt : null,
@@ -1117,10 +1119,11 @@ export async function refreshVideoMetadataBatch(limit = 10) {
   let datesFilled = 0;
   let checked = 0;
   let skipped = 0;
+  const cookieFallbackBudget = new MetadataCookieFallbackBudget();
   for (let i = 0; i < rows.length; i++) {
     const { video_id, live_status } = rows[i];
     try {
-      const info = await fetchVideoInfo(video_id);
+      const info = await fetchVideoInfo(video_id, { cookieFallbackBudget });
       checked++;
       durationRetry.delete(video_id);
       if (info.duration) {
@@ -1132,7 +1135,7 @@ export async function refreshVideoMetadataBatch(limit = 10) {
       if (info.publishedAt) datesFilled += (await savePublishedAt.run(info.publishedAt, video_id)).changes;
     } catch (e) {
       if (isYouTubeRefusalError(e)) {
-        skipped = rows.length - i - 1;
+        skipped = rows.length - i;
         log.info("video.metadata_halted", { checked, skipped });
         break;
       }
@@ -1217,10 +1220,11 @@ export async function backfillImportedVideos(limit = 15) {
   let enriched = 0;
   let checked = 0;
   let skipped = 0;
+  const cookieFallbackBudget = new MetadataCookieFallbackBudget();
   for (let i = 0; i < rows.length; i++) {
     const videoId = rows[i].video_id;
     try {
-      const info = await fetchVideoInfo(videoId);
+      const info = await fetchVideoInfo(videoId, { cookieFallbackBudget });
       checked++;
       // Without an owner the row would stay on the placeholder channel and be
       // re-picked every tick; back off like a failure instead.
@@ -1241,7 +1245,7 @@ export async function backfillImportedVideos(limit = 15) {
       enriched++;
     } catch (e) {
       if (isYouTubeRefusalError(e)) {
-        skipped = rows.length - i - 1;
+        skipped = rows.length - i;
         log.info("import.enrich_halted", { checked, skipped });
         break;
       }

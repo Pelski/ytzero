@@ -10,7 +10,12 @@ Watch-page comments are disabled by default. When enabled for a profile, they
 are fetched through yt-dlp only after the viewer scrolls to the comments
 section. Configured YouTube access cookies may be used for restricted content;
 cookie files are per profile, machine-local secrets and never enter portable
-backups.
+backups. Video-info lookups normally remain anonymous. If YouTube refuses the
+instance's address, YT Zero may retry that lookup through a configured cookie jar:
+it prefers the current profile's jar and otherwise borrows the first configured
+profile's jar for interactive and background work. These requests are then
+attributable to that jar's YouTube account; the borrowing is recorded in the
+server log without exposing cookie contents.
 
 ### DeArrow
 

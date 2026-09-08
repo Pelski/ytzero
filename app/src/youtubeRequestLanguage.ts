@@ -102,8 +102,8 @@ export function youtubeCookieHeaderFromNetscape(contents: string, language: stri
   return [...cookies].map(([name, value]) => `${name}=${value}`).join("; ");
 }
 
-function profileCookieHeader(userId: number | undefined, language: string): string {
-  if (!userId || !downloadCookiesConfigured(userId)) {
+function profileCookieHeader(userId: number | undefined, language: string, includeProfileCookies = true): string {
+  if (!includeProfileCookies || !userId || !downloadCookiesConfigured(userId)) {
     return youtubeCookieHeaderFromNetscape("", language);
   }
   try {
@@ -115,12 +115,16 @@ function profileCookieHeader(userId: number | undefined, language: string): stri
 
 const USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
-export function youtubeRequestHeaders(userId?: number, resolvedLanguage?: ResolvedYouTubeLanguage): Record<string, string> {
+export function youtubeRequestHeaders(
+  userId?: number,
+  resolvedLanguage?: ResolvedYouTubeLanguage,
+  includeProfileCookies = true,
+): Record<string, string> {
   const language = resolvedLanguage ?? resolveYouTubeLanguage(userId);
   return {
     "User-Agent": USER_AGENT,
     "Accept-Language": language.acceptLanguage,
-    Cookie: profileCookieHeader(language.userId, language.hl),
+    Cookie: profileCookieHeader(language.userId, language.hl, includeProfileCookies),
   };
 }
 

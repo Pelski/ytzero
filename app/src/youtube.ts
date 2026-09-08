@@ -2,10 +2,11 @@ import { XMLParser } from "fast-xml-parser";
 import { createRequire } from "module";
 import { decodeHtmlEntities } from "./htmlEntities";
 import { createYoutubeSearch, parseAbbreviatedCount } from "./youtubeSearch";
-import { isYouTubeRateLimitError, isYouTubeRefusalError, readYouTubeResponse, youtubeRefusalGate } from "./youtubeRateLimit";
+import { isYouTubeRateLimitError, isYouTubeRefusalError, readYouTubeResponse, YouTubeRefusalError, youtubeRefusalGate } from "./youtubeRateLimit";
 import { DeletedVideoError, fetchVideoOEmbedAvailability, isDeletedVideoError, isPrivateVideoError, PrivateVideoError } from "./youtubeVideoAvailability";
 import { inferIsShortFromMetadata } from "./shortClassification";
 import { resolveYouTubeLanguage, youtubeRequestHeaders, youtubeRssHeaders, type ResolvedYouTubeLanguage } from "./youtubeRequestLanguage";
+import { MetadataCookieFallbackBudget, retryVideoInfoWithCookies } from "./videoMetadataFallback";
 export { DeletedVideoError, fetchVideoOEmbedAvailability, isDeletedVideoError, isPrivateVideoError, PrivateVideoError, videoOEmbedAvailabilityFromStatus } from "./youtubeVideoAvailability";
 const _require = createRequire(import.meta.url);
 const InnerTubeClient = _require("innertube.js");
@@ -1037,56 +1038,84 @@ async function fetchVideoInfoFromInnerTube(videoId: string): Promise<VideoInfo> 
 }
 
 async function fetchVideoInfoFromEmbed(videoId: string, userId?: number): Promise<VideoInfo> {
-  const res = await fetch(`https://www.youtube.com/embed/${videoId}`, { headers: youtubeRequestHeaders(userId) });
+  const res = await fetch(`https://www.youtube.com/embed/${videoId}`, { headers: youtubeRequestHeaders(userId, undefined, false) });
   if (!res.ok) throw new Error(`YouTube embed fetch failed (${res.status})`);
   const pr = extractVariable(await res.text(), "ytInitialPlayerResponse");
   return videoInfoFromPlayerResponse(videoId, pr);
 }
 
-export async function fetchVideoInfo(videoId: string, options: { force?: boolean; userId?: number } = {}): Promise<VideoInfo> {
-  const cacheKey = `${resolveYouTubeLanguage(options.userId).cacheKey}:${videoId}`;
-  if (options.force) videoInfoCache.delete(cacheKey);
-  const cached = videoInfoCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
+export interface FetchVideoInfoOptions {
+  force?: boolean;
+  userId?: number;
+  cookieFallbackBudget?: MetadataCookieFallbackBudget;
+}
 
-  youtubeRefusalGate.enter();
-
+async function fetchVideoInfoAnonymously(videoId: string, userId?: number): Promise<VideoInfo> {
   let result: VideoInfo;
   try {
+    youtubeRefusalGate.enter();
     const url = `https://www.youtube.com/watch?v=${videoId}`;
-    const res = await fetch(url, { headers: youtubeRequestHeaders(options.userId) });
+    // Keep the fast public path anonymous. A configured profile jar is used
+    // only by the explicit yt-dlp retry after an address refusal.
+    const res = await fetch(url, { headers: youtubeRequestHeaders(userId, undefined, false) });
     if (!res.ok) throw new Error(`YouTube fetch failed (${res.status})`);
     const html = await res.text();
     const pr = extractVariable(html, "ytInitialPlayerResponse");
     result = videoInfoFromPlayerResponse(videoId, pr);
   } catch (htmlError) {
-    if (isYouTubeRefusalError(htmlError)) throw youtubeRefusalGate.refused(htmlError);
+    // Once the gate is active, do not spend two more anonymous requests. The
+    // first refusal in a cycle is different: preserve the normal three-source
+    // diagnosis before deciding whether cookie fallback is appropriate.
+    if (htmlError instanceof YouTubeRefusalError) throw htmlError;
     try {
       result = await fetchVideoInfoFromInnerTube(videoId);
     } catch (innerTubeError) {
-      if (isYouTubeRefusalError(innerTubeError)) throw youtubeRefusalGate.refused(innerTubeError);
       try {
-        result = await fetchVideoInfoFromEmbed(videoId, options.userId);
+        result = await fetchVideoInfoFromEmbed(videoId, userId);
       } catch (embedError) {
-        if (isYouTubeRefusalError(embedError)) throw youtubeRefusalGate.refused(embedError);
-        if ([htmlError, innerTubeError, embedError].some(isPrivateVideoError)) {
+        const errors = [htmlError, innerTubeError, embedError];
+        if (errors.some(isPrivateVideoError)) {
           youtubeRefusalGate.answered();
           throw new PrivateVideoError();
         }
-        if ([htmlError, innerTubeError, embedError].some(isDeletedVideoError)) {
+        if (errors.some(isDeletedVideoError)) {
           youtubeRefusalGate.answered();
           throw new DeletedVideoError();
         }
-        youtubeRefusalGate.releaseProbe();
         const primary = htmlError instanceof Error ? htmlError.message : String(htmlError);
         const fallback = innerTubeError instanceof Error ? innerTubeError.message : String(innerTubeError);
         const embed = embedError instanceof Error ? embedError.message : String(embedError);
-        throw new Error(`video info failed: html=${primary}; innertube=${fallback}; embed=${embed}`);
+        const aggregate = new Error(`video info failed: html=${primary}; innertube=${fallback}; embed=${embed}`);
+        if (errors.some(isYouTubeRefusalError)) {
+          youtubeRefusalGate.refused(aggregate);
+          throw aggregate;
+        }
+        youtubeRefusalGate.releaseProbe();
+        throw aggregate;
       }
     }
   }
-  videoInfoCache.set(cacheKey, { at: Date.now(), data: result });
   youtubeRefusalGate.answered();
+  return result;
+}
+
+export async function fetchVideoInfo(videoId: string, options: FetchVideoInfoOptions = {}): Promise<VideoInfo> {
+  const cacheKey = `${resolveYouTubeLanguage(options.userId).cacheKey}:${videoId}`;
+  if (options.force) videoInfoCache.delete(cacheKey);
+  const cached = videoInfoCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
+
+  let result: VideoInfo;
+  try {
+    result = await fetchVideoInfoAnonymously(videoId, options.userId);
+  } catch (error) {
+    if (!isYouTubeRefusalError(error)) throw error;
+    result = await retryVideoInfoWithCookies(videoId, error, {
+      userId: options.userId,
+      budget: options.cookieFallbackBudget,
+    });
+  }
+  videoInfoCache.set(cacheKey, { at: Date.now(), data: result });
   return result;
 }
 
