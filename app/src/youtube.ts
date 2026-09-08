@@ -7,6 +7,7 @@ import { DeletedVideoError, fetchVideoOEmbedAvailability, isDeletedVideoError, i
 import { inferIsShortFromMetadata } from "./shortClassification";
 import { resolveYouTubeLanguage, youtubeRequestHeaders, youtubeRssHeaders, type ResolvedYouTubeLanguage } from "./youtubeRequestLanguage";
 import { MetadataCookieFallbackBudget, retryVideoInfoWithCookies } from "./videoMetadataFallback";
+import { AsyncTtlCache } from "./asyncTtlCache";
 export { DeletedVideoError, fetchVideoOEmbedAvailability, isDeletedVideoError, isPrivateVideoError, PrivateVideoError, videoOEmbedAvailabilityFromStatus } from "./youtubeVideoAvailability";
 const _require = createRequire(import.meta.url);
 const InnerTubeClient = _require("innertube.js");
@@ -978,8 +979,8 @@ export async function fetchVideoCreators(videoId: string, userId?: number): Prom
   return parseVideoCreatorsFromHtml(await res.text());
 }
 
-const videoInfoCache = new Map<string, { at: number; data: VideoInfo }>();
 const VIDEO_INFO_TTL = 10 * 60_000;
+const videoInfoCache = new AsyncTtlCache<VideoInfo>({ ttlMs: VIDEO_INFO_TTL });
 
 function videoInfoFromPlayerResponse(videoId: string, pr: any): VideoInfo {
   const vd = pr?.videoDetails;
@@ -1101,22 +1102,17 @@ async function fetchVideoInfoAnonymously(videoId: string, userId?: number): Prom
 
 export async function fetchVideoInfo(videoId: string, options: FetchVideoInfoOptions = {}): Promise<VideoInfo> {
   const cacheKey = `${resolveYouTubeLanguage(options.userId).cacheKey}:${videoId}`;
-  if (options.force) videoInfoCache.delete(cacheKey);
-  const cached = videoInfoCache.get(cacheKey);
-  if (cached && Date.now() - cached.at < VIDEO_INFO_TTL) return cached.data;
-
-  let result: VideoInfo;
-  try {
-    result = await fetchVideoInfoAnonymously(videoId, options.userId);
-  } catch (error) {
-    if (!isYouTubeRefusalError(error)) throw error;
-    result = await retryVideoInfoWithCookies(videoId, error, {
-      userId: options.userId,
-      budget: options.cookieFallbackBudget,
-    });
-  }
-  videoInfoCache.set(cacheKey, { at: Date.now(), data: result });
-  return result;
+  return videoInfoCache.run(cacheKey, async () => {
+    try {
+      return await fetchVideoInfoAnonymously(videoId, options.userId);
+    } catch (error) {
+      if (!isYouTubeRefusalError(error)) throw error;
+      return await retryVideoInfoWithCookies(videoId, error, {
+        userId: options.userId,
+        budget: options.cookieFallbackBudget,
+      });
+    }
+  }, options.force);
 }
 
 /** Fetch only the exact publish date without requiring a playable video. */
