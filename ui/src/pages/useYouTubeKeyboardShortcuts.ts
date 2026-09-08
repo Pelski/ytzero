@@ -1,11 +1,13 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import type { LocalPlayerShortcut } from "../components/LocalPlayer";
-import { sendPlayerCommand, type EnhancePlayerState } from "../enhanceBridge";
+import type { EnhancePlayerCommand, EnhancePlayerState } from "../enhanceBridge";
 import type { PlayerKind } from "./watchPlayerMode";
 import type { WatchPlayerHandle } from "../playerHandle";
 import { stepPlaybackRate } from "../playbackSpeedStep";
 import { resolveShortcutBindings, shortcutActionMatches } from "../keyboardShortcuts";
 import type { VideoChapter } from "../api";
+import { applyEmbeddedPlaybackRate } from "./embeddedPlaybackRate";
+import { applyEmbeddedPlayerCommand } from "./embeddedPlayerCommand";
 
 export type WatchShortcutKind = LocalPlayerShortcut | "sponsorblock" | "screenshotUnsupported";
 
@@ -40,6 +42,7 @@ export function useYouTubeKeyboardShortcuts({
 }) {
   const spaceHoldTimerRef = useRef<number | null>(null);
   const spaceHoldActiveRef = useRef(false);
+  const playbackRateCommandVersionRef = useRef(0);
 
   // The YouTube iframe only receives built-in shortcuts after focus. Mirror
   // essential keys at page level; LocalPlayer owns the equivalent behavior.
@@ -47,6 +50,35 @@ export function useYouTubeKeyboardShortcuts({
     if (playerKind !== "youtube" && !audioActive) return;
     const bindings = resolveShortcutBindings(keyboardShortcuts);
     const matches = (action: Parameters<typeof shortcutActionMatches>[0], event: KeyboardEvent) => shortcutActionMatches(action, event, bindings);
+    const applyPlaybackRate = (rate: number) => {
+      const version = ++playbackRateCommandVersionRef.current;
+      void applyEmbeddedPlaybackRate({
+        audioActive,
+        getPlayer: () => playerRef.current,
+        playerKind,
+        rate,
+        shouldFallback: () => playbackRateCommandVersionRef.current === version,
+        videoId: id,
+      });
+    };
+    const applyPlayerCommand = (
+      command: EnhancePlayerCommand,
+      payload: Record<string, unknown> | undefined,
+      fallback: () => void,
+    ) => {
+      void applyEmbeddedPlayerCommand({
+        audioActive,
+        command,
+        fallback,
+        payload,
+        playerKind,
+        videoId: id,
+      });
+    };
+    const enhancedState = () => playerKind === "youtube" && !audioActive
+      ? enhancePlayerStateRef.current?.state
+      : undefined;
+    let commandedVolume: number | null = null;
     const onKey = (event: KeyboardEvent) => {
       if ((event.target as Element).closest("input,textarea,select,[contenteditable]")) return;
       const player = playerRef.current;
@@ -64,7 +96,7 @@ export function useYouTubeKeyboardShortcuts({
           const activePlayer = playerRef.current;
           if (!activePlayer) return;
           spaceHoldActiveRef.current = true;
-          activePlayer.setPlaybackRate?.(2);
+          applyPlaybackRate(2);
           showFeedback("speed");
         }, 220);
         return;
@@ -80,9 +112,7 @@ export function useYouTubeKeyboardShortcuts({
         const currentRate = Number(speedRef.current);
         const nextRate = stepPlaybackRate(currentRate, speedDirection);
         speedRef.current = String(nextRate);
-        const applyFallback = () => player.setPlaybackRate?.(nextRate);
-        if (id && !audioActive) void sendPlayerCommand(id, "set-playback-rate", { rate: nextRate }).catch(applyFallback);
-        else applyFallback();
+        applyPlaybackRate(nextRate);
         showFeedback("speed", nextRate);
         return;
       }
@@ -99,55 +129,113 @@ export function useYouTubeKeyboardShortcuts({
       if (matches("toggleMute", event)) {
         event.preventDefault();
         if (event.repeat) return;
-        const enhancedState = audioActive ? null : enhancePlayerStateRef.current?.state;
-        const muted = enhancedState?.muted ?? Boolean(player.isMuted?.());
+        const muted = enhancedState()?.muted ?? Boolean(player.isMuted?.());
         showFeedback(muted ? "unmute" : "mute");
-        if (id && !audioActive) {
-          void sendPlayerCommand(id, "toggle-muted").catch(() => {
-            if (muted) player.unMute?.();
-            else player.mute?.();
-          });
-        } else if (muted) player.unMute?.();
-        else player.mute?.();
+        applyPlayerCommand("toggle-muted", undefined, () => {
+          if (muted) player.unMute?.();
+          else player.mute?.();
+        });
         return;
       }
 
-      if (matches("togglePlay", event)) { event.preventDefault(); if (!event.repeat) { if (player.getPlayerState?.() === 1) player.pauseVideo?.(); else player.playVideo?.(); } return; }
+      if (matches("togglePlay", event)) {
+        event.preventDefault();
+        if (!event.repeat) applyPlayerCommand("toggle-play", undefined, () => {
+          if (player.getPlayerState?.() === 1) player.pauseVideo?.();
+          else player.playVideo?.();
+        });
+        return;
+      }
 
-      if (matches("toggleCaptions", event)) { event.preventDefault(); if (!event.repeat && id && !audioActive) void sendPlayerCommand(id, "toggle-captions").catch(() => { const track = player.getOption?.("captions", "track") as { languageCode?: string } | undefined; if (track?.languageCode) player.unloadModule?.("captions"); else player.loadModule?.("captions"); }); return; }
+      if (matches("toggleCaptions", event)) {
+        event.preventDefault();
+        if (!event.repeat && playerKind === "youtube" && id && !audioActive) applyPlayerCommand("toggle-captions", undefined, () => {
+          const track = player.getOption?.("captions", "track") as { languageCode?: string } | undefined;
+          if (track?.languageCode) player.unloadModule?.("captions");
+          else player.loadModule?.("captions");
+        });
+        return;
+      }
 
-      if (matches("subtitleLarger", event) || matches("subtitleSmaller", event)) { event.preventDefault(); if (id && !audioActive) { const current = enhancePlayerStateRef.current?.state.captionSize ?? 19; void sendPlayerCommand(id, "set-caption-size", { size: Math.min(48, Math.max(12, current + (matches("subtitleLarger", event) ? 1 : -1))) }).catch(() => {}); } return; }
+      if (matches("subtitleLarger", event) || matches("subtitleSmaller", event)) {
+        event.preventDefault();
+        if (playerKind === "youtube" && id && !audioActive) {
+          const current = enhancedState()?.captionSize ?? 19;
+          applyPlayerCommand("set-caption-size", { size: Math.min(48, Math.max(12, current + (matches("subtitleLarger", event) ? 1 : -1))) }, () => {});
+        }
+        return;
+      }
 
-      if (matches("togglePictureInPicture", event)) { event.preventDefault(); if (!event.repeat && id && !audioActive) void sendPlayerCommand(id, "toggle-picture-in-picture").catch(() => {}); return; }
+      if (matches("togglePictureInPicture", event)) {
+        event.preventDefault();
+        if (!event.repeat && playerKind === "youtube" && id && !audioActive) applyPlayerCommand("toggle-picture-in-picture", undefined, () => {});
+        return;
+      }
 
-      if (matches("previousFrame", event) || matches("nextFrame", event)) { if (player.getPlayerState?.() === 2) { event.preventDefault(); const current = player.getCurrentTime?.(); if (Number.isFinite(current)) player.seekTo?.(Math.max(0, current! + (matches("previousFrame", event) ? -1 : 1) / frameRate), true); } return; }
+      if (matches("previousFrame", event) || matches("nextFrame", event)) {
+        const paused = enhancedState()?.paused ?? player.getPlayerState?.() === 2;
+        if (paused) {
+          event.preventDefault();
+          const seconds = (matches("previousFrame", event) ? -1 : 1) / frameRate;
+          applyPlayerCommand("seek-by", { seconds }, () => {
+            const current = player.getCurrentTime?.();
+            if (Number.isFinite(current)) player.seekTo?.(Math.max(0, current! + seconds), true);
+          });
+        }
+        return;
+      }
 
-      if (matches("previousChapter", event) || matches("nextChapter", event)) { const current = player.getCurrentTime?.(); if (!Number.isFinite(current) || !chapters.length) return; event.preventDefault(); const starts = chapters.map((chapter) => chapter.start); const target = matches("previousChapter", event) ? [...starts].reverse().find((start) => start < current! - 1) ?? 0 : starts.find((start) => start > current! + 1); if (target != null) player.seekTo?.(target, true); return; }
+      if (matches("previousChapter", event) || matches("nextChapter", event)) {
+        const current = enhancedState()?.currentTime ?? player.getCurrentTime?.();
+        if (!Number.isFinite(current) || !chapters.length) return;
+        event.preventDefault();
+        const starts = chapters.map((chapter) => chapter.start);
+        const target = matches("previousChapter", event)
+          ? [...starts].reverse().find((start) => start < current! - 1) ?? 0
+          : starts.find((start) => start > current! + 1);
+        if (target != null) applyPlayerCommand("seek-to", { seconds: target }, () => player.seekTo?.(target, true));
+        return;
+      }
 
       const seekDirection = matches("seekBack10", event) ? -10 : matches("seekForward10", event) ? 10 : matches("seekBack", event) ? -keyboardSeekSeconds : matches("seekForward", event) ? keyboardSeekSeconds : 0;
       if (seekDirection) {
-        const current = player.getCurrentTime?.();
-        const duration = player.getDuration?.();
-        if (!Number.isFinite(current) || !Number.isFinite(duration)) return;
         event.preventDefault();
-        player.seekTo?.(Math.min(Math.max(0, current! + seekDirection), duration!), true);
+        applyPlayerCommand("seek-by", { seconds: seekDirection }, () => {
+          const current = player.getCurrentTime?.();
+          const duration = player.getDuration?.();
+          if (Number.isFinite(current) && Number.isFinite(duration)) {
+            player.seekTo?.(Math.min(Math.max(0, current! + seekDirection), duration!), true);
+          }
+        });
         showFeedback(seekDirection < 0 ? "back" : "forward", Math.abs(seekDirection));
         return;
       }
 
       if (matches("volumeUp", event) || matches("volumeDown", event)) {
-        const volume = player.getVolume?.();
+        const volume = event.repeat && commandedVolume != null
+          ? commandedVolume
+          : enhancedState()?.volume ?? player.getVolume?.();
         if (!Number.isFinite(volume)) return;
         event.preventDefault();
         const up = matches("volumeUp", event);
         const next = Math.min(100, Math.max(0, volume! + (up ? 5 : -5)));
-        player.setVolume?.(next);
-        if (next > 0) player.unMute?.();
+        commandedVolume = next;
+        applyPlayerCommand("set-volume", { volume: next }, () => {
+          player.setVolume?.(next);
+          if (next > 0) player.unMute?.();
+        });
         showFeedback(up ? "volumeUp" : "volumeDown");
         return;
       }
 
-      if (matches("seekPercent", event) && /^Digit[0-9]$/.test(event.code)) { const duration = player.getDuration?.(); if (Number.isFinite(duration) && duration! > 0) { event.preventDefault(); player.seekTo?.(Number(event.code.slice(-1)) / 10 * duration!, true); } }
+      if (matches("seekPercent", event) && /^Digit[0-9]$/.test(event.code)) {
+        const duration = enhancedState()?.duration ?? player.getDuration?.();
+        if (Number.isFinite(duration) && duration! > 0) {
+          event.preventDefault();
+          const seconds = Number(event.code.slice(-1)) / 10 * duration!;
+          applyPlayerCommand("seek-to", { seconds }, () => player.seekTo?.(seconds, true));
+        }
+      }
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
@@ -157,19 +245,21 @@ export function useYouTubeKeyboardShortcuts({
       if (transportLocked) {
         if (spaceHoldTimerRef.current != null) window.clearTimeout(spaceHoldTimerRef.current);
         spaceHoldTimerRef.current = null;
-        if (spaceHoldActiveRef.current) playerRef.current?.setPlaybackRate?.(Number(speedRef.current));
+        if (spaceHoldActiveRef.current) applyPlaybackRate(Number(speedRef.current));
         spaceHoldActiveRef.current = false;
         return;
       }
       if (spaceHoldTimerRef.current != null) {
         window.clearTimeout(spaceHoldTimerRef.current);
         spaceHoldTimerRef.current = null;
-        const player = playerRef.current;
-        if (player?.getPlayerState?.() === 1) player.pauseVideo?.();
-        else player?.playVideo?.();
+        applyPlayerCommand("toggle-play", undefined, () => {
+          const player = playerRef.current;
+          if (player?.getPlayerState?.() === 1) player.pauseVideo?.();
+          else player?.playVideo?.();
+        });
       } else if (spaceHoldActiveRef.current) {
         spaceHoldActiveRef.current = false;
-        playerRef.current?.setPlaybackRate?.(Number(speedRef.current));
+        applyPlaybackRate(Number(speedRef.current));
       }
     };
 
@@ -179,7 +269,7 @@ export function useYouTubeKeyboardShortcuts({
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("keyup", onKeyUp);
       if (spaceHoldTimerRef.current != null) window.clearTimeout(spaceHoldTimerRef.current);
-      if (spaceHoldActiveRef.current) playerRef.current?.setPlaybackRate?.(Number(speedRef.current));
+      if (spaceHoldActiveRef.current) applyPlaybackRate(Number(speedRef.current));
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };

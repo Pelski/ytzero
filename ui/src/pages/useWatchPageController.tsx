@@ -33,6 +33,7 @@ import { useWatchPlaybackPosition } from "./useWatchPlaybackPosition";
 import { useYouTubeMediaSession } from "./useYouTubeMediaSession";
 import { resolveShortcutBindings, SHORTCUT_CLOSE_EVENT, shortcutActionMatches } from "../keyboardShortcuts";
 import { normalizeWatchCommentsMode } from "../../../shared/watchComments";
+import { applyEmbeddedPlayerCommand } from "./embeddedPlayerCommand";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
@@ -1166,16 +1167,24 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
       else if (matches("close", e)) { e.preventDefault(); closeWatchMode(); }
       else if (matches("toggleFullscreen", e) && playerKind !== "local" && playerKind !== "stream" && playerKind !== "direct") {
         e.preventDefault();
-        const el = playerWrapRef.current ?? document.documentElement;
-        if (!document.fullscreenElement) el.requestFullscreen?.();
-        else document.exitFullscreen?.();
+        if (!e.repeat) void applyEmbeddedPlayerCommand({
+          audioActive,
+          command: "toggle-fullscreen",
+          fallback: () => {
+            const el = playerWrapRef.current ?? document.documentElement;
+            if (!document.fullscreenElement) el.requestFullscreen?.();
+            else document.exitFullscreen?.();
+          },
+          playerKind,
+          videoId: id,
+        });
       }
     };
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
     };
-  }, [canPlayNextVideo, canPlayPreviousVideo, closeWatchMode, navigate, playNextVideo, playPreviousVideo, playerKind, settings?.keyboard_shortcuts, watchTogetherRoomId]);
+  }, [audioActive, canPlayNextVideo, canPlayPreviousVideo, closeWatchMode, id, navigate, playNextVideo, playPreviousVideo, playerKind, settings?.keyboard_shortcuts, watchTogetherRoomId]);
 
   useYouTubeKeyboardShortcuts({
     audioActive,

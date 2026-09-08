@@ -15,7 +15,10 @@ instance's address, YT Zero may retry that lookup through a configured cookie ja
 it prefers the current profile's jar and otherwise borrows the first configured
 profile's jar for interactive and background work. These requests are then
 attributable to that jar's YouTube account; the borrowing is recorded in the
-server log without exposing cookie contents.
+server log without exposing cookie contents. Other YouTube page and metadata
+requests made in a profile context may also carry that profile's jar. Cookie
+rotation returned by those direct responses is merged back into the local jar,
+and the Downloads configuration reports whether YouTube still recognizes it.
 
 ### DeArrow
 

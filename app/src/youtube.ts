@@ -8,6 +8,7 @@ import { inferIsShortFromMetadata } from "./shortClassification";
 import { resolveYouTubeLanguage, youtubeRequestHeaders, youtubeRssHeaders, type ResolvedYouTubeLanguage } from "./youtubeRequestLanguage";
 import { MetadataCookieFallbackBudget, retryVideoInfoWithCookies } from "./videoMetadataFallback";
 import { AsyncTtlCache } from "./asyncTtlCache";
+import { readYouTubeBodyWithCookies, readYouTubeResponseWithCookies, refreshYouTubeResponseCookies } from "./youtubeCookieJar";
 export { DeletedVideoError, fetchVideoOEmbedAvailability, isDeletedVideoError, isPrivateVideoError, PrivateVideoError, videoOEmbedAvailabilityFromStatus } from "./youtubeVideoAvailability";
 const _require = createRequire(import.meta.url);
 const InnerTubeClient = _require("innertube.js");
@@ -79,8 +80,7 @@ export async function resolveChannelId(input: string, userId?: number): Promise<
     url = `https://www.youtube.com/${url.replace(/^\/+/, "")}`;
   }
   const res = await fetch(url, { headers: youtubeRequestHeaders(userId), redirect: "follow" });
-  if (!res.ok) throw new Error(`Failed to fetch channel page (${res.status})`);
-  const html = await res.text();
+  const html = await readYouTubeResponseWithCookies(res, "Failed to fetch channel page", userId, url);
   // The canonical link is authoritative; "channelId" occurrences in page data
   // can belong to recommended channels.
   const idMatch =
@@ -109,12 +109,12 @@ export interface LiveInfo {
  * upcoming livestream. Returns null when the channel is not live.
  */
 export async function fetchLiveInfo(channelId: string, userId?: number): Promise<LiveInfo | null> {
-  const res = await fetch(`https://www.youtube.com/channel/${channelId}/live`, {
+  const url = `https://www.youtube.com/channel/${channelId}/live`;
+  const res = await fetch(url, {
     headers: youtubeRequestHeaders(userId),
     redirect: "follow",
   });
-  if (!res.ok) throw new Error(`channel live request failed (${res.status})`);
-  const html = await res.text();
+  const html = await readYouTubeResponseWithCookies(res, "channel live request failed", userId, url);
 
   // When the channel has a live/upcoming stream, /live canonicalizes to the
   // watch page; otherwise it canonicalizes back to the channel page.
@@ -353,9 +353,11 @@ function extractSubscriberCountText(node: any): string {
 }
 
 export async function fetchVideoOwnerSubscriberCount(videoId: string, userId?: number): Promise<WatchSubscriberCount | null> {
-  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: youtubeRequestHeaders(userId) });
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const res = await fetch(url, { headers: youtubeRequestHeaders(userId) });
+  const html = await readYouTubeBodyWithCookies(res, userId, url);
   if (!res.ok) return null;
-  const data = extractInitialData(await res.text());
+  const data = extractInitialData(html);
   const owner = deepCollect(data, "videoOwnerRenderer")[0];
   if (!owner) return null;
   const subscriberCount = extractSubscriberCountText(owner.subscriberCountText);
@@ -452,12 +454,13 @@ export function playlistContinuationBody(token: string, clientVersion: string, l
 }
 
 async function fetchPlaylistContinuation(token: string, config: { apiKey: string; clientVersion: string }, language: ResolvedYouTubeLanguage) {
-  const res = await fetch(`https://www.youtube.com/youtubei/v1/browse?prettyPrint=false&key=${encodeURIComponent(config.apiKey)}`, {
+  const url = `https://www.youtube.com/youtubei/v1/browse?prettyPrint=false&key=${encodeURIComponent(config.apiKey)}`;
+  const res = await fetch(url, {
     method: "POST",
     headers: { ...youtubeRequestHeaders(language.userId, language), "Content-Type": "application/json", Origin: "https://www.youtube.com" },
     body: JSON.stringify(playlistContinuationBody(token, config.clientVersion, language.hl)),
   });
-  return JSON.parse(await readYouTubeResponse(res, "playlist continuation fetch failed"));
+  return JSON.parse(await readYouTubeResponseWithCookies(res, "playlist continuation fetch failed", language.userId, url));
 }
 
 export async function fetchChannelPlaylists(channelId: string, force = false, userId?: number): Promise<PlaylistInfo[]> {
@@ -468,10 +471,11 @@ export async function fetchChannelPlaylists(channelId: string, force = false, us
   // boundary case once so it is upgraded to a complete paginated result.
   if (!force && cached && cached.complete && Date.now() - cached.at < ABOUT_TTL) return cached.data;
 
-  const res = await fetch(`https://www.youtube.com/channel/${channelId}/playlists`, {
+  const url = `https://www.youtube.com/channel/${channelId}/playlists`;
+  const res = await fetch(url, {
     headers: youtubeRequestHeaders(userId, language),
   });
-  const html = await readYouTubeResponse(res, "playlists fetch failed");
+  const html = await readYouTubeResponseWithCookies(res, "playlists fetch failed", language.userId, url);
   const data = extractInitialData(html);
   const out: PlaylistInfo[] = [];
   const seen = new Set<string>();
@@ -523,9 +527,11 @@ export interface PlaylistFeed {
 export interface VideoDuration { videoId: string; duration: string; }
 
 export async function fetchChannelVideosDurations(channelId: string, userId?: number): Promise<VideoDuration[]> {
-  const res = await fetch(`https://www.youtube.com/channel/${channelId}/videos`, { headers: youtubeRequestHeaders(userId) });
+  const url = `https://www.youtube.com/channel/${channelId}/videos`;
+  const res = await fetch(url, { headers: youtubeRequestHeaders(userId) });
+  const html = await readYouTubeBodyWithCookies(res, userId, url);
   if (!res.ok) return [];
-  const data = extractInitialData(await res.text());
+  const data = extractInitialData(html);
   const out: VideoDuration[] = [];
   for (const r of deepCollect(data, "videoRenderer")) {
     if (r?.videoId && r?.lengthText?.simpleText) {
@@ -639,8 +645,9 @@ export async function fetchPlaylistSnapshot(playlistId: string, force = false, u
   const cached = playlistVideosCache.get(cacheKey);
   if (!force && cached && Date.now() - cached.at < ABOUT_TTL) return { videos: cached.videos, complete: cached.complete };
 
-  const res = await fetch(`https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`, { headers: youtubeRequestHeaders(userId, language) });
-  const html = await readYouTubeResponse(res, "playlist page fetch failed");
+  const url = `https://www.youtube.com/playlist?list=${encodeURIComponent(playlistId)}`;
+  const res = await fetch(url, { headers: youtubeRequestHeaders(userId, language) });
+  const html = await readYouTubeResponseWithCookies(res, "playlist page fetch failed", language.userId, url);
   const data = extractInitialData(html);
   const videos: PlaylistVideo[] = [];
   const seen = new Set<string>();
@@ -736,8 +743,9 @@ function relativePublishedFromNode(node: any): string | null {
 
 /** Scrape a channel tab for uploads or completed livestreams. */
 async function fetchChannelTabVideos(channelId: string, tab: "videos" | "streams", userId?: number): Promise<ScrapedVideo[]> {
-  const res = await fetch(`https://www.youtube.com/channel/${channelId}/${tab}`, { headers: youtubeRequestHeaders(userId) });
-  const data = extractInitialData(await readYouTubeResponse(res, `channel ${tab} request failed`));
+  const url = `https://www.youtube.com/channel/${channelId}/${tab}`;
+  const res = await fetch(url, { headers: youtubeRequestHeaders(userId) });
+  const data = extractInitialData(await readYouTubeResponseWithCookies(res, `channel ${tab} request failed`, userId, url));
   const out: ScrapedVideo[] = [];
   const seen = new Set<string>();
   for (const r of deepCollect(data, "videoRenderer")) {
@@ -974,9 +982,9 @@ export function parseVideoCreatorsFromHtml(html: string): VideoCreatorInfo[] {
 }
 
 export async function fetchVideoCreators(videoId: string, userId?: number): Promise<VideoCreatorInfo[]> {
-  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: youtubeRequestHeaders(userId) });
-  if (!res.ok) throw new Error(`YouTube creators fetch failed (${res.status})`);
-  return parseVideoCreatorsFromHtml(await res.text());
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const res = await fetch(url, { headers: youtubeRequestHeaders(userId) });
+  return parseVideoCreatorsFromHtml(await readYouTubeResponseWithCookies(res, "YouTube creators fetch failed", userId, url));
 }
 
 const VIDEO_INFO_TTL = 10 * 60_000;
@@ -1117,10 +1125,11 @@ export async function fetchVideoInfo(videoId: string, options: FetchVideoInfoOpt
 
 /** Fetch only the exact publish date without requiring a playable video. */
 export async function fetchVideoPublishedAt(videoId: string, userId?: number): Promise<string | null> {
-  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: youtubeRequestHeaders(userId) });
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const res = await fetch(url, { headers: youtubeRequestHeaders(userId) });
   let html: string;
   try {
-    html = await readYouTubeResponse(res, "YouTube publication date fetch failed");
+    html = await readYouTubeResponseWithCookies(res, "YouTube publication date fetch failed", userId, url);
   } catch (error) {
     if (isYouTubeRateLimitError(error)) throw error;
     return null;
@@ -1156,9 +1165,11 @@ export async function fetchVideoChapters(videoId: string, userId?: number): Prom
   const cached = chaptersCache.get(cacheKey);
   if (cached && Date.now() - cached.at < CHAPTERS_TTL) return cached.data;
 
-  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: youtubeRequestHeaders(userId) });
+  const url = `https://www.youtube.com/watch?v=${videoId}`;
+  const res = await fetch(url, { headers: youtubeRequestHeaders(userId) });
+  const html = await readYouTubeBodyWithCookies(res, userId, url);
   if (!res.ok) return [];
-  const data = extractInitialData(await res.text());
+  const data = extractInitialData(html);
   const out: VideoChapter[] = [];
   const seen = new Set<number>();
   for (const ch of deepCollect(data, "chapterRenderer")) {
@@ -1192,6 +1203,7 @@ export async function classifyIsShort(
       redirect: "manual",
       headers: youtubeRequestHeaders(),
     });
+    refreshYouTubeResponseCookies(res, undefined, `https://www.youtube.com/shorts/${videoId}`);
     if (res.status === 429) throw youtubeRefusalGate.refused(new Error("YouTube shorts fetch failed (429)"));
     if (res.status === 200) {
       const availability = await fetchVideoOEmbedAvailability(videoId, fetchImpl);

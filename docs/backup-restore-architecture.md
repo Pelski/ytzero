@@ -595,9 +595,11 @@ keep-downloads retention override, and liked-file protection) and that profile's
 automation rules. These are portable configuration. Instance storage policy
 (including output paths/templates, administrator-selected sidecar files and the
 physical storage cap) remains administrator-owned operational configuration.
-Each profile's yt-dlp cookies are a separate machine-local secret; cookies,
-paths, media, `download_owners`, queue state, previews and errors are not
-exported. Downloads is presented as a
+Each profile's YouTube cookies are a separate machine-local secret. The jar may
+be rewritten in place by yt-dlp or when a direct YouTube response rotates its
+cookies; the cached recognition result is transient process state. Cookie files
+and recognition state, paths, media, `download_owners`, queue state, previews
+and errors are not exported. Downloads is presented as a
 first-class application area while the automatic migration continues to read
 older `plugin_downloads_*` keys and assigns legacy jobs and rules to the
 primary profile. Ownership backfill is guarded by a durable one-time marker so

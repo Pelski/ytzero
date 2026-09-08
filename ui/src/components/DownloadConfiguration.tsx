@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileText, FolderUp, Info, RotateCw, Trash2 } from "lucide-react";
-import { api, type DownloadConfigResponse, type DownloadSettingDef, type DownloadSettingValue } from "../api";
+import { api, type DownloadConfigResponse, type DownloadCookieHealth, type DownloadSettingDef, type DownloadSettingValue } from "../api";
 import { useI18n } from "../i18n";
 import { Alert, Badge, Button, Chip, FileDropzone, Input, InputGroup, MultiSelectMenu, SelectMenu, SettingRow, SettingsSection, Slider, Switch, Textarea } from "./ui";
 import "./DownloadConfiguration.css";
@@ -17,13 +17,19 @@ export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled
   const [config, setConfig] = useState<DownloadConfigResponse | null>(null);
   const [error, setError] = useState("");
   const [cookies, setCookies] = useState(false);
+  const [cookieHealth, setCookieHealth] = useState<DownloadCookieHealth | null>(null);
   const [uploading, setUploading] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pastedCookies, setPastedCookies] = useState("");
   const [updatingYtdlp, setUpdatingYtdlp] = useState(false);
   const [ytdlpNotice, setYtdlpNotice] = useState("");
 
-  const load = useCallback(() => api.downloadConfig().then((result) => { setConfig(result); setCookies(result.cookies_configured); }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason))), []);
+  const load = useCallback(() => api.downloadConfig().then((result) => {
+    setConfig(result);
+    setCookies(result.cookies_configured);
+    setCookieHealth(null);
+    if (result.cookies_configured) void api.downloadCookies().then(setCookieHealth).catch(() => setCookieHealth({ configured: true, recognition: "unknown", checked_at: null }));
+  }).catch((reason) => setError(reason instanceof Error ? reason.message : String(reason))), []);
   useEffect(() => { void load(); }, [load]);
 
   const defs = useMemo(() => new Map(config?.definitions.map((definition) => [definition.key, definition]) ?? []), [config]);
@@ -83,7 +89,7 @@ export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled
 
   const uploadCookies = async (file: File) => {
     setUploading(true); setError("");
-    try { const result = await api.uploadDownloadCookies(file); setCookies(result.configured); setPasteOpen(false); setPastedCookies(""); }
+    try { const result = await api.uploadDownloadCookies(file); setCookies(result.configured); setCookieHealth(result); setPasteOpen(false); setPastedCookies(""); }
     catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
     finally { setUploading(false); }
   };
@@ -99,6 +105,15 @@ export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled
     const next = scheduleDays.includes(day) ? scheduleDays.filter((value) => value !== day) : [...scheduleDays, day].sort();
     if (next.length > 0) void update("download_schedule_days", next.join(","));
   };
+  const cookieStatus = !cookies
+    ? { label: t("downloadCookiesNotConfigured"), variant: "neutral" as const }
+    : cookieHealth?.recognition === "recognized"
+      ? { label: t("downloadCookiesRecognized"), variant: "success" as const }
+      : cookieHealth?.recognition === "unrecognized"
+        ? { label: t("downloadCookiesUnrecognized"), variant: "danger" as const }
+        : cookieHealth
+          ? { label: t("downloadCookiesStatusError"), variant: "warning" as const }
+          : { label: t("downloadCookiesConfigured"), variant: "neutral" as const };
   return <div className="dl-config">
     {error && <Alert variant="danger">{error}</Alert>}
     <SettingsSection title={t("Video downloads")} description={t("Keep video copies on the server so their availability does not depend on external providers.")}>
@@ -130,7 +145,7 @@ export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled
     {section(t("Storage and cleanup"), t("Automatic cleanup never removes pinned or protected files."), SECTION_KEYS.storage.filter((key) => Number(config.settings.keep_downloads) !== 1 || !["retention_days", "delete_watched", "delete_watched_hours"].includes(key)))}
     <SettingsSection title={t("YouTube access cookies")} description={t("Only needed for content your YouTube account can access, such as age-restricted or members-only videos.")}>
       <Alert variant="warning" icon={<Info />}>{t("Cookies are a secret stored only on this machine. They are excluded from portable backups.")}</Alert>
-      <strong className={`dl-cookie-status${cookies ? " is-configured" : ""}`}>{cookies ? t("Configured") : t("Not configured")}</strong>
+      <Badge className="dl-cookie-health" variant={cookieStatus.variant}>{cookieStatus.label}</Badge>
       <FileDropzone
         accept=".txt,text/plain"
         disabled={uploading || !config.can_manage}
@@ -141,7 +156,7 @@ export default function DownloadConfiguration({ shortsEnabled }: { shortsEnabled
         actionIcon={<FolderUp />}
         onFiles={(files) => { if (files[0]) void uploadCookies(files[0]); }}
       />
-      <div className="dl-cookie-actions"><Button disabled={uploading} onClick={() => setPasteOpen((value) => !value)} leadingIcon={<FileText />}>{t("Paste instead")}</Button>{cookies && <Button variant="danger" onClick={() => api.removeDownloadCookies().then((result) => setCookies(result.configured))} leadingIcon={<Trash2 />}>{t("Remove")}</Button>}</div>
+      <div className="dl-cookie-actions"><Button disabled={uploading} onClick={() => setPasteOpen((value) => !value)} leadingIcon={<FileText />}>{t("Paste instead")}</Button>{cookies && <Button variant="danger" onClick={() => api.removeDownloadCookies().then((result) => { setCookies(result.configured); setCookieHealth(result); })} leadingIcon={<Trash2 />}>{t("Remove")}</Button>}</div>
       {pasteOpen && <div className="dl-cookie-paste"><Textarea value={pastedCookies} onChange={(event) => setPastedCookies(event.target.value)} placeholder="# Netscape HTTP Cookie File" /><Button variant="primary" disabled={!pastedCookies.trim() || uploading} onClick={() => void uploadCookies(new File([pastedCookies], "cookies.txt", {type:"text/plain"}))}>{t("Save cookies")}</Button></div>}
     </SettingsSection>
     {section(t("Experimental"), t("Features that may require additional tools or have compatibility limits."), SECTION_KEYS.advanced)}

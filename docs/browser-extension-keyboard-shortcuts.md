@@ -158,6 +158,17 @@ a `shortcut` player event. Never emit the configured chord as the action.
 | `toggleTheater` | **Do not alter iframe layout**; emit request | Parent toggles theater mode |
 | `close` | **Do not close the iframe**; emit request | Parent closes dialog/fullscreen/PiP/theater in priority order |
 
+When the top document owns a configured player shortcut because focus is
+outside the iframe, it mirrors the iframe-owned operation through the player
+command bridge. In particular, `temporaryBoost` sends `set-playback-rate` with
+`2` after the hold threshold and sends the saved effective rate on keyup. The
+plain YouTube Player API is only the compatibility fallback when the extension
+does not claim the command.
+
+This routing is limited to the embedded YouTube player. Local, direct-stream,
+download-while-playing, and audio modes keep their native shortcut handlers and
+must never depend on the extension bridge.
+
 For every matched keydown, emit after successfully applying the action, or
 immediately for a parent-owned request:
 

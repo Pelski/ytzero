@@ -1,5 +1,6 @@
 import { decodeHtmlEntities } from "./htmlEntities";
 import type { ChannelSearchResult, PublishedAgo, SearchResult } from "./youtube";
+import { readYouTubeResponseWithCookies } from "./youtubeCookieJar";
 
 interface YoutubeSearchDependencies {
   requestHeaders: (userId?: number) => Record<string, string>;
@@ -185,8 +186,7 @@ function collectSearchChannels(data: any): ChannelSearchResult[] {
 async function fetchSearchData(query: string, filter = "", userId?: number): Promise<any | null> {
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}${filter}`;
   const res = await fetch(url, { headers: requestHeaders(userId) });
-  if (!res.ok) throw new Error(`YouTube search failed (${res.status})`);
-  return extractInitialData(await res.text());
+  return extractInitialData(await readYouTubeResponseWithCookies(res, "YouTube search failed", userId, url));
 }
 
 // YouTube's "Channel" search filter (sp=EgIQAg%3D%3D). The default results page

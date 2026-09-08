@@ -81,8 +81,9 @@ export function isYouTubeBotChallenge(body: string): boolean {
   return /(?:confirm you(?:'|’)re not a bot|unusual traffic|automated quer(?:y|ies))/i.test(body);
 }
 
-export async function readYouTubeResponse(response: Response, failure: string): Promise<string> {
+export async function readYouTubeResponse(response: Response, failure: string, observe?: (body: string) => void): Promise<string> {
   const body = await response.text();
+  observe?.(body);
   if (isYouTubeBotChallenge(body)) throw new Error("YouTube bot challenge: confirm you're not a bot");
   if (!response.ok) throw new Error(`${failure} (${response.status})`);
   return body;

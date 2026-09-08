@@ -18,6 +18,7 @@ import { registerYtdlpUpdateRoutes } from "./ytdlpUpdateRoutes";
 import { ytdlpUpdateChannel, ytdlpUpdateIntervalDays } from "../ytdlpUpdater";
 import { ensureOnDemandVideo, OnDemandVideoImportError } from "../onDemandVideoImport";
 import type { DownloadQuality } from "../downloadSettings";
+import { invalidateYouTubeCookieHealth, youtubeCookieHealth } from "../youtubeCookieJar";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>;
@@ -166,7 +167,7 @@ api.delete("/downloads/automation/:id", async (c) => {
 
 api.get("/downloads/cookies", async (c) => {
   const uid = currentUserId(c);
-  return await isChildUser(uid) ? c.json({ error: "not allowed" }, 403) : c.json({ configured: downloadCookiesConfigured(uid) });
+  return await isChildUser(uid) ? c.json({ error: "not allowed" }, 403) : c.json(await youtubeCookieHealth(uid));
 });
 
 api.post("/downloads/cookies", async (c) => {
@@ -177,9 +178,10 @@ api.post("/downloads/cookies", async (c) => {
     const file = form.get("file");
     if (!(file instanceof File)) return c.json({ error: "cookies.txt file required" }, 400);
     saveDownloadCookies(uid, await file.text());
+    invalidateYouTubeCookieHealth(uid);
     invalidateAudioSources(uid);
     invalidateDirectVideoSources(uid);
-    return c.json({ configured: true });
+    return c.json(await youtubeCookieHealth(uid));
   } catch (error) {
     return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
   }
@@ -189,9 +191,10 @@ api.delete("/downloads/cookies", async (c) => {
   const uid = currentUserId(c);
   if (await isChildUser(uid)) return c.json({ error: "not allowed" }, 403);
   removeDownloadCookies(uid);
+  invalidateYouTubeCookieHealth(uid);
   invalidateAudioSources(uid);
   invalidateDirectVideoSources(uid);
-  return c.json({ configured: false });
+  return c.json({ configured: false, recognition: "unknown" as const, checked_at: null });
 });
 
 api.get("/downloads", async (c) => {

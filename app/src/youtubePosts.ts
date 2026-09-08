@@ -1,6 +1,7 @@
-import { isYouTubeRateLimitError, readYouTubeResponse } from "./youtubeRateLimit";
+import { isYouTubeRateLimitError } from "./youtubeRateLimit";
 import { parsePublishedTimeText, relativePublishedAt } from "./youtube";
 import { resolveYouTubeLanguage, youtubeRequestHeaders, type ResolvedYouTubeLanguage } from "./youtubeRequestLanguage";
+import { readYouTubeResponseWithCookies } from "./youtubeCookieJar";
 
 const POSTS_TTL_MS = 30 * 60 * 1000;
 const MAX_CONTINUATION_PAGES = 4;
@@ -159,17 +160,19 @@ function innertubeConfig(html: string): { apiKey: string; clientVersion: string 
 }
 
 async function fetchContinuation(token: string, config: { apiKey: string; clientVersion: string }, language: ResolvedYouTubeLanguage): Promise<any> {
-  const response = await fetch(`https://www.youtube.com/youtubei/v1/browse?prettyPrint=false&key=${encodeURIComponent(config.apiKey)}`, {
+  const url = `https://www.youtube.com/youtubei/v1/browse?prettyPrint=false&key=${encodeURIComponent(config.apiKey)}`;
+  const response = await fetch(url, {
     method: "POST",
     headers: { ...requestHeaders(language), "Content-Type": "application/json", Origin: "https://www.youtube.com" },
     body: JSON.stringify({ context: { client: { clientName: "WEB", clientVersion: config.clientVersion, hl: language.hl, gl: "US" } }, continuation: token }),
   });
-  return JSON.parse(await readYouTubeResponse(response, "posts continuation fetch failed"));
+  return JSON.parse(await readYouTubeResponseWithCookies(response, "posts continuation fetch failed", language.userId, url));
 }
 
 async function fetchFresh(channelId: string, language: ResolvedYouTubeLanguage): Promise<PostsCacheEntry> {
-  const response = await fetch(`https://www.youtube.com/channel/${encodeURIComponent(channelId)}/posts?hl=${encodeURIComponent(language.hl)}`, { headers: requestHeaders(language) });
-  const html = await readYouTubeResponse(response, "posts fetch failed");
+  const url = `https://www.youtube.com/channel/${encodeURIComponent(channelId)}/posts?hl=${encodeURIComponent(language.hl)}`;
+  const response = await fetch(url, { headers: requestHeaders(language) });
+  const html = await readYouTubeResponseWithCookies(response, "posts fetch failed", language.userId, url);
   const data = extractInitialData(html);
   const posts = parseChannelPosts(data);
   const seen = new Set(posts.map((post) => post.id));

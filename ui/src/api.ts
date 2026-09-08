@@ -46,6 +46,7 @@ import {
   type DeArrowBranding,
   type DiscoveryRecommendation,
   type DownloadAutomationOptions,
+  type DownloadCookieHealth,
   type DownloadConfigResponse,
   type DownloadQuality,
   type DownloadSettingValue,
@@ -216,13 +217,13 @@ export const api = {
   setSocialCommentLike: (id: string, liked: boolean) =>
     http<{ comment: SocialComment }>(`/social/comments/${id}/like`, { method: liked ? "PUT" : "DELETE", body: liked ? "{}" : undefined }),
   ...createSocialWatchPartyApi(http),
-  downloadCookies: () => http<{ configured: boolean }>("/downloads/cookies"),
+  downloadCookies: () => http<DownloadCookieHealth>("/downloads/cookies"),
   uploadDownloadCookies: (file: File) => {
     const fd = new FormData();
     fd.append("file", file);
-    return http<{ configured: boolean }>("/downloads/cookies", { method: "POST", body: fd });
+    return http<DownloadCookieHealth>("/downloads/cookies", { method: "POST", body: fd });
   },
-  removeDownloadCookies: () => http<{ configured: boolean }>("/downloads/cookies", { method: "DELETE" }),
+  removeDownloadCookies: () => http<DownloadCookieHealth>("/downloads/cookies", { method: "DELETE" }),
   downloads: (scope: "mine" | "all" = "mine") => http<DownloadsResponse>(`/downloads${scope === "all" ? "?scope=all" : ""}`),
   cancelDownloadQueue: () => http<{ ok: true; cancelled: number }>("/downloads/queue", { method: "DELETE" }),
   downloadSummary: () => sharedGet<DownloadSummary>("downloads-summary", "/downloads/summary"),

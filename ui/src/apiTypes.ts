@@ -572,6 +572,11 @@ export interface DownloadConfigResponse {
   time_zone: string;
   ytdlp: YtdlpConfig;
 }
+export interface DownloadCookieHealth {
+  configured: boolean;
+  recognition: "recognized" | "unrecognized" | "unknown";
+  checked_at: string | null;
+}
 export interface YtdlpConfig {
   version: string | null;
   update_channel: "stable" | "nightly";
