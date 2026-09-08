@@ -2,8 +2,9 @@ import { existsSync, unlinkSync } from "node:fs";
 import { getSetting, setSetting } from "./db";
 import { invalidateYtdlpStatus, YTDLP, ytdlpStatus } from "./downloadConfig";
 import { log } from "./logger";
+import { resolveYtdlpUpdateChannel, type YtdlpUpdateChannel } from "./ytdlpUpdatePolicy";
 
-export type YtdlpUpdateChannel = "stable" | "nightly";
+export type { YtdlpUpdateChannel } from "./ytdlpUpdatePolicy";
 export const YTDLP_UPDATE_INTERVAL_DAYS = [0, 1, 3, 7, 30] as const;
 
 export interface YtdlpUpdateResult {
@@ -27,7 +28,7 @@ export function ytdlpProvisionReconciliationPending(): boolean {
 }
 
 export function ytdlpUpdateChannel(): YtdlpUpdateChannel {
-  return getSetting("ytdlp_update_channel") === "stable" ? "stable" : "nightly";
+  return resolveYtdlpUpdateChannel(getSetting("ytdlp_update_channel"));
 }
 
 export function ytdlpUpdateIntervalDays(): number {

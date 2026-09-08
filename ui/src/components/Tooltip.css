@@ -18,6 +18,11 @@
 .tooltip-wrap:not(.tooltip-wrap--controlled):hover .tooltip-tip,
 .tooltip-wrap--open .tooltip-tip { opacity: 1; }
 .tooltip-tip--portal {
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(320px, calc(100vw - 16px));
+  white-space: normal;
+  overflow-wrap: anywhere;
   opacity: 1;
   position: fixed;
   z-index: 1100;

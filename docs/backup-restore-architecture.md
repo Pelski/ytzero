@@ -504,7 +504,9 @@ state and are likewise excluded.
   exported as portable configuration
 - image cache, Deno's yt-dlp JavaScript-solver cache, and other network-derived cache
 - the yt-dlp update channel, automatic-update interval, and last-attempt timestamp;
-  these control a machine-installed executable and remain machine-local
+  these control a machine-installed executable and remain machine-local. A
+  missing channel means nightly; an explicit stable/nightly selection is never
+  overwritten or migrated
 - the container-managed yt-dlp binary in `/data/bin/yt-dlp` and its adjacent
   pending-channel-reconciliation marker; these are machine-bound executable
   state, excluded from portable backups, but included when an operator makes

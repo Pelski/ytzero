@@ -17,6 +17,6 @@ export function SessionPlayQueueAction({ video, compact = false }: { video: Pick
     void api.importVideo(video.video_id).catch(() => { removeFromSessionPlayQueue(video.video_id); emitToast(t("sessionQueueImportFailed"), "danger"); });
   };
   const label = t(queued ? "sessionQueueRemove" : "sessionQueueAdd");
-  const button = <button type="button" className={`action-btn${queued ? " active" : ""}`} aria-label={label} title={label} onClick={toggle}>{queued ? <ListMinus /> : <ListPlus />}</button>;
+  const button = <button type="button" className={`action-btn${queued ? " active" : ""}`} aria-label={label} title={compact ? label : undefined} onClick={toggle}>{queued ? <ListMinus /> : <ListPlus />}</button>;
   return compact ? button : <Tooltip text={label}>{button}</Tooltip>;
 }
