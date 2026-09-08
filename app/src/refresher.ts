@@ -10,7 +10,8 @@ import { preserveChannelMedia, preservePlaylistMedia } from "./channelMedia";
 import { notifyChannelVideos, notifyFollowedPlaylistVideos, notifyTagRuleMatches } from "./notifications";
 import { IMPORTED_CHANNEL_ID } from "./takeout";
 import { beginMutation, maintenanceActive } from "./maintenance";
-import { estimateUploadCadenceMs, selectRefreshBatch, targetRefreshIntervalMs, type AdaptiveRefreshOptions, type RefreshCandidate } from "./adaptiveRefresh";
+import { estimateUploadCadenceMs, selectRefreshBatch, targetRefreshIntervalMs, type RefreshCandidate } from "./adaptiveRefresh";
+import { adaptiveRefreshOptions, videoMaintenanceMaxAgeDays } from "./adaptiveRefreshConfig";
 import { publishAppEventSoon } from "./appEvents";
 import { configuredTimeZone } from "./timeZone";
 import { manualScheduleIsDue, nextScheduleOccurrenceMs, parseManualRefreshSchedule } from "./channelRefreshSchedule";
@@ -28,32 +29,8 @@ const MAX_SYNC_PLAYLISTS = 25;
 const PLAYLIST_SYNC_DELAY_MS = 800;
 const EXACT_DATE_BACKFILL_LIMIT = 18;
 const EXACT_DATE_BACKFILL_CONCURRENCY = 3;
-const VIDEO_MAINTENANCE_MAX_AGE_DAYS = positiveNumber(process.env.VIDEO_MAINTENANCE_MAX_AGE_DAYS, 90);
+const VIDEO_MAINTENANCE_MAX_AGE_DAYS = videoMaintenanceMaxAgeDays();
 const VIDEO_MAINTENANCE_CUTOFF = `-${VIDEO_MAINTENANCE_MAX_AGE_DAYS} days`;
-function positiveNumber(value: string | undefined, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-const FEED_REFRESH_BATCH_SIZE = 10;
-const FEED_REFRESH_FAIRNESS_SLOTS = 2;
-
-function adaptiveRefreshOptions(force = false): AdaptiveRefreshOptions {
-  const minIntervalMin = positiveNumber(process.env.ADAPTIVE_REFRESH_MIN_MINUTES, 10);
-  const maxIntervalMin = Math.max(minIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_MAX_MINUTES, 12 * 60));
-  const unknownIntervalMin = Math.min(maxIntervalMin, Math.max(minIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_UNKNOWN_MINUTES, 2 * 60)));
-  const inactiveMaxIntervalMin = Math.min(3 * 24 * 60, Math.max(maxIntervalMin, positiveNumber(process.env.ADAPTIVE_REFRESH_INACTIVE_MAX_MINUTES, 3 * 24 * 60)));
-  return {
-    nowMs: Date.now(),
-    batchSize: FEED_REFRESH_BATCH_SIZE,
-    fairnessSlots: FEED_REFRESH_FAIRNESS_SLOTS,
-    minIntervalMs: minIntervalMin * 60_000,
-    maxIntervalMs: maxIntervalMin * 60_000,
-    unknownIntervalMs: unknownIntervalMin * 60_000,
-    inactiveMaxIntervalMs: inactiveMaxIntervalMin * 60_000,
-    force,
-  };
-}
 
 async function feedRefreshCandidates(): Promise<RefreshCandidate[]> {
   const channelRows = await database.prepare(`

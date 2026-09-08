@@ -2,7 +2,7 @@ import type { Context, Hono } from "hono";
 import { publishAppEvent } from "../appEvents";
 import { database } from "../database";
 import { getUserSetting } from "../db";
-import { fetchChannelAbout, fetchChannelFeed, fetchVideoChapters, fetchVideoCreators, fetchVideoInfo, type ChannelFeed, type VideoInfo } from "../youtube";
+import { fetchVideoChapters, fetchVideoCreators, fetchVideoInfo } from "../youtube";
 import { discoveryRecommendations, dismissDiscoveryRecommendation, recommendationFeed, refreshDiscoveryInBackground, refreshDiscoveryNow } from "../plugins";
 import { validYouTubeVideoId } from "../youtubeComments";
 import { childDownloadsOnly, childHidesLive, childLocalOnly, isChildUser, isParentLocked } from "../childTime";
@@ -12,7 +12,7 @@ import { log } from "../logger";
 import { ageMs, CHAPTERS_DB_TTL, CREATORS_DB_TTL } from "../routeCache";
 import { videoExistsStmt, videoSelect, type VideoRow } from "../videoRoutesSupport";
 import { registerVideoCommentRoutes } from "./videoCommentRoutes";
-import { persistDirectVideoInfo } from "../videoInfoPersistence";
+import { importExternalVideoInfo, type VideoInfoImportResult } from "../externalVideoInfoImport";
 import { refreshExternalWatchVideo } from "../externalVideoRefresh";
 import { isYouTubeRefusalError, youtubeRefusalGate } from "../youtubeRateLimit";
 import { AsyncTtlCache } from "../asyncTtlCache";
@@ -27,65 +27,7 @@ const RELATED_EMPTY_TTL_MS = 6 * 60 * 60_000;
 const RELATED_REFUSED_TTL_MS = 90_000;
 const VIDEO_INFO_IMPORT_TTL_MS = 60_000;
 
-interface VideoInfoImportResult {
-  feed: ChannelFeed | null;
-  feedError: unknown | null;
-}
-
 const videoInfoImports = new AsyncTtlCache<VideoInfoImportResult>({ ttlMs: VIDEO_INFO_IMPORT_TTL_MS });
-
-async function importVideoInfo(info: VideoInfo, userId: number): Promise<VideoInfoImportResult> {
-  // Channel avatar + the channel's recent uploads (for the "related" panel).
-  const [aboutResult, feedResult] = await Promise.allSettled([
-    fetchChannelAbout(info.channelId), fetchChannelFeed(info.channelId, userId),
-  ]);
-  const about = aboutResult.status === "fulfilled" ? aboutResult.value : null;
-  const feed = feedResult.status === "fulfilled" ? feedResult.value : null;
-  const avatar = about?.avatar ?? "";
-
-  // Upsert channel: insert as external if new, or update avatar if missing.
-  await database.prepare(`
-    INSERT INTO channels (channel_id, title, url, thumbnail, followed, external)
-    VALUES (?, ?, ?, ?, 0, 1)
-    ON CONFLICT(channel_id) DO UPDATE SET
-      thumbnail = CASE WHEN channels.thumbnail = '' OR channels.thumbnail IS NULL
-                       THEN excluded.thumbnail ELSE channels.thumbnail END
-  `).run(info.channelId, info.channelTitle, `https://www.youtube.com/channel/${info.channelId}`, avatar);
-
-  const insertRelatedVideo = database.prepare(`
-    INSERT OR IGNORE INTO videos
-      (video_id, channel_id, title, description, thumbnail, published_at, live_status, status, views, duration, external)
-    VALUES (?, ?, ?, ?, ?, ?, 'none', 'inbox', ?, ?, 1)
-  `);
-
-  // The directly requested player response is authoritative for live state,
-  // even when RSS imported this row earlier without a live marker.
-  const existing = await videoExistsStmt.get(info.videoId);
-  await persistDirectVideoInfo(info);
-
-  // Insert the channel's recent uploads as external so the related panel fills.
-  if (feed) {
-    const insertMany = database.transaction(async (videos: typeof feed.videos) => {
-      for (const v of videos) {
-        await insertRelatedVideo.run(
-          v.videoId, info.channelId, v.title, v.description,
-          v.thumbnail, v.publishedAt, v.views, null,
-        );
-      }
-    });
-    await insertMany(feed.videos);
-  }
-  log.info("external.video_info_loaded", {
-    videoId: info.videoId,
-    channelId: info.channelId,
-    inserted: !existing,
-    relatedImported: feed?.videos.length ?? 0,
-  });
-  return {
-    feed,
-    feedError: feedResult.status === "rejected" ? feedResult.reason : null,
-  };
-}
 
 export function registerVideoRoutes(
   api: Api,
@@ -276,7 +218,7 @@ api.get("/videos/:id/info", async (c) => {
     if (childHidesLive(uid) && info.liveStatus !== "none") {
       return c.json({ error: "live streams are disabled for this profile" }, 403);
     }
-    const imported = await videoInfoImports.run(importKey, () => importVideoInfo(info, uid));
+    const imported = await videoInfoImports.run(importKey, () => importExternalVideoInfo(info, uid));
     const { feed, feedError } = imported;
     if (relatedRefresh && feedError && isYouTubeRefusalError(feedError)) {
       const until = Date.now() + RELATED_REFUSED_TTL_MS;
