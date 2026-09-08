@@ -1,20 +1,20 @@
 .header-settings-popover { max-height: min(70vh, 560px); min-width: 270px; overflow-y: auto; }
 .header-settings-menu { min-width: 258px; }
 .header-settings-menu > button,
-.header-settings-menu > .channel-feed-setting-tooltip > button,
+.header-settings-menu > .header-settings-item-tooltip > button,
 .header-settings-scroll > button { align-items: center; background: none; border: 0; border-radius: 8px; color: var(--text); cursor: pointer; display: flex; font-size: 13.5px; gap: 12px; padding: 9px 10px; text-align: left; width: 100%; }
 .header-settings-menu > button:hover,
-.header-settings-menu > .channel-feed-setting-tooltip > button:hover,
+.header-settings-menu > .header-settings-item-tooltip > button:hover,
 .header-settings-scroll > button:hover { background: var(--surface-3); }
 .header-settings-menu > button:disabled,
-.header-settings-menu > .channel-feed-setting-tooltip > button:disabled { cursor: not-allowed; opacity: .5; }
+.header-settings-menu > .header-settings-item-tooltip > button:disabled { cursor: not-allowed; opacity: .5; }
 .header-settings-menu > button:disabled:hover,
-.header-settings-menu > .channel-feed-setting-tooltip > button:disabled:hover { background: none; }
+.header-settings-menu > .header-settings-item-tooltip > button:disabled:hover { background: none; }
 .header-settings-menu > button.is-selected,
-.header-settings-menu > .channel-feed-setting-tooltip > button.is-selected,
+.header-settings-menu > .header-settings-item-tooltip > button.is-selected,
 .header-settings-scroll > button.is-selected { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .header-settings-menu > button > svg,
-.header-settings-menu > .channel-feed-setting-tooltip > button > svg,
+.header-settings-menu > .header-settings-item-tooltip > button > svg,
 .header-settings-scroll > button > svg { color: var(--text-2); height: 17px; stroke-width: 1.7; width: 17px; }
 .header-settings-header { align-items: center; border-bottom: 1px solid var(--surface-3); display: flex; font-size: 13px; font-weight: 600; gap: 8px; margin: 0 0 4px; padding: 2px 4px 8px; }
 .header-settings-header button { background: transparent; border: 0; border-radius: 6px; color: var(--text); display: grid; flex-shrink: 0; height: 26px; padding: 0; place-items: center; width: 26px; }
@@ -22,8 +22,9 @@
 .header-settings-header button svg { color: var(--text-2); height: 16px; width: 16px; }
 .header-settings-section-label { color: var(--text-3); font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 3px 10px 5px; text-transform: uppercase; }
 .header-settings-spacer { background: transparent; }
-.header-settings-menu > :is(button, .channel-feed-setting-tooltip) + :is(button, .channel-feed-setting-tooltip),
+.header-settings-menu > :is(button, .header-settings-item-tooltip) + :is(button, .header-settings-item-tooltip),
 .header-settings-scroll > button + button { margin-top: 2px; }
+.header-settings-item-tooltip { display: block; width: 100%; }
 .header-settings-item { gap: 9px !important; }
 .header-settings-item > span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .header-settings-item > .ui-menu__status { color: var(--text-3); font-size: 12px; font-weight: 400; margin-left: auto; max-width: 95px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -168,6 +168,8 @@ export default function ChannelPlaylistPage() {
 
   if (loading && !playlist) return <VideoGridSkeleton gridSize="sm" />;
   if (!playlist) return <EmptyState title={t("playlistUnavailable")} />;
+  const followed = Boolean(playlist.followed);
+  const followRequiredHint = followed ? undefined : t("playlistFollowRequiredHint");
   const downloadMenuItem = !canDownloadPlaylist ? null : allPlaylistVideos.some((video) => video.downloads_enabled)
     ? <Popconfirm
         triggerClassName="ui-menu__popover-trigger"
@@ -189,19 +191,23 @@ export default function ChannelPlaylistPage() {
           >
             {settingsView === "root" && <>
               <HeaderSettingsItem icon={<ListFilter />} label={t("playlistSort")} status={sortLabel} onClick={() => setSettingsView("sort")} />
-              {playlist.followed && <HeaderSettingsItem icon={<Bell />} label={t("notificationPlaylistUpdates")} status={notificationMode === "default" ? t("notificationSourceDefaultOn") : notificationMode === "on" ? t("notificationSourceAlwaysOn") : t("notificationSourceAlwaysOff")} onClick={() => setSettingsView("notifications")} />}
-              {playlist.followed && <HeaderSettingsItem
+              <HeaderSettingsItem icon={<Bell />} label={t("notificationPlaylistUpdates")} status={notificationMode === "default" ? t("notificationSourceDefaultOn") : notificationMode === "on" ? t("notificationSourceAlwaysOn") : t("notificationSourceAlwaysOff")} disabled={!followed} disabledReason={followRequiredHint} onClick={() => setSettingsView("notifications")} />
+              <HeaderSettingsItem
                 icon={<Download />}
                 label={t("playlistOfflinePolicy")}
                 status={t(playlist.offline_policy === "none" ? "playlistOfflineNone" : playlist.offline_policy === "download" ? "playlistOfflineDownload" : "playlistOfflineKeep")}
+                disabled={!followed}
+                disabledReason={followRequiredHint}
                 onClick={() => setSettingsView("downloads")}
-              />}
-              {playlist.followed && <HeaderSettingsItem
+              />
+              <HeaderSettingsItem
                 icon={<Gauge />}
                 label={t("playlistDownloadQuality")}
                 status={downloadQualityLabel(playlist.download_quality)}
+                disabled={!followed}
+                disabledReason={followRequiredHint}
                 onClick={() => setSettingsView("download-quality")}
-              />}
+              />
             </>}
             {settingsView === "sort" && <>
               <HeaderSettingsHeader onBack={() => setSettingsView("root")} backLabel={t("back")}>{t("playlistSort")}</HeaderSettingsHeader>

@@ -100,7 +100,6 @@
   flex-wrap: wrap;
   justify-content: flex-end;
 }
-.channel-feed-setting-tooltip { display: block; width: 100%; }
 
 .channel-tags-row {
   display: flex;

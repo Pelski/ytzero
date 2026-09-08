@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Check, ChevronLeft, ChevronRight, SlidersHorizontal } from "lucide-react";
 import { IconButton, Menu, MenuSeparator, MenuStatus, Popover, ScrollArea } from "./ui";
+import Tooltip from "./Tooltip";
 import "./HeaderSettingsMenu.css";
 
 export function HeaderSettingsPopover({ open, onOpenChange, label, children }: {
@@ -21,15 +22,19 @@ export function HeaderSettingsPopover({ open, onOpenChange, label, children }: {
   </Popover>;
 }
 
-export function HeaderSettingsItem({ icon, label, status, hasNext = true, ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
+export function HeaderSettingsItem({ icon, label, status, hasNext = true, disabledReason, ...props }: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
   icon: ReactNode;
   label: ReactNode;
   status?: ReactNode;
   hasNext?: boolean;
+  disabledReason?: string;
 }) {
-  return <button type="button" className="header-settings-item" {...props}>
+  const button = <button type="button" className="header-settings-item" {...props}>
     {icon}<span>{label}</span>{status != null && <MenuStatus>{status}</MenuStatus>}{hasNext && <ChevronRight />}
   </button>;
+  return disabledReason
+    ? <Tooltip text={disabledReason} pos="left" portal className="header-settings-item-tooltip">{button}</Tooltip>
+    : button;
 }
 
 export function HeaderSettingsSectionLabel({ children }: { children: ReactNode }) {

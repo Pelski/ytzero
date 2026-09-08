@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./ChannelPage.css";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { Bell, CalendarClock, Captions, ExternalLink, FileClock, Gauge, ListRestart, ListVideo, MessageSquareText, Plus, Radio, RefreshCw, Search, Star, UserMinus, UserPlus, Video as VideoIcon, X, Zap } from "lucide-react";
@@ -291,10 +291,6 @@ export default function ChannelPage({ onPlay, shortsEnabled }: { onPlay: (v: Vid
       });
   };
 
-  const withFeedSettingsTooltip = (button: ReactNode) => followed
-    ? button
-    : <Tooltip text={t("channelFeedFollowRequiredHint")} pos="left" portal className="channel-feed-setting-tooltip">{button}</Tooltip>;
-
   const changeCaptions = (mode: "off" | "language" | null, language?: string) => {
     if (!id) return;
     const previousMode = captionMode;
@@ -567,10 +563,10 @@ export default function ChannelPage({ onPlay, shortsEnabled }: { onPlay: (v: Vid
                     <HeaderSettingsItem icon={<Captions />} label={t("subtitles")} status={captionsLabel} onClick={() => setTechnicalView("captions")} />
                     <HeaderSettingsSeparator />
                     <HeaderSettingsSectionLabel>{t("channelFeed")}</HeaderSettingsSectionLabel>
-                    {withFeedSettingsTooltip(<HeaderSettingsItem icon={<CalendarClock />} label={t("channelRefreshSchedule")} disabled={!followed} onClick={() => { setTechnicalOpen(false); setRefreshScheduleOpen(true); }} />)}
-                    {withFeedSettingsTooltip(<HeaderSettingsItem icon={<Star />} label={t("channelMembersOnlyFeed")} status={membersOnlyFeedLabel} disabled={!followed} onClick={() => setTechnicalView("members")} />)}
-                    {shortsEnabled && withFeedSettingsTooltip(<HeaderSettingsItem icon={<Zap />} label={t("channelShortsFeed")} status={shortsFeedLabel} disabled={!followed} onClick={() => setTechnicalView("shorts")} />)}
-                    {withFeedSettingsTooltip(<HeaderSettingsItem icon={<Bell />} label={t("notificationChannelUploads")} status={notificationMode === "default" ? t("notificationSourceDefaultOff") : notificationMode === "on" ? t("notificationSourceAlwaysOn") : t("notificationSourceAlwaysOff")} disabled={!followed} onClick={() => setTechnicalView("notifications")} />)}
+                    <HeaderSettingsItem icon={<CalendarClock />} label={t("channelRefreshSchedule")} disabled={!followed} disabledReason={!followed ? t("channelFeedFollowRequiredHint") : undefined} onClick={() => { setTechnicalOpen(false); setRefreshScheduleOpen(true); }} />
+                    <HeaderSettingsItem icon={<Star />} label={t("channelMembersOnlyFeed")} status={membersOnlyFeedLabel} disabled={!followed} disabledReason={!followed ? t("channelFeedFollowRequiredHint") : undefined} onClick={() => setTechnicalView("members")} />
+                    {shortsEnabled && <HeaderSettingsItem icon={<Zap />} label={t("channelShortsFeed")} status={shortsFeedLabel} disabled={!followed} disabledReason={!followed ? t("channelFeedFollowRequiredHint") : undefined} onClick={() => setTechnicalView("shorts")} />}
+                    <HeaderSettingsItem icon={<Bell />} label={t("notificationChannelUploads")} status={notificationMode === "default" ? t("notificationSourceDefaultOff") : notificationMode === "on" ? t("notificationSourceAlwaysOn") : t("notificationSourceAlwaysOff")} disabled={!followed} disabledReason={!followed ? t("channelFeedFollowRequiredHint") : undefined} onClick={() => setTechnicalView("notifications")} />
                   </>
                 )}
                 {technicalView === "speed" && (
