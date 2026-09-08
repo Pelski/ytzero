@@ -12,6 +12,7 @@ import { isLanguage } from "../../../shared/uiLanguages";
 import { removeRoleFromExternalMappings } from "../externalRoleMappings";
 import { normalizeYouTubeTitleLanguage } from "../youtubeRequestLanguage";
 import { normalizePlaybackSpeed, normalizePlaybackSpeedOptionsSetting } from "../../../shared/playbackSpeeds";
+import { isWatchCommentsSetting, normalizeWatchCommentsMode } from "../../../shared/watchComments";
 
 type ApiEnvironment = { Variables: { userId: number; sessionAdmin?: boolean; profileAdmin?: boolean } };
 type Api = Hono<ApiEnvironment>; type ApiContext = Context<ApiEnvironment>;
@@ -251,6 +252,9 @@ api.put("/settings", async (c) => {
   if ("show_shorts" in body && body.show_shorts !== "disabled" && body.show_shorts !== "0" && body.show_shorts !== "selected" && body.show_shorts !== "1") {
     return c.json({ error: "invalid Shorts feed mode" }, 400);
   }
+  if ("watch_show_comments" in body && !isWatchCommentsSetting(body.watch_show_comments)) {
+    return c.json({ error: "invalid watch comments mode" }, 400);
+  }
   for (const key of Object.keys(SETTING_DEFAULTS)) {
     if (key === "child_lock_pin_hash" || key === "child_lock_enabled") continue;
     if (!(key in body)) continue;
@@ -264,7 +268,9 @@ api.put("/settings", async (c) => {
           ? normalizePlaybackSpeed(body[key])!
           : key === "player_speed_options"
             ? normalizePlaybackSpeedOptionsSetting(body[key])!
-            : normalizeVideoCardSetting(key, body[key]);
+            : key === "watch_show_comments"
+              ? normalizeWatchCommentsMode(body[key])
+              : normalizeVideoCardSetting(key, body[key]);
       await setUserSetting(uid, key, value);
     }
   }

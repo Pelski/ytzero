@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { LoaderCircle, Play, SkipForward, X } from "lucide-react";
 import "./UpNextOverlay.css";
 import type { QueueDisplayVideo } from "../pages/useUpNextQueue";
-import { img } from "../img";
+import { handleVideoThumbnailError, videoThumbnail } from "../img";
 import { useI18n } from "../i18n";
 import { Button, Switch } from "./ui";
 
@@ -45,7 +45,7 @@ export default function UpNextOverlay({ video, autoplayEnabled, loadingNext, onT
 
   return (
     <div className={`up-next-overlay${loadingNext ? " is-skipping" : ""}`}>
-      <div key={`bg-${video.video_id}`} className="up-next-bg" style={{ backgroundImage: `url(${img(video.thumbnail)})` }} aria-hidden="true" />
+      <div key={`bg-${video.video_id}`} className="up-next-bg" style={{ backgroundImage: `url(${videoThumbnail(video.thumbnail)})` }} aria-hidden="true" />
       <div className="up-next-scrim" aria-hidden="true" />
       <button type="button" className="up-next-close" onClick={onDismiss} aria-label={t("upNextDismiss")}>
         <X size={20} />
@@ -54,7 +54,7 @@ export default function UpNextOverlay({ video, autoplayEnabled, loadingNext, onT
         <div className="up-next-eyebrow">{t("upNextLabel")}</div>
         <div key={video.video_id} className="up-next-content">
           <div className="up-next-thumb" onClick={onPlayNow} role="button" tabIndex={0}>
-            <img src={img(video.thumbnail)} alt="" />
+            <img src={videoThumbnail(video.thumbnail)} alt="" onError={handleVideoThumbnailError} />
             <div className="up-next-play"><Play size={30} fill="currentColor" /></div>
             {autoplayEnabled && (
               <svg className="up-next-ring" viewBox="0 0 36 36" aria-hidden="true">

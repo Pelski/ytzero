@@ -7,6 +7,20 @@ export function img(url: string | null | undefined, options?: { onMiss?: "error"
   return options?.onMiss === "error" ? `${proxyUrl}&onMiss=error` : proxyUrl;
 }
 
+export const NO_VIDEO_THUMBNAIL = "/nothumbnail.jpg";
+
+/** Resolve a video image without applying the placeholder to avatars or other artwork. */
+export function videoThumbnail(url: string | null | undefined, options?: { onMiss?: "error" }): string {
+  return img(url, options) || NO_VIDEO_THUMBNAIL;
+}
+
+/** Final fallback for video image elements whose configured source failed. */
+export function handleVideoThumbnailError(event: { currentTarget: HTMLImageElement }): void {
+  const image = event.currentTarget;
+  if (image.getAttribute("src") === NO_VIDEO_THUMBNAIL) return;
+  image.src = NO_VIDEO_THUMBNAIL;
+}
+
 const YOUTUBE_THUMBNAIL_HOST = ".ytimg.com";
 
 // Returns a stable YouTube thumbnail URL for both direct and proxied thumbnail

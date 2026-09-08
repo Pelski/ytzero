@@ -80,7 +80,7 @@
     transition: height 0.42s cubic-bezier(.22, 1, .36, 1);
   }
   .watch-player--audio {
-    height: auto;
+    height: clamp(380px, 52svh, 520px);
   }
 }
 .watch-actions .dl-done { color: #7ee08a; }

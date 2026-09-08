@@ -8,6 +8,7 @@ import { markYouTubeUrl } from "../youtubeUrl";
 import { buildVideoCommentThreads, type VideoCommentThread } from "../videoCommentThreads";
 import { Alert, Button, EmptyState, IconButton, SectionHeader, SelectMenu } from "./ui";
 import "./VideoComments.css";
+import type { WatchCommentsMode } from "../../../shared/watchComments";
 
 const COMMENT_PAGE_SIZE = 20;
 const SORT_EXIT_MS = 140;
@@ -138,7 +139,7 @@ function errorHint(code: string | undefined, t: Translate) {
   return t("commentsLoadFailedHint");
 }
 
-export default function VideoComments({ videoId, creatorAvatar, cinemaMode = false, onSeek, seekDisabled = false }: { videoId: string; creatorAvatar?: string | null; cinemaMode?: boolean; onSeek: (seconds: number) => void; seekDisabled?: boolean }) {
+export default function VideoComments({ videoId, creatorAvatar, cinemaMode = false, loadMode = "scroll", onSeek, seekDisabled = false }: { videoId: string; creatorAvatar?: string | null; cinemaMode?: boolean; loadMode?: Exclude<WatchCommentsMode, "disabled">; onSeek: (seconds: number) => void; seekDisabled?: boolean }) {
   const { t } = useI18n();
   const sectionRef = useRef<HTMLElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
@@ -222,6 +223,11 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
     const section = sectionRef.current;
     if (!section || status !== "idle") return;
 
+    if (loadMode === "auto") {
+      const timer = window.setTimeout(() => void load(), 0);
+      return () => window.clearTimeout(timer);
+    }
+
     const visibleRatio = () => {
       const bounds = section.getBoundingClientRect();
       const visibleHeight = Math.max(0, Math.min(bounds.bottom, window.innerHeight) - Math.max(bounds.top, 0));
@@ -291,9 +297,9 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, [cinemaMode, load, status]);
+  }, [cinemaMode, load, loadMode, status]);
 
-  const showScrollUnlock = status === "idle" && (cinemaMode || scrollUnlockProgress !== null);
+  const showScrollUnlock = loadMode === "scroll" && status === "idle" && (cinemaMode || scrollUnlockProgress !== null);
   const displayedScrollProgress = scrollUnlockProgress ?? 0;
 
   return (
@@ -331,7 +337,7 @@ export default function VideoComments({ videoId, creatorAvatar, cinemaMode = fal
         }
       />
 
-      {status === "idle" && !showScrollUnlock && <div className="video-comments__lazy-placeholder">{t("commentsLazyHint")}</div>}
+      {loadMode === "scroll" && status === "idle" && !showScrollUnlock && <div className="video-comments__lazy-placeholder">{t("commentsLazyHint")}</div>}
       {showScrollUnlock && (
         <div className="video-comments__scroll-unlock">
           <span>{t("commentsScrollToLoad")}</span>

@@ -4,7 +4,7 @@ import { AlertTriangle, Bell, Hash, ListVideo, MessageCircle, Sparkles, UsersRou
 import { api, type AppNotification } from "../api";
 import { subscribe } from "../events";
 import { useI18n } from "../i18n";
-import { img } from "../img";
+import { handleVideoThumbnailError, img, videoThumbnail } from "../img";
 import { Button, EmptyState, FloatingPopover, IconButton, List, ListButton, ScrollArea } from "./ui";
 import "./NotificationCenter.css";
 import { formatAppDate, parseAppTimestamp } from "../dateTime";
@@ -122,7 +122,7 @@ export default function NotificationCenter() {
                   media={media}
                   title={title}
                   description={description}
-                  meta={(playlistVideo || channelVideo || downloadFailed || tagRule) && notification.payload.thumbnail ? <img className="profile-notification-thumbnail" src={img(notification.payload.thumbnail)} alt="" /> : undefined}
+                  meta={(playlistVideo || channelVideo || downloadFailed || tagRule) ? <img className="profile-notification-thumbnail" src={videoThumbnail(notification.payload.thumbnail)} alt="" onError={handleVideoThumbnailError} /> : undefined}
                 >
                   <time>{notificationTime(notification.created_at, locale, timeZone, t("notificationJustNow"))}</time>
                 </ListButton>;

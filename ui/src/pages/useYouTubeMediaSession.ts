@@ -1,7 +1,7 @@
 import { useEffect, type RefObject } from "react";
 import type { Video } from "../api";
 import { sendPlayerCommand } from "../enhanceBridge";
-import { img } from "../img";
+import { videoThumbnail } from "../img";
 import type { WatchPlayerHandle } from "../playerHandle";
 import type { PlayerKind } from "./watchPlayerMode";
 
@@ -40,7 +40,7 @@ export function useYouTubeMediaSession({
       mediaSession.metadata = new MediaMetadata({
         title: video.title,
         artist: video.channel_title,
-        artwork: video.thumbnail ? [{ src: img(video.thumbnail), sizes: "480x360", type: "image/jpeg" }] : [],
+        artwork: [{ src: videoThumbnail(video.thumbnail), sizes: "480x360", type: "image/jpeg" }],
       });
     } catch {}
     if (!watchTogetherTransportLocked) {

@@ -32,6 +32,7 @@ import { canUseWatchAudioMode } from "./watchAudioMode";
 import { useWatchPlaybackPosition } from "./useWatchPlaybackPosition";
 import { useYouTubeMediaSession } from "./useYouTubeMediaSession";
 import { resolveShortcutBindings, SHORTCUT_CLOSE_EVENT, shortcutActionMatches } from "../keyboardShortcuts";
+import { normalizeWatchCommentsMode } from "../../../shared/watchComments";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
 const DESCRIPTION_COLLAPSED_HEIGHT = 148;
@@ -90,7 +91,8 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   // Withheld until settings load: for a profile that turned suggestions off,
   // rendering them first and pulling them away is worse than a brief gap.
   const showRelated = settings ? settings.watch_show_related !== "0" : false;
-  const showComments = settings?.watch_show_comments === "1";
+  const commentsMode = normalizeWatchCommentsMode(settings?.watch_show_comments);
+  const showComments = commentsMode !== "disabled";
   const [downloadSubtitleLanguages, setDownloadSubtitleLanguages] = useState<string[]>([]);
   const [prefetchNextPlaylistVideo, setPrefetchNextPlaylistVideo] = useState(false);
 
@@ -1522,6 +1524,7 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     sharedStartSeconds,
     shortcutFeedback,
     showComments,
+    commentsMode,
     showRelated,
     showShortcutFeedback,
     skipUpNextVideo,

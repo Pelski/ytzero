@@ -285,7 +285,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     toggleSb,
     toggleSbCategory,
     toggleTopChannels,
-    toggleWatchComments,
     toggleWatchRelated,
     unlockPin,
     unlockSettings,
@@ -295,7 +294,6 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
     updatePluginBlockedTerms,
     updatePluginSetting,
     updatingChannelId,
-    watchShowComments,
     watchShowRelated,
     watchedStyle,
   } = controller;

@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertTriangle, ArchiveRestore, ArrowRight, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, ExternalLink, Eye, EyeOff, FileText, Filter, FolderUp, GripVertical, Info, ListMinus, LoaderCircle, ListMusic, Pencil, Play, Plug, Plus, RefreshCw, RotateCcw, ShieldCheck, Sparkles, Trash2, Tv, UserMinus, UserPlus, UsersRound, Wrench, X, Zap } from "lucide-react";
 import { api, type AppChangelog, type AppLogs, type AppLogStreamEvent, type AppVersion, type AuthMethod, type Channel, type ChannelManualStatus, type ChildLockStatus, type FilterRule, type FollowedPlaylist, type MembersOnlyVisibility, type PluginManifest, type PluginSettingsResponse, type Profile, type ProfilePermissionArea, type ProfilePermissions, type Rule, type ShortsFeedMode, type Tag, type UpdateCheck, type UserPlaylist, type UserPlaylistRule, type Video, SB_CATEGORIES } from "../api";
 import { parseCustomPlaybackSpeeds } from "../../../shared/playbackSpeeds";
+import { normalizeWatchCommentsMode, type WatchCommentsMode } from "../../../shared/watchComments";
 import AuthSettings from "../components/AuthSettings";
 import { NAV_ITEMS, normalizeNav, parseNavConfig, type NavConfigEntry } from "../nav";
 import { img } from "../img";
@@ -172,7 +173,8 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
   const [showTopChannels, setShowTopChannels] = useState(true);
   const [hideLiveFromFeed, setHideLiveFromFeed] = useState(false);
   const [watchShowRelated, setWatchShowRelated] = useState(true);
-  const [watchShowComments, setWatchShowComments] = useState(false), [channelPostsTab, setChannelPostsTab] = useState(false);
+  const [watchCommentsMode, setWatchCommentsMode] = useState<WatchCommentsMode>("disabled");
+  const [channelPostsTab, setChannelPostsTab] = useState(false);
   const [feedMaxAgeValue, setFeedMaxAgeValue] = useState("6");
   const [feedMaxAgeUnit, setFeedMaxAgeUnit] = useState<FeedMaxAgeUnit>("months");
   const [feedAutoplayEnabled, setFeedAutoplayEnabled] = useState(false);
@@ -445,7 +447,8 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
       setShowTopChannels(r.settings.show_top_channels !== "0");
       setHideLiveFromFeed(r.settings.hide_live_from_feed === "1");
       setWatchShowRelated(r.settings.watch_show_related !== "0");
-      setWatchShowComments(r.settings.watch_show_comments === "1"); setChannelPostsTab(r.settings.channel_posts_tab === "1");
+      setWatchCommentsMode(normalizeWatchCommentsMode(r.settings.watch_show_comments));
+      setChannelPostsTab(r.settings.channel_posts_tab === "1");
       setFeedMaxAgeValue(r.settings.feed_max_age_value || "6");
       setFeedMaxAgeUnit(isFeedMaxAgeUnit(r.settings.feed_max_age_unit) ? r.settings.feed_max_age_unit : "off");
       setFeedAutoplayEnabled(r.settings.feed_autoplay_enabled === "1");
@@ -669,11 +672,16 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     showToast(t("displaySettingsSaved"));
   };
 
-  const toggleWatchComments = async () => {
-    const next = !watchShowComments;
-    setWatchShowComments(next);
-    await api.updateSettings({ watch_show_comments: next ? "1" : "0" });
-    showToast(t("displaySettingsSaved"));
+  const changeWatchCommentsMode = async (next: WatchCommentsMode) => {
+    const previous = watchCommentsMode;
+    setWatchCommentsMode(next);
+    try {
+      await api.updateSettings({ watch_show_comments: next });
+      showToast(t("displaySettingsSaved"));
+    } catch (error) {
+      setWatchCommentsMode(previous);
+      showToast(error instanceof Error ? error.message : t("error"));
+    }
   };
 
   const toggleChannelPostsTab = async () => { const next = !channelPostsTab; setChannelPostsTab(next); await api.updateSettings({ channel_posts_tab: next ? "1" : "0" }); showToast(t("displaySettingsSaved")); };
@@ -1366,7 +1374,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     toggleSbCategory,
     changeShortsFeedMode,
     toggleTopChannels,
-    toggleWatchComments,
+    changeWatchCommentsMode,
     toggleWatchRelated,
     unlockPin,
     unlockSettings,
@@ -1376,7 +1384,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
     updatePluginBlockedTerms,
     updatePluginSetting,
     updatingChannelId,
-    watchShowComments,
+    watchCommentsMode,
     watchShowRelated,
     watchedStyle,
     videoCardActions, changeVideoCardActions,

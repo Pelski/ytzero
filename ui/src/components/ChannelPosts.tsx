@@ -3,7 +3,7 @@ import { ExternalLink, Heart, MessageCircle, Play, RefreshCw } from "lucide-reac
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import type { ChannelPost } from "../channelPostTypes";
-import { img } from "../img";
+import { handleVideoThumbnailError, img, videoThumbnail } from "../img";
 import { formatTimeAgo, useI18n } from "../i18n";
 import { markYouTubeUrl, youtubeVideoId } from "../youtubeUrl";
 import { linkifyText } from "../linkifyText";
@@ -105,7 +105,7 @@ export default function ChannelPosts({ channelId, channelName, channelAvatar, on
           <VideoCard video={post.localVideo} onPlay={onPlay} onChanged={() => void load(true)} allowReject={false} allowMarkWatched={false} searchResultLayout showWatchProgress />
         </div>}
         {post.attachment?.type === "video" && !post.localVideo && <Link className="channel-post-attachment" to={`/watch/${post.attachment.id}`}>
-          {post.attachment.thumbnail && <img src={img(post.attachment.thumbnail)} alt="" loading="lazy" />}
+          <img src={videoThumbnail(post.attachment.thumbnail)} alt="" loading="lazy" onError={handleVideoThumbnailError} />
           <strong>{post.attachment.title || t("channelPostVideo")}</strong>
         </Link>}
         {post.attachment?.type === "playlist" && <a className="channel-post-attachment" href={markYouTubeUrl(`https://www.youtube.com/playlist?list=${post.attachment.id}`)} target="_blank" rel="noreferrer">

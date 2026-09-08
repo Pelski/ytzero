@@ -4,7 +4,7 @@ import { api, type DownloadAutomationOptions, type DownloadRule, type DownloadRu
 import { formatChannelCount, formatPlaylistCount, useI18n } from "../i18n";
 import Popconfirm from "./Popconfirm";
 import { Alert, Badge, Button, Checkbox, EmptyState, FormActions, IconButton, Input, InputGroup, MultiSelectMenu, OptionPicker, SegmentedControl, SelectMenu, SettingRow, SettingsSection, Switch, Textarea } from "./ui";
-import { img } from "../img";
+import { handleVideoThumbnailError, videoThumbnail } from "../img";
 import "./DownloadAutomation.css";
 
 const EMPTY_RULE: DownloadRuleInput = {
@@ -191,7 +191,7 @@ export default function DownloadAutomation({ shortsEnabled }: { shortsEnabled: b
         {!sourceReady ? <Alert variant="warning" icon={<AlertTriangle />}>{t("Select at least one source.")}</Alert>
           : previewError ? <Alert variant="danger" icon={<AlertTriangle />}>{previewError}</Alert>
           : !preview ? <div className="dl-rule-preview-loading">{t("Calculating…")}</div>
-        : <div className={`dl-rule-preview-content${previewing ? " is-updating" : ""}`}><div className="dl-rule-preview-counts"><span>{t("Matches: {count}", { count: `${preview.limited ? "≥" : ""}${preview.matches}` })}</span><span className="ready"><strong>{preview.limited && "≥"}{preview.ready}</strong>{t(" will enter the queue")}</span><span>{t("Already handled: {count}", { count: preview.existing })}</span></div>{preview.limited && <div className="dl-rule-preview-note">{t("Large result: counts are a safe lower bound and the queue will be filled in batches.")}</div>}{draft.enabled && preview.ready > 0 && <Alert variant="warning" icon={<AlertTriangle />}>{t("Saving will activate the rule and {p0} videos will begin entering the queue.", { p0: readyDisplay })}</Alert>}{preview.sample.length > 0 && <div className="dl-rule-preview-sample">{preview.sample.slice(0, 4).map((video) => <div key={video.video_id}><img src={img(video.thumbnail)} alt="" /><span>{video.title}</span>{video.download_status && <Check />}</div>)}</div>}</div>}
+        : <div className={`dl-rule-preview-content${previewing ? " is-updating" : ""}`}><div className="dl-rule-preview-counts"><span>{t("Matches: {count}", { count: `${preview.limited ? "≥" : ""}${preview.matches}` })}</span><span className="ready"><strong>{preview.limited && "≥"}{preview.ready}</strong>{t(" will enter the queue")}</span><span>{t("Already handled: {count}", { count: preview.existing })}</span></div>{preview.limited && <div className="dl-rule-preview-note">{t("Large result: counts are a safe lower bound and the queue will be filled in batches.")}</div>}{draft.enabled && preview.ready > 0 && <Alert variant="warning" icon={<AlertTriangle />}>{t("Saving will activate the rule and {p0} videos will begin entering the queue.", { p0: readyDisplay })}</Alert>}{preview.sample.length > 0 && <div className="dl-rule-preview-sample">{preview.sample.slice(0, 4).map((video) => <div key={video.video_id}><img src={videoThumbnail(video.thumbnail)} alt="" onError={handleVideoThumbnailError} /><span>{video.title}</span>{video.download_status && <Check />}</div>)}</div>}</div>}
         {sourceReady && !previewError && previewing && preview && <div className="dl-rule-preview-updating">{t("Updating preview…")}</div>}
       </section>
       {error && <Alert variant="danger">{error}</Alert>}

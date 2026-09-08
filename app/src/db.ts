@@ -280,9 +280,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   // "More like this" on the watch page. Off keeps a session strictly to what the
   // viewer chose to open, with no suggested next thing.
   watch_show_related: "1",
-  // Comments are fetched on demand through yt-dlp. Keep the section opt-in so
-  // opening a video never triggers that extra network request by default.
-  watch_show_comments: "0",
+  // Comments are fetched on demand through yt-dlp. The per-profile mode can
+  // hide them, load on scroll, or start loading when the watch page opens.
+  watch_show_comments: "disabled",
   // Opt-in channel Posts UI; fetched payloads are transient and never persisted.
   channel_posts_tab: "0",
   hide_members_only_from_feed: "0",

@@ -68,7 +68,7 @@ const legacyDownloadPluginRoute = await json("/plugins/downloads/settings");
 const updateSettingsResponse = await api.request("http://localhost/settings", {
   method: "PUT",
   headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
-  body: JSON.stringify({ show_shorts: "0", feed_sort: "arrival", video_card_actions: "on_demand", video_card_swipe_devices: '{"version":1,"devices":["desktop","tablet"]}', app_icon_color: "#123456" }),
+  body: JSON.stringify({ show_shorts: "0", feed_sort: "arrival", watch_show_comments: "auto", video_card_actions: "on_demand", video_card_swipe_devices: '{"version":1,"devices":["desktop","tablet"]}', app_icon_color: "#123456" }),
 });
 const reloadedSettings = await json("/settings");
 const invalidVideoCardActionsResponse = await api.request("http://localhost/settings", {
@@ -80,6 +80,11 @@ const invalidVideoCardSwipeResponse = await api.request("http://localhost/settin
   method: "PUT",
   headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
   body: JSON.stringify({ video_card_swipe_devices: '{"version":1,"devices":["phone"]}' }),
+});
+const invalidWatchCommentsResponse = await api.request("http://localhost/settings", {
+  method: "PUT",
+  headers: { Cookie: "ytzero_profile=1", "Content-Type": "application/json" },
+  body: JSON.stringify({ watch_show_comments: "eager" }),
 });
 const originalFetch = globalThis.fetch;
 const resolveRateLimitFetches: Array<(response: Response) => void> = [];
@@ -148,11 +153,13 @@ console.log("RESULT " + JSON.stringify({
   updateSettingsStatus: updateSettingsResponse.status,
   reloadedUserSetting: reloadedSettings.body.settings?.show_shorts,
   reloadedFeedSort: reloadedSettings.body.settings?.feed_sort,
+  reloadedWatchComments: reloadedSettings.body.settings?.watch_show_comments,
   reloadedVideoCardActions: reloadedSettings.body.settings?.video_card_actions,
   reloadedVideoCardSwipeDevices: reloadedSettings.body.settings?.video_card_swipe_devices,
   reloadedGlobalSetting: reloadedSettings.body.settings?.app_icon_color,
   invalidVideoCardActionsStatus: invalidVideoCardActionsResponse.status,
   invalidVideoCardSwipeStatus: invalidVideoCardSwipeResponse.status,
+  invalidWatchCommentsStatus: invalidWatchCommentsResponse.status,
 }));
 
 db.close();

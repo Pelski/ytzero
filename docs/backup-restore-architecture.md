@@ -232,7 +232,15 @@ state and are likewise excluded.
   list. Restore normalizes invalid data to an empty list. This setting is
   recorded by `profile.settings` schema v9; schemas 1–8 remain readable and use
   the application default when the key is absent.
-  This includes `feed_sort`, the portable per-profile choice between publication and first-seen chronology, `watch_show_comments`, the opt-in presentation preference for the on-demand comments section, and `channel_posts_tab`, the opt-in presentation preference for Community Posts on channel pages. Comment payloads remain transient; the persisted Community Post catalog and its synchronization state are rebuildable cache data. Neither is exported.
+  `watch_show_comments` is a portable per-profile presentation preference with
+  `disabled`, `scroll`, and `auto` modes. Legacy boolean values remain readable:
+  `0` maps to disabled and `1` maps to the historical scroll-to-load behavior.
+  The enum is recorded by `profile.settings` schema v10; schemas 1–9 remain
+  readable. This also includes `feed_sort`, the portable per-profile choice
+  between publication and first-seen chronology, and `channel_posts_tab`, the
+  opt-in presentation preference for Community Posts on channel pages. Comment
+  payloads remain transient; the persisted Community Post catalog and its
+  synchronization state are rebuildable cache data. Neither is exported.
   Feed-builder configuration is portable personal configuration in the separate versioned `profile.feed-builder` section. It references portable tag and personal-playlist UUIDs plus channel and followed-playlist IDs, so that section depends on the corresponding organization sections. Its revision is preserved for optimistic concurrency; expired composed-feed session snapshots are rebuildable cache and are never exported.
   The visibility of the child-watching shortcut is also a portable per-profile
   presentation preference. It defaults to visible; live child activity remains

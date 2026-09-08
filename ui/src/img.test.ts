@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { img, youtubeThumbnailFallback } from "./img";
+import { img, NO_VIDEO_THUMBNAIL, videoThumbnail, youtubeThumbnailFallback } from "./img";
 
 describe("image proxy URLs", () => {
   test("keeps the existing proxy URL for ordinary callers", () => {
@@ -14,6 +14,19 @@ describe("image proxy URLs", () => {
 
   test("does not append proxy options to local image paths", () => {
     expect(img("/assets/poster.jpg", { onMiss: "error" })).toBe("/assets/poster.jpg");
+  });
+});
+
+describe("video thumbnail placeholders", () => {
+  test("uses the bundled placeholder only when a video has no thumbnail", () => {
+    expect(videoThumbnail("")).toBe(NO_VIDEO_THUMBNAIL);
+    expect(videoThumbnail(null)).toBe(NO_VIDEO_THUMBNAIL);
+    expect(videoThumbnail("/assets/video.jpg")).toBe("/assets/video.jpg");
+  });
+
+  test("still proxies remote video thumbnails", () => {
+    expect(videoThumbnail("https://i.ytimg.com/vi/example/hqdefault.jpg"))
+      .toBe("/api/img?u=https%3A%2F%2Fi.ytimg.com%2Fvi%2Fexample%2Fhqdefault.jpg");
   });
 });
 

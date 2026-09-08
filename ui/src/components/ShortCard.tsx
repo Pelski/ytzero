@@ -4,7 +4,7 @@ import { Archive, Check, Eye, EyeOff, Heart, Lock, Star } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, type Video } from "../api";
 import { formatTimeAgo, formatViewsCount, useI18n } from "../i18n";
-import { img } from "../img";
+import { handleVideoThumbnailError, img, videoThumbnail } from "../img";
 import Tooltip from "./Tooltip";
 import { Badge } from "./ui";
 import "./VideoCard.css";
@@ -35,7 +35,7 @@ export default function ShortCard({
   const [leaving, setLeaving] = useState(false);
 
   const thumbSrc = portraitFailed
-    ? img(video.thumbnail)
+    ? videoThumbnail(video.thumbnail)
     : img(`https://i.ytimg.com/vi/${video.video_id}/oardefault.jpg`, { onMiss: "error" });
 
   const videoHref = `/watch/${video.video_id}`;
@@ -83,7 +83,7 @@ export default function ShortCard({
             alt=""
             loading="lazy"
             draggable={false}
-            onError={() => { if (!portraitFailed) setPortraitFailed(true); }}
+            onError={(event) => portraitFailed ? handleVideoThumbnailError(event) : setPortraitFailed(true)}
           />
         </Link>
       </Tooltip>

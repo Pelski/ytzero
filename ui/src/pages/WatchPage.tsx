@@ -46,7 +46,7 @@ import { formatVideoDuration } from "../components/VideoCard";
 import { VideoThumbnail, watchProgress } from "../components/VideoThumbnail";
 import { SchedulePicker, VideoScheduleActions } from "../components/VideoScheduleActions";
 import UpNextOverlay from "../components/UpNextOverlay";
-import { img } from "../img";
+import { img, videoThumbnail } from "../img";
 import { Alert, Button, ButtonAnchor, Checkbox, IconButton, LocalToast, Menu, MenuItem, MenuSeparator, MenuStatus, Popover, ScrollArea, Switch } from "../components/ui";
 import { WatchPanel } from "../components/WatchPanel";
 import VideoCreators from "../components/VideoCreators";
@@ -99,6 +99,7 @@ export default function WatchPage() {
     chooseYouTube,
     cinemaMode,
     cinemaVisible,
+    commentsMode,
     copyKey,
     copyShareLink,
     currentPlaybackSeconds,
@@ -227,7 +228,7 @@ export default function WatchPage() {
           {video && (
             <div
               className="player-glow"
-              style={{ backgroundImage: `url(${img(video.thumbnail)})`, opacity: cinemaVisible ? 0.6 : 0 }}
+              style={{ backgroundImage: `url(${videoThumbnail(video.thumbnail)})`, opacity: cinemaVisible ? 0.6 : 0 }}
             />
           )}
           <div className="watch-player-shell">
@@ -254,7 +255,7 @@ export default function WatchPage() {
                     ref={playerRef}
                     live={video.live_status === "live"} videoId={video.video_id}
                     title={video.title} channelTitle={video.channel_title}
-                    artworkUrl={img(video.thumbnail)}
+                    artworkUrl={videoThumbnail(video.thumbnail)}
                     startSeconds={video.live_status === "live" ? 0 : playbackStartSeconds}
                     playbackRate={video.live_status === "live" ? 1 : Number(speed)}
                     keyboardSeekSeconds={keyboardSeekSeconds}
@@ -265,7 +266,7 @@ export default function WatchPage() {
               ) : (membersOnlyNotice || (privateVideoNotice && playerKind !== "direct")) && video ? (
                 <WatchRestrictedPlayer
                   kind={privateVideoNotice ? "private" : "members"}
-                  thumbnailUrl={img(video.thumbnail)}
+                  thumbnailUrl={videoThumbnail(video.thumbnail)}
                   title={t(privateVideoNotice ? "privateVideoWatchTitle" : "membersOnlyWatchTitle")}
                   description={t(privateVideoNotice ? "privateVideoWatchDescription" : "membersOnlyWatchDescription")}
                   actionHref={membersOnlyNotice ? markYouTubeUrl(`https://www.youtube.com/watch?v=${video.video_id}`) : undefined}
@@ -281,14 +282,14 @@ export default function WatchPage() {
                   onError={exitStreaming} onExitStreaming={watchTogetherTransportLocked ? undefined : exitStreaming}
                   exitStreamingLabel={t("watchExitStreaming")}
                   src={api.hlsUrl(video.video_id)}
-                  poster={img(video.thumbnail)}
+                  poster={videoThumbnail(video.thumbnail)}
                   autoplay={!watchTogetherRoomId}
                   transportLocked={watchTogetherTransportLocked}
                   startSeconds={playbackStartSeconds}
                   playbackRate={Number(speed)}
                   title={video.title}
                   channelTitle={video.channel_title}
-                  artworkUrl={img(video.thumbnail)}
+                  artworkUrl={videoThumbnail(video.thumbnail)}
                   cinemaMode={cinemaMode}
                   onToggleCinema={() => setCinemaMode((mode) => !mode)}
                   onEnded={watchTogetherTransportLocked ? undefined : handleEnded}
@@ -314,14 +315,14 @@ export default function WatchPage() {
                   key={`${video.video_id}-native-${sharedStartSeconds}`}
                   ref={playerRef}
                   src={playerKind === "direct" ? api.directStreamUrl(video.video_id) : api.streamUrl(video.video_id)}
-                  poster={img(video.thumbnail)}
+                  poster={videoThumbnail(video.thumbnail)}
                   autoplay={!watchTogetherRoomId}
                   transportLocked={watchTogetherTransportLocked}
                   startSeconds={playbackStartSeconds}
                   playbackRate={Number(speed)}
                   title={video.title}
                   channelTitle={video.channel_title}
-                  artworkUrl={img(video.thumbnail)}
+                  artworkUrl={videoThumbnail(video.thumbnail)}
                   chapters={chapters}
                   sbSegments={sbSegments}
                   cinemaMode={cinemaMode}
@@ -350,14 +351,14 @@ export default function WatchPage() {
               ) : playerKind === "youtube" ? (
                 <div ref={ytWrapRef} className="watch-player-yt" />
               ) : playerKind === "loading" ? (
-                <div className="wp-panel" style={video ? { backgroundImage: `url(${img(video.thumbnail)})` } : undefined}>
+                <div className="wp-panel" style={video ? { backgroundImage: `url(${videoThumbnail(video.thumbnail)})` } : undefined}>
                   <div className="wp-panel-scrim" />
                   <div className="wp-panel-content" aria-busy="true">
                     <LoaderCircle className="spin" size={30} />
                   </div>
                 </div>
               ) : video && (
-                <div className="wp-panel" style={{ backgroundImage: `url(${img(video.thumbnail)})` }}>
+                <div className="wp-panel" style={{ backgroundImage: `url(${videoThumbnail(video.thumbnail)})` }}>
                   <div className="wp-panel-scrim" />
                   {playerKind === "blocked" && (
                     <div className="wp-panel-content">
@@ -966,6 +967,7 @@ export default function WatchPage() {
             videoId={video.video_id}
             creatorAvatar={video.channel_thumbnail}
             cinemaMode={cinemaMode}
+            loadMode={commentsMode === "auto" ? "auto" : "scroll"}
             seekDisabled={watchTogetherTransportLocked}
             onSeek={(seconds) => {
               if (watchTogetherTransportLocked) return;

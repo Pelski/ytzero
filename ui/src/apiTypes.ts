@@ -1,6 +1,7 @@
 import type { I18nKey } from "./i18n";
 import type { EmojiSkinTone } from "./emojiSkinTone";
 import type { PlaybackQueueContext } from "./playbackQueue";
+import type { WatchCommentsSetting } from "../../shared/watchComments";
 export { DEFAULT_PLAYBACK_SPEEDS as PLAYBACK_SPEEDS } from "../../shared/playbackSpeeds";
 export interface Tag {
   id: number;
@@ -293,7 +294,7 @@ export interface AppSettings {
   feed_max_age_unit: string;
   hide_live_from_feed: string;
   watch_show_related: string;
-  watch_show_comments: string;
+  watch_show_comments: WatchCommentsSetting;
   channel_posts_tab: string;
   hide_members_only_from_feed: string;
   hide_members_only_on_channel: string;

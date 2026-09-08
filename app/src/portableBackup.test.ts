@@ -431,6 +431,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_thumbnails_enabled", "1");
     setUserSetting(1, "child_watching_monitor_enabled", "0");
     setUserSetting(1, "channel_posts_tab", "1");
+    setUserSetting(1, "watch_show_comments", "auto");
     db.prepare("INSERT INTO notification_preferences(user_id,kind,source_id,enabled) VALUES(1,'*','',1),(1,'playlist_video','PLportable',0),(1,'channel_video','UCportable',1),(1,'tag_rule','',1),(1,'tag_rule','4242',0)").run();
     await plugins.setPluginSettings(1, "notifications", { provider: "apprise" });
     await setSetting("plugin_notifications_apprise_server_url", "http://apprise-secret@apprise.portable:8000");
@@ -461,7 +462,9 @@ describe("portable backup classification and restore", () => {
     const zip = await backup.createPortableBackup({ preset: "full", profiles: [profile.id] });
     const exportedEntries = backup.readPortableZip(zip);
     const exportedManifest = JSON.parse(decoder.decode(exportedEntries.get("manifest.json")!));
-    expect(exportedManifest.sections.find((section: any) => section.id === "profile.settings").schemaVersion).toBe(9);
+    const profileSettingsSection = exportedManifest.sections.find((section: any) => section.id === "profile.settings");
+    expect(profileSettingsSection.schemaVersion).toBe(10);
+    expect(JSON.parse(decoder.decode(exportedEntries.get(profileSettingsSection.path)!)).settings.watch_show_comments).toBe("auto");
     const followedSection = exportedManifest.sections.find((section: any) => section.id === "profile.followed-playlists");
     expect(followedSection.schemaVersion).toBe(3);
     expect(decoder.decode(exportedEntries.get(followedSection.path)!)).toContain('"offline_policy":"keep"');
@@ -489,6 +492,7 @@ describe("portable backup classification and restore", () => {
     setUserSetting(1, "dearrow_thumbnails_enabled", "0");
     setUserSetting(1, "child_watching_monitor_enabled", "1");
     setUserSetting(1, "channel_posts_tab", "0");
+    setUserSetting(1, "watch_show_comments", "disabled");
     db.prepare("DELETE FROM download_settings WHERE user_id=1 AND key IN ('compatible_format','download_live_archives','prefetch_next_playlist_video','download_schedule_enabled','download_schedule_days','download_schedule_start','download_schedule_end')").run();
     db.prepare("UPDATE download_settings SET value='0' WHERE user_id=1 AND key='enabled'").run();
     await setSetting("downloads_output_template", "changed/{id}");
@@ -531,6 +535,7 @@ describe("portable backup classification and restore", () => {
     expect(getUserSetting(1, "dearrow_thumbnails_enabled")).toBe("1");
     expect(getUserSetting(1, "child_watching_monitor_enabled")).toBe("0");
     expect(getUserSetting(1, "channel_posts_tab")).toBe("1");
+    expect(getUserSetting(1, "watch_show_comments")).toBe("auto");
     // The local auto-tag rule id has no portable identity, so only the
     // category-wide `tag_rule` default comes back.
     expect(db.prepare("SELECT kind,source_id,enabled FROM notification_preferences WHERE user_id=1 ORDER BY kind,source_id").all()).toEqual([

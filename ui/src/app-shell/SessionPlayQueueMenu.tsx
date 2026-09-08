@@ -5,7 +5,7 @@ import { api } from "../api";
 import { emit, emitToast } from "../events";
 import { useI18n } from "../i18n";
 import { clearSessionPlayQueue, removeFromSessionPlayQueue, sessionPlayQueueContext, useSessionPlayQueue } from "../sessionPlayQueue";
-import { img } from "../img";
+import { handleVideoThumbnailError, videoThumbnail } from "../img";
 import Popconfirm from "../components/Popconfirm";
 import { Button, EmptyState, Field, FloatingPopover, IconButton, Inline, Input, List, ListRow, Menu, MenuHeader, MenuItem, MenuSeparator, ScrollArea, Stack } from "../components/ui";
 import "./SessionPlayQueueMenu.css";
@@ -73,7 +73,7 @@ export default function SessionPlayQueueMenu() {
                 event.preventDefault();
                 play(item.video_id);
               }}
-              media={item.thumbnail ? <img src={img(item.thumbnail)} alt="" /> : <ListVideo aria-hidden="true" />}
+              media={<img src={videoThumbnail(item.thumbnail)} alt="" onError={handleVideoThumbnailError} />}
               title={item.title || item.video_id}
               description={item.channel_title}
               actions={<IconButton size="sm" variant="ghost" label={t("sessionQueueRemove")} icon={<Trash2 />} onClick={(event) => { event.stopPropagation(); removeFromSessionPlayQueue(item.video_id); }} />}

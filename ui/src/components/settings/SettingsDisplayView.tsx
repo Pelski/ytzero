@@ -47,6 +47,7 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     changeShortsFeedMode,
     changeMembersOnlyVisibility,
     changeYoutubeTitleLanguage,
+    changeWatchCommentsMode,
     changeWatchedStyle,
     changeVideoCardActions, changeVideoCardActionConfig, channelPostsTab,
     deArrowThumbnailsEnabled,
@@ -110,9 +111,8 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
     toggleSb,
     toggleSbCategory,
     toggleTopChannels, toggleChannelPostsTab,
-    toggleWatchComments,
     toggleWatchRelated,
-    watchShowComments,
+    watchCommentsMode,
     watchShowRelated,
     watchedStyle,
     videoCardActions, videoCardActionConfig,
@@ -313,7 +313,16 @@ export function SettingsDisplayView({ controller, showToast }: { controller: Set
           </SettingRow>
 
           <SettingRow label={t("watchShowComments")} description={t("watchShowCommentsHint")}>
-            <Switch checked={watchShowComments} onCheckedChange={() => toggleWatchComments()} />
+            <SelectMenu
+              label={t("watchShowComments")}
+              value={watchCommentsMode}
+              options={[
+                { value: "disabled", label: t("watchCommentsDisabled") },
+                { value: "scroll", label: t("watchCommentsOnScroll") },
+                { value: "auto", label: t("watchCommentsOnOpen") },
+              ] as const}
+              onChange={changeWatchCommentsMode}
+            />
           </SettingRow>
 
           <SettingRow label={t("feedAutoplay")} description={t("feedAutoplayHint")}>

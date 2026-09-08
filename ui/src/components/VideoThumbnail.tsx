@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { img, youtubeThumbnailFallback } from "../img";
+import { img, NO_VIDEO_THUMBNAIL, videoThumbnail, youtubeThumbnailFallback } from "../img";
 import "./VideoThumbnail.css";
 
 export type VideoThumbnailVariant =
@@ -65,20 +65,20 @@ export function VideoThumbnail({
   draggable?: boolean;
   children?: ReactNode;
 }) {
-  const [image, setImage] = useState(() => ({ source: src, displayedSource: img(src), fallbackAttempted: false }));
+  const [image, setImage] = useState(() => ({ source: src, displayedSource: videoThumbnail(src), fallbackAttempted: false }));
 
   useEffect(() => {
-    setImage({ source: src, displayedSource: img(src), fallbackAttempted: false });
+    setImage({ source: src, displayedSource: videoThumbnail(src), fallbackAttempted: false });
   }, [src]);
 
   const handleImageError = () => {
     setImage((current) => {
-      if (current.source !== src || current.fallbackAttempted) return current;
+      if (current.source !== src || current.displayedSource === NO_VIDEO_THUMBNAIL) return current;
 
-      const fallback = youtubeThumbnailFallback(src);
+      const fallback = current.fallbackAttempted ? null : youtubeThumbnailFallback(src);
       return fallback
         ? { source: src, displayedSource: img(fallback), fallbackAttempted: true }
-        : { ...current, fallbackAttempted: true };
+        : { source: src, displayedSource: NO_VIDEO_THUMBNAIL, fallbackAttempted: true };
     });
   };
 

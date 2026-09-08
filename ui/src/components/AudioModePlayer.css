@@ -276,11 +276,12 @@
 
 @media (max-width: 900px) {
   .audio-mode {
-    height: auto;
+    height: 100%;
   }
   .audio-mode-hero {
     position: relative;
     inset: auto;
+    height: 100%;
   }
 }
 
@@ -296,7 +297,7 @@
     gap: 7px;
   }
   .audio-mode-cover-wrap {
-    width: min(250px, 62%);
+    width: min(300px, 76%);
     border-radius: 8px;
   }
   .audio-mode-title {
@@ -357,7 +358,7 @@
     gap: 4px;
   }
   .audio-mode-cover-wrap {
-    width: min(160px, 48%);
+    width: min(260px, 72%);
   }
 }
 

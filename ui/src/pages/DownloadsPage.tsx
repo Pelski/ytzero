@@ -5,7 +5,7 @@ import { AlertTriangle, Check, ChevronDown, Download, Folder, HardDrive, LoaderC
 import { api, type DownloadsResponse, type DownloadItem } from "../api";
 import { formatTimeAgo, useI18n, type I18nKey } from "../i18n";
 import { useDocumentTitle } from "../useDocumentTitle";
-import { img } from "../img";
+import { handleVideoThumbnailError, videoThumbnail } from "../img";
 import { formatVideoDuration } from "../components/VideoCard";
 import Popconfirm from "../components/Popconfirm";
 import Tooltip from "../components/Tooltip";
@@ -154,7 +154,7 @@ export default function DownloadsPage({ shortsEnabled }: { shortsEnabled: boolea
     return (
       <div key={`${keyPrefix}${item.user_id}:${item.video_id}`} className={`dl-row dl-row--${item.status}`}>
         <Link to={`/watch/${item.video_id}`} className="dl-thumb" title={item.title}>
-          <img src={img(item.thumbnail)} alt="" loading="lazy" />
+          <img src={videoThumbnail(item.thumbnail)} alt="" loading="lazy" onError={handleVideoThumbnailError} />
           {item.duration && <span className="duration-badge">{formatVideoDuration(item.duration)}</span>}
         </Link>
         <div className="dl-info">

@@ -92,6 +92,7 @@ describe("async database route response shapes", () => {
     expect(result.updateSettingsStatus).toBe(200);
     expect(result.reloadedUserSetting).toBe("0");
     expect(result.reloadedFeedSort).toBe("arrival");
+    expect(result.reloadedWatchComments).toBe("auto");
     expect(result.reloadedVideoCardActions).toBe("on_demand");
     expect(JSON.parse(result.reloadedVideoCardSwipeDevices).devices).toEqual(["desktop", "tablet"]);
     expect(result.reloadedGlobalSetting).toBe("#123456");
@@ -100,5 +101,9 @@ describe("async database route response shapes", () => {
   test("rejects unsupported video-card action modes", () => {
     expect(result.invalidVideoCardActionsStatus).toBe(400);
     expect(result.invalidVideoCardSwipeStatus).toBe(400);
+  });
+
+  test("rejects unsupported watch comment modes", () => {
+    expect(result.invalidWatchCommentsStatus).toBe(400);
   });
 });
