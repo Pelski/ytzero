@@ -319,6 +319,29 @@ CREATE TABLE IF NOT EXISTS permission_policy (
   revision         INTEGER NOT NULL DEFAULT 1
 );
 
+-- Public share links are instance-local bearer capabilities. They deliberately
+-- stay outside portable backup domains; a complete instance backup still
+-- preserves them with the rest of the database.
+CREATE TABLE IF NOT EXISTS public_share_policy (
+  singleton  INTEGER PRIMARY KEY CHECK (singleton = 1),
+  enabled    INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+INSERT OR IGNORE INTO public_share_policy(singleton, enabled) VALUES(1, 0);
+
+CREATE TABLE IF NOT EXISTS public_shares (
+  id                TEXT PRIMARY KEY,
+  token             TEXT NOT NULL UNIQUE,
+  owner_user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  resource_type     TEXT NOT NULL CHECK (resource_type IN ('video','user_playlist','followed_playlist')),
+  resource_id       TEXT NOT NULL,
+  allow_local_media INTEGER NOT NULL DEFAULT 0 CHECK (allow_local_media IN (0,1)),
+  created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (owner_user_id, resource_type, resource_id)
+);
+CREATE INDEX IF NOT EXISTS idx_public_shares_owner ON public_shares(owner_user_id, created_at DESC);
+
 -- A profile's subscriptions. followed = 1 (subscribed) / 0 (unfollowed/hidden).
 CREATE TABLE IF NOT EXISTS user_channels (
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

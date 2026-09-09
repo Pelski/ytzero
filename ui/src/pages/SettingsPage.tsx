@@ -36,11 +36,12 @@ import { SettingsSearch } from "../components/settings/SettingsSearch";
 import ChannelSettingsDialog, { hasCustomChannelSettings } from "../components/settings/ChannelSettingsDialog";
 import { filterPlaylistsByName } from "../playlistSearch";
 import { ClusterSettings } from "../components/settings/ClusterSettings";
+import PublicSharingSettings from "../components/settings/PublicSharingSettings";
 const AuthSettings = lazy(() => import("../components/AuthSettings"));
 const TubeArchivistSettings = lazy(() => import("../components/settings/TubeArchivistSettings")
   .then((module) => ({ default: module.TubeArchivistSettings })));
 const NotificationSettings = lazy(() => import("../components/settings/NotificationSettings"));
-type Tab = "channels" | "tags" | "playlists" | "display" | "notifications" | "plugins" | "advanced" | "profiles" | "auth" | "cluster";
+type Tab = "channels" | "tags" | "playlists" | "display" | "notifications" | "plugins" | "sharing" | "advanced" | "profiles" | "auth" | "cluster";
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
   const supported = intl.supportedValuesOf?.("timeZone") ?? [
@@ -57,6 +58,7 @@ const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
   { id: "display" },
   { id: "notifications" },
   { id: "plugins" },
+  { id: "sharing" },
   { id: "advanced", primaryOnly: true },
   { id: "profiles" },
   { id: "auth", primaryOnly: true },
@@ -64,8 +66,9 @@ const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
 ];
 const DISPLAY_PERMISSION_AREAS: ProfilePermissionArea[] = ["appearance", "feed", "navigation", "playback"];
 const GITHUB_RELEASES_URL = "https://github.com/Pelski/ytzero/releases";
-const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"]);
+const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles", "public_sharing"]);
 function permissionAreaForTab(tab: Tab): ProfilePermissionArea | null {
+  if (tab === "sharing") return "public_sharing";
   if (tab === "channels" || tab === "tags" || tab === "playlists" || tab === "plugins" || tab === "profiles") return tab;
   if (tab === "advanced") return null;
   return null;
@@ -464,6 +467,8 @@ export default function SettingsPage({ showToast }: { showToast: (m: string) => 
       </Suspense>}
 
       {!isCurrentTabLocked && tab === "notifications" && <Suspense fallback={<SettingsLoadingState />}><NotificationSettings /></Suspense>}
+
+      {!isCurrentTabLocked && tab === "sharing" && <PublicSharingSettings />}
 
       {!isCurrentTabLocked && tab === "cluster" && isPrimary && clusterAvailable && <ClusterSettings />}
 

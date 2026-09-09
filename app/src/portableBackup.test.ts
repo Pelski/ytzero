@@ -111,6 +111,19 @@ describe("portable backup ZIP security", () => {
 });
 
 describe("portable backup classification and restore", () => {
+  test("excludes public-share policy and bearer links", async () => {
+    const token = "PUBLIC_SHARE_TOKEN_SENTINEL_1234567890";
+    const timestamp = "PUBLIC_SHARE_POLICY_SENTINEL";
+    db.prepare("UPDATE public_share_policy SET enabled=1,updated_at=? WHERE singleton=1").run(timestamp);
+    db.prepare(`INSERT INTO public_shares(id,token,owner_user_id,resource_type,resource_id,allow_local_media,created_at,updated_at)
+      VALUES('public-share-sentinel',?,1,'video','portable001',1,?,?)`).run(token, timestamp, timestamp);
+    const zip = await backup.createPortableBackup({ preset: "full" });
+    const archiveText = [...backup.readPortableZip(zip).values()].map((bytes) => decoder.decode(bytes)).join("\n");
+    expect(archiveText).not.toContain(token);
+    expect(archiveText).not.toContain(timestamp);
+    expect(archiveText).not.toContain("public-share-sentinel");
+  });
+
   test("excludes rebuildable Shorts retry metadata", async () => {
     const zip = await backup.createPortableBackup({ preset: "full" });
     const archiveText = [...backup.readPortableZip(zip).values()].map((bytes) => decoder.decode(bytes)).join("\n");

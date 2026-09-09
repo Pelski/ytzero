@@ -17,6 +17,7 @@ import NotificationSourceMenu from "../components/NotificationSourceMenu";
 import type { NotificationSourceMode } from "../components/NotificationSourceSelect";
 import { HeaderSettingsHeader, HeaderSettingsItem, HeaderSettingsOption, HeaderSettingsPopover } from "../components/HeaderSettingsMenu";
 import { createWatchRoutePreview } from "./watchRuntime";
+import PublicShareControl from "../components/PublicShareControl";
 
 export default function ChannelPlaylistPage() {
   const { id } = useParams<{ id: string }>();
@@ -183,6 +184,7 @@ export default function ChannelPlaylistPage() {
   return <>
     <ChannelPlaylistHero playlist={playlist} actions={<>
           <PlaylistPlaybackActions videos={orderedPlaylistVideos} disabled={loading} onPlay={playPlaylistVideo} />
+          {Boolean(playlist.followed) && <PublicShareControl resourceType="followed_playlist" resourceId={playlist.playlist_id} />}
           {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
           <HeaderSettingsPopover
             open={settingsOpen}

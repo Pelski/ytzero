@@ -87,6 +87,9 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   screenshotQuality?: number;
   screenshotFilenameTemplate?: string;
   videoId?: string;
+  /** Pre-authorized tracks for contexts that must not call the authenticated
+   * video API, such as a public bearer-link page. */
+  subtitleCatalog?: { subtitles: VideoSubtitle[]; available: AvailableSubtitle[] };
   ccDefaultOn?: boolean;
   ccDefaultLang?: string;
   preferredSubtitleLanguages?: string[];
@@ -127,6 +130,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
   screenshotQuality = 0.92,
   screenshotFilenameTemplate,
   videoId,
+  subtitleCatalog,
   ccDefaultOn = false,
   ccDefaultLang,
   preferredSubtitleLanguages = [],
@@ -180,6 +184,18 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
 
   // The server returns local, archive, or proxied WebVTT tracks ready for use.
   useEffect(() => {
+    if (subtitleCatalog) {
+      setSubs(subtitleCatalog.subtitles);
+      setAvailableSubs(subtitleCatalog.available);
+      setSubLang(null);
+      setSubLoading(null);
+      setSubError(null);
+      if (ccDefaultOn && ccDefaultLang && subtitleCatalog.subtitles.some((subtitle) => subtitle.lang === ccDefaultLang)) {
+        setSubLoading(ccDefaultLang);
+        setSubLang(ccDefaultLang);
+      }
+      return;
+    }
     if (!videoId) return;
     let cancelled = false;
     setSubs([]);
@@ -199,7 +215,7 @@ const LocalPlayer = forwardRef<LocalPlayerHandle, {
     }).catch(() => {});
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
+  }, [ccDefaultLang, ccDefaultOn, subtitleCatalog, videoId]);
 
   // Each available language already has an internal WebVTT URL. Loading it
   // must not interrupt media playback.

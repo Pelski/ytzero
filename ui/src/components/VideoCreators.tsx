@@ -11,7 +11,7 @@ function creatorListParts(length: number, locale: string) {
   return new Intl.ListFormat(locale, { style: "long", type: "conjunction" }).formatToParts(tokens);
 }
 
-export default function VideoCreators({ creators }: { creators: VideoCreator[] }) {
+export default function VideoCreators({ creators, linkChannels = true }: { creators: VideoCreator[]; linkChannels?: boolean }) {
   const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   if (creators.length === 0) return null;
@@ -51,9 +51,9 @@ export default function VideoCreators({ creators }: { creators: VideoCreator[] }
   </>;
 
   if (!multiple) {
-    return <Link to={`/channel/${creators[0].channelId}`} className="watch-channel-top video-creators video-creators-trigger" aria-label={creators[0].title}>
-      {triggerContent}
-    </Link>;
+    return linkChannels
+      ? <Link to={`/channel/${creators[0].channelId}`} className="watch-channel-top video-creators video-creators-trigger" aria-label={creators[0].title}>{triggerContent}</Link>
+      : <div className="watch-channel-top video-creators" aria-label={creators[0].title}>{triggerContent}</div>;
   }
 
   return <FloatingPopover
@@ -70,13 +70,8 @@ export default function VideoCreators({ creators }: { creators: VideoCreator[] }
     <>
       <div className="ui-popover__title">{t("videoCreatorsTitle")}</div>
       <div className="video-creators-list">
-        {creators.map((creator) => (
-          <Link
-            key={creator.channelId}
-            to={`/channel/${creator.channelId}`}
-            className="video-creators-list-item"
-            onClick={() => setOpen(false)}
-          >
+        {creators.map((creator) => {
+          const content = <>
             {creator.avatar ? (
               <img className="video-creators-list-avatar" src={img(creator.avatar)} alt="" />
             ) : (
@@ -88,8 +83,11 @@ export default function VideoCreators({ creators }: { creators: VideoCreator[] }
                 <span>{[creator.handle, creator.subscriberCount].filter(Boolean).join(" · ")}</span>
               )}
             </span>
-          </Link>
-        ))}
+          </>;
+          return linkChannels
+            ? <Link key={creator.channelId} to={`/channel/${creator.channelId}`} className="video-creators-list-item" onClick={() => setOpen(false)}>{content}</Link>
+            : <div key={creator.channelId} className="video-creators-list-item">{content}</div>;
+        })}
       </div>
     </>
   </FloatingPopover>;

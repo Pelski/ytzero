@@ -400,6 +400,7 @@ export const es: Locale = {
     playlistDownloadQualityBest: "La mejor disponible",
     playlistDownloadQualityUpdated: "Las descargas de la lista usarán {quality}",
     playlistDownloadQualityFailed: "No se pudo cambiar la resolución de descarga",
+    playlistFollowRequiredHint: "Sigue primero esta lista de reproducción para cambiar los ajustes de notificaciones y descargas.",
     downloadsTitle: "Descargas",
     downloadsEmpty: "Guarda algo para más tarde. Internet no tiene por qué ganar siempre.",
     downloadsEmptyTitle: "Aún no hay nada descargado.",

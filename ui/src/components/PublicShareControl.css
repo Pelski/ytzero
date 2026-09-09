@@ -1,0 +1,62 @@
+.public-share-control {
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+.public-share-control__popover {
+  padding: var(--space-4);
+}
+
+.public-share-control__title {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.public-share-control__title svg {
+  color: var(--text-2);
+  height: 16px;
+  width: 16px;
+}
+
+.public-share-control--embedded {
+  border-top: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
+  margin-top: 12px;
+  padding-top: 12px;
+  width: 100%;
+}
+
+.public-share-editor__label {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.public-share-editor__url {
+  width: 100%;
+}
+
+.public-share-editor__url .ui-input {
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.public-sharing-settings { display: grid; gap: 12px; }
+.public-sharing-settings__loading { align-items: center; color: var(--text-2); display: flex; gap: 10px; justify-content: center; min-height: 120px; }
+.public-sharing-settings__list .ui-list-row__content { min-width: 0; }
+.public-sharing-settings__resource-icon { align-items: center; background: var(--surface-2); border-radius: 8px; color: var(--text-2); display: flex; height: 36px; justify-content: center; width: 36px; }
+.public-sharing-settings__resource-icon svg { height: 18px; width: 18px; }
+.public-sharing-settings__dialog { width: min(620px, calc(100vw - 24px)); }
+.public-sharing-settings__dialog-meta { margin-bottom: 6px; }
+.public-sharing-settings__dialog-meta .ui-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.public-share-editor--settings > .ui-alert { margin-bottom: 8px; }
+.public-share-editor--settings .public-share-editor__link-row .ui-setting-row__control { width: min(360px, 58%); }
+.public-share-editor--settings .public-share-editor__url { width: 100%; }
+.public-share-editor--settings .ui-form-actions { border-top: 1px solid var(--surface-3); padding-top: 12px; }
+
+@media (max-width: 640px) {
+  .public-sharing-settings__row .ui-list-actions { width: 100%; }
+  .public-sharing-settings__row .ui-list-actions .ui-button { width: 100%; }
+  .public-share-editor--settings .public-share-editor__link-row .ui-setting-row__control { width: 100%; }
+}

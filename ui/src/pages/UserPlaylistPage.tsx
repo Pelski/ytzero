@@ -16,6 +16,7 @@ import PlaylistPlaybackActions from "../components/PlaylistPlaybackActions";
 import type { PlayVideo, PlaybackQueueContext } from "../playbackQueue";
 import { normalizeUserPlaylistSort, type UserPlaylistSort } from "../playlistSort";
 import { HeaderSettingsHeader, HeaderSettingsItem, HeaderSettingsOption, HeaderSettingsPopover } from "../components/HeaderSettingsMenu";
+import PublicShareControl from "../components/PublicShareControl";
 
 export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
   const { t, language } = useI18n();
@@ -236,6 +237,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
           </div>
           <div className="playlist-actions">
             <PlaylistPlaybackActions videos={videos} disabled={loading} onPlay={playPlaylistVideo} />
+            <PublicShareControl resourceType="user_playlist" resourceId={playlist.id} />
             {playlistSettingsAction}
             {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
             {moreActions}
@@ -248,6 +250,7 @@ export default function UserPlaylistPage({ onPlay }: { onPlay: PlayVideo }) {
           description={formatVideoCount(playlist.video_count, language)}
           actions={<>
             <PlaylistPlaybackActions videos={videos} disabled={loading} onPlay={playPlaylistVideo} />
+            <PublicShareControl resourceType="user_playlist" resourceId={playlist.id} />
             {playlistSettingsAction}
             {downloadFeedback && <LocalToast>{downloadFeedback}</LocalToast>}
             {moreActions}

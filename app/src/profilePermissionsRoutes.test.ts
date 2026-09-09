@@ -35,7 +35,7 @@ describe("administrator-only profile permissions", () => {
     expect(result.enableStatus).toBe(200);
     expect(result.adminLocked).toBe(false);
     expect(result.secondaryLocked).toBe(true);
-    expect(result.defaultAreas).toEqual(["imports", "profiles"]);
+    expect(result.defaultAreas).toEqual(["imports", "profiles", "public_sharing"]);
     expect(result.primaryAccessIsPrimary).toBe(true);
     expect(result.primaryAccessIsAdmin).toBe(true);
     expect(result.reorderStatus).toBe(200);
@@ -65,7 +65,7 @@ describe("administrator-only profile permissions", () => {
 
   test("delegates disabled areas while retaining the separate PIN gate", () => {
     expect(result.policyStatus).toBe(200);
-    expect(result.policyAreas).toEqual(["followed_playlists", "imports", "filters", "playlists", "playback", "profiles"]);
+    expect(result.policyAreas).toEqual(["followed_playlists", "imports", "filters", "playlists", "playback", "profiles", "public_sharing"]);
     expect(result.pinLockedSettingsStatus).toBe(423);
     expect(result.delegatedSettingsStatus).toBe(200);
     expect(result.restrictedPlaybackStatus).toBe(403);

@@ -305,6 +305,7 @@ export const pl: Locale = {
     playlistDownloadQualityBest: "Najlepsza dostępna",
     playlistDownloadQualityUpdated: "Filmy z playlisty będą pobierane w jakości {quality}",
     playlistDownloadQualityFailed: "Nie udało się zmienić rozdzielczości pobierania",
+    playlistFollowRequiredHint: "Najpierw zacznij obserwować tę playlistę, aby zmienić ustawienia powiadomień i pobierania.",
     downloadsTitle: "Pobrane",
     downloadsEmpty: "Warto coś zachować na później. Internet nie zawsze musi wygrać.",
     downloadsEmptyTitle: "Jeszcze nic nie zostało pobrane.",

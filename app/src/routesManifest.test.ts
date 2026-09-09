@@ -64,7 +64,11 @@ describe("HTTP route manifest", () => {
       "PUT /access-control/group-order", "PUT /access-control/default-group", "PUT /access-control/profiles/:id",
       "DELETE /access-control/groups/:id",
     ];
-    expect(routes).toHaveLength(260);
+    const publicShareManagementRoutes = [
+      "GET /public-shares", "PUT /public-shares/policy", "POST /public-shares",
+      "PATCH /public-shares/:id", "POST /public-shares/:id/rotate", "DELETE /public-shares/:id",
+    ];
+    expect(routes).toHaveLength(266);
     expect(routes).toContain(transcriptRoute);
     expect(routes).toContain(playbackAdjacentRoute);
     expect(routes).toContain(liveAudioRoute);
@@ -81,9 +85,10 @@ describe("HTTP route manifest", () => {
     for (const route of feedBuilderRoutes) expect(routes).toContain(route);
     for (const route of notificationPreferenceRoutes) expect(routes).toContain(route);
     for (const route of accessControlRoutes) expect(routes).toContain(route);
+    for (const route of publicShareManagementRoutes) expect(routes).toContain(route);
     expect(routes).toContain("GET /plugins/tubearchivist/config");
     expect(routes).toContain("POST /plugins/tubearchivist/sync");
-    const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute && route !== liveAudioRoute && route !== vodAudioRoute && route !== retryAudioRoute && route !== directStreamRoute && route !== ytdlpConfigRoute && route !== ytdlpUpdateRoute && route !== importVideoRoute && route !== sessionPlaylistRoute && route !== clearVideoBookmarksRoute && route !== clusterStatusRoute && route !== followedPlaylistOfflinePolicyRoute && !feedBuilderRoutes.includes(route) && !accessControlRoutes.includes(route) && !notificationPreferenceRoutes.includes(route));
+    const legacyRoutes = routes.filter((route) => route !== transcriptRoute && route !== playbackAdjacentRoute && route !== liveAudioRoute && route !== vodAudioRoute && route !== retryAudioRoute && route !== directStreamRoute && route !== ytdlpConfigRoute && route !== ytdlpUpdateRoute && route !== importVideoRoute && route !== sessionPlaylistRoute && route !== clearVideoBookmarksRoute && route !== clusterStatusRoute && route !== followedPlaylistOfflinePolicyRoute && !feedBuilderRoutes.includes(route) && !accessControlRoutes.includes(route) && !notificationPreferenceRoutes.includes(route) && !publicShareManagementRoutes.includes(route));
     expect(createHash("sha256").update(legacyRoutes.join("\n")).digest("hex"))
       .toBe("80c5a76e8b9e73067474352689dee5912762cbd8933feb23ceb68592f592158b");
   });

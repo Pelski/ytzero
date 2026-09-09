@@ -192,6 +192,16 @@ than portable download state. They are intentionally excluded from every
 backup section. Durable `auth_sessions` remain instance-local authentication
 state and are likewise excluded.
 
+Public sharing is instance-local security state. `public_share_policy` contains
+the default-off installation-wide kill switch, while `public_shares` contains
+plaintext bearer tokens, owners, targets and the per-link local-media grant.
+Neither table is exposed through settings or diagnostics, and neither is
+included in any portable backup section. An exact stopped-instance backup (or
+the corresponding PostgreSQL database backup) preserves both tables. Access
+control groups may carry the separate `public_sharing` capability as portable
+configuration; because the normal profile-role defaults omit it, an older
+archive with no such capability restores with public sharing denied.
+
 ### Portable configuration and organization
 
 - `settings`: only registered, non-secret global settings. Exclude Child Lock
@@ -543,6 +553,7 @@ state and are likewise excluded.
 - profile identity mappings, proxy matches, and usernames
 - WebAuthn/passkey credentials
 - Child Lock secret
+- public-share bearer tokens and the installation-wide public-sharing policy
 - yt-dlp cookies
 - downloaded media paths and files
 

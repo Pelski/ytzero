@@ -56,7 +56,7 @@ function MentionText({ text, channelHandles }: { text: string; channelHandles: M
   });
 }
 
-export default function Linkify({ text, baseUrl, channelHandles = new Map() }: { text: string; baseUrl: string; channelHandles?: Map<string, string> }) {
+export default function Linkify({ text, baseUrl, channelHandles = new Map(), linkMode = "app" }: { text: string; baseUrl: string; channelHandles?: Map<string, string>; linkMode?: "app" | "external" }) {
   const base = baseUrl || window.location.origin;
   const parts = text.split(/(https?:\/\/[^\s<>"]+)/g);
   return (
@@ -64,7 +64,7 @@ export default function Linkify({ text, baseUrl, channelHandles = new Map() }: {
       {parts.map((p, i) => {
         if (!/^https?:\/\//.test(p)) return <MentionText key={i} text={p} channelHandles={channelHandles} />;
         const [url, trailing] = splitTrailingJunk(p);
-        const local = rewriteYouTubeUrl(url, base);
+        const local = linkMode === "app" ? rewriteYouTubeUrl(url, base) : null;
         return (
           <span key={i}>
             {local ? (
@@ -83,4 +83,3 @@ export default function Linkify({ text, baseUrl, channelHandles = new Map() }: {
     </>
   );
 }
-

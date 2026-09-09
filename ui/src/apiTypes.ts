@@ -666,7 +666,61 @@ export const SB_CATEGORIES: { id: string; labelKey: I18nKey; color: string }[] =
   { id: "filler",         labelKey: "sbCatFiller",        color: "#7300ab" },
 ];
 
-export type ProfilePermissionArea = "channels" | "followed_playlists" | "imports" | "tags" | "filters" | "playlists" | "appearance" | "feed" | "navigation" | "playback" | "plugins" | "profiles";
+export type ProfilePermissionArea = "channels" | "followed_playlists" | "imports" | "tags" | "filters" | "playlists" | "appearance" | "feed" | "navigation" | "playback" | "plugins" | "profiles" | "public_sharing";
+
+export type PublicShareResourceType = "video" | "user_playlist" | "followed_playlist";
+
+export interface ManagedPublicShare {
+  id: string;
+  token: string;
+  url: string;
+  owner_user_id: number;
+  owner_name?: string;
+  resource_type: PublicShareResourceType;
+  resource_id: string;
+  resource_title: string;
+  video_count: number;
+  allow_local_media: boolean;
+  active: boolean;
+  suspension_reason: "policy_disabled" | "permission_suspended" | "resource_unavailable" | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicShareManagementResponse {
+  policy: { enabled: boolean; can_manage: boolean };
+  shares: ManagedPublicShare[];
+}
+
+export interface PublicShareVideo {
+  video_id: string;
+  channel_id: string;
+  title: string;
+  description: string;
+  thumbnail: string;
+  published_at: string | null;
+  published_at_approximate: number;
+  live_status: string;
+  duration: string | null;
+  views: number | null;
+  likes: number | null;
+  channel_title: string;
+}
+
+export interface PublicShareData {
+  brand: { name: string; icon: string; color: string };
+  resource: { type: PublicShareResourceType; id: string; title: string; video_count: number };
+  page: number;
+  page_size: number;
+  has_more: boolean;
+  items: PublicShareVideo[];
+  video: PublicShareVideo | null;
+  creators: Array<{ channel_id: string; title: string; avatar: string; handle: string; subscriber_count: string; is_owner: number }>;
+  chapters: VideoChapter[];
+  subtitles: { subtitles: VideoSubtitle[]; available: AvailableSubtitle[] };
+  playback: { kind: "local"; source: "download" | "tubearchivist"; url: string } | { kind: "youtube"; video_id: string } | null;
+  allow_local_media: boolean;
+}
 
 export interface ChildLockStatus {
   enabled: boolean;

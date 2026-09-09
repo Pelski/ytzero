@@ -40,6 +40,7 @@ The app is designed around a few primary workflows:
 - **Child activity panel** — adult profiles can see what children are watching, check remaining time, open the video locally, stop watching immediately, and unlock a child profile.
 - **Channel pages** — browse regular videos, Shorts, public playlists, channel metadata, and channel-specific tags.
 - **Video context and sharing** — inspect creators and collaborators, copy or share a local/YouTube link, and capture frames with the local player or YT Zero Enhance.
+- **Public sharing** — optional, default-off bearer links for individual videos, personal playlists, and followed YouTube playlists. Public links bypass normal sign-in and require careful proxy and logging configuration; read [Public Sharing](Public-Sharing) before enabling them.
 - **Theater view** — distraction-light player layout for watching.
 - **Internationalization** — English, Polish, German, French, Spanish,
   Brazilian Portuguese, Russian, Japanese, and Hungarian UI, with saved user preference.

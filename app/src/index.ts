@@ -18,6 +18,7 @@ import { startAppEventRelay } from "./appEvents";
 import { deploymentMode } from "./deploymentMode";
 import { reloadPluginEnabledCache } from "./plugins";
 import { startClusterHeartbeat } from "./clusterRuntime";
+import { createPublicShareRouter } from "./routes/publicShareRoutes";
 
 if (environmentAuthMethod() && !environmentAuthPasswordConfigured()) {
   log.error("auth.environment_password_missing", {
@@ -44,6 +45,11 @@ app.get("/api/health", async (c) => {
   const mode = deploymentMode(databaseConfig.engine);
   return c.json({ status: "ok", version: VERSION, commit: COMMIT, uptime: Math.round(process.uptime()), database: mode.database, background_tasks: mode.backgroundTasks });
 });
+
+// Public bearer links live outside the authenticated API router. This router
+// never resolves a profile from cookies and exposes only its own allowlisted
+// read-only projection and token-scoped media resources.
+app.route("/share", createPublicShareRouter(uiDir));
 
 app.route("/api", api);
 

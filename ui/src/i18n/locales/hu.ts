@@ -303,6 +303,7 @@ export const hu: Locale = {
     playlistDownloadQualityBest: "Legjobb elérhető",
     playlistDownloadQualityUpdated: "A lejátszási lista letöltései ezt használják: {quality}",
     playlistDownloadQualityFailed: "A letöltési felbontás nem módosítható",
+    playlistFollowRequiredHint: "Előbb kövesd ezt a lejátszási listát az értesítési és letöltési beállítások módosításához.",
     downloadsTitle: "Letöltések",
     downloadsEmpty: "Tarts meg valamit későbbre! Nem kell mindig az internetnek győznie.",
     downloadsEmptyTitle: "Még nincs letöltve semmi sem.",

@@ -396,6 +396,7 @@ export const fr: Locale = {
     "playlistDownloadQualityBest": "Meilleure disponible",
     "playlistDownloadQualityUpdated": "Les téléchargements de la playlist utiliseront {quality}",
     "playlistDownloadQualityFailed": "Impossible de modifier la résolution de téléchargement",
+    "playlistFollowRequiredHint": "Suivez d’abord cette playlist pour modifier les paramètres de notification et de téléchargement.",
     "downloadsTitle": "Téléchargements",
     "downloadsEmpty": "Gardez quelque chose pour plus tard. Internet n'a pas toujours à gagner.",
     "downloadsEmptyTitle": "Rien encore téléchargé.",

@@ -276,7 +276,7 @@ describe("direct no-transcode video HLS", () => {
 
     expect(resource.kind).toBe("response");
     expect(resolutions).toBe(2);
-    expect(requests.some((request) => request.url.startsWith("https://evil.example"))).toBe(false);
+    expect(requests.map((request) => new URL(request.url).hostname)).not.toContain("evil.example");
     expect(requests.at(-1)).toEqual({
       url: "https://r1.googlevideo.com/video-v2?expire=9999999999",
       range,

@@ -35,7 +35,7 @@ import ProfilesSettings, { ProfilePasswordSettings } from "../components/setting
 import { ChannelOwnership, FilterRuleGroups, PlaylistSettingsItem, PluginMultiselect, RuleRow, SidebarNavEditor, TagRow } from "../components/settings/SettingsEditors";
 import { ChangelogNote, LogLine, SettingsLoadingState } from "../components/settings/SettingsSupport";
 
-type Tab = "channels" | "tags" | "playlists" | "display" | "notifications" | "plugins" | "advanced" | "profiles" | "auth" | "cluster";
+type Tab = "channels" | "tags" | "playlists" | "display" | "notifications" | "plugins" | "sharing" | "advanced" | "profiles" | "auth" | "cluster";
 const TIME_ZONES = (() => {
   const intl = Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] };
   const supported = intl.supportedValuesOf?.("timeZone") ?? [
@@ -52,6 +52,7 @@ const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
   { id: "display" },
   { id: "notifications" },
   { id: "plugins" },
+  { id: "sharing" },
   { id: "advanced", primaryOnly: true },
   { id: "profiles" },
   { id: "auth", primaryOnly: true },
@@ -60,10 +61,11 @@ const SETTINGS_AREAS: { id: Tab; primaryOnly?: boolean }[] = [
 
 const DISPLAY_PERMISSION_AREAS: ProfilePermissionArea[] = ["appearance", "feed", "navigation", "playback"];
 const GITHUB_RELEASES_URL = "https://github.com/Pelski/ytzero/releases";
-const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles"]);
+const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>(["channels", "followed_playlists", "imports", ...DISPLAY_PERMISSION_AREAS, "plugins", "profiles", "public_sharing"]);
 
 
 function permissionAreaForTab(tab: Tab): ProfilePermissionArea | null {
+  if (tab === "sharing") return "public_sharing";
   if (tab === "channels" || tab === "tags" || tab === "playlists" || tab === "plugins" || tab === "profiles") return tab;
   if (tab === "advanced") return null;
   return null;
@@ -1130,6 +1132,7 @@ export function useSettingsPageController({ showToast }: { showToast: (message: 
       label: t("settingsGroupAdministration"),
       items: [
         ...(tabIsVisible("plugins") ? [{ value: "plugins", label: t("pluginsTab") }] : []),
+        ...(tabIsVisible("sharing") ? [{ value: "sharing", label: t("publicSharingSettingsNav") }] : []),
         ...(tabIsVisible("profiles") ? [{ value: "profiles", label: t("profiles") }] : []),
         ...(tabIsVisible("auth") ? [{ value: "auth", label: t("authTab") }] : []),
       ],

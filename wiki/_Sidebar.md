@@ -12,6 +12,7 @@
 - [Importing Subscriptions](Importing-Subscriptions)
 - [Profiles](Profiles)
 - [Authentication](Authentication)
+- [Public Sharing](Public-Sharing)
 - [Child Lock](Child-Lock)
 - [Browser Extensions](Browser-Extensions)
 - [YT-DLP Integration](YT-DLP-Integration)

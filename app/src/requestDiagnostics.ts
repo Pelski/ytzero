@@ -2,7 +2,9 @@ import { log } from "./logger";
 
 /** Keep bearer invitation room ids out of request diagnostics. */
 export function diagnosticRequestPath(path: string): string {
-  return path.replace(/^(\/api)?(\/social\/watch-parties)\/[^/]+(?=\/|$)/, "$1$2/:id");
+  return path
+    .replace(/^(\/api)?(\/social\/watch-parties)\/[^/]+(?=\/|$)/, "$1$2/:id")
+    .replace(/^(\/share)\/[^/]+(?=\/|$)/, "$1/:token");
 }
 
 export function isExpectedRequestMiss(path: string, status: number, imageMissMode: string | undefined): boolean {

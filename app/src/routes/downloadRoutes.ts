@@ -5,7 +5,7 @@ import { database } from "../database";
 import { getUserSetting } from "../db";
 import { childLocalOnly, isChildUser } from "../childTime";
 import { DOWNLOADS_ADMIN_SETTING_KEYS, dlSettings, downloadCookiesConfigured, downloadSettings, profileDownloadsEnabled, removeDownloadCookies, saveDownloadCookies, setDownloadSettings, setProfileDownloadsEnabled } from "../downloadConfig";
-import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, getDirectVideoResponse, getDownload, getHlsPlaylist, getHlsResource, getHlsSegment, hasHlsSession, invalidateAudioSources, invalidateDirectVideoSources, isSegmentName, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpJavascriptRuntimeStatus, ytdlpStatus } from "../downloader";
+import { activeDownloadProgress, cancelAllPendingDownloads, downloadStats, downloadStatusSummary, enqueueDownload, ensureMobilePlayback, getDirectVideoResponse, getDownload, getHlsPlaylist, getHlsResource, getHlsSegment, hasHlsSession, invalidateAudioSources, invalidateDirectVideoSources, isSegmentName, listDownloads, listSubtitleFiles, liveStreamEnabled, prioritizeDownload, removeDownload, setDownloadPinned, srtToVtt, ytdlpJavascriptRuntimeStatus, ytdlpStatus } from "../downloader";
 import { createDownloadRule, deleteDownloadRule, DownloadRuleValidationError, listDownloadRules, previewDownloadRule, updateDownloadRule, type DownloadRuleInput } from "../downloadRules";
 import { availableSubtitlesForVideo, normalizeSubtitleLanguage, subtitleStreamForVideo } from "../subtitleAvailability";
 import { subtitleLanguageLabel } from "../subtitleLanguages";
@@ -287,9 +287,16 @@ api.get("/videos/:id/stream", async (c) => {
     const archived = await tubeArchivistResource(c.req.param("id"), "media", c.req.header("range"), c.req.raw.signal);
     return archived ?? c.json({ error: "not downloaded" }, 404);
   }
-  const size = statSync(row.path).size;
-  const contentType = row.path.endsWith(".webm") ? "video/webm" : "video/mp4";
-  const file = Bun.file(row.path);
+  let streamPath = row.path;
+  const userAgent = c.req.header("user-agent") ?? "";
+  const compatibilityRequested = c.req.query("compat") === "1" || /iPhone|iPad|iPod/i.test(userAgent);
+  if (compatibilityRequested) {
+    const mobile = await ensureMobilePlayback(row.path);
+    if (mobile) streamPath = mobile.path;
+  }
+  const size = statSync(streamPath).size;
+  const contentType = streamPath.endsWith(".webm") ? "video/webm" : "video/mp4";
+  const file = Bun.file(streamPath);
   const range = c.req.header("range");
   if (range) {
     const m = range.match(/bytes=(\d*)-(\d*)/);

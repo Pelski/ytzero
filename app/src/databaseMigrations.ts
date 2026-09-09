@@ -489,6 +489,27 @@ export const DATABASE_MIGRATIONS: readonly DatabaseMigration[] = [
       { kind: "add-column", table: "tube_archivist_watch_outbox", column: "is_watched", definition: "INTEGER NOT NULL DEFAULT 1 CHECK (is_watched IN (0,1))" },
     ],
   },
+  {
+    version: 115,
+    name: "public-share-links",
+    schemaHashes: {
+      "app/src/schema.sql": "7cc9b23b227d3cc3be8ec33051d4f943dda4df2a29e7d3e3c62edd8775100a9a",
+      "app/src/channelPostsSchema.sql": "70a7df33bf373524cf6cd0687e46d7987a7cd90a2619fd9586d12d6f940d45a5",
+      "app/src/tubeArchivistSchema.sql": "31e77b7af023276f38d1075b0a5a2197fef150513f010b90bab5909971871056",
+    },
+    sqlite: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS public_share_policy (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)), updated_at TEXT NOT NULL DEFAULT (datetime('now')))" },
+      { kind: "sql", statement: "INSERT OR IGNORE INTO public_share_policy(singleton,enabled) VALUES(1,0)" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS public_shares (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, owner_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, resource_type TEXT NOT NULL CHECK (resource_type IN ('video','user_playlist','followed_playlist')), resource_id TEXT NOT NULL, allow_local_media INTEGER NOT NULL DEFAULT 0 CHECK (allow_local_media IN (0,1)), created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now')), UNIQUE(owner_user_id,resource_type,resource_id))" },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_public_shares_owner ON public_shares(owner_user_id, created_at DESC)" },
+    ],
+    postgres: [
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS public_share_policy (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0,1)), updated_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'))" },
+      { kind: "sql", statement: "INSERT INTO public_share_policy(singleton,enabled) VALUES(1,0) ON CONFLICT(singleton) DO NOTHING" },
+      { kind: "sql", statement: "CREATE TABLE IF NOT EXISTS public_shares (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, owner_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, resource_type TEXT NOT NULL CHECK (resource_type IN ('video','user_playlist','followed_playlist')), resource_id TEXT NOT NULL, allow_local_media INTEGER NOT NULL DEFAULT 0 CHECK (allow_local_media IN (0,1)), created_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), updated_at TEXT NOT NULL DEFAULT to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS'), UNIQUE(owner_user_id,resource_type,resource_id))" },
+      { kind: "sql", statement: "CREATE INDEX IF NOT EXISTS idx_public_shares_owner ON public_shares(owner_user_id, created_at DESC)" },
+    ],
+  },
 ];
 
 function quoteIdentifier(identifier: string): string {

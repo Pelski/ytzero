@@ -305,6 +305,7 @@ export const en = {
     playlistDownloadQualityBest: "Best available",
     playlistDownloadQualityUpdated: "Playlist downloads will use {quality}",
     playlistDownloadQualityFailed: "Could not update the download resolution",
+    playlistFollowRequiredHint: "Follow this playlist first to change notification and download settings.",
     downloadsTitle: "Downloads",
     downloadsEmpty: "Save something for later. The internet doesn’t always have to win.",
     downloadsEmptyTitle: "Nothing downloaded yet.",

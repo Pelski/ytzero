@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  DEFAULT_STANDARD_PERMISSIONS,
   DEFAULT_ADMIN_ONLY_AREAS,
   parseAdminOnlyAreas,
   permissionAreaForMutation,
@@ -19,6 +20,7 @@ describe("profile administrator permissions", () => {
     expect(parseAdminOnlyAreas("not-json")).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
     expect(parseAdminOnlyAreas('["unknown"]')).toEqual([...DEFAULT_ADMIN_ONLY_AREAS]);
     expect(DEFAULT_ADMIN_ONLY_AREAS).toEqual(["imports", "appearance", "feed", "navigation", "playback", "plugins", "profiles"]);
+    expect(DEFAULT_STANDARD_PERMISSIONS).not.toContain("public_sharing");
   });
 
   test("accepts explicit v3 delegation and normalizes order and duplicates", () => {
@@ -79,6 +81,7 @@ describe("profile administrator permissions", () => {
     expect(permissionAreaForMutation("/import/analyze")).toBe("imports");
     expect(permissionAreaForMutation("/filter-rules/1")).toBe("filters");
     expect(permissionAreaForMutation("/playlists/1/videos")).toBe("playlists");
+    expect(permissionAreaForMutation("/public-shares/share-id/rotate")).toBe("public_sharing");
     expect(permissionAreaForMutation("/profiles/2")).toBeNull();
     expect(permissionAreaForMutation("/profiles/switch")).toBeNull();
   });

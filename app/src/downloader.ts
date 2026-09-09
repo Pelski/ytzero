@@ -33,6 +33,7 @@ import { DOWNLOAD_MANIFEST_SUFFIX, recoverDownloadsFromDisk, writeDownloadManife
 import { downloadScheduleAllowsNow } from "./downloadSchedule";
 import { backgroundTasksEnabled } from "./deploymentMode";
 import { resolveDownloadQuality, type DownloadQuality } from "./downloadSettings";
+import { createMobilePlayback } from "./mobilePlayback";
 export {
   DL_DEFAULTS,
   dlSettings,
@@ -52,6 +53,7 @@ const TICK_INTERVAL_MS = 30_000;
 const DOWNLOAD_WORKER_ID = crypto.randomUUID();
 const WORKER_HEARTBEAT_INTERVAL_MS = 2_000;
 const WORKER_STALE_AFTER_MS = 30_000;
+const mobilePlayback = createMobilePlayback(DOWNLOADS_DIR);
 export { DOWNLOAD_MANIFEST_SUFFIX, writeDownloadManifest };
 // ---------- queue state ----------
 
@@ -1162,6 +1164,7 @@ const { getDirectVideoResponse, invalidateDirectVideoSources } = createDownloadV
 });
 
 export { destroyHlsSession, getAudioHeadResponse, getAudioResponse, getAudioVodPlaylist, getDirectVideoResponse, getHlsPlaylist, getHlsResource, getHlsSegment, hasHlsSession, getLiveAudioPlaylist, getLiveAudioResource, invalidateAudioSources, invalidateDirectVideoSources, isSegmentName, liveStreamEnabled, retryAudioSource };
+export const ensureMobilePlayback = mobilePlayback.ensure;
 // ---------- scheduler ----------
 
 let ticking = false;

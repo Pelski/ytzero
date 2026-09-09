@@ -122,7 +122,7 @@ export default function NotificationSettings() {
   return <div className="notification-settings">
     {error && <Alert variant="danger" title={t("error")}>{error}{!preferences && <div><Button size="sm" onClick={() => void load()}>{t("reload")}</Button></div>}</Alert>}
     {preferences && <>
-      <SettingsSection title={t("notificationProfileControl")} description={t("notificationProfileControlHint")}>
+      <SettingsSection>
         <SettingRow label={t("notificationMasterSwitch")} description={t("notificationMasterSwitchHint")}>
           <Switch checked={preferences.enabled} disabled={pending === "master"} onCheckedChange={(enabled) => void updateProfile({ enabled }, "master")} />
         </SettingRow>

@@ -7,6 +7,7 @@ import { DEFAULT_TIME_ZONE, normalizeTimeZone, parseAppTimestamp } from "../date
 import { subscribe } from "../events";
 import { localeFormats } from "./localeFormats";
 import { LANGUAGE_CODES, LOCALE_TAGS, normalizeLanguage as normalizeLanguageCode, UI_LANGUAGES } from "../../../shared/uiLanguages";
+import { isPublicSharePath } from "../publicSharePath";
 
 export type { Language, I18nKey, Bucket } from "./types";
 
@@ -65,6 +66,18 @@ export function normalizeLanguage(value: unknown): Language {
   return normalizeLanguageCode(value);
 }
 
+export function browserLanguage(values: readonly string[] = typeof navigator === "undefined" ? [] : navigator.languages): Language {
+  for (const value of values) {
+    const normalized = value.toLowerCase();
+    const exact = supportedLanguages.find((candidate) => candidate.toLowerCase() === normalized);
+    if (exact) return exact;
+    const base = normalized.split("-")[0];
+    const matchingBase = supportedLanguages.find((candidate) => UI_LANGUAGES[candidate].base === base);
+    if (matchingBase) return matchingBase;
+  }
+  return "en";
+}
+
 type TParams = Record<string, string | number>;
 
 function interpolate(template: string, params?: TParams): string {
@@ -92,8 +105,9 @@ type I18nValue = {
 const I18nContext = createContext<I18nValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
+  const publicShare = typeof window !== "undefined" && isPublicSharePath(window.location.pathname);
   const [ready, setReady] = useState(false);
-  const [language, setLanguageState] = useState<Language>(() => normalizeLanguage(localStorage.getItem(LANGUAGE_KEY)));
+  const [language, setLanguageState] = useState<Language>(() => publicShare ? browserLanguage() : normalizeLanguage(localStorage.getItem(LANGUAGE_KEY)));
   const [timeZone, setTimeZoneState] = useState(DEFAULT_TIME_ZONE);
 
   const loadAppSettings = useCallback(() => {
@@ -123,9 +137,23 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (publicShare) {
+      const next = browserLanguage();
+      void loadLocale(next)
+        .then(() => {
+          setLanguageState(next);
+          document.documentElement.lang = next;
+        })
+        .catch(() => {
+          setLanguageState("en");
+          document.documentElement.lang = "en";
+        })
+        .finally(() => setReady(true));
+      return;
+    }
     void loadAppSettings();
     return subscribe("app-settings-changed", () => { void loadAppSettings(); });
-  }, [loadAppSettings]);
+  }, [loadAppSettings, publicShare]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -134,15 +162,20 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   const setLanguage = useCallback(async (next: Language) => {
     await loadLocale(next);
     setLanguageState(next);
+    if (publicShare) return;
     localStorage.setItem(LANGUAGE_KEY, next);
     await api.updateSettings({ language: next });
-  }, []);
+  }, [publicShare]);
 
   const setTimeZone = useCallback(async (next: string) => {
     const normalized = normalizeTimeZone(next);
+    if (publicShare) {
+      setTimeZoneState(normalized);
+      return;
+    }
     await api.updateSettings({ timezone: normalized });
     setTimeZoneState(normalized);
-  }, []);
+  }, [publicShare]);
 
   const value = useMemo<I18nValue>(() => ({
     ready,

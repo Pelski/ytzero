@@ -113,22 +113,25 @@
   position: fixed;
   right: auto;
   bottom: auto;
-  width: 230px;
-  background: rgba(22, 22, 27, 0.98);
-  border: none;
+  width: min(260px, calc(100vw - 16px));
+  background: rgb(22, 22, 27);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 14px;
-  padding: 7px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  overflow: hidden;
   z-index: 6;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.58);
-  max-height: 300px;
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.68);
+  min-height: min(144px, calc(100dvh - 24px));
+  max-height: min(460px, calc(100dvh - 24px));
 }
 .lp-sub-toggle { display: flex; align-items: center; justify-content: space-between; padding: 5px 5px 9px; border-bottom: 1px solid rgba(255, 255, 255, 0.09); color: var(--text-2); font-size: 12px; }
 .lp-sub-toggle .switch { transform: scale(.8); transform-origin: right center; }
-.lp-sub-menu-list-wrap { --ui-scroll-area-background: rgba(22, 22, 27, 0.98); flex: 1; }
-.lp-sub-menu-list { height: 100%; min-height: 0; padding-top: 4px; }
+.lp-sub-menu-list-wrap { --ui-scroll-area-background: rgb(22, 22, 27); flex: 1 1 auto; min-width: 0; }
+.lp-sub-menu-list { max-height: min(350px, calc(100dvh - 112px)); overflow-x: hidden; overscroll-behavior: contain; padding: 4px 0 2px; }
+.lp-sub-menu-list .ui-menu { margin: 0; min-width: 0; padding: 0; }
 .lp-sub-menu-list button {
   display: flex;
   align-items: center;

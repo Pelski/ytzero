@@ -1,5 +1,5 @@
 import { Play } from "lucide-react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Link } from "react-router-dom";
 import type { PlaylistVideo } from "../../api";
 import { useI18n } from "../../i18n";
@@ -15,24 +15,34 @@ export default function WatchPlaylistPanel({
   playlistId,
   playlistIndex,
   sort,
+  title,
+  totalCount,
+  toVideo,
   videos,
+  footer,
 }: {
-  activeItemRef: RefObject<HTMLAnchorElement>;
+  activeItemRef?: RefObject<HTMLAnchorElement>;
   currentVideoId?: string;
-  itemsRef: RefObject<HTMLDivElement>;
-  playlistId: string;
+  footer?: ReactNode;
+  itemsRef?: RefObject<HTMLDivElement>;
+  playlistId?: string;
   playlistIndex: number;
-  sort: PlaylistSort;
+  sort?: PlaylistSort;
+  title?: ReactNode;
+  totalCount?: number;
+  toVideo?: (video: PlaylistVideo) => string;
   videos: PlaylistVideo[];
 }) {
   const { t } = useI18n();
+  const itemHref = (video: PlaylistVideo) => toVideo?.(video)
+    ?? `/watch/${video.videoId}/playlist/${playlistId}${playlistSortSearch(sort ?? "oldest")}`;
 
   return (
     <div className="watch-playlist-panel">
       <div className="watch-playlist-head">
-        <span className="watch-playlist-title">{t("playlist")}</span>
+        <span className="watch-playlist-title">{title ?? t("playlist")}</span>
         <span className="watch-playlist-count">
-          {playlistIndex >= 0 ? playlistIndex + 1 : 1} / {videos.length}
+          {playlistIndex >= 0 ? playlistIndex + 1 : 1} / {totalCount ?? videos.length}
         </span>
       </div>
       <div className="playlist-items" ref={itemsRef}>
@@ -42,7 +52,7 @@ export default function WatchPlaylistPanel({
             <Link
               ref={active ? activeItemRef : undefined}
               key={video.videoId}
-              to={`/watch/${video.videoId}/playlist/${playlistId}${playlistSortSearch(sort)}`}
+              to={itemHref(video)}
               className={`playlist-item${active ? " active" : ""}`}
               title={video.title}
             >
@@ -65,6 +75,7 @@ export default function WatchPlaylistPanel({
           );
         })}
       </div>
+      {footer && <div className="watch-playlist-footer">{footer}</div>}
     </div>
   );
 }

@@ -15,4 +15,9 @@ describe("request diagnostics", () => {
     expect(diagnosticRequestPath("/api/social/watch-parties/secret/messages"))
       .toBe("/api/social/watch-parties/:id/messages");
   });
+
+  test("redacts public-share bearer tokens", () => {
+    expect(diagnosticRequestPath("/share/abcdefghijklmnopqrstuvwxyzABCDEFGH123456789/video/demo"))
+      .toBe("/share/:token/video/demo");
+  });
 });

@@ -8,7 +8,6 @@ import {
   ArrowDownToLine,
   Bookmark,
   BookmarkPlus,
-  CalendarDays,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -18,7 +17,6 @@ import {
   Captions,
   EllipsisVertical,
   ExternalLink,
-  Eye,
   Gauge,
   HardDrive,
   LoaderCircle,
@@ -36,8 +34,7 @@ import {
 } from "lucide-react";
 import { api, SB_CATEGORIES } from "../api";
 import { resolvePlaybackSpeeds } from "../../../shared/playbackSpeeds";
-import { compactNumber, formatPlaylistVideoCount, formatTimeAgo, formatViewsCount } from "../i18n";
-import { formatAppDate } from "../dateTime";
+import { formatPlaylistVideoCount, formatTimeAgo, formatViewsCount } from "../i18n";
 import TagChip from "../components/TagChip";
 import LocalPlayer from "../components/LocalPlayer";
 import Popconfirm from "../components/Popconfirm";
@@ -55,9 +52,11 @@ import Tooltip from "../components/Tooltip";
 import { markYouTubeUrl } from "../youtubeUrl";
 import VideoComments from "../components/VideoComments";
 import BookmarkEditor from "../components/BookmarkEditor";
+import PublicShareControl from "../components/PublicShareControl";
 import SocialShareDialog from "../components/social/SocialShareDialog";
 import { getWatchTogetherLabels, WatchTogetherJoinStatus, WatchTogetherPanelSlot } from "../components/social/WatchTogetherWatchUi";
-import WatchDescription from "../components/watch/WatchDescription";
+import WatchChapterPanel from "../components/watch/WatchChapterPanel";
+import WatchVideoDescription from "../components/watch/WatchVideoDescription";
 import WatchPlaylistPanel from "../components/watch/WatchPlaylistPanel";
 import WatchPlayerModeToggle from "../components/watch/WatchPlayerModeToggle";
 import WatchRestrictedPlayer from "../components/watch/WatchRestrictedPlayer";
@@ -105,9 +104,6 @@ export default function WatchPage() {
     currentPlaybackSeconds,
     createPlaylist,
     creatorHandles,
-    descExpandable,
-    descOpen,
-    descriptionRef,
     disabledSegs,
     downloadFeedbackKind,
     downloadFeedbackVisible,
@@ -125,7 +121,6 @@ export default function WatchPage() {
     keyboardSeekSeconds,
     language,
     likeButtonRef,
-    locale,
     membersOnlyNotice,
     moreOpen,
     moreView,
@@ -161,7 +156,6 @@ export default function WatchPage() {
     screenshotFormat,
     screenshotQuality,
     setCinemaMode,
-    setDescOpen,
     setDesktopPlaylistOpen,
     setDisabledSegs,
     setMoreOpen,
@@ -191,7 +185,6 @@ export default function WatchPage() {
     speedOpen,
     subtitleSize,
     t,
-    timeZone,
     toggleFeedAutoplay,
     toggleDownloadPinned,
     toggleLiked,
@@ -488,33 +481,15 @@ export default function WatchPage() {
             <div className="watch-actions-placeholder" aria-hidden="true" />
           </div>
         )}
-        {videoMissing && videoInfo && (
-          <div
-            ref={descriptionRef}
-            className={`watch-desc${descExpandable && !descOpen ? " clamped" : ""}`}
-            onClick={() => descExpandable && !descOpen && setDescOpen(true)}
-          >
-            <div className="watch-desc-stats">
-              {videoInfo.viewCount != null && (
-                <span className="stat"><Eye /> {formatViewsCount(videoInfo.viewCount, language)}</span>
-              )}
-              {videoInfo.publishedAt && (
-                <span className="stat"><CalendarDays /> {formatAppDate(videoInfo.publishedAt, locale, timeZone)}</span>
-              )}
-            </div>
-            {videoInfo.description && (
-              <>
-                <div className="watch-desc-sep" />
-                <WatchDescription text={videoInfo.description} baseUrl={appUrl} channelHandles={creatorHandles} />
-              </>
-            )}
-          </div>
-        )}
-        {videoMissing && videoInfo?.description && descExpandable && (
-          <button className="watch-desc-toggle" onClick={() => setDescOpen((o) => !o)}>
-            {descOpen ? t("showLess") : t("showMore")}
-          </button>
-        )}
+        {videoMissing && videoInfo && <WatchVideoDescription
+          baseUrl={appUrl}
+          channelHandles={creatorHandles}
+          description={videoInfo.description}
+          publishedAt={videoInfo.publishedAt}
+          showYouTube={false}
+          videoId={videoInfo.videoId}
+          views={videoInfo.viewCount}
+        />}
         {video && <div className="watch-row">
           <div className="watch-channel">
             <VideoCreators creators={videoCreators.length > 0 ? videoCreators : [{
@@ -646,6 +621,7 @@ export default function WatchPage() {
                     <IconButton variant="ghost" label={t("copyLink")} onClick={() => copyShareLink("youtube")}><Copy /></IconButton>
                   </div>
                   <Checkbox className="share-timestamp-option" label={t("includeCurrentTime")} checked={shareWithTimestamp} onChange={(event) => setShareWithTimestamp(event.target.checked)} />
+                  {video.is_private !== 1 && video.members_only !== 1 && video.is_unavailable !== 1 && <PublicShareControl resourceType="video" resourceId={video.video_id} embedded />}
                 </div>
               </Popover>
               {copyKey > 0 && <LocalToast key={copyKey}>{t("copied")}</LocalToast>}
@@ -822,65 +798,19 @@ export default function WatchPage() {
             </div>
           </div>
         </div>}
-        {video && (
-          <div
-            ref={descriptionRef}
-            className={`watch-desc${descExpandable && !descOpen ? " clamped" : ""}`}
-            onClick={() => descExpandable && !descOpen && setDescOpen(true)}
-          >
-            <div className="watch-desc-stats">
-              {video.views != null && (
-                <span className="stat"><Eye /> {formatViewsCount(video.views, language)}</span>
-              )}
-              {video.likes != null && (
-                <span className="stat"><ThumbsUp /> {compactNumber(video.likes, language)}</span>
-              )}
-              {video.published_at && (
-                <span className="stat"><CalendarDays /> {formatAppDate(video.published_at, locale, timeZone)}</span>
-              )}
-              {!isChildProfile && (
-                <a
-                  className="watch-youtube-link"
-                  href={markYouTubeUrl(`https://www.youtube.com/watch?v=${video.video_id}`)}
-                  target="_blank"
-                  rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink /> YouTube
-                </a>
-              )}
-            </div>
-            {video.description && (
-              <>
-                <div className="watch-desc-sep" />
-                <WatchDescription text={video.description} baseUrl={appUrl} channelHandles={creatorHandles} />
-              </>
-            )}
-          </div>
-        )}
-        {video?.description && descExpandable && (
-          <button className="watch-desc-toggle" onClick={() => setDescOpen((o) => !o)}>
-            {descOpen ? t("showLess") : t("showMore")}
-          </button>
-        )}
+        {video && <WatchVideoDescription
+          baseUrl={appUrl}
+          channelHandles={creatorHandles}
+          description={video.description}
+          likes={video.likes}
+          publishedAt={video.published_at}
+          showYouTube={!isChildProfile}
+          videoId={video.video_id}
+          views={video.views}
+        />}
         {(chapters.length > 0 || sbSegments.length > 0 || videoPlaylists.length > 0) && (
           <div className="watch-panels">
-            {chapters.length > 0 && (
-              <WatchPanel title={t("chaptersTitle")} className="sb-segments--chapters" ariaLabel={t("chaptersTitle")}>
-                {chapters.map((ch) => (
-                  <button
-                    type="button"
-                    key={ch.start}
-                    className="sb-segment-row sb-chapter-row"
-                    disabled={watchTogetherTransportLocked}
-                    onClick={() => playerRef.current?.seekTo(ch.start, true)}
-                  >
-                    <span className="sb-segment-name">{ch.title}</span>
-                    <span className="sb-time">{formatWatchTime(ch.start)}</span>
-                  </button>
-                ))}
-              </WatchPanel>
-            )}
+            <WatchChapterPanel chapters={chapters} disabled={watchTogetherTransportLocked} onSeek={(seconds) => playerRef.current?.seekTo(seconds, true)} />
             {sbSegments.length > 0 && (
               <WatchPanel
                 title={t("sbSegmentsTitle").replace(/:$/, "")}

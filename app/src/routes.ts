@@ -20,6 +20,7 @@ import {
 } from "./auth";
 import { registerSystemRoutes } from "./routes/systemRoutes";
 import { registerNotificationRoutes } from "./routes/notificationRoutes";
+import { registerPublicShareManagementRoutes } from "./routes/publicShareManagementRoutes";
 import { registerSocialRoutes } from "./routes/socialRoutes";
 import { registerSocialWatchPartyRoutes } from "./routes/socialWatchPartyRoutes";
 import { registerTagRoutes } from "./routes/tagRoutes";
@@ -325,6 +326,7 @@ api.use("*", async (c, next) => {
 const attachTags = (userId: number, videos: VideoRow[]) => attachVideoTags(userId, videos, profileDownloadsEnabled);
 
 registerBackupRoutes(api, { isAdmin, currentUserId });
+registerPublicShareManagementRoutes(api, { isAdmin, currentUserId });
 
 registerFeedRoutes(api, { currentUserId, attachTags });
 registerFeedBuilderRoutes(api, { currentUserId, attachTags });

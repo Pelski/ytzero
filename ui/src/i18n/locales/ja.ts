@@ -396,6 +396,7 @@ export const ja: Locale = {
     "playlistDownloadQualityBest": "利用可能な最高画質",
     "playlistDownloadQualityUpdated": "プレイリストは{quality}でダウンロードされます",
     "playlistDownloadQualityFailed": "ダウンロード解像度を変更できませんでした",
+    "playlistFollowRequiredHint": "通知とダウンロードの設定を変更するには、まずこのプレイリストをフォローしてください。",
     "downloadsTitle": "ダウンロード",
     "downloadsEmpty": "後で何かを保存します。 インターネットは必ず勝つ必要はありません。",
     "downloadsEmptyTitle": "まだダウンロードされていません。",

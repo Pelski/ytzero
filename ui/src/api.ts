@@ -63,6 +63,7 @@ import {
   type ImportCommitResult,
   type ImportManifest,
   type MembersOnlyVisibility,
+  type ManagedPublicShare,
   type NotificationCategory,
   type NotificationDelivery,
   type NotificationPreferences,
@@ -70,6 +71,8 @@ import {
   type PlaylistDownloadResult,
   type PlaylistInfo,
   type PlaylistVideo,
+  type PublicShareManagementResponse,
+  type PublicShareResourceType,
   type Profile,
   type ProfilePermissionArea,
   type ProfilePermissions,
@@ -109,6 +112,11 @@ export { ApiError } from "./apiHttp";
 export type { FeedBuilderConfig, FeedMediaMode, FeedRecipe, FeedRecipeSources } from "../../shared/feedBuilder";
 export interface FeedBuilderOption { id: string; label: string; color?: string; filter_only?: number; }
 export interface FeedBuilderOptions { channels: FeedBuilderOption[]; tags: FeedBuilderOption[]; youtubePlaylists: FeedBuilderOption[]; userPlaylists: FeedBuilderOption[]; }
+
+function withBrowserPublicShareUrl(share: ManagedPublicShare): ManagedPublicShare {
+  return { ...share, url: new URL(`/share/${encodeURIComponent(share.token)}`, window.location.origin).toString() };
+}
+
 export const api = {
   health: () => http<AppHealth>("/health"),
   clusterStatus: () => http<ClusterStatus>("/cluster/status"),
@@ -397,6 +405,25 @@ export const api = {
     http("/settings", { method: "PUT", body: JSON.stringify(s) }),
   childLock: () => sharedGet<{ child_lock: ChildLockStatus }>("child-lock", "/child-lock"),
   profilePermissions: () => sharedGet<{ permissions: ProfilePermissions }>("profile-permissions", "/profile-permissions"),
+  publicShares: (filter?: { resource_type: PublicShareResourceType; resource_id: string | number }) => {
+    const qs = filter ? `?resource_type=${encodeURIComponent(filter.resource_type)}&resource_id=${encodeURIComponent(String(filter.resource_id))}` : "";
+    return http<PublicShareManagementResponse>(`/public-shares${qs}`).then((result) => ({
+      ...result,
+      shares: result.shares.map(withBrowserPublicShareUrl),
+    }));
+  },
+  createPublicShare: (resource_type: PublicShareResourceType, resource_id: string | number) =>
+    http<{ share: ManagedPublicShare }>("/public-shares", { method: "POST", body: JSON.stringify({ resource_type, resource_id }) })
+      .then((result) => ({ share: withBrowserPublicShareUrl(result.share) })),
+  updatePublicShareLocalMedia: (id: string, allow_local_media: boolean) =>
+    http<{ share: ManagedPublicShare; rotated: boolean }>(`/public-shares/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ allow_local_media }) })
+      .then((result) => ({ ...result, share: withBrowserPublicShareUrl(result.share) })),
+  rotatePublicShare: (id: string) =>
+    http<{ share: ManagedPublicShare }>(`/public-shares/${encodeURIComponent(id)}/rotate`, { method: "POST", body: "{}" })
+      .then((result) => ({ share: withBrowserPublicShareUrl(result.share) })),
+  deletePublicShare: (id: string) => http<{ ok: true }>(`/public-shares/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  updatePublicSharingPolicy: (enabled: boolean) =>
+    http<{ policy: { enabled: boolean; can_manage: boolean } }>("/public-shares/policy", { method: "PUT", body: JSON.stringify({ enabled }) }),
   accessControl: () => http<AccessControlSnapshot>("/access-control"),
   createPermissionGroup: (name: string, permissions: ProfilePermissionArea[]) => http<AccessControlPolicySnapshot>("/access-control/groups", { method: "POST", body: JSON.stringify({ name, permissions }) }),
   updatePermissionGroup: (id: number, permissions: ProfilePermissionArea[]) => http<AccessControlPolicySnapshot>(`/access-control/groups/${id}`, { method: "PUT", body: JSON.stringify({ permissions }) }),

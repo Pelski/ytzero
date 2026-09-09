@@ -22,6 +22,7 @@ export function useYouTubeKeyboardShortcuts({
   playerKind,
   playerRef,
   showFeedback,
+  sendCommand,
   speedRef,
   takeScreenshot,
   transportLocked,
@@ -36,6 +37,7 @@ export function useYouTubeKeyboardShortcuts({
   playerKind: PlayerKind;
   playerRef: MutableRefObject<WatchPlayerHandle | null>;
   showFeedback: (kind: WatchShortcutKind, seconds?: number, category?: string) => void;
+  sendCommand?: Parameters<typeof applyEmbeddedPlayerCommand>[0]["sendCommand"];
   speedRef: MutableRefObject<string>;
   takeScreenshot: () => void;
   transportLocked: boolean;
@@ -57,6 +59,7 @@ export function useYouTubeKeyboardShortcuts({
         getPlayer: () => playerRef.current,
         playerKind,
         rate,
+        sendCommand,
         shouldFallback: () => playbackRateCommandVersionRef.current === version,
         videoId: id,
       });
@@ -72,6 +75,7 @@ export function useYouTubeKeyboardShortcuts({
         fallback,
         payload,
         playerKind,
+        sendCommand,
         videoId: id,
       });
     };
@@ -273,5 +277,5 @@ export function useYouTubeKeyboardShortcuts({
       spaceHoldTimerRef.current = null;
       spaceHoldActiveRef.current = false;
     };
-  }, [audioActive, chapters, enhancePlayerStateRef, frameRate, id, keyboardSeekSeconds, keyboardShortcuts, playerKind, playerRef, showFeedback, speedRef, takeScreenshot, transportLocked]);
+  }, [audioActive, chapters, enhancePlayerStateRef, frameRate, id, keyboardSeekSeconds, keyboardShortcuts, playerKind, playerRef, sendCommand, showFeedback, speedRef, takeScreenshot, transportLocked]);
 }

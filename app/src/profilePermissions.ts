@@ -5,7 +5,7 @@
  */
 export const PROFILE_PERMISSION_AREAS = [
   "channels", "followed_playlists", "imports", "tags", "filters", "playlists",
-  "appearance", "feed", "navigation", "playback", "plugins", "profiles",
+  "appearance", "feed", "navigation", "playback", "plugins", "profiles", "public_sharing",
 ] as const;
 
 export type ProfilePermissionArea = (typeof PROFILE_PERMISSION_AREAS)[number];
@@ -23,7 +23,7 @@ export const DEFAULT_RESTRICTED_PERMISSIONS: readonly ProfilePermissionArea[] = 
 
 export const PIN_PROTECTED_PERMISSION_AREAS = new Set<ProfilePermissionArea>([
   "channels", "followed_playlists", "imports", "appearance", "feed",
-  "navigation", "playback", "plugins", "profiles",
+  "navigation", "playback", "plugins", "profiles", "public_sharing",
 ]);
 
 export function isProfilePermissionArea(value: unknown): value is ProfilePermissionArea {
@@ -67,6 +67,7 @@ export function permissionAreaForMutation(path: string): ProfilePermissionArea |
   if (path === "/tags" || path.startsWith("/tags/") || path === "/rules" || path.startsWith("/rules/")
     || path.startsWith("/videos/") && path.includes("/tags") || path.startsWith("/channels/") && path.includes("/tags")) return "tags";
   if (path === "/playlists" || path.startsWith("/playlists/")) return "playlists";
+  if (path === "/public-shares" || path.startsWith("/public-shares/")) return "public_sharing";
   if (path === "/channel-playlists" || path.startsWith("/channel-playlists/")
     || path.startsWith("/channels/") && path.includes("/playlists")) return "followed_playlists";
   if (path === "/channels/import" || path === "/import" || path.startsWith("/import/")) return "imports";

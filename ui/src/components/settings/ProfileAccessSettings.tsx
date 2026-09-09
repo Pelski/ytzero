@@ -24,6 +24,7 @@ const OPTIONS: { id: ProfilePermissionArea; key: I18nKey; hint: I18nKey }[] = [
   { id: "playback", key: "profilePermissionPlayback", hint: "profilePermissionPlaybackHint" },
   { id: "plugins", key: "profilePermissionPlugins", hint: "profilePermissionPluginsHint" },
   { id: "profiles", key: "profilePermissionProfiles", hint: "profilePermissionProfilesHint" },
+  { id: "public_sharing", key: "profilePermissionPublicSharing", hint: "profilePermissionPublicSharingHint" },
 ];
 
 type RoleMatrixRow = PermissionGroup | {

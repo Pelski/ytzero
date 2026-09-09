@@ -9,7 +9,7 @@ The menu is grouped by purpose:
 
 - **Library** — Channels, Followed playlists, Filters, Tags, Rules, and personal Playlists.
 - **Experience** — Appearance, Feed, Navigation, Playback, Subtitles, Screenshots, and Privacy.
-- **Administration** — Plugins, Profiles, and Authentication.
+- **Administration** — Plugins, Profiles, Authentication, and Sharing.
 - **System** — Changelog and update checks, Logs, External videos, Backup and restore, Database, other dangerous operations, and Cluster health when PostgreSQL is active.
 
 Only sections available to the active profile are shown. Authentication remains
@@ -71,3 +71,11 @@ The standard defaults keep shared behavior and administration restricted while
 leaving personal tags, rules, filters, and playlists editable. The Child Lock
 PIN is a separate temporary gate: it does not grant administrator status or
 change profile permissions. See [Profiles](Profiles) and [Child Lock](Child-Lock).
+
+## Public sharing
+
+**Settings → Sharing** contains the default-off global switch and the list of
+public links. Administrators manage all links; other profiles require the
+`public_sharing` permission and see only their own. A public link deliberately
+bypasses login, so read the [Public Sharing](Public-Sharing) security and proxy
+guide before enabling the feature or exposing `/share/*` outside the LAN.

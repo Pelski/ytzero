@@ -91,4 +91,5 @@
   -webkit-line-clamp: 2;
 }
 .watch-playlist-panel .playlist-item-ch { margin-top: 3px; color: var(--text-2); font-size: 11.5px; }
-
+.watch-playlist-footer { padding: 10px 12px; border-top: 1px solid var(--surface-2); }
+.watch-playlist-footer .ui-button { width: 100%; }

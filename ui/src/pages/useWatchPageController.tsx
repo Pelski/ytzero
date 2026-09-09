@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import { emit, emitToast, subscribe } from "../events";
 import { scheduleSettingWrite } from "../settingsWriteQueue";
@@ -36,9 +36,8 @@ import { normalizeWatchCommentsMode } from "../../../shared/watchComments";
 import { applyEmbeddedPlayerCommand } from "./embeddedPlayerCommand";
 
 const CINEMA_MODE_KEY = "watchCinemaMode";
-const DESCRIPTION_COLLAPSED_HEIGHT = 148;
 export function useWatchPageController(audioModeRequested: boolean = false) {
-  const { t, language, locale, timeZone } = useI18n();
+  const { t, language } = useI18n();
   const { id, playlistId } = useParams<{ id: string; playlistId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
@@ -146,8 +145,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     experimentalStreaming,
     defaultPlayer,
   } = playbackPolicy;
-  const [descOpen, setDescOpen] = useState(false);
-  const [descExpandable, setDescExpandable] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
@@ -227,7 +224,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   const shortcutFeedbackTimerRef = useRef<number | null>(null);
   const likeButtonRef = useRef<HTMLButtonElement>(null);
   const playerWrapRef = useRef<HTMLDivElement>(null);
-  const descriptionRef = useRef<HTMLDivElement>(null);
   // Container the YT iframe is injected into; separate from playerWrapRef so
   // the manual DOM cleanup never touches the React-rendered LocalPlayer.
   const ytWrapRef = useRef<HTMLDivElement>(null);
@@ -252,19 +248,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     setShortcutFeedback({ kind, id: Date.now(), seconds, category });
     shortcutFeedbackTimerRef.current = window.setTimeout(() => setShortcutFeedback(null), kind === "sponsorblock" ? 4_200 : 1_560);
   }, []);
-
-  useLayoutEffect(() => {
-    const element = descriptionRef.current;
-    if (!element) {
-      setDescExpandable(false);
-      return;
-    }
-    const measure = () => setDescExpandable(element.scrollHeight > DESCRIPTION_COLLAPSED_HEIGHT + 1);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [video?.description, video?.views, video?.likes, video?.published_at, videoInfo?.description, videoInfo?.viewCount, videoInfo?.publishedAt, videoMissing, isChildProfile]);
 
   useEffect(() => {
     api.settings().then((r) => setSettings(r.settings)).catch(() => setSettings(null));
@@ -646,7 +629,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
-    setDescOpen(false);
     setVideo(null);
     setMissingVideoId(null);
     setVideoInfo(null);
@@ -1455,9 +1437,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     currentPlaybackSeconds,
     createPlaylist,
     creatorHandles,
-    descExpandable,
-    descOpen,
-    descriptionRef,
     disabledSegs,
     downloadFeedbackKind,
     downloadFeedbackVisible,
@@ -1475,7 +1454,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     keyboardSeekSeconds,
     language,
     likeButtonRef,
-    locale,
     membersOnlyNotice,
     moreOpen,
     moreView,
@@ -1512,7 +1490,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     screenshotFormat,
     screenshotQuality,
     setCinemaMode,
-    setDescOpen,
     setDesktopPlaylistOpen,
     setDisabledSegs,
     setMoreOpen,
@@ -1544,7 +1521,6 @@ export function useWatchPageController(audioModeRequested: boolean = false) {
     streamPositionRef,
     subtitleSize,
     t,
-    timeZone,
     toggleFeedAutoplay,
     toggleDownloadPinned,
     toggleLiked,

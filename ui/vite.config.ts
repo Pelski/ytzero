@@ -23,6 +23,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": "http://localhost:3001",
+      // Keep the public page on the Vite/UI origin during development while
+      // forwarding only its token-scoped data and media resources to the API.
+      "^/share/[^/]+/(data|thumbnail|avatar|subtitles|media)(?:[/?]|$)": "http://localhost:3001",
       "/favicon.svg": "http://localhost:3001",
       "/icon-maskable.svg": "http://localhost:3001",
       "/apple-touch-icon.png": "http://localhost:3001",

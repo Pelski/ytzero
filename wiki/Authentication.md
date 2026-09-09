@@ -12,6 +12,12 @@ By default YT Zero uses **no authentication** — it assumes a trusted local net
 | **OIDC** | external provider | depends on mode | SSO with Pocket ID, Authentik, Keycloak, … |
 | **Proxy header** | reverse proxy | requires re-login | Authelia / forward-auth setups |
 
+Public sharing is an explicit exception to these login methods. When enabled,
+`/share/*` uses bearer links instead of a profile session. If an external
+forward-auth layer protects the host, it needs a narrow path exception without
+making `/api/*` public. Read [Public Sharing](Public-Sharing) before configuring
+that exception.
+
 > When any method other than **None** is active, the per-profile 6-digit PINs are not used — the login replaces them. The [Child Lock](Child-Lock) settings PIN is separate and keeps working.
 
 ## How to configure

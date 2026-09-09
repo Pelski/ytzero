@@ -305,6 +305,7 @@ export const de: Locale = {
     playlistDownloadQualityBest: "Beste verfügbare",
     playlistDownloadQualityUpdated: "Playlist-Downloads verwenden {quality}",
     playlistDownloadQualityFailed: "Die Download-Auflösung konnte nicht geändert werden",
+    playlistFollowRequiredHint: "Folge zuerst dieser Playlist, um Benachrichtigungs- und Download-Einstellungen zu ändern.",
     downloadsTitle: "Downloads",
     downloadsEmpty: "Speicher etwas für später. Das Internet muss nicht immer gewinnen.",
     downloadsEmptyTitle: "Noch nichts heruntergeladen.",

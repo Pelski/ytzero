@@ -396,6 +396,7 @@ export const ru: Locale = {
     "playlistDownloadQualityBest": "Лучшее доступное",
     "playlistDownloadQualityUpdated": "Загрузки плейлиста будут использовать {quality}",
     "playlistDownloadQualityFailed": "Не удалось изменить разрешение загрузки",
+    "playlistFollowRequiredHint": "Сначала подпишитесь на этот плейлист, чтобы изменить настройки уведомлений и загрузки.",
     "downloadsTitle": "Загрузки",
     "downloadsEmpty": "Сохраните что-нибудь на потом. Интернет не обязан всегда побеждать.",
     "downloadsEmptyTitle": "Пока ничего не загружено.",

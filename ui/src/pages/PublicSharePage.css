@@ -1,0 +1,63 @@
+.public-share-page {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.public-share-header {
+  padding-right: clamp(16px, 4vw, 48px);
+  padding-left: clamp(16px, 4vw, 48px);
+}
+
+.public-share-label { margin-left: auto; color: var(--text-2); font-size: 12px; }
+
+.public-share-content {
+  padding: 18px 32px 80px;
+}
+
+.public-share-watch-layout--single {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 1346px;
+}
+
+.public-share-watch-layout .watch-row {
+  min-height: 36px;
+}
+
+.public-share-watch-layout .watch-panels {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.public-share-watch-layout aside {
+  min-width: 0;
+}
+
+.public-share-watch-layout .watch-playlist-panel {
+  position: sticky;
+  top: 18px;
+}
+
+body.cinema .public-share-content {
+  padding-top: 0;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.public-share-state {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+}
+
+@media (max-width: 1280px) {
+  .public-share-watch-layout .watch-playlist-panel { position: static; }
+}
+
+@media (max-width: 640px) {
+  .public-share-content { padding: 14px 14px 64px; }
+  .public-share-label { display: none; }
+}
